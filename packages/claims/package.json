@@ -1,0 +1,64 @@
+{
+  "name": "@nullius-inverba/claims",
+  "version": "0.4.0",
+  "description": "Deterministic checker for Evidence Anchors — machine-verifiable claims about a codebase in design docs, RFCs, and agent-written proposals.",
+  "license": "MIT",
+  "author": "Arman Fatemi",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/armanfatemi/nullius.git",
+    "directory": "packages/claims"
+  },
+  "homepage": "https://github.com/armanfatemi/nullius",
+  "bugs": "https://github.com/armanfatemi/nullius/issues",
+  "keywords": [
+    "agents",
+    "llm",
+    "grounding",
+    "hallucination",
+    "evidence",
+    "citations",
+    "design-docs",
+    "rfc",
+    "adr",
+    "lint",
+    "ci"
+  ],
+  "type": "module",
+  "engines": {
+    "node": ">=20.19"
+  },
+  "bin": {
+    "nullius": "dist/cli.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./cli": {
+      "default": "./dist/cli.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts src/cli.ts --format esm --dts --clean",
+    "test": "vitest run",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "glob": "^13.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsup": "^8.3.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}

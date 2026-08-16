@@ -1,0 +1,13 @@
+{
+  "name": "nullius",
+  "description": "Evidence Anchors for agent-written design docs: load-bearing claims about existing code carry citations a deterministic checker re-verifies. Includes the authoring skill and a [false-premise] reviewer kit.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Arman Fatemi",
+    "url": "https://github.com/armanfatemi"
+  },
+  "homepage": "https://github.com/armanfatemi/nullius",
+  "repository": "https://github.com/armanfatemi/nullius",
+  "license": "MIT",
+  "keywords": ["evidence", "grounding", "design-docs", "review", "agents"]
+}

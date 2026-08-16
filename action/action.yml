@@ -1,0 +1,155 @@
+name: 'nullius claims check'
+description: >-
+  Verify Evidence Anchors — machine-verifiable claims about the codebase in
+  design docs, PR descriptions, and agent-written proposals. Advisory PR
+  comment by default; a hard gate with strict.
+branding:
+  icon: 'check-circle'
+  color: 'gray-dark'
+
+inputs:
+  globs:
+    description: >-
+      Space-separated glob patterns for the documents to check (quoted so the
+      shell does not expand them), e.g. "docs/rfcs/**/*.md". Omit to use the
+      "docs" key of nullius.config.json. If neither is present, the docs check
+      is skipped (PR-body mode can still run).
+    default: ''
+  pr-body:
+    description: >-
+      Also check the pull request description itself for Evidence Anchors —
+      the one claim-carrying document every workflow has. Runs only on
+      pull_request events. Default true.
+    default: 'true'
+  config:
+    description: Path to a nullius.config.json (defaults to repo root if present).
+    default: ''
+  strict:
+    description: Fail the job when any claim is unverified. Default false (advisory).
+    default: 'false'
+  require-markers:
+    description: Fail when the docs check finds no grounding markers at all. Default false.
+    default: 'false'
+  comment:
+    description: Upsert a PR comment with the report (needs github-token). Default true.
+    default: 'true'
+  github-token:
+    description: Token for the PR comment (needs pull-requests write permission).
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Run checker
+      id: check
+      shell: bash
+      env:
+        GLOBS: ${{ inputs.globs }}
+        CONFIG: ${{ inputs.config }}
+        REQUIRE_MARKERS: ${{ inputs.require-markers }}
+        PR_BODY_MODE: ${{ inputs.pr-body }}
+      run: |
+        set +e
+        status=0
+        combined=""
+
+        run_docs=false
+        if [ -n "$GLOBS" ]; then
+          run_docs=true
+        elif [ -n "$CONFIG" ] && [ -f "$CONFIG" ]; then
+          run_docs=true
+        elif [ -f nullius.config.json ]; then
+          run_docs=true
+        fi
+
+        if [ "$run_docs" = "true" ]; then
+          args=()
+          if [ -n "$CONFIG" ]; then
+            args+=(--config "$CONFIG")
+          fi
+          if [ "$REQUIRE_MARKERS" = "true" ]; then
+            args+=(--require-markers)
+          fi
+          # Globs are word-split deliberately so multiple patterns work; the
+          # CLI does its own globbing, so patterns must reach it unexpanded.
+          # shellcheck disable=SC2086
+          docs_output=$(npx -y @nullius-inverba/claims check $GLOBS "${args[@]}" 2>&1)
+          docs_status=$?
+          if [ $docs_status -ne 0 ]; then status=$docs_status; fi
+          combined="=== docs ===
+        $docs_output"
+        fi
+
+        if [ "$PR_BODY_MODE" = "true" ] && [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+          # Read the body from the event file, never via expression
+          # interpolation — the description is PR-controlled content.
+          jq -r '.pull_request.body // ""' "$GITHUB_EVENT_PATH" > .nullius-pr-description.md
+          if [ -s .nullius-pr-description.md ]; then
+            body_output=$(npx -y @nullius-inverba/claims check .nullius-pr-description.md 2>&1)
+            body_status=$?
+            if [ $body_status -ne 0 ]; then status=$body_status; fi
+          else
+            body_output="(empty PR description — nothing to check)"
+          fi
+          rm -f .nullius-pr-description.md
+          combined="$combined
+
+        === PR description ===
+        $body_output"
+        fi
+
+        if [ -z "$combined" ]; then
+          combined="Nothing to check: no globs, no nullius.config.json, and no PR body target."
+        fi
+        set -e
+
+        echo "$combined"
+        {
+          echo '## nullius claims check'
+          echo '```'
+          echo "$combined"
+          echo '```'
+        } >> "$GITHUB_STEP_SUMMARY"
+
+        echo "status=$status" >> "$GITHUB_OUTPUT"
+        {
+          echo 'output<<NULLIUS_EOF'
+          echo "$combined"
+          echo 'NULLIUS_EOF'
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Upsert PR comment
+      if: >-
+        inputs.comment == 'true' && inputs.github-token != '' &&
+        github.event_name == 'pull_request'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        REPORT: ${{ steps.check.outputs.output }}
+        STATUS: ${{ steps.check.outputs.status }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+      run: |
+        marker='<!-- nullius-claims -->'
+        if [ "$STATUS" = "0" ]; then
+          headline='✅ all grounding markers verified'
+        else
+          headline='❌ unverified claims found'
+        fi
+        body=$(printf '%s\n## nullius claims check — %s\n\n```\n%s\n```\n\n_[Evidence Anchors](https://github.com/armanfatemi/nullius/blob/main/spec/evidence-anchors.md): open the cited file and correct the claim, or move it to "Open questions"._\n' \
+          "$marker" "$headline" "$REPORT")
+
+        existing=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" --paginate \
+          | jq -r --arg m "$marker" '[.[] | select(.body | startswith($m)) | .id][0] // empty') || existing=''
+
+        if [ -n "$existing" ]; then
+          gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$existing" -f body="$body" >/dev/null || true
+        else
+          gh api -X POST "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" -f body="$body" >/dev/null || true
+        fi
+
+    - name: Enforce strict mode
+      if: inputs.strict == 'true' && steps.check.outputs.status != '0'
+      shell: bash
+      run: |
+        echo 'strict mode: unverified claims fail the job (see report above)'
+        exit 1
