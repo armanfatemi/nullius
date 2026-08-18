@@ -201,7 +201,21 @@ function runDemo(): number {
   console.log(`Fixture: ${root}`);
   console.log("");
   console.log(`--- ${DEMO_DOC_PATH}`);
-  const failures = report(demoResults(root));
+
+  const results = demoResults(root);
+  const groups: [string, (kind: string) => boolean][] = [
+    ["Evidence Anchors & Binding Moments", (kind) => kind !== "dispatch" && kind !== "canary"],
+    ["Attestation ledger", (kind) => kind === "dispatch"],
+    ["Canary", (kind) => kind === "canary"],
+  ];
+  let failures = 0;
+  for (const [title, matches] of groups) {
+    const grouped = results.filter((result) => matches(result.claim.kind));
+    if (grouped.length === 0) continue;
+    console.log(`# ${title}`);
+    failures += report(grouped);
+    console.log("");
+  }
 
   console.log("");
   console.log(

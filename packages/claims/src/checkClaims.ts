@@ -320,7 +320,10 @@ function checkLedger(
     const entry = pool[used];
     if (entry !== undefined) {
       consumed.set(expected.name, used + 1);
-      results.push(checkDelivery(claim, entry, deps));
+      // Delivery verdicts anchor to the entry they judge, not the declaration.
+      results.push(
+        checkDelivery({ ...claim, source: entry.source }, entry, deps),
+      );
       continue;
     }
 

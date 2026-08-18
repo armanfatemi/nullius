@@ -388,6 +388,8 @@ describe("checkClaims — attestation ledger", () => {
 
     expect(results[0]?.verdict).toBe("empty-delivery");
     expect(results[0]?.detail).toContain("None");
+    // The verdict anchors to the offending delivery entry, not the declaration.
+    expect(results[0]?.claim.source).toEqual({ doc: "evidence.md", line: 10 });
     expect(isFailure("empty-delivery")).toBe(true);
   });
 
