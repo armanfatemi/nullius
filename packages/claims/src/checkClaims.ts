@@ -99,8 +99,12 @@ export function isFailure(verdict: Verdict): boolean {
   return !PASSING.has(verdict);
 }
 
-/** Trim and collapse whitespace runs so indentation differences don't fail a citation. */
-function normalize(value: string): string {
+/**
+ * Trim and collapse whitespace runs so indentation differences don't fail a
+ * citation. Exported because canary verify is contractually pinned to the
+ * checker's normalization (spec/canary.md) — one copy, not two.
+ */
+export function normalize(value: string): string {
   return value.trim().replace(/\s+/g, " ");
 }
 
@@ -298,6 +302,7 @@ function checkLedger(
   // Expected occurrences consume delivery entries by name, in order — counted
   // multiplicity, so 2-of-3 deliveries of a repeated dispatch stays visible.
   const consumed = new Map<string, number>();
+  const undelivered: { result: ClaimResult; name: string }[] = [];
   for (const expected of ledger.expected) {
     const claim: DispatchClaim = {
       kind: "dispatch",
@@ -327,23 +332,47 @@ function checkLedger(
       continue;
     }
 
-    let detail = `declared and silent — no delivery entry for '${expected.name}'`;
-    const candidate = ledger.delivered.find(
-      (delivery) =>
-        delivery.name !== expected.name &&
-        editDistance(delivery.name, expected.name) <= 2,
-    );
-    if (candidate !== undefined) {
-      detail += `; did you mean '${candidate.name}' (delivered)?`;
-    }
-    results.push({ claim, verdict: "undelivered", detail });
+    const result: ClaimResult = {
+      claim,
+      verdict: "undelivered",
+      detail: `declared and silent — no delivery entry for '${expected.name}'`,
+    };
+    results.push(result);
+    undelivered.push({ result, name: expected.name });
   }
 
-  for (const entry of ledger.delivered) {
-    const pool = pools.get(entry.name) ?? [];
-    if (pool.indexOf(entry) < (consumed.get(entry.name) ?? 0)) continue;
+  const leftovers = ledger.delivered.filter(
+    (entry) =>
+      (pools.get(entry.name) ?? []).indexOf(entry) >=
+      (consumed.get(entry.name) ?? 0),
+  );
+
+  // Near-match hints come only from leftovers — a delivery already consumed
+  // by another declared dispatch is not a plausible typo target.
+  for (const { result, name } of undelivered) {
+    const candidate = leftovers.find(
+      (entry) => entry.name !== name && editDistance(entry.name, name) <= 2,
+    );
+    if (candidate !== undefined) {
+      result.detail += `; did you mean '${candidate.name}' (delivered)?`;
+    }
+  }
+
+  for (const entry of leftovers) {
+    const claim: DispatchClaim = {
+      kind: "dispatch",
+      name: entry.name,
+      source: entry.source,
+    };
+    // An unconsumed entry still owes a valid attestation — an empty outcome
+    // or a bad findings path must not be laundered into a passing UNDECLARED.
+    const delivery = checkDelivery(claim, entry, deps);
+    if (isFailure(delivery.verdict)) {
+      results.push(delivery);
+      continue;
+    }
     results.push({
-      claim: { kind: "dispatch", name: entry.name, source: entry.source },
+      claim,
       verdict: "undeclared",
       detail: "delivered but never declared — nobody was waiting on this report",
     });

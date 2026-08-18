@@ -71,10 +71,14 @@ outcome:
 | `CANARY-MISSED`  | Nothing references the planted location or claim               | 1    |
 | `CANARY-TAINTED` | The report references the probe machinery — the probe is void  | 3    |
 
+Exit **2** means *the probe could not run* — no active canary, an unreadable
+report or registry, bad usage. A gate script must treat 2 as "measurement
+unavailable", never as a measured miss.
+
 Taint is tested **before** caught, and the taint tokens are the machinery's
 own names:
 
-**Evidence:** `packages/claims/src/canary.ts:46` — `const TAINT_TOKENS = ["canaries.json", ".git/nullius", "CANARY-PRESENT"];`
+**Evidence:** `packages/claims/src/canary.ts:49` — `const TAINT_TOKENS = ["canaries.json", ".git/nullius", "CANARY-"];`
 
 A reviewer that saw the probe and cites the canary must not read as a healthy
 reviewer — a false `CANARY-CAUGHT` is manufactured confidence in a dead
@@ -91,6 +95,12 @@ approval gates.
 
 `clear` restores the document byte-identically and refuses if edits moved the
 planted line — it will never delete a line it cannot prove is the canary.
+
+**An unreadable registry fails closed.** A corrupt or invalid
+`canaries.json` means probe state is unknown: `canary status` and `verify`
+exit 2 instead of reporting all-clear, and `check` fails with instructions —
+a guard that silently stands down is the failure mode this convention exists
+to prevent.
 
 ## Advertised limits
 

@@ -67,7 +67,7 @@ empty.
   subcommand alongside `check` / `demo` / `eager-prompt`, and a `--probing`
   flag on `check`:
 
-**Evidence:** `packages/claims/src/cli.ts:50` — `canary plant <doc>  insert a registered, plausibly-false claim (probe state`
+**Evidence:** `packages/claims/src/cli.ts:52` — `canary plant <doc>  insert a registered, plausibly-false claim (probe state`
 
 - `spec/`: two new convention documents (`attestation-ledger.md`,
   `canary.md`); the verdict table in the Evidence Anchors spec gains the new

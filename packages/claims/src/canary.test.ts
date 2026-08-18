@@ -74,10 +74,6 @@ describe("plantCanary", () => {
     const entry = plantCanary(root, "docs/design.md");
 
     const symbol = /`([A-Za-z_][A-Za-z0-9_]*)`/.exec(entry.text)?.[1];
-    const named = /`([^`]+\.[a-z]+)`/.exec(
-      entry.text.slice(entry.text.indexOf("`") + entry.text.length / 8),
-    );
-    expect(symbol).toBeDefined();
     // The claim names a real file that verifiably lacks the symbol.
     const files = [...entry.text.matchAll(/`([^`]+\.[a-z]+)`/g)].map(
       (m) => m[1],
@@ -89,7 +85,57 @@ describe("plantCanary", () => {
     }
     const content = readFileSync(join(root, claimed), "utf8");
     expect(content.includes(symbol)).toBe(false);
-    expect(named).toBeTruthy();
+  });
+
+  it("never harvests from nested dist or node_modules directories", () => {
+    mkdirSync(join(root, "pkg", "a", "dist"), { recursive: true });
+    mkdirSync(join(root, "pkg", "a", "node_modules", "dep"), {
+      recursive: true,
+    });
+    // Alphabetically earlier than src/, so a broken filter would pick these.
+    writeFileSync(
+      join(root, "pkg", "a", "dist", "aaa.js"),
+      "export const AAA_BUILT = 1;\n",
+    );
+    writeFileSync(
+      join(root, "pkg", "a", "node_modules", "dep", "index.js"),
+      "export const AAA_VENDORED = 1;\n",
+    );
+
+    const entry = plantCanary(root, "docs/design.md");
+    expect(entry.text).not.toContain("dist/");
+    expect(entry.text).not.toContain("node_modules");
+    expect(entry.text).not.toContain("AAA_");
+  });
+
+  it("produces no failing anchor verdict when the planted document is checked", async () => {
+    const { checkClaims, isFailure } = await import("./checkClaims");
+    const { parseClaims } = await import("./parseClaims");
+    plantCanary(root, "docs/design.md");
+
+    const content = readFileSync(join(root, "docs", "design.md"), "utf8");
+    const results = checkClaims(parseClaims("docs/design.md", content), {
+      readFileLines: () => null,
+      runSearch: () => ({ ok: true, count: 0 }),
+    });
+
+    expect(results.filter((r) => isFailure(r.verdict))).toEqual([]);
+  });
+
+  it("touches nothing in the working tree except the planted document", () => {
+    const before = new Map<string, string>();
+    for (const file of [
+      "src/a/alpha.ts",
+      "src/b/beta.ts",
+    ]) {
+      before.set(file, readFileSync(join(root, file), "utf8"));
+    }
+
+    plantCanary(root, "docs/design.md");
+
+    for (const [file, content] of before) {
+      expect(readFileSync(join(root, file), "utf8")).toBe(content);
+    }
   });
 
   it("refuses a second plant while one is active", () => {
@@ -156,7 +202,7 @@ describe("verifyCanary", () => {
     ).toBe("caught");
   });
 
-  it("reports caught when the report quotes the claim text", () => {
+  it("requires the full claim text — a partial quote is not a catch", () => {
     expect(
       verifyCanary(
         "The claim that `MAX_RETRIES` is also defined in `src/b/beta.ts` is false.",
@@ -181,6 +227,24 @@ describe("verifyCanary", () => {
 
   it("still scores a doc:line citation followed by punctuation as caught", () => {
     expect(verifyCanary("flagged (docs/design.md:4).", entry)).toBe("caught");
+  });
+
+  it("scores a ./-prefixed citation of the planted location as caught", () => {
+    expect(
+      verifyCanary("flagged ./docs/design.md:4 — this claim is wrong", entry),
+    ).toBe("caught");
+    expect(
+      verifyCanary("flagged `./docs/design.md:4` — this claim is wrong", entry),
+    ).toBe("caught");
+  });
+
+  it("taints on any CANARY- verdict token, not only CANARY-PRESENT", () => {
+    expect(
+      verifyCanary("CANARY-CAUGHT — the review flagged docs/design.md:4", entry),
+    ).toBe("tainted");
+    expect(verifyCanary("this could be CANARY-MISSED territory", entry)).toBe(
+      "tainted",
+    );
   });
 
   it("reports tainted when probe machinery leaked into the report, even alongside a catch", () => {

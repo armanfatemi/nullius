@@ -127,7 +127,7 @@ probe-style state stays under `.git/`; the two are never co-located.
    is strictly per-claim, and documents that parse to zero claims are
    skipped before checking — exactly where a bare-prose canary lives:
 
-**Evidence:** `packages/claims/src/cli.ts:321` — `if (results.length === 0) {`
+**Evidence:** `packages/claims/src/cli.ts:324` — `if (parsed.length === 0) {`
 
    The guard therefore emits a synthetic document-level result that flows
    through the existing reporting and exit-code paths, and the zero-claim

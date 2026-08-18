@@ -116,11 +116,19 @@ report the mismatch, and exit non-zero with the registry entry retained.
 `nullius canary status` SHALL list the active canary (document, line,
 planted-at) and exit 1 when one is registered, 0 when none is — so approval
 and merge scripts can gate on probe state without reading the registry.
+WHEN the registry is unreadable or invalid, probe state is unknown: `status`
+and `verify` SHALL exit 2 rather than report all-clear, and `check` SHALL
+fail with instructions — an unreadable registry fails closed.
 
 #### Scenario: Active canary reported
 
 - WHEN `canary status` runs while a canary is registered
 - THEN the canary's document and line are listed and the command exits 1
+
+#### Scenario: Unreadable registry is never all-clear
+
+- WHEN the registry file is unparseable and `canary status` runs
+- THEN the command reports that canary state cannot be determined and exits 2
 
 ### Requirement: Merge guard
 

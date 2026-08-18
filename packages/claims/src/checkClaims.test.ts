@@ -419,6 +419,60 @@ describe("checkClaims — attestation ledger", () => {
     ]);
   });
 
+  it("fails an unconsumed delivery entry with an empty outcome — undeclared does not launder it", () => {
+    const results = checkClaims(
+      [
+        ledgerClaim(
+          ["rule-audit"],
+          [
+            { name: "rule-audit", outcome: "None" },
+            { name: "extra-review", outcome: "" },
+          ],
+        ),
+      ],
+      deps(),
+    );
+
+    expect(results.map((r) => r.verdict)).toEqual(["ok", "empty-delivery"]);
+  });
+
+  it("validates findings paths on unconsumed delivery entries too", () => {
+    const results = checkClaims(
+      [
+        ledgerClaim(
+          [],
+          [
+            { name: "a", outcome: "1 finding", findingsPath: "/etc/passwd" },
+            { name: "b", outcome: "1 finding", findingsPath: "missing.md" },
+          ],
+        ),
+      ],
+      deps(),
+    );
+
+    expect(results.map((r) => r.verdict)).toEqual([
+      "unsafe-path",
+      "missing-file",
+    ]);
+  });
+
+  it("only suggests near-match candidates that remain unconsumed", () => {
+    const results = checkClaims(
+      [
+        ledgerClaim(
+          ["worker-1", "worker-2"],
+          [{ name: "worker-2", outcome: "None" }],
+        ),
+      ],
+      deps(),
+    );
+
+    const undelivered = results.find((r) => r.verdict === "undelivered");
+    // worker-2's only delivery is consumed by the expected worker-2, so it
+    // must not be offered as the near-match for worker-1.
+    expect(undelivered?.detail).not.toContain("did you mean");
+  });
+
   it("reports UNDECLARED as a passing verdict for an extra report", () => {
     const results = checkClaims(
       [

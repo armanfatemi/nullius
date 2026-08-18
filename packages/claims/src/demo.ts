@@ -6,7 +6,8 @@
  * instead: a tiny doc making claims about a tiny file, one claim per check
  * verdict class — anchors, binding moments, an attestation ledger, and a
  * planted canary — checked for real: the absence searches actually run grep
- * against the fixture, and the canary guard reads a real registry.
+ * against the fixture, and the fixture carries a real registry under .git/
+ * for the follow-up `check` the demo suggests.
  */
 
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -95,24 +96,6 @@ export const DEMO_REVIEWERS = [
   'rule-audit',
   'schema-review',
   'security-review',
-] as const;
-
-/** The verdicts the fixture is constructed to produce, in report order. */
-export const DEMO_EXPECTED_VERDICTS = [
-  'canary-present',
-  'ok',
-  'drift',
-  'fabricated',
-  'ok',
-  'count-mismatch',
-  'unsafe',
-  'ok',
-  'unknown-moment',
-  'ok',
-  'empty-delivery',
-  'undelivered',
-  'unknown-reviewer',
-  'undeclared',
 ] as const;
 
 export function writeDemoFixture(root: string): void {

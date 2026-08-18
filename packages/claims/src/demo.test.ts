@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -7,7 +7,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 import {
   DEMO_DOC,
   DEMO_DOC_PATH,
-  DEMO_EXPECTED_VERDICTS,
+  DEMO_EXTRA_PATH,
   demoResults,
   writeDemoFixture,
 } from './demo';
@@ -54,7 +54,6 @@ describe('demo', () => {
       'unknown-reviewer',
       'undeclared',
     ]);
-    expect(verdicts).toEqual([...DEMO_EXPECTED_VERDICTS]);
   });
 
   it('never executes the unsafe command', () => {
@@ -80,10 +79,14 @@ describe('demo', () => {
   it("keeps the planted canary's falseness invariant — the named file lacks the symbol", () => {
     writeDemoFixture(root);
 
+    // The demo's canary claims MAX_RETRIES is also defined in the extra
+    // file; the fixture must keep that false or the probe means nothing.
+    const extra = readFileSync(join(root, DEMO_EXTRA_PATH), 'utf8');
+    expect(extra).not.toContain('MAX_RETRIES');
+
     const guard = demoResults(root).find(
       (result) => result.verdict === 'canary-present'
     );
-
     expect(guard?.claim.source.doc).toBe(DEMO_DOC_PATH);
     expect(guard?.detail).toContain('canary clear');
   });

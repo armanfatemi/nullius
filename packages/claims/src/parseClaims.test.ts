@@ -399,6 +399,45 @@ describe("parseClaims — ledger blocks", () => {
     });
   });
 
+  it("parses a CRLF document identically to its LF twin", () => {
+    const lf = parseClaims("evidence.md", block.join("\n"));
+    const crlf = parseClaims("evidence.md", block.join("\r\n"));
+
+    expect(crlf).toEqual(lf);
+  });
+
+  it("ends the entries state at a fence instead of absorbing a later list", () => {
+    const claims = parseClaims(
+      "evidence.md",
+      [
+        ...block,
+        "",
+        "```sh",
+        "some code sample",
+        "```",
+        "",
+        "- run the installer",
+        "- then restart",
+      ].join("\n"),
+    );
+
+    expect(claims).toHaveLength(1);
+    expect(claims[0]).toMatchObject({ kind: "ledger" });
+  });
+
+  it("names the actually-missing section in an incomplete block's detail", () => {
+    const claims = parseClaims(
+      "evidence.md",
+      ["**Ledger:** entry-review", "**Expected:** `rule-audit`"].join("\n"),
+    );
+
+    expect(claims).toHaveLength(1);
+    const malformed = claims[0];
+    if (malformed?.kind !== "malformed") throw new Error("expected malformed");
+    expect(malformed.expected).toContain("**Delivered:**");
+    expect(malformed.expected).not.toContain("**Expected:** and");
+  });
+
   it("allows blank lines between the ledger sections", () => {
     const claims = parseClaims(
       "evidence.md",

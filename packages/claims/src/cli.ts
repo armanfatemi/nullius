@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 /* eslint-disable no-console -- this is a CLI tool; console output is its user-facing surface */
 
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { globSync } from "glob";
 
@@ -11,6 +12,7 @@ import {
   canaryGuardResult,
   clearCanary,
   loadActiveCanary,
+  normalizeRepoPath,
   plantCanary,
   verifyCanary,
 } from "./canary";
@@ -52,7 +54,9 @@ commands:
   canary verify <report>
                       scan review output for the planted claim. Exit codes:
                       0 CANARY-CAUGHT, 1 CANARY-MISSED, 3 CANARY-TAINTED
-                      (probe machinery leaked into the review — probe invalid)
+                      (probe machinery leaked into the review — probe invalid),
+                      2 when the probe could not run (no active canary,
+                      unreadable report or registry, bad usage)
   canary status       list the active canary; exit 1 when one is planted
   canary clear        remove the planted claim, restoring the document
 
@@ -298,9 +302,6 @@ function runCheck(args: ParsedArgs): number {
   const { entry: activeCanary, warning: canaryWarning } = loadActiveCanary(
     process.cwd(),
   );
-  if (canaryWarning !== undefined) {
-    console.error(`warning: ${canaryWarning}`);
-  }
 
   let failures = 0;
   let checked = 0;
@@ -313,23 +314,39 @@ function runCheck(args: ParsedArgs): number {
     const parsed = checkClaims(parseClaims(doc, content), deps, options);
     const guard =
       activeCanary !== null && !args.probing
-        ? canaryGuardResult(doc, content, activeCanary)
+        ? canaryGuardResult(normalizeRepoPath(doc), content, activeCanary)
         : null;
     if (guard !== null) guardFired = true;
     const results = guard === null ? parsed : [guard, ...parsed];
 
-    if (results.length === 0) {
+    // The guard is not a grounding marker: density reports what the AUTHOR
+    // anchored, so a canary must not lift a document off the no-anchors list.
+    if (parsed.length === 0) {
       unanchored.push({ doc, lines });
-      continue;
     }
+    if (results.length === 0) continue;
 
-    checked += results.length;
-    console.log(`--- ${doc} — ${results.length} anchor(s) / ${lines} lines`);
+    checked += parsed.length;
+    console.log(`--- ${doc} — ${parsed.length} anchor(s) / ${lines} lines`);
     failures += report(results);
   }
 
+  if (canaryWarning !== undefined) {
+    // Fail closed: an unreadable registry means canary state is unknown, and
+    // a guard that silently stands down is the failure mode this tool exists
+    // to prevent. Advisory would collapse "guarded" and "unguarded" again.
+    console.error(`${canaryWarning}`);
+    console.error(
+      "canary state cannot be determined — restore or delete .git/nullius/canaries.json, then re-run",
+    );
+    return 1;
+  }
+
   if (activeCanary !== null) {
-    if (!docs.includes(activeCanary.doc)) {
+    const matched = docs.some(
+      (doc) => normalizeRepoPath(doc) === activeCanary.doc,
+    );
+    if (!matched) {
       console.error(
         `warning: the registered canary points at a document outside the matched set (${activeCanary.doc}) — not read; run \`canary status\``,
       );
@@ -403,18 +420,30 @@ function runCanary(args: ParsedArgs): number {
     }
   }
 
+  if (sub !== "verify" && sub !== "status" && sub !== "clear") {
+    console.error(
+      `usage: nullius canary <plant|verify|status|clear>\n\n${USAGE}`,
+    );
+    return 2;
+  }
+
+  const { entry, warning } = loadActiveCanary(root);
+  if (warning !== undefined) {
+    // Fail closed everywhere: an unreadable registry is an unknown probe
+    // state, and "no active canary" would be a fabricated attestation.
+    console.error(warning);
+    console.error(
+      "canary state cannot be determined — restore or delete .git/nullius/canaries.json, then re-run",
+    );
+    return 2;
+  }
+
   if (sub === "verify") {
     const reportFile = args.globs[1];
     if (reportFile === undefined || args.globs.length > 2) {
       console.error("usage: nullius canary verify <report-file>");
       return 2;
     }
-    if (!existsSync(reportFile)) {
-      console.error(`no such file: ${reportFile}`);
-      return 2;
-    }
-    const { entry, warning } = loadActiveCanary(root);
-    if (warning !== undefined) console.error(warning);
     if (entry === null) {
       console.error("no active canary — plant one first");
       return 2;
@@ -447,8 +476,6 @@ function runCanary(args: ParsedArgs): number {
   }
 
   if (sub === "status") {
-    const { entry, warning } = loadActiveCanary(root);
-    if (warning !== undefined) console.error(warning);
     if (entry === null) {
       console.log("no active canary");
       return 0;
@@ -459,25 +486,18 @@ function runCanary(args: ParsedArgs): number {
     return 1;
   }
 
-  if (sub === "clear") {
-    const { entry, warning } = loadActiveCanary(root);
-    if (warning !== undefined) console.error(warning);
-    if (entry === null) {
-      console.log("no active canary — nothing to clear");
-      return 0;
-    }
-    try {
-      clearCanary(root, entry);
-      console.log(`cleared ${entry.doc}:${entry.line}`);
-      return 0;
-    } catch (error) {
-      console.error(error instanceof Error ? error.message : String(error));
-      return 1;
-    }
+  if (entry === null) {
+    console.log("no active canary — nothing to clear");
+    return 0;
   }
-
-  console.error(`usage: nullius canary <plant|verify|status|clear>\n\n${USAGE}`);
-  return 2;
+  try {
+    clearCanary(root, entry);
+    console.log(`cleared ${entry.doc}:${entry.line}`);
+    return 0;
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    return 1;
+  }
 }
 
 function main(): number {
@@ -514,4 +534,19 @@ function main(): number {
   return 2;
 }
 
-process.exit(main());
+// Run only when executed as a script (bin or `node dist/cli.js`), so tests
+// can import runCheck/runCanary without the module exiting the process.
+let isDirectRun = false;
+const entryPath = process.argv[1];
+if (entryPath !== undefined) {
+  try {
+    isDirectRun = import.meta.url === pathToFileURL(realpathSync(entryPath)).href;
+  } catch {
+    isDirectRun = false;
+  }
+}
+if (isDirectRun) {
+  process.exit(main());
+}
+
+export { main, parseArgs, runCanary, runCheck };

@@ -64,7 +64,7 @@ UNKNOWN-MOMENT   design.md:33  binds at partial-composition
 UNDELIVERED      design.md:38  security-review
                  ! declared and silent — no delivery entry for 'security-review'; did you mean 'secruity-review' (delivered)?
 CANARY-PRESENT   design.md:4   registered canary
-                 ! a registered canary is planted in this document — run `canary clear` before approval
+                 ! a registered canary is planted in this document (planted …) — run `canary clear` before approval, …
 ```
 
 That `UNSAFE` line is the security model working: checked documents are

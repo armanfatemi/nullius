@@ -25,7 +25,7 @@ import { join } from "node:path";
 
 import { globSync } from "glob";
 
-import { type ClaimResult } from "./checkClaims";
+import { normalize, type ClaimResult } from "./checkClaims";
 import { isSafeRepoPath } from "./pathSafety";
 
 export interface CanaryEntry {
@@ -42,34 +42,48 @@ export type VerifyOutcome = "caught" | "missed" | "tainted";
 
 const REGISTRY_REL = join("nullius", "canaries.json");
 
-/** Tokens whose presence in review output means the probe leaked — see spec/canary.md. */
-const TAINT_TOKENS = ["canaries.json", ".git/nullius", "CANARY-PRESENT"];
+/**
+ * Tokens whose presence in review output means the probe leaked — see
+ * spec/canary.md. `CANARY-` covers every verdict token, present and future.
+ */
+const TAINT_TOKENS = ["canaries.json", ".git/nullius", "CANARY-"];
 
 const SOURCE_GLOB = "**/*.{ts,tsx,js,jsx,mjs,py,go,rs,java,rb}";
+// `**/` prefixes: nested build output and dependency trees (monorepos) are
+// not review jurisdiction — a claim about vendored code measures nothing.
 const SOURCE_IGNORE = [
-  "node_modules/**",
-  ".git/**",
-  "dist/**",
-  "build/**",
-  "vendor/**",
+  "**/node_modules/**",
+  "**/.git/**",
+  "**/dist/**",
+  "**/build/**",
+  "**/vendor/**",
 ];
 
 const SYMBOL_PATTERN =
   /(?:export\s+(?:const|function|class)|def|func|class)\s+([A-Za-z_][A-Za-z0-9_]{2,})/;
 
-function normalize(value: string): string {
-  return value.trim().replace(/\s+/g, " ");
-}
-
 /**
  * One spelling per document path, or the merge guard's equality checks can be
  * bypassed by planting `./docs/x.md` and checking `docs/x.md`.
  */
-function normalizeRepoPath(path: string): string {
+export function normalizeRepoPath(path: string): string {
   return path
     .replace(/\\/g, "/")
     .replace(/^(\.\/)+/, "")
     .replace(/\/{2,}/g, "/");
+}
+
+const PATH_CHAR = /[A-Za-z0-9_./\\-]/;
+
+/** A citation may carry a `./` prefix; anything longer is a different path. */
+function boundaryBefore(report: string, at: number): boolean {
+  const before = at === 0 ? undefined : report[at - 1];
+  if (before === undefined || !PATH_CHAR.test(before)) return true;
+  if (report.slice(Math.max(0, at - 2), at) === "./") {
+    const prior = at - 3 < 0 ? undefined : report[at - 3];
+    return prior === undefined || !PATH_CHAR.test(prior);
+  }
+  return false;
 }
 
 /**
@@ -83,11 +97,9 @@ function citesLocation(report: string, doc: string, line: number): boolean {
   for (;;) {
     const at = report.indexOf(needle, from);
     if (at === -1) return false;
-    const before = at === 0 ? undefined : report[at - 1];
     const after = report[at + needle.length];
-    const beforeOk = before === undefined || !/[A-Za-z0-9_./\\-]/.test(before);
     const afterOk = after === undefined || !/[0-9]/.test(after);
-    if (beforeOk && afterOk) return true;
+    if (boundaryBefore(report, at) && afterOk) return true;
     from = at + 1;
   }
 }

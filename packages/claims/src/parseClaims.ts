@@ -157,14 +157,29 @@ function parseExpectedNames(rest: string): string[] | null {
   return names;
 }
 
-type LedgerState =
-  | { at: "expected"; claim: LedgerClaim }
-  | { at: "delivered"; claim: LedgerClaim }
-  | { at: "entries"; claim: LedgerClaim };
+interface LedgerState {
+  at: "expected" | "delivered" | "entries";
+  claim: LedgerClaim;
+}
+
+/** The incomplete-block detail names the section that is actually missing. */
+function incompleteBlockClaim(state: LedgerState): MalformedClaim {
+  const missing =
+    state.at === "expected"
+      ? "**Expected:** and **Delivered:** sections"
+      : "**Delivered:** section";
+  return {
+    kind: "malformed",
+    raw: "**Ledger:**",
+    source: state.claim.source,
+    expected: `invalid ledger block — opened but missing its ${missing}`,
+  };
+}
 
 export function parseClaims(doc: string, content: string): Claim[] {
   const claims: Claim[] = [];
-  const lines = content.split("\n");
+  // CRLF documents must parse identically to their LF twins.
+  const lines = content.split("\n").map((line) => line.replace(/\r$/, ""));
   let inFence = false;
   let ledger: LedgerState | null = null;
 
@@ -173,6 +188,13 @@ export function parseClaims(doc: string, content: string): Claim[] {
     if (raw === undefined) continue;
 
     if (FENCE.test(raw)) {
+      // A fence is never ledger content: it completes an entries block and
+      // fails an incomplete one, loudly.
+      if (ledger !== null) {
+        if (ledger.at === "entries") claims.push(ledger.claim);
+        else claims.push(incompleteBlockClaim(ledger));
+        ledger = null;
+      }
       inFence = !inFence;
       continue;
     }
@@ -219,13 +241,7 @@ export function parseClaims(doc: string, content: string): Claim[] {
       } else if (LEDGER_OPENER.test(raw)) {
         // A new opener interrupting an incomplete block: fail the old block
         // loudly and let the new one open — falls through to the opener code.
-        claims.push({
-          kind: "malformed",
-          raw: "**Ledger:**",
-          source: ledger.claim.source,
-          expected:
-            "invalid ledger block — opened but missing its **Expected:** and **Delivered:** sections",
-        });
+        claims.push(incompleteBlockClaim(ledger));
         ledger = null;
       } else if (ledger.at === "expected") {
         const expected = LEDGER_EXPECTED.exec(raw);
@@ -327,13 +343,7 @@ export function parseClaims(doc: string, content: string): Claim[] {
     if (ledger.at === "entries") {
       claims.push(ledger.claim);
     } else {
-      claims.push({
-        kind: "malformed",
-        raw: "**Ledger:**",
-        source: ledger.claim.source,
-        expected:
-          "invalid ledger block — opened but missing its **Expected:** and **Delivered:** sections",
-      });
+      claims.push(incompleteBlockClaim(ledger));
     }
   }
 
