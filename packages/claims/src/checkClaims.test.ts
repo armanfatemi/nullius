@@ -308,3 +308,186 @@ describe("isFailure", () => {
     }
   });
 });
+
+function ledgerClaim(
+  expected: string[],
+  delivered: { name: string; outcome: string; findingsPath?: string }[],
+): Claim {
+  return {
+    kind: "ledger",
+    cycle: "entry-review",
+    expected: expected.map((name, index) => ({
+      name,
+      source: { doc: "evidence.md", line: 2 + index },
+    })),
+    delivered: delivered.map((entry, index) => ({
+      ...entry,
+      source: { doc: "evidence.md", line: 10 + index },
+    })),
+    source: { doc: "evidence.md", line: 1 },
+  };
+}
+
+describe("checkClaims — attestation ledger", () => {
+  it("reports UNDELIVERED for a declared dispatch with no delivery entry", () => {
+    const results = checkClaims(
+      [ledgerClaim(["security-review"], [])],
+      deps(),
+    );
+
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({
+      verdict: "undelivered",
+      claim: {
+        kind: "dispatch",
+        name: "security-review",
+        source: { doc: "evidence.md", line: 2 },
+      },
+    });
+    expect(results[0]?.detail).toContain("no delivery entry");
+    expect(isFailure("undelivered")).toBe(true);
+  });
+
+  it("names a near-match candidate in the UNDELIVERED detail", () => {
+    const results = checkClaims(
+      [
+        ledgerClaim(
+          ["secruity-review"],
+          [{ name: "security-review", outcome: "None" }],
+        ),
+      ],
+      deps(),
+    );
+
+    const undelivered = results.find((r) => r.verdict === "undelivered");
+    expect(undelivered?.detail).toContain("security-review");
+  });
+
+  it("passes an explicit None outcome, with or without the trailing period", () => {
+    const results = checkClaims(
+      [
+        ledgerClaim(
+          ["rule-audit", "schema-review"],
+          [
+            { name: "rule-audit", outcome: "None" },
+            { name: "schema-review", outcome: "None." },
+          ],
+        ),
+      ],
+      deps(),
+    );
+
+    expect(results.map((r) => r.verdict)).toEqual(["ok", "ok"]);
+  });
+
+  it("reports EMPTY-DELIVERY for an entry with no outcome, quoting the literal", () => {
+    const results = checkClaims(
+      [ledgerClaim(["rule-audit"], [{ name: "rule-audit", outcome: "" }])],
+      deps(),
+    );
+
+    expect(results[0]?.verdict).toBe("empty-delivery");
+    expect(results[0]?.detail).toContain("None");
+    expect(isFailure("empty-delivery")).toBe(true);
+  });
+
+  it("validates a findings path through path safety and existence", () => {
+    const results = checkClaims(
+      [
+        ledgerClaim(
+          ["a", "b", "c"],
+          [
+            {
+              name: "a",
+              outcome: "2 findings",
+              findingsPath: "schema.graphqls",
+            },
+            { name: "b", outcome: "1 finding", findingsPath: "missing.md" },
+            { name: "c", outcome: "1 finding", findingsPath: "/etc/passwd" },
+          ],
+        ),
+      ],
+      deps(),
+    );
+
+    expect(results.map((r) => r.verdict)).toEqual([
+      "ok",
+      "missing-file",
+      "unsafe-path",
+    ]);
+  });
+
+  it("reports UNDECLARED as a passing verdict for an extra report", () => {
+    const results = checkClaims(
+      [
+        ledgerClaim(
+          ["rule-audit"],
+          [
+            { name: "rule-audit", outcome: "None" },
+            { name: "extra-review", outcome: "None" },
+          ],
+        ),
+      ],
+      deps(),
+    );
+
+    expect(results.map((r) => r.verdict)).toEqual(["ok", "undeclared"]);
+    expect(isFailure("undeclared")).toBe(false);
+  });
+
+  it("counts multiplicity — a name expected twice needs two delivery entries", () => {
+    const results = checkClaims(
+      [
+        ledgerClaim(
+          ["worker", "worker"],
+          [{ name: "worker", outcome: "None" }],
+        ),
+      ],
+      deps(),
+    );
+
+    expect(results.map((r) => r.verdict).sort()).toEqual([
+      "ok",
+      "undelivered",
+    ]);
+  });
+
+  it("reports UNKNOWN-REVIEWER when a vocabulary is configured", () => {
+    const results = checkClaims(
+      [ledgerClaim(["vibes-review"], [])],
+      deps(),
+      { reviewers: ["rule-audit", "schema-review"] },
+    );
+
+    expect(results).toHaveLength(1);
+    expect(results[0]?.verdict).toBe("unknown-reviewer");
+    expect(results[0]?.detail).toContain("rule-audit");
+    expect(isFailure("unknown-reviewer")).toBe(true);
+  });
+
+  it("leaves reviewer names free-form when no vocabulary is configured", () => {
+    const results = checkClaims(
+      [ledgerClaim(["anything-goes"], [{ name: "anything-goes", outcome: "None" }])],
+      deps(),
+    );
+
+    expect(results[0]?.verdict).toBe("ok");
+  });
+
+  it("uses a malformed claim's expected text as the detail when present", () => {
+    const results = checkClaims(
+      [
+        {
+          kind: "malformed",
+          raw: "- rule-audit came back clean",
+          source: { doc: "evidence.md", line: 4 },
+          expected: "invalid ledger line — expected - `name` — <outcome>",
+        },
+      ],
+      deps(),
+    );
+
+    expect(results[0]?.verdict).toBe("malformed");
+    expect(results[0]?.detail).toContain("invalid ledger line");
+  });
+});

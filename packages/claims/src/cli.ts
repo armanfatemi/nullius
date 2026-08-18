@@ -72,6 +72,10 @@ function describe(result: ClaimResult): string {
       return `${claim.command} → ${claim.expectedCount}`;
     case "moment":
       return `binds at ${claim.moment}`;
+    case "ledger":
+      return `ledger ${claim.cycle}`;
+    case "dispatch":
+      return claim.name;
     case "malformed":
       return claim.raw;
   }
@@ -240,6 +244,9 @@ function runCheck(args: ParsedArgs): number {
   }
   if (config.driftWindow !== undefined) {
     options.driftWindow = config.driftWindow;
+  }
+  if (config.reviewers !== undefined) {
+    options.reviewers = config.reviewers;
   }
 
   const deps = { readFileLines: fileLinesReader(), runSearch: searchRunner() };

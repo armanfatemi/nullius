@@ -18,6 +18,8 @@ export interface ClaimsConfig {
   moments?: string[];
   /** Moments already caught by CI (pass as advisory). Default: ["build-time"]. */
   ciCaughtMoments?: string[];
+  /** Closed vocabulary for ledger `**Expected:**` names. Unset = free-form. */
+  reviewers?: string[];
 }
 
 const KNOWN_KEYS = new Set([
@@ -26,6 +28,7 @@ const KNOWN_KEYS = new Set([
   "driftWindow",
   "moments",
   "ciCaughtMoments",
+  "reviewers",
 ]);
 
 function isStringArray(value: unknown): value is string[] {
@@ -56,6 +59,7 @@ export function parseConfig(json: unknown, path: string): ClaimsConfig {
     "exclude",
     "moments",
     "ciCaughtMoments",
+    "reviewers",
   ] as const) {
     const value = record[key];
     if (value === undefined) continue;

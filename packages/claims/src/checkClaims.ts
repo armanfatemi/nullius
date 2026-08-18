@@ -1,5 +1,10 @@
 import { isSafeSearchCommand } from "./commandSafety";
-import { type Claim } from "./parseClaims";
+import {
+  type Claim,
+  type DispatchClaim,
+  type LedgerClaim,
+  type LedgerDelivery,
+} from "./parseClaims";
 import { isSafeRepoPath } from "./pathSafety";
 
 /**
@@ -35,7 +40,17 @@ export type Verdict =
   | "unsafe"
   | "command-error"
   | "unknown-moment"
-  | "malformed";
+  | "malformed"
+  /** A declared review dispatch with no delivery entry — silence, made loud. */
+  | "undelivered"
+  /** A delivery entry with no outcome. Writing `None` is valid; writing nothing is not. */
+  | "empty-delivery"
+  /** Delivered but never declared. Passes — extra coverage, surfaced. */
+  | "undeclared"
+  /** An `**Expected:**` name outside the configured reviewer vocabulary. */
+  | "unknown-reviewer"
+  /** The document still contains a registered, uncleared canary. */
+  | "canary-present";
 
 export interface ClaimResult {
   claim: Claim;
@@ -64,6 +79,11 @@ export interface CheckOptions {
   ciCaughtMoments?: readonly string[];
   /** How far from the cited line we still call it drift rather than a wrong line. Default 3. */
   driftWindow?: number;
+  /**
+   * The project's closed reviewer vocabulary for `**Expected:**` names.
+   * When unset, names are free-form — zero-config adoption first.
+   */
+  reviewers?: readonly string[];
 }
 
 const DEFAULT_DRIFT_WINDOW = 3;
@@ -72,6 +92,7 @@ const PASSING: ReadonlySet<Verdict> = new Set<Verdict>([
   "ok",
   "advisory",
   "drift",
+  "undeclared",
 ]);
 
 export function isFailure(verdict: Verdict): boolean {
@@ -207,6 +228,127 @@ function checkMoment(
   return { claim, verdict: "ok", detail: "" };
 }
 
+/** Classic edit distance, used only to make a typo'd reviewer name explain itself. */
+function editDistance(a: string, b: string): number {
+  const row: number[] = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i += 1) {
+    let diagonal = row[0] ?? 0;
+    row[0] = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const above = row[j] ?? 0;
+      row[j] = Math.min(
+        above + 1,
+        (row[j - 1] ?? 0) + 1,
+        diagonal + (a[i - 1] === b[j - 1] ? 0 : 1),
+      );
+      diagonal = above;
+    }
+  }
+  return row[b.length] ?? 0;
+}
+
+function checkDelivery(
+  claim: DispatchClaim,
+  entry: LedgerDelivery,
+  deps: CheckDeps,
+): ClaimResult {
+  if (entry.outcome.length === 0) {
+    return {
+      claim,
+      verdict: "empty-delivery",
+      detail:
+        "entry has no outcome — state findings or the literal `None` (an explicit None is a claim; an omission is nothing at all)",
+    };
+  }
+
+  if (entry.findingsPath !== undefined) {
+    const pathVerdict = isSafeRepoPath(entry.findingsPath);
+    if (!pathVerdict.safe) {
+      return {
+        claim,
+        verdict: "unsafe-path",
+        detail: `findings path not read — ${pathVerdict.reason}`,
+      };
+    }
+    if (deps.readFileLines(entry.findingsPath) === null) {
+      return {
+        claim,
+        verdict: "missing-file",
+        detail: `no such findings file: ${entry.findingsPath}`,
+      };
+    }
+  }
+
+  return { claim, verdict: "ok", detail: "" };
+}
+
+function checkLedger(
+  ledger: LedgerClaim,
+  deps: CheckDeps,
+  reviewers: readonly string[] | undefined,
+): ClaimResult[] {
+  const results: ClaimResult[] = [];
+  const pools = new Map<string, LedgerDelivery[]>();
+  for (const entry of ledger.delivered) {
+    const pool = pools.get(entry.name) ?? [];
+    pool.push(entry);
+    pools.set(entry.name, pool);
+  }
+
+  // Expected occurrences consume delivery entries by name, in order — counted
+  // multiplicity, so 2-of-3 deliveries of a repeated dispatch stays visible.
+  const consumed = new Map<string, number>();
+  for (const expected of ledger.expected) {
+    const claim: DispatchClaim = {
+      kind: "dispatch",
+      name: expected.name,
+      source: expected.source,
+    };
+    const pool = pools.get(expected.name) ?? [];
+    const used = consumed.get(expected.name) ?? 0;
+
+    if (reviewers !== undefined && !reviewers.includes(expected.name)) {
+      if (used < pool.length) consumed.set(expected.name, used + 1);
+      results.push({
+        claim,
+        verdict: "unknown-reviewer",
+        detail: `'${expected.name}' is not in the reviewer vocabulary; use one of: ${reviewers.join(", ")}`,
+      });
+      continue;
+    }
+
+    const entry = pool[used];
+    if (entry !== undefined) {
+      consumed.set(expected.name, used + 1);
+      results.push(checkDelivery(claim, entry, deps));
+      continue;
+    }
+
+    let detail = `declared and silent — no delivery entry for '${expected.name}'`;
+    const candidate = ledger.delivered.find(
+      (delivery) =>
+        delivery.name !== expected.name &&
+        editDistance(delivery.name, expected.name) <= 2,
+    );
+    if (candidate !== undefined) {
+      detail += `; did you mean '${candidate.name}' (delivered)?`;
+    }
+    results.push({ claim, verdict: "undelivered", detail });
+  }
+
+  for (const entry of ledger.delivered) {
+    const pool = pools.get(entry.name) ?? [];
+    if (pool.indexOf(entry) < (consumed.get(entry.name) ?? 0)) continue;
+    results.push({
+      claim: { kind: "dispatch", name: entry.name, source: entry.source },
+      verdict: "undeclared",
+      detail: "delivered but never declared — nobody was waiting on this report",
+    });
+  }
+
+  return results;
+}
+
 export function checkClaims(
   claims: Claim[],
   deps: CheckDeps,
@@ -216,21 +358,35 @@ export function checkClaims(
   const ciCaughtMoments = options.ciCaughtMoments ?? ["build-time"];
   const driftWindow = options.driftWindow ?? DEFAULT_DRIFT_WINDOW;
 
-  return claims.map((claim) => {
+  return claims.flatMap((claim): ClaimResult[] => {
     switch (claim.kind) {
       case "presence":
-        return checkPresence(claim, deps, driftWindow);
+        return [checkPresence(claim, deps, driftWindow)];
       case "absence":
-        return checkAbsence(claim, deps);
+        return [checkAbsence(claim, deps)];
       case "moment":
-        return checkMoment(claim, moments, ciCaughtMoments);
+        return [checkMoment(claim, moments, ciCaughtMoments)];
+      case "ledger":
+        return checkLedger(claim, deps, options.reviewers);
+      case "dispatch":
+        // Produced by ledger expansion, never parsed — reaching here is a bug.
+        return [
+          {
+            claim,
+            verdict: "malformed",
+            detail: "internal: dispatch claims are produced, not checked",
+          },
+        ];
       case "malformed":
-        return {
-          claim,
-          verdict: "malformed" as const,
-          detail:
-            "not a valid citation — expected `path:line` — `text`, or `command` → N results",
-        };
+        return [
+          {
+            claim,
+            verdict: "malformed" as const,
+            detail:
+              claim.expected ??
+              "not a valid citation — expected `path:line` — `text`, or `command` → N results",
+          },
+        ];
     }
   });
 }

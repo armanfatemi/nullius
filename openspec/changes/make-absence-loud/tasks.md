@@ -20,18 +20,20 @@
 
 ## 2. Checker — attestation ledger
 
-- [ ] 2.1 Opener-gated ledger-block parser in `parseClaims` (reusing the
+- [x] 2.1 Opener-gated ledger-block parser in `parseClaims` (reusing the
       fenced-block exclusion; new block-state machinery), `MALFORMED` for
       structurally invalid content inside an activated block, tests
-- [ ] 2.2 Verdicts `UNDELIVERED`, `EMPTY-DELIVERY`, `UNDECLARED` in
+- [x] 2.2 Verdicts `UNDELIVERED`, `EMPTY-DELIVERY`, `UNDECLARED` in
       `checkClaims` with counted multiplicity and the near-match detail on
       `UNDELIVERED`, tests per scenario
-- [ ] 2.3 `reviewers` vocabulary in config, `UNKNOWN-REVIEWER` with the
+- [x] 2.3 `reviewers` vocabulary in config, `UNKNOWN-REVIEWER` with the
       vocabulary quoted in the detail, tests
-- [ ] 2.4 Findings-path validation through the existing path-safety guard,
+- [x] 2.4 Findings-path validation through the existing path-safety guard,
       tests
-- [ ] 2.5 Ledger blocks count as grounding markers (`--require-markers`,
-      density report), tests
+- [x] 2.5 Ledger blocks count as grounding markers (`--require-markers`,
+      density report) — a ledger claim is a parsed claim, so the existing
+      results-based counting covers it; parse tests assert a ledger-only
+      document yields claims
 
 ## 3. Checker — canary
 

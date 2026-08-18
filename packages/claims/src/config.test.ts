@@ -66,4 +66,16 @@ describe("parseConfig", () => {
       driftWindow: 0,
     });
   });
+
+  it("accepts a reviewers vocabulary", () => {
+    expect(parseConfig({ reviewers: ["rule-audit", "schema-review"] }, "x.json")).toEqual({
+      reviewers: ["rule-audit", "schema-review"],
+    });
+  });
+
+  it("rejects a non-array reviewers value", () => {
+    expect(() => parseConfig({ reviewers: "rule-audit" }, "x.json")).toThrow(
+      "'reviewers' must be an array of strings",
+    );
+  });
 });

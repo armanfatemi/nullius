@@ -206,3 +206,170 @@ describe("parseClaims", () => {
     ]);
   });
 });
+
+describe("parseClaims — ledger blocks", () => {
+  const block = [
+    "**Ledger:** entry-review",
+    "**Expected:** `rule-audit`, `schema-review`",
+    "**Delivered:**",
+    "- `rule-audit` — 2 findings → `reviews/rule-audit.md`",
+    "- `schema-review` — None.",
+  ];
+
+  it("parses an activated block into a single ledger claim", () => {
+    const claims = parseClaims("evidence.md", block.join("\n"));
+
+    expect(claims).toEqual([
+      {
+        kind: "ledger",
+        cycle: "entry-review",
+        expected: [
+          { name: "rule-audit", source: { doc: "evidence.md", line: 2 } },
+          { name: "schema-review", source: { doc: "evidence.md", line: 2 } },
+        ],
+        delivered: [
+          {
+            name: "rule-audit",
+            outcome: "2 findings",
+            findingsPath: "reviews/rule-audit.md",
+            source: { doc: "evidence.md", line: 4 },
+          },
+          {
+            name: "schema-review",
+            outcome: "None.",
+            source: { doc: "evidence.md", line: 5 },
+          },
+        ],
+        source: { doc: "evidence.md", line: 1 },
+      },
+    ]);
+  });
+
+  it("keeps orphan Expected/Delivered lines inert without an opener", () => {
+    const claims = parseClaims(
+      "notes.md",
+      ["**Expected:** `rule-audit`", "**Delivered:**", "- `rule-audit` — None."].join(
+        "\n",
+      ),
+    );
+
+    expect(claims).toEqual([]);
+  });
+
+  it("ignores a ledger block inside a fenced code block", () => {
+    const claims = parseClaims(
+      "spec.md",
+      ["```markdown", ...block, "```"].join("\n"),
+    );
+
+    expect(claims).toEqual([]);
+  });
+
+  it("preserves repeated names with counted multiplicity", () => {
+    const claims = parseClaims(
+      "evidence.md",
+      [
+        "**Ledger:** fan-out",
+        "**Expected:** `worker`, `worker`",
+        "**Delivered:**",
+        "- `worker` — None",
+      ].join("\n"),
+    );
+
+    expect(claims).toHaveLength(1);
+    const ledger = claims[0];
+    if (ledger?.kind !== "ledger") throw new Error("expected a ledger claim");
+    expect(ledger.expected.map((entry) => entry.name)).toEqual([
+      "worker",
+      "worker",
+    ]);
+    expect(ledger.delivered).toHaveLength(1);
+  });
+
+  it("flags a delivery line matching no entry shape as malformed, keeping the rest", () => {
+    const claims = parseClaims(
+      "evidence.md",
+      [
+        "**Ledger:** entry-review",
+        "**Expected:** `rule-audit`",
+        "**Delivered:**",
+        "- rule-audit came back clean",
+        "- `rule-audit` — None.",
+      ].join("\n"),
+    );
+
+    expect(claims).toHaveLength(2);
+    expect(claims[0]).toMatchObject({
+      kind: "malformed",
+      raw: "- rule-audit came back clean",
+      source: { doc: "evidence.md", line: 4 },
+    });
+    expect(claims[1]).toMatchObject({
+      kind: "ledger",
+      delivered: [{ name: "rule-audit", outcome: "None." }],
+    });
+  });
+
+  it("flags an Expected line with un-backticked names as malformed and abandons the block", () => {
+    const claims = parseClaims(
+      "evidence.md",
+      [
+        "**Ledger:** entry-review",
+        "**Expected:** rule-audit, schema-review",
+        "**Delivered:**",
+        "- `rule-audit` — None.",
+      ].join("\n"),
+    );
+
+    expect(claims).toHaveLength(1);
+    expect(claims[0]).toMatchObject({
+      kind: "malformed",
+      source: { doc: "evidence.md", line: 2 },
+    });
+  });
+
+  it("flags an opener with no cycle name as malformed", () => {
+    const claims = parseClaims("evidence.md", "**Ledger:**");
+
+    expect(claims).toHaveLength(1);
+    expect(claims[0]).toMatchObject({
+      kind: "malformed",
+      source: { doc: "evidence.md", line: 1 },
+    });
+  });
+
+  it("ends the delivered list at the first non-item line and resumes normal parsing", () => {
+    const claims = parseClaims(
+      "evidence.md",
+      [
+        ...block,
+        "",
+        "**Evidence:** `src/app.ts:1` — `export const MAX_RETRIES = 3;`",
+      ].join("\n"),
+    );
+
+    expect(claims).toHaveLength(2);
+    expect(claims[0]).toMatchObject({ kind: "ledger" });
+    expect(claims[1]).toMatchObject({
+      kind: "presence",
+      source: { doc: "evidence.md", line: 7 },
+    });
+  });
+
+  it("allows blank lines between the ledger sections", () => {
+    const claims = parseClaims(
+      "evidence.md",
+      [
+        "**Ledger:** entry-review",
+        "",
+        "**Expected:** `rule-audit`",
+        "",
+        "**Delivered:**",
+        "- `rule-audit` — None.",
+      ].join("\n"),
+    );
+
+    expect(claims).toHaveLength(1);
+    expect(claims[0]).toMatchObject({ kind: "ledger" });
+  });
+});
