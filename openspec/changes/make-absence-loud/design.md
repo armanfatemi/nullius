@@ -13,7 +13,7 @@ The reviewer layer the canary measures is already defined by the repo's own
 conventions — bare-prose claims are explicitly the reviewer's jurisdiction,
 not the checker's:
 
-**Evidence:** `spec/evidence-anchors.md:202` — `the checker only sees claims written in the structured`
+**Evidence:** `spec/evidence-anchors.md:207` — `the checker only sees claims written in the structured`
 
 **Evidence:** `plugin/reviewers/false-premise.md:15` — `Report it even when the conclusion it supports still looks right`
 
@@ -86,7 +86,7 @@ probe-style state stays under `.git/`; the two are never co-located.
    *verified claim* worth a glance, while UNDECLARED states a structural
    ledger fact — and a named verdict stays greppable in CI:
 
-**Evidence:** `packages/claims/src/checkClaims.ts:24` — `| "advisory"`
+**Evidence:** `packages/claims/src/checkClaims.ts:29` — `| "advisory"`
 
 3. **The grammar is pinned, not described.** Inline-code names matched
    exactly with counted multiplicity; outcome is the literal `None`
@@ -124,10 +124,10 @@ probe-style state stays under `.git/`; the two are never co-located.
    in practice, that is a finding to record, not a reason to reach for an
    LLM. One active canary per repository keeps verify unambiguous.
 7. **`CANARY-PRESENT` needs a document-level result channel.** The pipeline
-   is strictly per-claim today, and documents that parse to zero claims are
+   is strictly per-claim, and documents that parse to zero claims are
    skipped before checking — exactly where a bare-prose canary lives:
 
-**Evidence:** `packages/claims/src/cli.ts:256` — `if (results.length === 0) {`
+**Evidence:** `packages/claims/src/cli.ts:321` — `if (results.length === 0) {`
 
    The guard therefore emits a synthetic document-level result that flows
    through the existing reporting and exit-code paths, and the zero-claim

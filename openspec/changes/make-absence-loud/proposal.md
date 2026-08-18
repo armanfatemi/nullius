@@ -3,13 +3,13 @@
 ## Why
 
 nullius verifies what documents *assert* — anchors for facts, binding moments
-for mechanisms. It has no vocabulary for what documents *omit*: a review gate
-that silently died produces the same clean output as one that found nothing,
-and every orchestration layer collapses "I checked and found nothing" and
-"nobody checked" into the same blank. The verdict set contains nothing about
-an expected-but-missing report today:
+for mechanisms. Before this change it had no vocabulary for what documents
+*omit*: a review gate that silently died produced the same clean output as
+one that found nothing, and every orchestration layer collapses "I checked
+and found nothing" and "nobody checked" into the same blank. The verdict for
+an expected-but-missing report now exists:
 
-**Evidence:** `grep -rn 'UNDELIVERED' packages/claims/src/` → 0 results
+**Evidence:** `packages/claims/src/checkClaims.ts:45` — `| "undelivered"`
 
 This change adds the missing half of the discipline. Absence becomes a
 first-class, checkable fact (declared review dispatches must have delivered
@@ -64,10 +64,10 @@ empty.
 ## Impact
 
 - `packages/claims`: parser and checker extensions, a new `canary`
-  subcommand, and a `--probing` flag on `check`. Today's CLI surface is
-  `check` / `demo` / `eager-prompt`:
+  subcommand alongside `check` / `demo` / `eager-prompt`, and a `--probing`
+  flag on `check`:
 
-**Evidence:** `packages/claims/src/cli.ts:30` — `check [globs...]    verify every Evidence Anchor in the matched markdown`
+**Evidence:** `packages/claims/src/cli.ts:50` — `canary plant <doc>  insert a registered, plausibly-false claim (probe state`
 
 - `spec/`: two new convention documents (`attestation-ledger.md`,
   `canary.md`); the verdict table in the Evidence Anchors spec gains the new

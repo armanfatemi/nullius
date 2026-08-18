@@ -147,7 +147,12 @@ past the anchors.
 | `UNSAFE`         | The absence command failed the sandbox rules — never executed                        | ❌      |
 | `COMMAND-ERROR`  | The absence command failed to run                                                    | ❌      |
 | `UNKNOWN-MOMENT` | A `**Binds at:**` value outside the project's closed list                            | ❌      |
-| `MALFORMED`      | An `**Evidence:**` line matching neither citation shape                              | ❌      |
+| `MALFORMED`      | A marker line matching no valid shape                                                | ❌      |
+| `UNDELIVERED`    | A declared review dispatch with no delivery entry ([Attestation Ledger](./attestation-ledger.md)) | ❌      |
+| `EMPTY-DELIVERY` | A ledger delivery entry with no outcome — `None` is valid; nothing is not            | ❌      |
+| `UNKNOWN-REVIEWER` | An `**Expected:**` name outside the configured reviewer vocabulary                 | ❌      |
+| `UNDECLARED`     | A ledger report delivered but never declared — surfaced, not punished                | ✅      |
+| `CANARY-PRESENT` | The document still contains a registered canary ([Canary](./canary.md))              | ❌      |
 
 An `**Evidence:**` line that matches neither shape is `MALFORMED` rather than
 silently skipped — a sloppy citation is exactly the thing the checker exists

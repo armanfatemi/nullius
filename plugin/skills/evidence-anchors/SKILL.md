@@ -86,6 +86,38 @@ subscription, the strategy block's absence).
 
 Spec: https://github.com/armanfatemi/nullius/blob/main/spec/binding-moments.md
 
+## Review dispatches — declare and attest (attestation ledger)
+
+When a document records that reviews happened — review evidence in a PR
+description, a run log, a design doc's sign-off section — declare the
+dispatches and attest every outcome. **Writing `None` is a valid answer;
+writing nothing is not**: an explicit `None` can be disbelieved and checked,
+an omission is invisible. The checker fails any declared dispatch with no
+delivery entry (`UNDELIVERED`).
+
+Copy this shape exactly:
+
+```markdown
+**Ledger:** entry-review
+**Expected:** `rule-audit`, `schema-review`
+**Delivered:**
+- `rule-audit` — 2 findings → `reviews/rule-audit.md`
+- `schema-review` — None.
+```
+
+- Only the `**Ledger:**` opener activates checking — it must name the review
+  cycle.
+- Names are inline code in BOTH sections and must match exactly; a name
+  expected twice needs two delivery entries.
+- Each entry: `` - `name` — <outcome> ``. The outcome is the literal `None`
+  or findings text, optionally ending `→ ` + an inline-code findings path
+  (the file must exist).
+- An entry with no outcome fails (`EMPTY-DELIVERY`). Do not attest an outcome
+  you do not know — leave the entry out and let `UNDELIVERED` tell the truth.
+- If `nullius.config.json` defines `reviewers`, use only those names.
+
+Spec: https://github.com/armanfatemi/nullius/blob/main/spec/attestation-ledger.md
+
 ## Before presenting the document
 
 Run the checker from the repo root and fix every failure:

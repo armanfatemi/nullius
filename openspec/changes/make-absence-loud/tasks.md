@@ -2,19 +2,19 @@
 
 ## 1. Convention specs
 
-- [ ] 1.1 Write `spec/attestation-ledger.md` — opens with a canonical
+- [x] 1.1 Write `spec/attestation-ledger.md` — opens with a canonical
       copy-paste ledger block; pinned grammar; verdicts; the `None` rule;
       advertised limits (dead vs. silent vs. withheld is out of scope;
       counted multiplicity)
-- [ ] 1.2 Write `spec/canary.md` — plant/verify/clear/status; the
+- [x] 1.2 Write `spec/canary.md` — plant/verify/clear/status; the
       reviewer-jurisdiction rule; verify-outcome table (CAUGHT / MISSED /
       TAINTED, exit codes 0/1/3); merge-guard limits (local-plus-hook only,
       not adversarial-proof; lexical matching; detectability)
-- [ ] 1.3 Add the new check verdicts (`UNDELIVERED`, `EMPTY-DELIVERY`,
+- [x] 1.3 Add the new check verdicts (`UNDELIVERED`, `EMPTY-DELIVERY`,
       `UNDECLARED`, `UNKNOWN-REVIEWER`, `CANARY-PRESENT`) to the verdict
       table in `spec/evidence-anchors.md`; the README gets the lane
       description only
-- [ ] 1.4 Extend the plugin's evidence-anchors authoring skill with a ledger
+- [x] 1.4 Extend the plugin's evidence-anchors authoring skill with a ledger
       authoring section — the skill, not the README, is the delivery vehicle
       for first-try-correct blocks
 
@@ -53,11 +53,11 @@
 
 ## 4. Docs and release
 
-- [ ] 4.1 README: "make absence loud" lane
-- [ ] 4.2 `demo`: one sandbox claim per new check verdict (ledger verdicts +
+- [x] 4.1 README: "make absence loud" lane
+- [x] 4.2 `demo`: one sandbox claim per new check verdict (ledger verdicts +
       `CANARY-PRESENT`), output grouped by capability
 - [x] 4.3 Widen the report's verdict column (`padEnd(9)` already overflows on
       `COUNT-MISMATCH`; the new names are longer)
-- [ ] 4.4 Release notes: strict-mode Action users and the unpinned-latest
+- [x] 4.4 Release notes: strict-mode Action users and the unpinned-latest
       policy; `reviewers` config key rejected by older pinned checkers
-- [ ] 4.5 Version bump and publish
+- [ ] 4.5 Version bump and publish — bump to 0.5.0 done (both packages, alias dep range fixed to ^0.5.0); npm publish awaits the maintainer

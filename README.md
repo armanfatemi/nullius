@@ -53,14 +53,18 @@ This builds a sandbox doc plus a sandbox source file and checks one claim per
 verdict class:
 
 ```
-FABRICATED design.md:15  src/app.ts:2
-          ! text does not appear anywhere in src/app.ts
-COUNT-MISMATCH design.md:23  grep -rn 'retry' src/ → 0
-          ! claimed 0, actual 1
-UNSAFE    design.md:27  grep -rn 'x' src/ && rm -rf / → 0
-          ! not executed — contains forbidden token '&&'
-UNKNOWN-MOMENT design.md:32  binds at partial-composition
-          ! 'partial-composition' is not a binding moment; use one of: build-time, rollout-window, …
+FABRICATED       design.md:16  src/app.ts:2
+                 ! text does not appear anywhere in src/app.ts
+COUNT-MISMATCH   design.md:24  grep -rn 'retry' src/ → 0
+                 ! claimed 0, actual 1
+UNSAFE           design.md:28  grep -rn 'x' src/ && rm -rf / → 0
+                 ! not executed — contains forbidden token '&&'
+UNKNOWN-MOMENT   design.md:33  binds at partial-composition
+                 ! 'partial-composition' is not a binding moment; use one of: build-time, rollout-window, …
+UNDELIVERED      design.md:38  security-review
+                 ! declared and silent — no delivery entry for 'security-review'; did you mean 'secruity-review' (delivered)?
+CANARY-PRESENT   design.md:4   registered canary
+                 ! a registered canary is planted in this document — run `canary clear` before approval
 ```
 
 That `UNSAFE` line is the security model working: checked documents are
@@ -133,6 +137,41 @@ PR description itself — advisory-only (it comments; it never blocks until you
 set `strict`). The paste-ready reviewer severity:
 [plugin/reviewers/false-premise.md](plugin/reviewers/false-premise.md).
 
+## If you run review gates, or fan out subagents
+
+**You get:** silence made loud, twice over. Three states hide inside a
+reviewer that returns nothing — _found something_, _found nothing_,
+_nobody checked_ — and orchestration collapses all three into "no issue
+reported". Two conventions pull them apart:
+
+**[Attestation Ledger](spec/attestation-ledger.md)** — declare the review
+dispatches a document claims happened, and every declared dispatch must
+attest an outcome. Writing `None.` is a valid answer; writing nothing is a
+failing `UNDELIVERED` verdict:
+
+```markdown
+**Ledger:** entry-review
+**Expected:** `rule-audit`, `schema-review`, `security-review`
+**Delivered:**
+- `rule-audit` — 2 findings → `reviews/rule-audit.md`
+- `schema-review` — None.
+```
+
+Plain `check` picks it up — same exit codes, same Action, same plan hook.
+
+**[Canary](spec/canary.md)** — mutation testing for the review layer. Plant a
+registered claim that is false by construction, run your review, and measure:
+
+```sh
+nullius canary plant docs/design.md   # probe state lives under .git/, not the tree
+nullius canary verify review.txt      # CANARY-CAUGHT / CANARY-MISSED / CANARY-TAINTED
+nullius canary clear                  # byte-identical restore
+```
+
+A review layer that misses the canary is measured dead instead of assumed
+alive — and a `check` merge guard (`CANARY-PRESENT`) keeps probes out of
+approved documents.
+
 ## If you have a spec or RFC culture (OpenSpec, spec-kit, ADRs)
 
 **You get:** the full discipline. Fabricated premises die at authoring time —
@@ -176,7 +215,7 @@ The claims below are live anchors — CI runs `nullius check` on this file with
 `--require-markers`, so the green badge above attests this README's own
 claims about the code. The default binding-moment vocabulary is defined here:
 
-**Evidence:** `packages/claims/src/checkClaims.ts:11` — `export const DEFAULT_BINDING_MOMENTS = [`
+**Evidence:** `packages/claims/src/checkClaims.ts:16` — `export const DEFAULT_BINDING_MOMENTS = [`
 
 Path traversal is rejected before any file is read:
 
@@ -192,6 +231,8 @@ And the checker makes no network calls:
 | ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | [Evidence Anchors spec](spec/evidence-anchors.md) | The authoring convention: load-bearing claims about existing code carry a re-verifiable citation                     |
 | [Binding Moments spec](spec/binding-moments.md)   | The companion for compatibility risks: name _when_ the risk binds, from a closed per-project vocabulary              |
+| [Attestation Ledger spec](spec/attestation-ledger.md) | Declared review dispatches must attest outcomes — reviewer silence is a failing verdict, not a blank             |
+| [Canary spec](spec/canary.md)                     | Mutation testing for the review layer: plant a false premise, measure whether anything objects                       |
 | [`@nullius-inverba/claims`](packages/claims/)     | The deterministic checker — CLI (`check` / `demo` / `eager-prompt`) + library. It opens files; it never asks a model |
 | [GitHub Action](action/)                          | Advisory PR comments, `pr-body` mode, a hard gate when you opt in                                                    |
 | [Claude Code plugin](plugin/)                     | Authoring skill, plan-approval hook, `/ground`, `/anchor`, and the `[false-premise]` reviewer block                  |
