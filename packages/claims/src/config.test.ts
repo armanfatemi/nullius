@@ -67,3 +67,28 @@ describe("parseConfig", () => {
     });
   });
 });
+
+describe("parseConfig — checker tuning keys", () => {
+  it("accepts the anchor and search tuning keys", () => {
+    expect(
+      parseConfig(
+        { minAnchorChars: 12, relaxedControl: false, searchTimeoutMs: 5000 },
+        "c.json",
+      ),
+    ).toEqual({ minAnchorChars: 12, relaxedControl: false, searchTimeoutMs: 5000 });
+  });
+
+  it.each([
+    ["minAnchorChars", { minAnchorChars: -1 }],
+    ["minAnchorChars", { minAnchorChars: 1.5 }],
+    ["searchTimeoutMs", { searchTimeoutMs: "10s" }],
+  ])("rejects a bad %s", (_key, json) => {
+    expect(() => parseConfig(json, "c.json")).toThrow();
+  });
+
+  it("rejects a non-boolean relaxedControl", () => {
+    expect(() => parseConfig({ relaxedControl: "yes" }, "c.json")).toThrow(
+      /must be a boolean/,
+    );
+  });
+});

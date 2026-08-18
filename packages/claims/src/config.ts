@@ -10,7 +10,11 @@
 export interface ClaimsConfig {
   /** Glob patterns for the documents to check, relative to the repo root. */
   docs?: string[];
-  /** Basenames to skip (e.g. review logs that QUOTE findings rather than assert them). */
+  /**
+   * Glob patterns, matched against the full repo-relative path, for documents
+   * to skip (e.g. review logs that QUOTE findings rather than assert them).
+   * Use `**\/name.md` to skip a basename anywhere in the tree.
+   */
   exclude?: string[];
   /** How far from the cited line a match still counts as drift. Default 3. */
   driftWindow?: number;
@@ -18,6 +22,18 @@ export interface ClaimsConfig {
   moments?: string[];
   /** Moments already caught by CI (pass as advisory). Default: ["build-time"]. */
   ciCaughtMoments?: string[];
+  /**
+   * Shortest quote that counts as distinctive. Shorter quotes still verify,
+   * but pass as `weak-anchor` rather than `ok`. Default 8.
+   */
+  minAnchorChars?: number;
+  /**
+   * Re-run a zero-result absence search with a broadened pattern, as a control
+   * against a search that is simply pointed at nothing. Default true.
+   */
+  relaxedControl?: boolean;
+  /** Wall-clock budget for a single absence search, in milliseconds. Default 10000. */
+  searchTimeoutMs?: number;
 }
 
 const KNOWN_KEYS = new Set([
@@ -26,6 +42,9 @@ const KNOWN_KEYS = new Set([
   "driftWindow",
   "moments",
   "ciCaughtMoments",
+  "minAnchorChars",
+  "relaxedControl",
+  "searchTimeoutMs",
 ]);
 
 function isStringArray(value: unknown): value is string[] {
@@ -65,16 +84,21 @@ export function parseConfig(json: unknown, path: string): ClaimsConfig {
     config[key] = value;
   }
 
-  const driftWindow = record["driftWindow"];
-  if (driftWindow !== undefined) {
-    if (
-      typeof driftWindow !== "number" ||
-      !Number.isInteger(driftWindow) ||
-      driftWindow < 0
-    ) {
-      throw new Error(`${path}: 'driftWindow' must be a non-negative integer`);
+  for (const key of ["driftWindow", "minAnchorChars", "searchTimeoutMs"] as const) {
+    const value = record[key];
+    if (value === undefined) continue;
+    if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+      throw new Error(`${path}: '${key}' must be a non-negative integer`);
     }
-    config.driftWindow = driftWindow;
+    config[key] = value;
+  }
+
+  const relaxedControl = record["relaxedControl"];
+  if (relaxedControl !== undefined) {
+    if (typeof relaxedControl !== "boolean") {
+      throw new Error(`${path}: 'relaxedControl' must be a boolean`);
+    }
+    config.relaxedControl = relaxedControl;
   }
 
   return config;

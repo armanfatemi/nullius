@@ -44,6 +44,13 @@ runner="${NULLIUS_BIN:-npx -y @nullius-inverba/claims}"
 # By default a plan with ZERO anchors passes silently — fail-open extends to
 # adoption itself. Set NULLIUS_REQUIRE_MARKERS=1 to close that hatch: a plan
 # making no checkable claims at all is then blocked like a failing one.
+#
+# Note on fail-open and safety: this hook runs the checker against an
+# AGENT-WRITTEN plan on a developer's own machine, so the plan is untrusted
+# input in the same sense a PR is. Failing open is a decision about VERDICTS,
+# never about execution — the checker itself never runs an unvalidated search
+# (no shell, allowlisted flags, repo-relative paths only), so a prompt-injected
+# plan gets a refusal, not a shell.
 extra_args=()
 case "${NULLIUS_REQUIRE_MARKERS:-}" in
   1 | true) extra_args+=(--require-markers) ;;

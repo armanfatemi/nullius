@@ -42,7 +42,8 @@ commands:
 
 check options:
   --config <path>     config file (default: ${DEFAULT_CONFIG_PATH} if present)
-  --require-markers   fail when no grounding markers are found at all
+  --require-markers   fail when any matched document carries no grounding
+                      markers (the floor is per document, not per run)
   --help              show this message
   --version           print the package version
 
@@ -77,6 +78,19 @@ function describe(result: ClaimResult): string {
   }
 }
 
+/**
+ * `OK` on an absence claim is the tool over-claiming on the author's behalf: a
+ * search that found nothing certifies the search, never the absence. The
+ * verdict is the part a reader remembers, so it says what was actually
+ * established.
+ */
+function label(result: ClaimResult): string {
+  if (result.verdict === "ok" && result.claim.kind === "absence") {
+    return "SEARCH-CLEAN";
+  }
+  return result.verdict.toUpperCase();
+}
+
 function report(results: ClaimResult[]): number {
   let failures = 0;
 
@@ -86,18 +100,18 @@ function report(results: ClaimResult[]): number {
     const what = describe(result);
 
     if (result.verdict === "ok") {
-      console.log(`OK        ${where}  ${what}`);
+      console.log(`${label(result).padEnd(13)} ${where}  ${what}`);
       continue;
     }
 
-    const line = `${result.verdict.toUpperCase().padEnd(9)} ${where}  ${what}`;
+    const line = `${label(result).padEnd(13)} ${where}  ${what}`;
     if (isFailure(result.verdict)) {
       failures += 1;
       console.error(line);
-      console.error(`          ! ${result.detail}`);
+      console.error(`              ! ${result.detail}`);
     } else {
       console.log(line);
-      console.log(`          ~ ${result.detail}`);
+      console.log(`              ~ ${result.detail}`);
     }
   }
 
@@ -223,10 +237,14 @@ function runCheck(args: ParsedArgs): number {
     return 2;
   }
 
-  const excluded = new Set(config.exclude ?? []);
-  const docs = [...new Set(globs.flatMap((pattern) => globSync(pattern)))]
-    .filter((path) => !excluded.has(path.split("/").slice(-1)[0] ?? ""))
-    .sort();
+  // `exclude` entries are globs matched against the full repo-relative path.
+  // Matching on basename alone silently excluded same-named files in unrelated
+  // directories — a checker that quietly checks less than you configured is
+  // the failure mode the config module exists to prevent.
+  const ignore = config.exclude ?? [];
+  const docs = [
+    ...new Set(globs.flatMap((pattern) => globSync(pattern, { ignore }))),
+  ].sort();
 
   if (docs.length === 0) {
     console.error(`no files matched: ${globs.join(" ")}`);
@@ -241,17 +259,29 @@ function runCheck(args: ParsedArgs): number {
   if (config.driftWindow !== undefined) {
     options.driftWindow = config.driftWindow;
   }
+  if (config.minAnchorChars !== undefined) {
+    options.minAnchorChars = config.minAnchorChars;
+  }
+  if (config.relaxedControl !== undefined) {
+    options.relaxedControl = config.relaxedControl;
+  }
 
-  const deps = { readFileLines: fileLinesReader(), runSearch: searchRunner() };
+  const deps = {
+    readFileLines: fileLinesReader(),
+    runSearch: searchRunner(undefined, config.searchTimeoutMs),
+  };
 
   let failures = 0;
   let checked = 0;
+  let presenceAnchors = 0;
+  let absenceAnchors = 0;
   const unanchored: { doc: string; lines: number }[] = [];
 
   for (const doc of docs) {
     const content = readFileSync(doc, "utf8");
     const lines = content.split("\n").length;
-    const results = checkClaims(parseClaims(doc, content), deps, options);
+    const claims = parseClaims(doc, content);
+    const results = checkClaims(claims, deps, options);
 
     if (results.length === 0) {
       unanchored.push({ doc, lines });
@@ -259,6 +289,8 @@ function runCheck(args: ParsedArgs): number {
     }
 
     checked += results.length;
+    presenceAnchors += claims.filter((claim) => claim.kind === "presence").length;
+    absenceAnchors += claims.filter((claim) => claim.kind === "absence").length;
     console.log(`--- ${doc} — ${results.length} anchor(s) / ${lines} lines`);
     failures += report(results);
   }
@@ -278,11 +310,26 @@ function runCheck(args: ParsedArgs): number {
   console.log(
     `${docs.length - unanchored.length} of ${docs.length} matched document(s) carry grounding markers.`,
   );
-
-  if (args.requireMarkers && checked === 0) {
-    console.error(
-      "No grounding markers found — a document with no citations is not a pass under --require-markers.",
+  // Presence and absence are counted apart because they are not the same
+  // evidence. A presence anchor made the author open a file; an absence anchor
+  // made them run one search. A proposal resting entirely on absence claims
+  // should be visible as such at a glance.
+  if (checked > 0) {
+    console.log(
+      `${presenceAnchors} presence anchor(s), ${absenceAnchors} search anchor(s).`,
     );
+  }
+
+  // The floor is per DOCUMENT, not per run: one anchored document must never
+  // license every other document in the glob to carry none.
+  if (args.requireMarkers && unanchored.length > 0) {
+    console.error("");
+    console.error(
+      `${unanchored.length} document(s) carry no grounding markers — under --require-markers a document with no citations is not a pass.`,
+    );
+    for (const entry of unanchored) {
+      console.error(`  ${entry.doc} (${entry.lines} lines)`);
+    }
     console.error(`See ${SPEC_URL}.`);
     return 1;
   }

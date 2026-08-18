@@ -96,8 +96,11 @@ Optional `nullius.config.json` at the repo root (or `--config <path>`):
 ```json
 {
   "docs": ["docs/rfcs/**/*.md"],
-  "exclude": ["review-evidence.md"],
+  "exclude": ["**/review-evidence.md"],
   "driftWindow": 3,
+  "minAnchorChars": 8,
+  "relaxedControl": true,
+  "searchTimeoutMs": 10000,
   "moments": [
     "build-time",
     "rollout-window",
@@ -111,9 +114,16 @@ Optional `nullius.config.json` at the repo root (or `--config <path>`):
 ```
 
 - `docs` — default globs when the CLI gets none.
-- `exclude` — basenames to skip (e.g. review logs that quote findings).
+- `exclude` — globs, matched against the full repo-relative path, for documents
+  to skip (e.g. review logs that quote findings). Use `**/name.md` to skip a
+  basename anywhere in the tree; a bare `name.md` matches only at the root.
 - `driftWindow` — how far (± lines) a match still counts as `DRIFT` (passing)
   rather than `WRONG-LINE` (failing). Default 3.
+- `minAnchorChars` — shortest quote that counts as distinctive. Below it a
+  citation verifies as `WEAK-ANCHOR` rather than `OK`. Default 8.
+- `relaxedControl` — re-run a zero-result absence search with a broadened
+  pattern, as a control against a search pointed at nothing. Default true.
+- `searchTimeoutMs` — wall-clock budget for one absence search. Default 10000.
 - `moments` / `ciCaughtMoments` — your closed binding-moment vocabulary.
   Defaults model a replicated-service backend; a mobile or embedded project
   should define its own.
@@ -127,12 +137,21 @@ exists to prevent.
 Checked documents are treated as **untrusted input** (in CI they are
 PR-controlled content):
 
-- Cited paths are validated **before any filesystem access** — no absolute
-  paths, no `..` traversal, no `~` expansion. Otherwise the checker becomes a
-  file-probe oracle on your CI runner.
-- Absence commands are sandboxed: every pipeline segment must begin with
-  `grep` or `rg`; `;`, `&&`, `||`, `$(`, backticks, and redirection are
-  rejected without execution.
+- **Cited paths are validated before any filesystem access** — no absolute
+  paths, no `..` traversal, no `~` expansion. The same guard covers the file
+  operands of an absence search, so neither lane can be used as a file-probe
+  oracle whose verdict lands in a public PR comment.
+- **Absence commands never touch a shell.** They are tokenised into an argv
+  vector and spawned directly, so there is no command string for a
+  metacharacter to escape. Shell globs are consequently not expanded — use
+  `-r` with `--include=`/`-g`.
+- **Flags are allowlisted, per binary.** Allowlisting `grep`/`rg` alone is not
+  enough: `rg --pre <cmd>` executes `<cmd>` against every searched file.
+  `--pre`, `--pre-glob`, `--hostname-bin`, `-z`, `-f`, `--exclude-from`,
+  `--ignore-file`, `--files`, `-L` and `-q` are refused by name, and any flag
+  not on the allowlist is refused as unrecognised.
+- **Searches are time-bounded** (`searchTimeoutMs`, default 10s) and run with
+  `RIPGREP_CONFIG_PATH` and `GREP_OPTIONS` stripped from the environment.
 
 ## Library API
 

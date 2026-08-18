@@ -53,19 +53,23 @@ This builds a sandbox doc plus a sandbox source file and checks one claim per
 verdict class:
 
 ```
-FABRICATED design.md:15  src/app.ts:2
-          ! text does not appear anywhere in src/app.ts
-COUNT-MISMATCH design.md:23  grep -rn 'retry' src/ → 0
-          ! claimed 0, actual 1
-UNSAFE    design.md:27  grep -rn 'x' src/ && rm -rf / → 0
-          ! not executed — contains forbidden token '&&'
-UNKNOWN-MOMENT design.md:32  binds at partial-composition
-          ! 'partial-composition' is not a binding moment; use one of: build-time, rollout-window, …
+FABRICATED    design.md:15  src/app.ts:2
+              ! text does not appear anywhere in src/app.ts
+COUNT-MISMATCH design.md:28  grep -rn 'retry' src/ → 0
+              ! claimed 0, actual 1
+UNSAFE        design.md:32  grep -rn 'x' src/ && rm -rf / → 0
+              ! not executed — contains forbidden character '&'
+UNKNOWN-MOMENT design.md:37  binds at partial-composition
+              ! 'partial-composition' is not a binding moment; use one of: build-time, rollout-window, …
+WEAK-ANCHOR   design.md:20  src/app.ts:1
+              ~ quote is 1 character(s) — too short to pin down a line
+SEARCH-CLEAN  design.md:24  grep -rn 'MAX_RETRIES' src/ → 1
 ```
 
 That `UNSAFE` line is the security model working: checked documents are
-untrusted input, so absence searches run in a grep/rg-only sandbox and cited
-paths are validated before any file is read.
+untrusted input, so absence searches are parsed into an argv vector and spawned
+without a shell, against a per-binary flag allowlist, and every cited path — in
+both the presence and the absence lane — is validated before any file is read.
 
 ## Where the value comes from
 
@@ -149,6 +153,7 @@ doc.
    ```
 3. Gate in CI: the Action above with `globs: "docs/rfcs/**/*.md"` and
    `require-markers: true` — a proposal with no anchors at all is not a pass.
+   The floor is per document, so one anchored file cannot license the rest.
 
 Custom binding-moment vocabulary, drift window, and excludes live in
 `nullius.config.json`: [packages/claims/](packages/claims/).

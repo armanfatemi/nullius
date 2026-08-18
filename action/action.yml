@@ -28,7 +28,9 @@ inputs:
     description: Fail the job when any claim is unverified. Default false (advisory).
     default: 'false'
   require-markers:
-    description: Fail when the docs check finds no grounding markers at all. Default false.
+    description: >-
+      Fail when any matched document carries no grounding markers. The floor is
+      per document, so one anchored file cannot license the rest. Default false.
     default: 'false'
   comment:
     description: Upsert a PR comment with the report (needs github-token). Default true.

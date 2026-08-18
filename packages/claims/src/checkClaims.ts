@@ -1,4 +1,4 @@
-import { isSafeSearchCommand } from "./commandSafety";
+import { parseSearchCommand, relaxPlan, type SearchPlan } from "./commandSafety";
 import { type Claim } from "./parseClaims";
 import { isSafeRepoPath } from "./pathSafety";
 
@@ -22,6 +22,11 @@ export type Verdict =
   | "ok"
   /** Verified, but worth a human glance (see detail). Does not fail the run. */
   | "advisory"
+  /**
+   * Verified, but the quote does not pin down a line — too short, or matching
+   * several lines. The citation is true and nearly contentless. Advisory.
+   */
+  | "weak-anchor"
   /** Text found within a few lines of the cited one — the file moved under the doc. */
   | "drift"
   /** Text exists in the file, but nowhere near the cited line. */
@@ -50,7 +55,12 @@ export type SearchOutcome =
 export interface CheckDeps {
   /** Returns the file's lines, or null when the file does not exist. */
   readFileLines: (path: string) => string[] | null;
-  runSearch: (command: string) => SearchOutcome;
+  /**
+   * Runs a search that `commandSafety` has already validated. Takes a parsed
+   * plan rather than a string so that no layer below this one is ever in a
+   * position to hand a command line to a shell.
+   */
+  runSearch: (plan: SearchPlan) => SearchOutcome;
 }
 
 export interface CheckOptions {
@@ -64,13 +74,25 @@ export interface CheckOptions {
   ciCaughtMoments?: readonly string[];
   /** How far from the cited line we still call it drift rather than a wrong line. Default 3. */
   driftWindow?: number;
+  /**
+   * Shortest quote that counts as distinctive. Below this, a presence citation
+   * passes as `weak-anchor` rather than `ok`. Default 8.
+   */
+  minAnchorChars?: number;
+  /**
+   * Whether a zero-result absence search is re-run with a broadened pattern as
+   * a control. Default true. See `relaxPlan`.
+   */
+  relaxedControl?: boolean;
 }
 
 const DEFAULT_DRIFT_WINDOW = 3;
+const DEFAULT_MIN_ANCHOR_CHARS = 8;
 
 const PASSING: ReadonlySet<Verdict> = new Set<Verdict>([
   "ok",
   "advisory",
+  "weak-anchor",
   "drift",
 ]);
 
@@ -83,13 +105,38 @@ function normalize(value: string): string {
   return value.trim().replace(/\s+/g, " ");
 }
 
-function findLine(lines: string[], needle: string): number | null {
-  const target = normalize(needle);
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index];
-    if (line !== undefined && normalize(line).includes(target)) {
-      return index + 1;
-    }
+/** The cited source lines of a presence claim, first line first. */
+function citedBlock(claim: Extract<Claim, { kind: "presence" }>): string[] {
+  return [claim.text, ...(claim.extraLines ?? [])];
+}
+
+/**
+ * Whether the cited block appears in `lines` starting at 1-based `start`. A
+ * multi-line quote must match consecutively — that is what makes the block form
+ * a stronger assertion than the inline one rather than a longer one.
+ */
+function matchesAt(lines: string[], start: number, block: string[]): boolean {
+  for (let offset = 0; offset < block.length; offset += 1) {
+    const line = lines[start - 1 + offset];
+    const quoted = block[offset];
+    if (line === undefined || quoted === undefined) return false;
+    if (!normalize(line).includes(normalize(quoted))) return false;
+  }
+  return true;
+}
+
+/** How many places in the file the block matches — 1 means it pins a line down. */
+function countMatches(lines: string[], block: string[]): number {
+  let matches = 0;
+  for (let start = 1; start <= lines.length; start += 1) {
+    if (matchesAt(lines, start, block)) matches += 1;
+  }
+  return matches;
+}
+
+function findBlock(lines: string[], block: string[]): number | null {
+  for (let start = 1; start <= lines.length; start += 1) {
+    if (matchesAt(lines, start, block)) return start;
   }
   return null;
 }
@@ -98,6 +145,7 @@ function checkPresence(
   claim: Extract<Claim, { kind: "presence" }>,
   deps: CheckDeps,
   driftWindow: number,
+  minAnchorChars: number,
 ): ClaimResult {
   // Checked BEFORE any filesystem access: the path comes from PR-controlled
   // document content (see pathSafety.ts).
@@ -119,8 +167,28 @@ function checkPresence(
     };
   }
 
-  const cited = lines[claim.line - 1];
-  if (cited !== undefined && normalize(cited).includes(normalize(claim.text))) {
+  const block = citedBlock(claim);
+  if (matchesAt(lines, claim.line, block)) {
+    // The citation is true. Whether it is worth anything is a separate
+    // question: matching is substring-based, so a one-character quote is
+    // trivially verifiable and asserts nothing about the code. An anchor that
+    // does not single out a line has not made the author look at one.
+    const quote = block.map(normalize).join(" ").trim();
+    if (quote.length < minAnchorChars) {
+      return {
+        claim,
+        verdict: "weak-anchor",
+        detail: `quote is ${quote.length} character(s) — too short to pin down a line; quote enough of ${claim.path} to be wrong if the code changes`,
+      };
+    }
+    const matches = countMatches(lines, block);
+    if (matches > 1) {
+      return {
+        claim,
+        verdict: "weak-anchor",
+        detail: `quote matches ${matches} lines in ${claim.path} — it does not identify line ${claim.line}; quote something distinctive`,
+      };
+    }
     return { claim, verdict: "ok", detail: "" };
   }
 
@@ -128,8 +196,7 @@ function checkPresence(
   const lower = Math.max(1, claim.line - driftWindow);
   const upper = Math.min(lines.length, claim.line + driftWindow);
   for (let candidate = lower; candidate <= upper; candidate += 1) {
-    const line = lines[candidate - 1];
-    if (line !== undefined && normalize(line).includes(normalize(claim.text))) {
+    if (matchesAt(lines, candidate, block)) {
       return {
         claim,
         verdict: "drift",
@@ -138,7 +205,7 @@ function checkPresence(
     }
   }
 
-  const elsewhere = findLine(lines, claim.text);
+  const elsewhere = findBlock(lines, block);
   if (elsewhere !== null) {
     return {
       claim,
@@ -157,17 +224,20 @@ function checkPresence(
 function checkAbsence(
   claim: Extract<Claim, { kind: "absence" }>,
   deps: CheckDeps,
+  relaxedControl: boolean,
 ): ClaimResult {
-  const safety = isSafeSearchCommand(claim.command);
-  if (!safety.safe) {
+  // Parsed, not merely pattern-matched: the result IS the argv the runner
+  // executes, so an unvalidated command cannot reach a process.
+  const parsed = parseSearchCommand(claim.command);
+  if (!parsed.safe) {
     return {
       claim,
       verdict: "unsafe",
-      detail: `not executed — ${safety.reason}`,
+      detail: `not executed — ${parsed.reason}`,
     };
   }
 
-  const outcome = deps.runSearch(claim.command);
+  const outcome = deps.runSearch(parsed.plan);
   if (!outcome.ok) {
     return { claim, verdict: "command-error", detail: outcome.error };
   }
@@ -178,6 +248,24 @@ function checkAbsence(
       verdict: "count-mismatch",
       detail: `claimed ${claim.expectedCount}, actual ${outcome.count}`,
     };
+  }
+
+  // A zero-result search proves nothing on its own — a search aimed at the
+  // wrong directory returns zero just as convincingly as a true absence. The
+  // relaxed control distinguishes "nothing there" from "not looking there".
+  if (relaxedControl && outcome.count === 0) {
+    const relaxed = relaxPlan(parsed.plan);
+    if (relaxed !== null) {
+      const control = deps.runSearch(relaxed);
+      if (control.ok && control.count === 0) {
+        const pattern = relaxed.segments[0]?.args[relaxed.segments[0].patternIndex ?? 0];
+        return {
+          claim,
+          verdict: "advisory",
+          detail: `the broadened control search (pattern '${pattern}') also found nothing — this search may be pointed at the wrong path, include filter, or regex dialect rather than at an absence`,
+        };
+      }
+    }
   }
 
   return { claim, verdict: "ok", detail: "" };
@@ -215,13 +303,15 @@ export function checkClaims(
   const moments = options.moments ?? DEFAULT_BINDING_MOMENTS;
   const ciCaughtMoments = options.ciCaughtMoments ?? ["build-time"];
   const driftWindow = options.driftWindow ?? DEFAULT_DRIFT_WINDOW;
+  const minAnchorChars = options.minAnchorChars ?? DEFAULT_MIN_ANCHOR_CHARS;
+  const relaxedControl = options.relaxedControl ?? true;
 
   return claims.map((claim) => {
     switch (claim.kind) {
       case "presence":
-        return checkPresence(claim, deps, driftWindow);
+        return checkPresence(claim, deps, driftWindow, minAnchorChars);
       case "absence":
-        return checkAbsence(claim, deps);
+        return checkAbsence(claim, deps, relaxedControl);
       case "moment":
         return checkMoment(claim, moments, ciCaughtMoments);
       case "malformed":

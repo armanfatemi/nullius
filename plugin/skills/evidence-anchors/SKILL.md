@@ -50,6 +50,23 @@ Open the file. Then write:
   normalized, so indentation differences are fine).
 - If the cited text itself contains a backtick, use a double-backtick span:
   ``**Evidence:** `libs/x.ts:4` —``const q = `query {}`;` `
+- **Quote something that could be wrong.** Matching is substring-based, so a
+  one- or two-character quote is trivially true and asserts nothing; it
+  verifies as `WEAK-ANCHOR`. Quote enough of the line that a real change to the
+  code would contradict it.
+- For a long quote, or one spanning lines, put it in a fenced block under the
+  marker instead — a multi-line block must match consecutively from the cited
+  line:
+
+  ````markdown
+  **Evidence:** `services/orders/handler.ts:88`
+
+  ```ts
+  const result = await retry(() => publish(event), {
+    attempts: 5,
+  });
+  ```
+  ````
 
 ## The absence form — the thing does not exist
 
@@ -59,11 +76,22 @@ Run the search. Then write the search and its result:
 **Evidence:** `grep -rn --include='*.graphqls' '@shareable' services/ | grep enum` → 0 results
 ```
 
-- Only `grep` / `rg` pipelines — no other binaries, no `;`, `&&`, `||`,
-  `$( )`, backticks, or redirection (the checker refuses to execute them).
-- Use `--include=` / `-g` instead of `**` shell globs (the re-run shell has
-  no globstar, so a `**` pattern silently matches nothing).
+- Only `grep` / `rg` pipelines, and only with allowlisted flags. There is no
+  shell: the command is spawned as an argv vector, so `;`, `&&`, `||`, `$( )`,
+  backticks, redirection and variable expansion are all refused, as is any
+  flag not on the allowlist (`--pre`, `-z`, `-f`, `--files`, `-q` and friends).
+- Search paths must be repo-relative, exactly like presence citations.
+- Use `--include=` / `-g` instead of shell globs — with no shell, a `*` pattern
+  is passed through literally rather than expanded.
 - One line of output per match — never `grep -c`.
+- **An absence anchor is weaker than a presence anchor, and you should treat it
+  that way.** A presence anchor makes you open a file; an absence anchor makes
+  you run one search, which is easy to get wrong and still have pass. Its
+  verdict is `SEARCH-CLEAN`, not `OK` — it certifies the search, never the
+  absence. For a load-bearing absence ("nothing else consumes this"), stack
+  several searches — the symbol, the string key, the topic name — and write down
+  the blind spots you know remain (dynamic dispatch, DI containers, generated
+  code, other repos).
 
 ## Compatibility risks — name the binding moment
 
