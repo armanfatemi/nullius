@@ -42,6 +42,11 @@ export interface SearchSegment {
    * {@link relaxPlan}.
    */
   patternIndex: number | null;
+  /**
+   * Indices into `args` of the file operands. The runner re-checks these
+   * against the filesystem (symlink resolution), which this module cannot do.
+   */
+  pathIndices: number[];
 }
 
 /** A fully parsed, fully validated command: what the runner is allowed to run. */
@@ -62,36 +67,62 @@ type Arity = "none" | "value";
  * contributor extending the tables below cannot quietly reopen the hole. These
  * are checked explicitly as well as being absent from the allowlists.
  */
-const DENIED_FLAGS: ReadonlyMap<string, string> = new Map([
-  ["pre", "runs an arbitrary command against every searched file"],
-  ["pre-glob", "selects files for --pre"],
-  ["hostname-bin", "executes an arbitrary binary"],
-  ["search-zip", "shells out to external decompressors"],
-  ["z", "shells out to external decompressors"],
+/**
+ * Flags that must NEVER be allowlisted, with the reason, so that a later
+ * contributor extending the tables below cannot quietly reopen the hole.
+ *
+ * Denials are PER BINARY, because the same letter means different things to
+ * the two tools: `rg -L` is `--follow` (escapes the repo) but `grep -L` is
+ * `--files-without-match` (harmless), and `rg -z` is `--search-zip` (execs a
+ * decompressor) but `grep -z` is `--null-data`. A shared table refuses those
+ * grep flags with a reason that is simply false, which is not something this
+ * tool gets to do.
+ */
+const DENIED_COMMON: ReadonlyMap<string, string> = new Map([
   ["file", "reads patterns from an arbitrary file"],
   ["f", "reads patterns from an arbitrary file"],
-  ["exclude-from", "reads an arbitrary file"],
-  ["ignore-file", "reads an arbitrary file"],
-  ["follow", "follows symlinks out of the repository"],
-  ["L", "follows symlinks out of the repository"],
-  ["files", "lists files rather than searching, turning the check into a directory oracle"],
   ["quiet", "suppresses output, so every absence claim trivially counts zero"],
   ["silent", "suppresses output, so every absence claim trivially counts zero"],
   ["q", "suppresses output, so every absence claim trivially counts zero"],
 ]);
 
+const DENIED_GREP: ReadonlyMap<string, string> = new Map([
+  ...DENIED_COMMON,
+  ["exclude-from", "reads an arbitrary file"],
+  // grep's -R is --dereference-recursive: it follows symlinks during the walk,
+  // so a committed `evil -> /etc` escapes the repo and grep prints host paths
+  // to stderr, which the Action posts into a PR comment. Plain -r is allowed.
+  ["R", "follows symlinks during recursion (use -r, which does not)"],
+  ["dereference-recursive", "follows symlinks during recursion (use -r, which does not)"],
+]);
+
+const DENIED_RG: ReadonlyMap<string, string> = new Map([
+  ...DENIED_COMMON,
+  ["pre", "runs an arbitrary command against every searched file"],
+  ["pre-glob", "selects files for --pre"],
+  ["hostname-bin", "executes an arbitrary binary"],
+  ["search-zip", "shells out to external decompressors"],
+  ["z", "shells out to external decompressors"],
+  ["ignore-file", "reads an arbitrary file"],
+  ["follow", "follows symlinks out of the repository"],
+  ["L", "follows symlinks out of the repository"],
+  ["files", "lists files rather than searching, turning the check into a directory oracle"],
+]);
+
 const GREP_SHORT: ReadonlyMap<string, Arity> = new Map([
-  ["r", "none"], ["R", "none"], ["n", "none"], ["i", "none"], ["w", "none"],
+  ["r", "none"], ["n", "none"], ["i", "none"], ["w", "none"],
   ["x", "none"], ["c", "none"], ["l", "none"], ["L", "none"], ["h", "none"],
   ["H", "none"], ["o", "none"], ["v", "none"], ["E", "none"], ["F", "none"],
   ["G", "none"], ["P", "none"], ["s", "none"], ["a", "none"], ["I", "none"],
   ["b", "none"], ["T", "none"],
+  // grep's -z is --null-data (rg's is --search-zip, denied for rg only).
+  ["z", "none"],
   ["e", "value"], ["m", "value"], ["A", "value"], ["B", "value"],
   ["C", "value"], ["D", "value"], ["d", "value"],
 ]);
 
 const GREP_LONG: ReadonlyMap<string, Arity> = new Map([
-  ["recursive", "none"], ["dereference-recursive", "none"],
+  ["recursive", "none"],
   ["line-number", "none"], ["ignore-case", "none"], ["no-ignore-case", "none"],
   ["word-regexp", "none"], ["line-regexp", "none"], ["count", "none"],
   ["files-with-matches", "none"], ["files-without-match", "none"],
@@ -104,7 +135,10 @@ const GREP_LONG: ReadonlyMap<string, Arity> = new Map([
   ["regexp", "value"], ["max-count", "value"], ["after-context", "value"],
   ["before-context", "value"], ["context", "value"], ["include", "value"],
   ["exclude", "value"], ["exclude-dir", "value"], ["binary-files", "value"],
-  ["color", "value"], ["colour", "value"], ["devices", "value"],
+  // --color[=WHEN]: the value is OPTIONAL, so grep never consumes the next
+  // word. Treating it as "value" swallowed the following operand past the
+  // path guard while grep read it as a file.
+  ["color", "none"], ["colour", "none"], ["devices", "value"],
   ["directories", "value"], ["label", "value"],
 ]);
 
@@ -136,12 +170,66 @@ const RG_LONG: ReadonlyMap<string, Arity> = new Map([
   ["type", "value"], ["type-not", "value"], ["max-count", "value"],
   ["after-context", "value"], ["before-context", "value"], ["context", "value"],
   ["max-depth", "value"], ["maxdepth", "value"], ["max-filesize", "value"],
-  ["sort", "value"], ["sortr", "value"], ["color", "value"],
+  ["sort", "value"], ["sortr", "value"], ["color", "none"],
   ["colors", "value"], ["encoding", "value"], ["engine", "value"],
 ]);
 
 /** Flags that supply the pattern, so that every positional becomes a path. */
 const PATTERN_FLAGS = new Set(["e", "regexp"]);
+
+/**
+ * Flags whose value is OPTIONAL. getopt only accepts an optional value in the
+ * `--flag=value` form, so the binary never consumes the following word — and a
+ * validator that thinks otherwise hands the next word straight past the path
+ * guard as if it were a flag value. `grep -e root --color /etc/shadow` was
+ * exactly that bug. These are arity `none` with an inline value permitted.
+ */
+const OPTIONAL_VALUE_FLAGS = new Set(["color", "colour"]);
+
+/**
+ * Flags whose value can make a search match nothing at all, independent of the
+ * pattern — the same defect that gets `-q` refused. `rg -m 0 <secret> src/`
+ * returns zero because it was told to stop at zero matches, not because the
+ * secret is absent.
+ */
+const ZERO_MEANS_VACUOUS = new Set([
+  "m",
+  "max-count",
+  "max-depth",
+  "maxdepth",
+  "max-filesize",
+]);
+
+function refusesZero(flag: string, value: string): boolean {
+  if (!ZERO_MEANS_VACUOUS.has(flag)) return false;
+  const leading = /^\d+/.exec(value.trim());
+  return leading !== null && Number.parseInt(leading[0], 10) === 0;
+}
+
+/**
+ * Refuses a token that names a location outside the repository, wherever it
+ * appears — operand, pattern, or flag value.
+ *
+ * The per-flag arity table decides which words are operands, and a single
+ * wrong entry in it silently turns a path into an unchecked "flag value". This
+ * check does not consult the table at all, so the containment guarantee does
+ * not depend on the table being perfect. The cost is that a regex which looks
+ * like an absolute path (`grep -rn '/api/v1/users' src/`) is refused; that is
+ * a loud, fixable refusal rather than a silent file probe.
+ */
+function refuseEscapingToken(token: string): string | null {
+  if (token.includes("\0")) return "contains a null byte";
+  if (token.startsWith("/") || /^[A-Za-z]:[\\/]/.test(token)) {
+    return `'${token}' looks like an absolute path — citations may only reach repo-relative locations`;
+  }
+  if (token.startsWith("~")) {
+    return `'${token}' is home-relative — citations may only reach repo-relative locations`;
+  }
+  if (token.split(/[\\/]/).some((segment) => segment === "..")) {
+    return `'${token}' traverses out of the repository`;
+  }
+  return null;
+}
 
 interface Word {
   value: string;
@@ -239,15 +327,23 @@ function tokenize(command: string): { words: Word[] } | { reason: string } {
   return { words };
 }
 
-function denialReason(flag: string): string | null {
-  const reason = DENIED_FLAGS.get(flag);
+function denialReason(binary: SearchBinary, flag: string): string | null {
+  const table = binary === "grep" ? DENIED_GREP : DENIED_RG;
+  const reason = table.get(flag);
   return reason === undefined ? null : reason;
 }
 
 /**
- * Validates one pipeline segment and returns its argv. Flags are checked
- * against the binary's closed allowlist; file operands are checked against
- * `isSafeRepoPath`.
+ * Validates one pipeline segment and returns its argv.
+ *
+ * The returned argv is CANONICAL, not the author's tokens: short clusters are
+ * split (`-rn` becomes `-r -n`), inline flag values are separated (`-ePAT`
+ * becomes `-e PAT`), and a `--` precedes the file operands. Two things follow.
+ * The argv that runs is exactly the argv that was validated, in one shape
+ * rather than four — and every pattern operand is a standalone token, so the
+ * relaxed control search can always find it. Before this, `-ePAT` left the
+ * pattern fused to its flag, and a forged absence claim written that way
+ * skipped the control and passed as SEARCH-CLEAN.
  */
 function validateSegment(words: string[]): { segment: SearchSegment } | { reason: string } {
   const binary = words[0];
@@ -259,18 +355,37 @@ function validateSegment(words: string[]): { segment: SearchSegment } | { reason
   const shortFlags = typed === "grep" ? GREP_SHORT : RG_SHORT;
   const longFlags = typed === "grep" ? GREP_LONG : RG_LONG;
 
+  // Checked before the arity table is consulted, so containment does not
+  // depend on the table being right about any particular flag.
+  for (const word of words.slice(1)) {
+    const escaping = refuseEscapingToken(word);
+    if (escaping !== null) return { reason: escaping };
+  }
+
+  /** Canonical flag tokens, in order. */
+  const flags: string[] = [];
   const positionals: string[] = [];
   let patternFromFlag = false;
+  let patternFlagValueIndex: number | null = null;
   let endOfFlags = false;
-  /** Index into `words` of the pattern operand, if one is present. */
-  let patternWord: number | null = null;
-  let firstPositionalWord: number | null = null;
+
+  /** Records a flag's value as its own token, tracking the pattern operand. */
+  const pushValue = (flag: string, value: string): string | null => {
+    if (refusesZero(flag, value)) {
+      return `flag '${flag}' with value '${value}' makes the search match nothing regardless of the pattern`;
+    }
+    if (PATTERN_FLAGS.has(flag)) {
+      patternFromFlag = true;
+      if (patternFlagValueIndex === null) patternFlagValueIndex = flags.length;
+    }
+    flags.push(value);
+    return null;
+  };
 
   for (let index = 1; index < words.length; index += 1) {
     const word = words[index] as string;
 
     if (endOfFlags || word === "-" || !word.startsWith("-") || word === "") {
-      if (firstPositionalWord === null) firstPositionalWord = index;
       positionals.push(word);
       continue;
     }
@@ -286,7 +401,7 @@ function validateSegment(words: string[]): { segment: SearchSegment } | { reason
       const name = equals === -1 ? body : body.slice(0, equals);
       const inlineValue = equals === -1 ? null : body.slice(equals + 1);
 
-      const denied = denialReason(name);
+      const denied = denialReason(typed, name);
       if (denied !== null) {
         return { reason: `flag '--${name}' is refused — it ${denied}` };
       }
@@ -296,22 +411,38 @@ function validateSegment(words: string[]): { segment: SearchSegment } | { reason
           reason: `flag '--${name}' is not on the ${typed} allowlist — only a fixed set of search flags may run`,
         };
       }
-      if (PATTERN_FLAGS.has(name)) patternFromFlag = true;
-      if (arity === "value" && inlineValue === null) {
+
+      if (arity === "none") {
+        if (inlineValue !== null && !OPTIONAL_VALUE_FLAGS.has(name)) {
+          return { reason: `flag '--${name}' does not take a value` };
+        }
+        // An optional-value flag keeps its inline form; it never consumes the
+        // following word, and neither do we.
+        flags.push(word);
+        continue;
+      }
+
+      flags.push(`--${name}`);
+      let value = inlineValue;
+      if (value === null) {
         index += 1;
-        if (words[index] === undefined) {
+        value = words[index] ?? null;
+        if (value === null) {
           return { reason: `flag '--${name}' requires a value` };
         }
-        if (PATTERN_FLAGS.has(name) && patternWord === null) patternWord = index;
       }
+      const bad = pushValue(name, value);
+      if (bad !== null) return { reason: bad };
       continue;
     }
 
     // A short-flag cluster: -rn, -m5, -e PATTERN.
     const cluster = word.slice(1);
+    if (cluster.length === 0) return { reason: "'-' is not a flag" };
+
     for (let position = 0; position < cluster.length; position += 1) {
       const letter = cluster[position] as string;
-      const denied = denialReason(letter);
+      const denied = denialReason(typed, letter);
       if (denied !== null) {
         return { reason: `flag '-${letter}' is refused — it ${denied}` };
       }
@@ -321,20 +452,27 @@ function validateSegment(words: string[]): { segment: SearchSegment } | { reason
           reason: `flag '-${letter}' is not on the ${typed} allowlist — only a fixed set of search flags may run`,
         };
       }
-      if (PATTERN_FLAGS.has(letter)) patternFromFlag = true;
-      if (arity === "value") {
-        // The value is either the rest of the cluster (-m5) or the next word.
-        if (position === cluster.length - 1) {
-          index += 1;
-          if (words[index] === undefined) {
-            return { reason: `flag '-${letter}' requires a value` };
-          }
-          if (PATTERN_FLAGS.has(letter) && patternWord === null) patternWord = index;
-        }
-        // An inline cluster value (-ePATTERN) shares a word with its flag, so
-        // there is no operand to substitute; relaxation simply does not apply.
-        break;
+
+      if (arity === "none") {
+        flags.push(`-${letter}`);
+        continue;
       }
+
+      flags.push(`-${letter}`);
+      // The value is the rest of the cluster (-m5) or the next word (-m 5).
+      let value: string | null;
+      if (position < cluster.length - 1) {
+        value = cluster.slice(position + 1);
+      } else {
+        index += 1;
+        value = words[index] ?? null;
+      }
+      if (value === null) {
+        return { reason: `flag '-${letter}' requires a value` };
+      }
+      const bad = pushValue(letter, value);
+      if (bad !== null) return { reason: bad };
+      break;
     }
   }
 
@@ -349,13 +487,19 @@ function validateSegment(words: string[]): { segment: SearchSegment } | { reason
     }
   }
 
-  const patternAt = patternFromFlag ? patternWord : firstPositionalWord;
+  // `--` before the operands so a path can never be re-read as a flag.
+  const args = positionals.length > 0 ? [...flags, "--", ...positionals] : [...flags];
+  const firstPositional = flags.length + 1;
+  const pathIndices = paths.map(
+    (_path, offset) => firstPositional + (patternFromFlag ? offset : offset + 1),
+  );
+
   return {
     segment: {
       binary: typed,
-      args: words.slice(1),
-      // `args` drops the binary, so operand indices shift by one.
-      patternIndex: patternAt === null ? null : patternAt - 1,
+      args,
+      patternIndex: patternFromFlag ? patternFlagValueIndex : (positionals.length > 0 ? firstPositional : null),
+      pathIndices,
     },
   };
 }
@@ -400,47 +544,73 @@ export function isSafeSearchCommand(command: string): SafetyVerdict {
   return result.safe ? { safe: true } : { safe: false, reason: result.reason };
 }
 
-/** Shortest relaxed pattern worth running as a control. */
-const MIN_RELAXED_CHARS = 4;
+/**
+ * Flags that narrow what the PATTERN can match. The reachability control drops
+ * them, because it substitutes a pattern of its own and needs it to behave as a
+ * regex that matches any non-empty line.
+ */
+const PATTERN_SEMANTIC_FLAGS = new Set([
+  "-F", "--fixed-strings",
+  "-w", "--word-regexp",
+  "-x", "--line-regexp",
+  "-v", "--invert-match",
+]);
+
+/** A regex that matches every non-empty line, in both binaries' default dialect. */
+const MATCH_ANY = ".";
 
 /**
- * Derives a deliberately broader version of a search, used as a control when an
- * absence claim reports zero matches.
+ * Derives a control search that tests whether the cited search REACHED
+ * anything, used when an absence claim reports zero matches.
  *
  * A search that finds nothing is indistinguishable, from the outside, from a
- * search pointed at nothing — the wrong directory, a stale `--include`, a
- * regex dialect the binary does not speak. Re-running with the pattern cut back
- * to its longest identifier fragment separates the two: if even the fragment
- * finds nothing, the search is probably not looking where the author thinks.
+ * search pointed at nothing — the wrong directory, a stale `--include`, a glob
+ * that expanded to no files. The control keeps the scope of the original
+ * (same paths, same include/exclude filters, same type filters) and replaces
+ * only the pattern with one that matches any non-empty line. If THAT returns
+ * zero, the search examined no content at all and the zero it reported says
+ * nothing about the codebase.
  *
- * Returns null when no useful relaxation exists (no pattern operand, or a
- * pattern too short to cut). Only the first segment is relaxed: later segments
- * narrow the result, so widening the source is what tests reachability.
+ * An earlier version instead truncated the pattern to a fragment of its longest
+ * identifier. That premise was inverted: a prefix of a genuinely absent
+ * identifier is usually also absent, so it fired on correct absence claims —
+ * noise on the tool's headline output, which trains readers to skim past
+ * advisories. Reachability has the premise the right way round.
+ *
+ * Returns null when the segment has no substitutable pattern operand.
  */
-export function relaxPlan(plan: SearchPlan): SearchPlan | null {
+export function reachabilityPlan(plan: SearchPlan): SearchPlan | null {
   const first = plan.segments[0];
   if (first === undefined || first.patternIndex === null) return null;
 
-  const pattern = first.args[first.patternIndex];
-  if (pattern === undefined) return null;
+  const args: string[] = [];
+  let patternIndex: number | null = null;
+  for (let index = 0; index < first.args.length; index += 1) {
+    const arg = first.args[index] as string;
+    if (index === first.patternIndex) {
+      patternIndex = args.length;
+      args.push(MATCH_ANY);
+      continue;
+    }
+    if (PATTERN_SEMANTIC_FLAGS.has(arg)) continue;
+    args.push(arg);
+  }
+  if (patternIndex === null) return null;
 
-  // The longest run of identifier characters is the part of a pattern most
-  // likely to be literal text rather than regex syntax.
-  const runs = pattern.match(/[A-Za-z0-9_]+/g);
-  if (runs === null || runs.length === 0) return null;
-  const longest = runs.reduce((best, run) => (run.length > best.length ? run : best));
-
-  const cut = Math.max(MIN_RELAXED_CHARS, Math.ceil(longest.length * 0.6));
-  if (longest.length < MIN_RELAXED_CHARS + 1 || cut >= longest.length) return null;
-  const relaxed = longest.slice(0, cut);
-
-  const args = [...first.args];
-  args[first.patternIndex] = relaxed;
-
+  // Only the first stage runs: later stages narrow the result, and the question
+  // is whether the source of the pipeline saw any content at all.
   return {
     segments: [
-      { binary: first.binary, args, patternIndex: first.patternIndex },
-      ...plan.segments.slice(1),
+      {
+        binary: first.binary,
+        args,
+        patternIndex,
+        // Operand positions shift when a semantic flag is dropped, and the
+        // runner re-checks paths, so recompute rather than reuse.
+        pathIndices: first.pathIndices.map(
+          (original) => original - (first.args.length - args.length),
+        ),
+      },
     ],
   };
 }

@@ -22,7 +22,7 @@ export { isSafeRepoPath, type PathVerdict } from "./pathSafety";
 export {
   isSafeSearchCommand,
   parseSearchCommand,
-  relaxPlan,
+  reachabilityPlan,
   type ParseResult,
   type SafetyVerdict,
   type SearchBinary,

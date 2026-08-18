@@ -84,13 +84,30 @@ export function parseConfig(json: unknown, path: string): ClaimsConfig {
     config[key] = value;
   }
 
-  for (const key of ["driftWindow", "minAnchorChars", "searchTimeoutMs"] as const) {
+  for (const key of ["driftWindow", "minAnchorChars"] as const) {
     const value = record[key];
     if (value === undefined) continue;
     if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
       throw new Error(`${path}: '${key}' must be a non-negative integer`);
     }
     config[key] = value;
+  }
+
+  // A budget of 0 is not "unlimited" here — it is a budget every search
+  // instantly exceeds, so it must be rejected rather than silently poisoning
+  // every absence claim in the run.
+  const searchTimeoutMs = record["searchTimeoutMs"];
+  if (searchTimeoutMs !== undefined) {
+    if (
+      typeof searchTimeoutMs !== "number" ||
+      !Number.isInteger(searchTimeoutMs) ||
+      searchTimeoutMs < 1
+    ) {
+      throw new Error(
+        `${path}: 'searchTimeoutMs' must be a positive integer (milliseconds); there is no value that disables the budget`,
+      );
+    }
+    config.searchTimeoutMs = searchTimeoutMs;
   }
 
   const relaxedControl = record["relaxedControl"];

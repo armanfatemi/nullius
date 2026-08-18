@@ -22,9 +22,10 @@
  *
  * Lines inside fenced code blocks (``` or ~~~) are ignored: a document that
  * QUOTES a citation as an example — a spec, a review log, a how-to — is not
- * asserting it. The opening delimiter is remembered, so a ``` inside a ~~~
- * block is content rather than a fence toggle; getting that wrong silently
- * flips the whole rest of the document into or out of "asserting" mode.
+ * asserting it. The opening fence's delimiter AND length are remembered, per
+ * CommonMark, so neither a ``` inside a ~~~ block nor a ``` inside a ````
+ * block closes it; getting that wrong silently flips the whole rest of the
+ * document into or out of "asserting" mode.
  */
 
 export interface SourceLocation {
@@ -97,11 +98,28 @@ const MOMENT = /^\s*\*\*Binds at:\*\*\s*`?([a-z][a-z-]*)`?\s*$/;
 // A fence opener/closer: three or more backticks or tildes at line start.
 const FENCE = /^\s*(`{3,}|~{3,})/;
 
-/** The delimiter character a fence line uses, or null when it is not a fence. */
-function fenceDelimiter(line: string): "`" | "~" | null {
+interface Fence {
+  delimiter: "`" | "~";
+  /** Run length. CommonMark: a closer must be at least as long as its opener. */
+  length: number;
+}
+
+/** The fence a line opens or closes, or null when it is not a fence line. */
+function fenceAt(line: string): Fence | null {
   const match = FENCE.exec(line);
-  if (match?.[1] === undefined) return null;
-  return match[1].startsWith("`") ? "`" : "~";
+  const run = match?.[1];
+  if (run === undefined) return null;
+  return { delimiter: run.startsWith("`") ? "`" : "~", length: run.length };
+}
+
+/** Whether `line` closes an open fence — same delimiter, and at least as long. */
+function closes(open: Fence, line: string): boolean {
+  const fence = fenceAt(line);
+  return (
+    fence !== null &&
+    fence.delimiter === open.delimiter &&
+    fence.length >= open.length
+  );
 }
 
 /**
@@ -118,18 +136,27 @@ function readEvidenceBlock(
 
   const opener = lines[index];
   if (opener === undefined) return null;
-  const delimiter = fenceDelimiter(opener);
-  if (delimiter === null) return null;
+  const fence = fenceAt(opener);
+  if (fence === null) return null;
 
   const quoted: string[] = [];
   for (let cursor = index + 1; cursor < lines.length; cursor += 1) {
     const line = lines[cursor] ?? "";
-    if (fenceDelimiter(line) === delimiter) {
+    if (closes(fence, line)) {
+      // Blank lines are kept INSIDE the quote (a blank line in the middle of a
+      // quoted function is part of what is being cited, and dropping it made
+      // the remaining lines non-consecutive, which reported FABRICATED against
+      // a correctly copied quote). Blank lines at the edges are trimmed —
+      // those are block padding, not source.
+      while (quoted.length > 0 && (quoted[0] ?? "").trim() === "") quoted.shift();
+      while (quoted.length > 0 && (quoted[quoted.length - 1] ?? "").trim() === "") {
+        quoted.pop();
+      }
       // An empty block cites nothing, so it is not a citation.
       if (quoted.length === 0) return null;
       return { quoted, nextIndex: cursor + 1 };
     }
-    if (line.trim() !== "") quoted.push(line);
+    quoted.push(line);
   }
 
   // Unterminated fence — treat as no block rather than swallowing the document.
@@ -139,21 +166,23 @@ function readEvidenceBlock(
 export function parseClaims(doc: string, content: string): Claim[] {
   const claims: Claim[] = [];
   const lines = content.split("\n");
-  /** The delimiter of the fence we are currently inside, or null. */
-  let openFence: "`" | "~" | null = null;
+  /** The fence we are currently inside, or null. */
+  let openFence: Fence | null = null;
 
   for (let index = 0; index < lines.length; index += 1) {
     const raw = lines[index];
     if (raw === undefined) continue;
 
-    const delimiter = fenceDelimiter(raw);
     if (openFence !== null) {
-      // Only the matching delimiter closes the fence; anything else is content.
-      if (delimiter === openFence) openFence = null;
+      // Only a matching, long-enough delimiter closes the fence; a shorter run
+      // or the other delimiter is content. Getting this wrong flips the rest of
+      // the document into or out of "asserting" mode.
+      if (closes(openFence, raw)) openFence = null;
       continue;
     }
-    if (delimiter !== null) {
-      openFence = delimiter;
+    const fence = fenceAt(raw);
+    if (fence !== null) {
+      openFence = fence;
       continue;
     }
 

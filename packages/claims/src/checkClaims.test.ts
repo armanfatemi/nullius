@@ -458,7 +458,7 @@ describe("checkClaims — absence path safety", () => {
   });
 });
 
-describe("checkClaims — the relaxed control search", () => {
+describe("checkClaims — the reachability control search", () => {
   const claim: Claim = {
     kind: "absence",
     command: "grep -rn legacyRetryHelper services/",
@@ -466,14 +466,14 @@ describe("checkClaims — the relaxed control search", () => {
     source: { doc: "design.md", line: 1 },
   };
 
-  it("downgrades to advisory when even the broadened search finds nothing", () => {
+  it("downgrades to advisory when the search examined no content at all", () => {
     const [result] = checkClaims(
       [claim],
       deps({ runSearch: () => ({ ok: true, count: 0 }) }),
     );
 
     expect(result?.verdict).toBe("advisory");
-    expect(result?.detail).toContain("broadened control search");
+    expect(result?.detail).toContain("examined no content");
   });
 
   it("can be switched off", () => {

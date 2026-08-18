@@ -181,7 +181,7 @@ The claims below are live anchors — CI runs `nullius check` on this file with
 `--require-markers`, so the green badge above attests this README's own
 claims about the code. The default binding-moment vocabulary is defined here:
 
-**Evidence:** `packages/claims/src/checkClaims.ts:11` — `export const DEFAULT_BINDING_MOMENTS = [`
+**Evidence:** `packages/claims/src/checkClaims.ts:15` — `export const DEFAULT_BINDING_MOMENTS = [`
 
 Path traversal is rejected before any file is read:
 

@@ -286,11 +286,85 @@ describe("parseClaims — block form", () => {
       ].join("\n"),
     );
 
+    // Asserting only the length would pass against the old parser too, which
+    // produced a single `malformed` claim here — so assert the shape.
     expect(claims).toHaveLength(1);
+    expect(claims[0]).toMatchObject({
+      kind: "presence",
+      path: "src/app.ts",
+      line: 12,
+      text: "**Evidence:** `other.ts:1` — `not a separate claim`",
+    });
   });
 
   it("still reports a bare marker with no block as malformed", () => {
     const claims = parseClaims("doc.md", "**Evidence:** `src/app.ts:12`\n\nprose");
     expect(claims[0]?.kind).toBe("malformed");
+  });
+});
+
+describe("parseClaims — fence length", () => {
+  it("does not let ``` close a ```` block", () => {
+    // CommonMark: a closer must be at least as long as its opener. The spec and
+    // the plugin skill both use ````markdown blocks containing ``` fences, so
+    // getting this wrong makes the repo fail its own CI on an edit.
+    const claims = parseClaims(
+      "doc.md",
+      [
+        "````markdown",
+        "```",
+        "**Evidence:** `not/a/claim.ts:1` — `example`",
+        "````",
+        "",
+        "**Evidence:** `real/file.ts:2` — `real claim`",
+      ].join("\n"),
+    );
+
+    expect(claims).toHaveLength(1);
+    expect(claims[0]).toMatchObject({ kind: "presence", path: "real/file.ts" });
+  });
+
+  it("closes a ``` block with a longer run", () => {
+    const claims = parseClaims(
+      "doc.md",
+      ["```", "example", "`````", "**Evidence:** `real/file.ts:2` — `real claim`"].join("\n"),
+    );
+
+    expect(claims).toHaveLength(1);
+  });
+});
+
+describe("parseClaims — blank lines in a block quote", () => {
+  it("keeps an interior blank line as part of the quote", () => {
+    // Dropping it made the surviving lines non-consecutive in the source, so a
+    // correctly copy-pasted quote was reported FABRICATED — the most
+    // accusatory verdict the tool has, against an honest author.
+    const claims = parseClaims(
+      "doc.md",
+      [
+        "**Evidence:** `src/app.ts:1`",
+        "```ts",
+        "function a() {",
+        "",
+        "  return 1;",
+        "```",
+      ].join("\n"),
+    );
+
+    expect(claims[0]).toMatchObject({
+      kind: "presence",
+      text: "function a() {",
+      extraLines: ["", "  return 1;"],
+    });
+  });
+
+  it("trims blank padding at the edges of the block", () => {
+    const claims = parseClaims(
+      "doc.md",
+      ["**Evidence:** `src/app.ts:1`", "```", "", "const a = 1;", "", "```"].join("\n"),
+    );
+
+    expect(claims[0]).toMatchObject({ kind: "presence", text: "const a = 1;" });
+    expect((claims[0] as { extraLines?: string[] }).extraLines).toBeUndefined();
   });
 });

@@ -1,4 +1,8 @@
-import { parseSearchCommand, relaxPlan, type SearchPlan } from "./commandSafety";
+import {
+  parseSearchCommand,
+  reachabilityPlan,
+  type SearchPlan,
+} from "./commandSafety";
 import { type Claim } from "./parseClaims";
 import { isSafeRepoPath } from "./pathSafety";
 
@@ -80,8 +84,9 @@ export interface CheckOptions {
    */
   minAnchorChars?: number;
   /**
-   * Whether a zero-result absence search is re-run with a broadened pattern as
-   * a control. Default true. See `relaxPlan`.
+   * Whether a zero-result absence search is re-run with a match-anything
+   * pattern, as a control on whether it examined anything. Default true.
+   * See `reachabilityPlan`.
    */
   relaxedControl?: boolean;
 }
@@ -116,11 +121,20 @@ function citedBlock(claim: Extract<Claim, { kind: "presence" }>): string[] {
  * a stronger assertion than the inline one rather than a longer one.
  */
 function matchesAt(lines: string[], start: number, block: string[]): boolean {
+  if (start < 1) return false;
   for (let offset = 0; offset < block.length; offset += 1) {
     const line = lines[start - 1 + offset];
     const quoted = block[offset];
     if (line === undefined || quoted === undefined) return false;
-    if (!normalize(line).includes(normalize(quoted))) return false;
+    const target = normalize(quoted);
+    // A blank quoted line asserts a blank source line. Without this, `includes`
+    // on the empty string matches anything and a blank line in the quote would
+    // silently accept any source line in its place.
+    if (target.length === 0) {
+      if (normalize(line).length !== 0) return false;
+      continue;
+    }
+    if (!normalize(line).includes(target)) return false;
   }
   return true;
 }
@@ -252,17 +266,18 @@ function checkAbsence(
 
   // A zero-result search proves nothing on its own — a search aimed at the
   // wrong directory returns zero just as convincingly as a true absence. The
-  // relaxed control distinguishes "nothing there" from "not looking there".
+  // control keeps the search's scope and asks only whether it examined any
+  // content at all.
   if (relaxedControl && outcome.count === 0) {
-    const relaxed = relaxPlan(parsed.plan);
-    if (relaxed !== null) {
-      const control = deps.runSearch(relaxed);
-      if (control.ok && control.count === 0) {
-        const pattern = relaxed.segments[0]?.args[relaxed.segments[0].patternIndex ?? 0];
+    const control = reachabilityPlan(parsed.plan);
+    if (control !== null) {
+      const reached = deps.runSearch(control);
+      if (reached.ok && reached.count === 0) {
         return {
           claim,
           verdict: "advisory",
-          detail: `the broadened control search (pattern '${pattern}') also found nothing — this search may be pointed at the wrong path, include filter, or regex dialect rather than at an absence`,
+          detail:
+            "this search examined no content at all — the same command matching any line also returns zero, so the path, include filter, or glob is probably wrong rather than the code being absent",
         };
       }
     }

@@ -149,12 +149,17 @@ visible as such at a glance.
 
 **The checker runs a control search of its own.** A search that finds nothing is
 indistinguishable, from the outside, from a search pointed at nothing — the
-wrong directory, a stale `--include`, a regex dialect the binary does not speak.
-So when an absence claim reports zero matches, the checker re-runs it with the
-pattern cut back to a fragment of its longest identifier. If even the fragment
-finds nothing, the verdict drops to `ADVISORY` with the reason. This catches a
-mistargeted search; it cannot catch a misspelled search term, and it is no
-substitute for stacking searches yourself.
+wrong directory, a stale `--include`, a glob that expanded to no files. So when
+an absence claim reports zero matches, the checker re-runs the same command,
+with the same scope, replacing only the pattern with one that matches any
+non-empty line. If that returns zero too, the search examined no content at all,
+the zero it reported says nothing about the codebase, and the verdict drops to
+`ADVISORY` with the reason.
+
+The control tests **reachability, not plausibility**. It cannot tell you a
+search term was misspelled, and it is no substitute for stacking searches
+yourself — but it fires only when the search genuinely looked at nothing, so an
+advisory means something specific rather than being noise to skim past.
 
 Two authoring constraints follow from how the command is executed:
 
@@ -212,7 +217,7 @@ verified and reported as weak — it did not make the author look at a line.
 It passes, because a weak citation is still better than none, but it is
 visible.
 
-**Evidence:** `packages/claims/src/checkClaims.ts:90` — `const DEFAULT_MIN_ANCHOR_CHARS = 8;`
+**Evidence:** `packages/claims/src/checkClaims.ts:95` — `const DEFAULT_MIN_ANCHOR_CHARS = 8;`
 
 **A `FABRICATED` or `COUNT-MISMATCH` verdict is not just a citation typo.**
 Re-examine the decision that claim was supporting.
@@ -233,19 +238,35 @@ running on a developer's own machine. An anchor is a citation *and* an
 instruction to read a file or run a search, so the gate between the document
 and the operating system is the whole safety story.
 
-- **Path safety.** A presence citation names the file the checker reads.
-  Without a guard, a citation pointing at `/etc/passwd` turns the checker into
-  a file-probe oracle: the verdict leaks whether a path exists and whether a
-  guessed string is in it. Paths are checked **before any filesystem access** —
-  no absolute paths, no `..` traversal, no home expansion — and the **same
-  guard applies to the file operands of an absence search**. Absence and
-  presence are one door, not two.
-- **No shell, ever.** An absence command is tokenised into an argv vector and
-  spawned directly. Nothing reconstructs a string for `/bin/sh`, so quoting
+- **Path safety, in three layers.** A citation names the file the checker
+  reads. Without a guard, a citation pointing at `/etc/passwd` turns the checker
+  into a file-probe oracle: the verdict leaks whether a path exists and whether
+  a guessed string is in it, and the Action posts that verdict into a PR
+  comment. So:
+
+  1. Paths are checked **before any filesystem access** — no absolute paths, no
+     `..` traversal, no home expansion, and nothing inside `.git` (under
+     `actions/checkout` that directory holds the workflow's credentials). The
+     **same guard covers the file operands of an absence search**: absence and
+     presence are one door, not two.
+  2. **Any token that names a location outside the repository is refused
+     wherever it appears** — operand, pattern, or flag value. Which words are
+     operands depends on a per-flag arity table, and one wrong entry there
+     turns a path into an unchecked "flag value"; this layer does not consult
+     the table, so containment does not depend on it being perfect. The cost is
+     that a regex which looks like an absolute path is refused, loudly.
+  3. **Symlinks are resolved before reading or searching.** A string check
+     cannot see that a committed `evil-link -> /etc/passwd` is repo-relative in
+     spelling and out-of-repo in fact. Both the reader and the search operands
+     are re-checked against the resolved path.
+- **No shell, ever.** An absence command is tokenised into a CANONICAL argv
+  vector — short clusters split, inline flag values separated, `--` before the
+  operands — and spawned directly. The argv that runs is exactly the argv that
+  was validated, in one shape rather than four. Nothing reconstructs a string for `/bin/sh`, so quoting
   and metacharacter escaping are not defences this tool has to get right —
   there is no interpreter left to escape from.
 
-  **Evidence:** `packages/claims/src/runners.ts:66` — `shell: false,`
+  **Evidence:** `packages/claims/src/runners.ts:150` — `shell: false,`
 
   One consequence is deliberate:
   **shell globs are not expanded**. `src/*.ts` is passed through literally and
@@ -256,16 +277,24 @@ and the operating system is the whole safety story.
   every searched file — arbitrary code execution behind a command that still
   begins with `rg`. `--hostname-bin` is a second exec flag, `-z` shells out to
   decompressors, `-f` and `--exclude-from` read attacker-named files, `--files`
-  turns the checker into a directory lister, and `-q` makes every absence claim
-  trivially return zero. Every flag must be named in the per-binary allowlist;
-  an unrecognised flag is `UNSAFE`, never passed through.
+  turns the checker into a directory lister, `grep -R` follows symlinks out of
+  the repository during its walk, and `-q` or `-m 0` makes every absence claim
+  return zero regardless of the pattern. Every flag must be named in the
+  per-binary allowlist; an unrecognised flag is `UNSAFE`, never passed through.
+  Variable expansion (`$VAR`) is refused outside single quotes rather than
+  silently searched for as literal text.
 
-  **Evidence:** `packages/claims/src/commandSafety.ts:66` — `["pre", "runs an arbitrary command against every searched file"],`
- Variable expansion
-  (`$VAR`) is refused outside single quotes rather than silently searched for
-  as literal text.
-- **A time budget.** A search is killed after 10s (`searchTimeoutMs`), so a
-  document cannot spend a runner's CPU on a pathological pattern.
+  Denials are **per binary**, because the same letter means different things to
+  the two tools: `rg -L` is `--follow` and `rg -z` is `--search-zip`, but
+  `grep -L` is `--files-without-match` and `grep -z` is `--null-data`. Refusing
+  a harmless grep flag with ripgrep's reason would be the checker asserting
+  something false, which is not a thing this tool gets to do.
+
+  **Evidence:** `packages/claims/src/commandSafety.ts:101` — `["pre", "runs an arbitrary command against every searched file"],`
+- **Two time budgets.** A single search is killed after 10s
+  (`searchTimeoutMs`), and all searches in one run share a 120s budget. The
+  per-search limit bounds one anchor; without the run-wide one a document
+  simply carries more anchors, and a document may carry unlimited anchors.
 
   **Evidence:** `packages/claims/src/runners.ts:15` — `export const DEFAULT_SEARCH_TIMEOUT_MS = 10_000;`
 - **A clean environment.** `RIPGREP_CONFIG_PATH` and `GREP_OPTIONS` are removed

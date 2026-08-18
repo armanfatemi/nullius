@@ -4,7 +4,8 @@
  * end-to-end check proves it is closed.
  */
 
-import { existsSync, mkdtempSync, writeFileSync, chmodSync, mkdirSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdtempSync, writeFileSync, chmodSync, mkdirSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -100,20 +101,89 @@ describe("search timeouts", () => {
     if (!outcome.ok) expect(outcome.error).toMatch(/exceeded|killed/);
   });
 
-  it("cuts off a pathological search well inside the budget", () => {
+  it("kills a search that would otherwise never return", () => {
     const root = sandbox();
-    // Catastrophic backtracking against a large input. Without a timeout this
-    // is a free way to burn a CI runner from a PR-controlled document.
-    writeFileSync(join(root, "src", "big.txt"), `${"a".repeat(60_000)}\n`.repeat(400));
-    const parsed = parseSearchCommand("grep -rnP '(a+)+b$' src/");
+    // A FIFO nobody writes to: grep blocks on the read forever. This is the
+    // kill path specifically, and it is deterministic — unlike a "slow regex",
+    // which grep's PCRE2 optimises away, letting the test pass even with the
+    // timeout removed.
+    execFileSync("mkfifo", [join(root, "src", "blocking.pipe")]);
+    const parsed = parseSearchCommand("grep -n needle src/blocking.pipe");
     expect(parsed.safe).toBe(true);
     if (!parsed.safe) return;
 
     const started = Date.now();
-    const outcome = searchRunner(root, 1500)(parsed.plan);
+    const outcome = searchRunner(root, 700)(parsed.plan);
     const elapsed = Date.now() - started;
 
-    expect(elapsed).toBeLessThan(10_000);
-    if (!outcome.ok) expect(outcome.error).toMatch(/exceeded|killed|exited/);
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) expect(outcome.error).toMatch(/exceeded|killed/);
+    expect(elapsed).toBeLessThan(6_000);
+  });
+
+  it("stops running searches once the run-wide budget is spent", () => {
+    const root = sandbox();
+    execFileSync("mkfifo", [join(root, "src", "blocking.pipe")]);
+    const parsed = parseSearchCommand("grep -n needle src/blocking.pipe");
+    expect(parsed.safe).toBe(true);
+    if (!parsed.safe) return;
+
+    // Per-search timeout alone bounds one anchor; a document can carry
+    // thousands, so the run budget is what bounds the document.
+    const run = searchRunner(root, 300, 500);
+    const started = Date.now();
+    const outcomes = [run(parsed.plan), run(parsed.plan), run(parsed.plan)];
+    const elapsed = Date.now() - started;
+
+    expect(outcomes.every((outcome) => !outcome.ok)).toBe(true);
+    const last = outcomes[2];
+    // Once the run budget is spent, further searches are refused outright
+    // rather than each costing another full per-search timeout.
+    if (last !== undefined && !last.ok) expect(last.error).toMatch(/budget/);
+    expect(elapsed).toBeLessThan(3 * 300);
+  });
+});
+
+describe("symlink containment", () => {
+  it("refuses a search whose operand is a symlink out of the repo", () => {
+    const root = sandbox();
+    writeFileSync("/tmp/nullius-outside-target.txt", "SECRET_TOKEN_ABC\n");
+    symlinkSync("/tmp/nullius-outside-target.txt", join(root, "evil-link"));
+
+    const parsed = parseSearchCommand("grep -c -e SECRET_TOKEN_ABC evil-link");
+    // The path is textually blameless — repo-relative, no traversal — so the
+    // string guard passes it. Only the runner can see the symlink.
+    expect(parsed.safe).toBe(true);
+    if (!parsed.safe) return;
+
+    const outcome = searchRunner(root)(parsed.plan);
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) expect(outcome.error).toMatch(/outside the repository/);
+  });
+
+  it("refuses to READ a symlink out of the repo", () => {
+    const root = sandbox();
+    writeFileSync("/tmp/nullius-outside-target.txt", "SECRET_TOKEN_ABC\n");
+    symlinkSync("/tmp/nullius-outside-target.txt", join(root, "evil-read"));
+
+    // A presence citation needs no search command at all: OK vs FABRICATED is
+    // itself a content oracle over any file the runner can read.
+    const [result] = checkClaims(
+      parseClaims("doc.md", "**Evidence:** `evil-read:1` — `SECRET_TOKEN_ABC`"),
+      { readFileLines: fileLinesReader(root), runSearch: searchRunner(root) },
+    );
+
+    expect(result?.verdict).toBe("missing-file");
+  });
+
+  it("still reads an ordinary file", () => {
+    const root = sandbox();
+    expect(fileLinesReader(root)("src/app.ts")?.[0]).toContain("legacyRetryHelper");
+  });
+
+  it("resolves a symlink that stays inside the repo", () => {
+    const root = sandbox();
+    symlinkSync(join(root, "src", "app.ts"), join(root, "alias.ts"));
+    expect(fileLinesReader(root)("alias.ts")?.[0]).toContain("legacyRetryHelper");
   });
 });

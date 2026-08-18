@@ -322,7 +322,8 @@ function runCheck(args: ParsedArgs): number {
 
   // The floor is per DOCUMENT, not per run: one anchored document must never
   // license every other document in the glob to carry none.
-  if (args.requireMarkers && unanchored.length > 0) {
+  const markerFloorFailed = args.requireMarkers && unanchored.length > 0;
+  if (markerFloorFailed) {
     console.error("");
     console.error(
       `${unanchored.length} document(s) carry no grounding markers — under --require-markers a document with no citations is not a pass.`,
@@ -330,15 +331,20 @@ function runCheck(args: ParsedArgs): number {
     for (const entry of unanchored) {
       console.error(`  ${entry.doc} (${entry.lines} lines)`);
     }
-    console.error(`See ${SPEC_URL}.`);
-    return 1;
   }
 
+  // Both failure modes are reported: a run can breach the marker floor AND
+  // carry unverified claims, and silently dropping one of the two summaries
+  // hides work the author still has to do.
   if (failures > 0) {
+    console.error("");
     console.error(`${failures} unverified claim(s).`);
     console.error(
       'Open the cited file and correct the claim, or move it to "Open questions".',
     );
+  }
+
+  if (markerFloorFailed || failures > 0) {
     console.error(`See ${SPEC_URL}.`);
     return 1;
   }

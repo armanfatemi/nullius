@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { isSafeSearchCommand, parseSearchCommand, relaxPlan } from "./commandSafety";
+import {
+  isSafeSearchCommand,
+  parseSearchCommand,
+  reachabilityPlan,
+} from "./commandSafety";
 
 describe("isSafeSearchCommand", () => {
   it("allows a plain grep", () => {
@@ -126,9 +130,18 @@ describe("isSafeSearchCommand — path operands", () => {
     expect(isSafeSearchCommand(command).safe).toBe(false);
   });
 
-  it("does not mistake the pattern for a path", () => {
-    // `/etc/passwd` here is the regex, not an operand — it is never opened.
-    expect(isSafeSearchCommand("grep -rn /etc/passwd src/")).toEqual({ safe: true });
+  it("refuses an absolute-looking token even in pattern position", () => {
+    // A deliberate trade-off. Whether a word is a pattern or an operand depends
+    // on the per-flag arity table, and one wrong entry there turns a path into
+    // an unchecked "flag value" — that is exactly how `--color /etc/shadow`
+    // escaped. Refusing the token wherever it appears makes containment
+    // independent of the table. Cost: a regex that looks like an absolute path
+    // is refused, loudly and with a fixable message.
+    const verdict = isSafeSearchCommand("grep -rn /etc/passwd src/");
+    expect(verdict.safe).toBe(false);
+    if (!verdict.safe) expect(verdict.reason).toContain("absolute path");
+    // The relative form is the way to write it.
+    expect(isSafeSearchCommand("grep -rn etc/passwd src/")).toEqual({ safe: true });
   });
 
   it("refuses variable expansion outside single quotes", () => {
@@ -146,8 +159,14 @@ describe("parseSearchCommand", () => {
     const result = parseSearchCommand("grep -rn 'two words' src/");
     expect(result.safe).toBe(true);
     if (result.safe) {
+      // Canonical form: clusters split, `--` before the operands.
       expect(result.plan.segments).toEqual([
-        { binary: "grep", args: ["-rn", "two words", "src/"], patternIndex: 1 },
+        {
+          binary: "grep",
+          args: ["-r", "-n", "--", "two words", "src/"],
+          patternIndex: 3,
+          pathIndices: [4],
+        },
       ]);
     }
   });
@@ -163,22 +182,128 @@ describe("parseSearchCommand", () => {
   });
 });
 
-describe("relaxPlan", () => {
-  it("cuts the pattern back to a fragment of its longest identifier", () => {
-    const parsed = parseSearchCommand("rg --count legacyRetryHelper src/");
+describe("reachabilityPlan", () => {
+  it("keeps the scope and substitutes a match-anything pattern", () => {
+    const parsed = parseSearchCommand("grep -rn --include=*.ts legacyRetryHelper src/");
     expect(parsed.safe).toBe(true);
     if (!parsed.safe) return;
 
-    const relaxed = relaxPlan(parsed.plan);
-    expect(relaxed).not.toBeNull();
-    const pattern = relaxed?.segments[0]?.args[1] ?? "";
-    expect("legacyRetryHelper".startsWith(pattern)).toBe(true);
-    expect(pattern.length).toBeLessThan("legacyRetryHelper".length);
+    const control = reachabilityPlan(parsed.plan);
+    expect(control).not.toBeNull();
+    const args = control?.segments[0]?.args ?? [];
+    expect(args).toContain("--include");
+    expect(args).toContain("src/");
+    expect(args).not.toContain("legacyRetryHelper");
+    expect(args[control?.segments[0]?.patternIndex ?? -1]).toBe(".");
   });
 
-  it("declines to relax a pattern too short to cut", () => {
-    const parsed = parseSearchCommand("rg --count ab src/");
+  it("drops flags that would narrow what the control pattern matches", () => {
+    const parsed = parseSearchCommand("grep -rnwF legacyRetryHelper src/");
     expect(parsed.safe).toBe(true);
-    if (parsed.safe) expect(relaxPlan(parsed.plan)).toBeNull();
+    if (!parsed.safe) return;
+
+    const args = reachabilityPlan(parsed.plan)?.segments[0]?.args ?? [];
+    expect(args).not.toContain("-w");
+    expect(args).not.toContain("-F");
+    expect(args).toContain("-r");
+  });
+
+  it("finds the pattern even when the author wrote it inline", () => {
+    // -ePAT used to leave the pattern fused to its flag, which silently
+    // disabled the control and let a forged absence claim pass clean.
+    const parsed = parseSearchCommand("grep -rn -eAWS_SECRET_ACCESS_KEY src/");
+    expect(parsed.safe).toBe(true);
+    if (!parsed.safe) return;
+
+    const control = reachabilityPlan(parsed.plan);
+    expect(control).not.toBeNull();
+    expect(control?.segments[0]?.args).not.toContain("AWS_SECRET_ACCESS_KEY");
+  });
+});
+
+describe("isSafeSearchCommand — optional-value flags", () => {
+  it("refuses a path smuggled past the guard as a --color value", () => {
+    // grep's --color takes an OPTIONAL value, so getopt only accepts it in the
+    // `=` form and grep never consumes the following word. A validator that
+    // thinks --color takes a separate value swallows the next word as a flag
+    // value, and the word never reaches the path guard — while grep reads it
+    // as a file. That restored the full file-probe oracle.
+    const verdict = isSafeSearchCommand('grep -e "^root:" --color /etc/shadow');
+    expect(verdict.safe).toBe(false);
+  });
+
+  it("keeps the inline form working", () => {
+    expect(isSafeSearchCommand("grep -rn --color=never needle src/")).toEqual({
+      safe: true,
+    });
+  });
+
+  it("treats the word after --color as an operand, like grep does", () => {
+    const result = parseSearchCommand("grep -e needle --color src/app.ts");
+    expect(result.safe).toBe(true);
+    if (result.safe) {
+      const segment = result.plan.segments[0];
+      // src/app.ts is a PATH — path-checked — not a value of --color.
+      expect(segment?.pathIndices.length).toBe(1);
+      expect(segment?.args[segment.pathIndices[0] ?? -1]).toBe("src/app.ts");
+    }
+  });
+});
+
+describe("isSafeSearchCommand — per-binary flag meanings", () => {
+  it("allows grep -L, which is --files-without-match", () => {
+    expect(isSafeSearchCommand("grep -rL needle src/")).toEqual({ safe: true });
+  });
+
+  it("still refuses rg -L, which is --follow", () => {
+    const verdict = isSafeSearchCommand("rg -L needle src/");
+    expect(verdict.safe).toBe(false);
+    if (!verdict.safe) expect(verdict.reason).toContain("symlink");
+  });
+
+  it("allows grep -z, which is --null-data", () => {
+    expect(isSafeSearchCommand("grep -rz needle src/")).toEqual({ safe: true });
+  });
+
+  it("still refuses rg -z, which is --search-zip", () => {
+    expect(isSafeSearchCommand("rg -z needle src/").safe).toBe(false);
+  });
+
+  it("refuses grep -R, which follows symlinks out of the repo", () => {
+    const verdict = isSafeSearchCommand("grep -Rn needle .");
+    expect(verdict.safe).toBe(false);
+    if (!verdict.safe) expect(verdict.reason).toContain("symlink");
+    // Plain -r does not follow, and stays allowed.
+    expect(isSafeSearchCommand("grep -rn needle .")).toEqual({ safe: true });
+  });
+});
+
+describe("isSafeSearchCommand — vacuous searches", () => {
+  it.each([
+    ["rg -m 0 needle src/"],
+    ["rg --max-count=0 needle src/"],
+    ["rg --max-depth 0 needle src/"],
+    ["rg --max-filesize 0 needle src/"],
+  ])("refuses %s, which matches nothing regardless of the pattern", (command) => {
+    expect(isSafeSearchCommand(command).safe).toBe(false);
+  });
+
+  it("allows a real limit", () => {
+    expect(isSafeSearchCommand("rg -m 5 needle src/")).toEqual({ safe: true });
+  });
+});
+
+describe("isSafeSearchCommand — .git and null bytes", () => {
+  it("refuses a search of .git, which holds the CI token", () => {
+    // actions/checkout persists an `AUTHORIZATION: basic <token>` header into
+    // .git/config by default. Anchors are unlimited per document, and each one
+    // is a single bit of an extraction oracle.
+    expect(isSafeSearchCommand('grep -c "basic A" .git/config').safe).toBe(false);
+  });
+
+  it("refuses a NUL inside single quotes rather than crashing the runner", () => {
+    // The quote branches copied every character verbatim, so a NUL reached
+    // spawnSync and threw an uncaught TypeError, killing the whole run.
+    expect(isSafeSearchCommand("grep -e 'a\0b' src/").safe).toBe(false);
   });
 });
