@@ -271,7 +271,7 @@ function runCheck(args: ParsedArgs): number {
 
   const excluded = new Set(config.exclude ?? []);
   const docs = [...new Set(globs.flatMap((pattern) => globSync(pattern)))]
-    .filter((path) => !excluded.has(path.split("/").slice(-1)[0] ?? ""))
+    .filter((path) => !excluded.has(path.split(/[\\/]/).slice(-1)[0] ?? ""))
     .sort();
 
   if (docs.length === 0) {
@@ -419,7 +419,17 @@ function runCanary(args: ParsedArgs): number {
       console.error("no active canary — plant one first");
       return 2;
     }
-    const outcome = verifyCanary(readFileSync(reportFile, "utf8"), entry);
+    // A read failure must not exit 1 — that code means CANARY-MISSED.
+    let reportText: string;
+    try {
+      reportText = readFileSync(reportFile, "utf8");
+    } catch (error) {
+      console.error(
+        `could not read ${reportFile}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return 2;
+    }
+    const outcome = verifyCanary(reportText, entry);
     if (outcome === "tainted") {
       console.log(
         "CANARY-TAINTED — the review output references the probe machinery; the probe is invalid, not caught",

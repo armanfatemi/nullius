@@ -61,6 +61,37 @@ function normalize(value: string): string {
   return value.trim().replace(/\s+/g, " ");
 }
 
+/**
+ * One spelling per document path, or the merge guard's equality checks can be
+ * bypassed by planting `./docs/x.md` and checking `docs/x.md`.
+ */
+function normalizeRepoPath(path: string): string {
+  return path
+    .replace(/\\/g, "/")
+    .replace(/^(\.\/)+/, "")
+    .replace(/\/{2,}/g, "/");
+}
+
+/**
+ * Boundary-aware scan for `doc:line` — still a literal search (the character
+ * classes are fixed, nothing is built from registry or report content), but
+ * `docs/x.md:4` must not score a hit inside `docs/x.md:41` or a longer path.
+ */
+function citesLocation(report: string, doc: string, line: number): boolean {
+  const needle = `${doc}:${line}`;
+  let from = 0;
+  for (;;) {
+    const at = report.indexOf(needle, from);
+    if (at === -1) return false;
+    const before = at === 0 ? undefined : report[at - 1];
+    const after = report[at + needle.length];
+    const beforeOk = before === undefined || !/[A-Za-z0-9_./\\-]/.test(before);
+    const afterOk = after === undefined || !/[0-9]/.test(after);
+    if (beforeOk && afterOk) return true;
+    from = at + 1;
+  }
+}
+
 /** Resolves the `.git` directory for a repo root, following worktree gitfiles. */
 function resolveGitDir(root: string): string | null {
   const dotGit = join(root, ".git");
@@ -70,7 +101,8 @@ function resolveGitDir(root: string): string | null {
     const pointer = /^gitdir:\s*(.+)\s*$/m.exec(readFileSync(dotGit, "utf8"));
     if (pointer?.[1] === undefined) return null;
     const target = pointer[1];
-    return target.startsWith("/") ? target : join(root, target);
+    const isAbsolute = target.startsWith("/") || /^[A-Za-z]:[\\/]/.test(target);
+    return isAbsolute ? target : join(root, target);
   } catch {
     return null;
   }
@@ -132,7 +164,7 @@ export function loadActiveCanary(root: string): {
     };
   }
 
-  return { entry };
+  return { entry: { ...entry, doc: normalizeRepoPath(entry.doc) } };
 }
 
 /**
@@ -182,19 +214,42 @@ function harvestFalseClaim(
   return null;
 }
 
-/** First prose line of the document — the claim joins an existing paragraph. */
+/**
+ * First prose line of the document — the claim joins an existing paragraph.
+ * Skips YAML front matter and fenced code: a claim planted where the parser
+ * (and every renderer) treats text as quoted is an invalid probe, not prose.
+ */
 function insertionIndex(lines: string[]): number {
-  const NON_PROSE = /^\s*(#|-|\*|>|\||```|~~~|\*\*[A-Za-z-]+:\*\*|\d+\.)/;
-  for (let index = 0; index < lines.length; index += 1) {
+  const NON_PROSE = /^\s*(#|-|\*|>|\||\*\*[A-Za-z-]+:\*\*|\d+\.)/;
+  const FENCE = /^\s*(```|~~~)/;
+
+  let index = 0;
+  if (lines[0]?.trim() === "---") {
+    for (let closing = 1; closing < lines.length; closing += 1) {
+      if (lines[closing]?.trim() === "---") {
+        index = closing + 1;
+        break;
+      }
+    }
+  }
+
+  let inFence = false;
+  for (; index < lines.length; index += 1) {
     const line = lines[index];
-    if (line === undefined || line.trim().length === 0) continue;
+    if (line === undefined) continue;
+    if (FENCE.test(line)) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) continue;
+    if (line.trim().length === 0) continue;
     if (NON_PROSE.test(line)) continue;
     return index;
   }
   return lines.length - 1;
 }
 
-export function plantCanary(root: string, doc: string): CanaryEntry {
+export function plantCanary(root: string, rawDoc: string): CanaryEntry {
   const gitDir = resolveGitDir(root);
   if (gitDir === null) {
     throw new Error(
@@ -210,6 +265,7 @@ export function plantCanary(root: string, doc: string): CanaryEntry {
     );
   }
 
+  const doc = normalizeRepoPath(rawDoc);
   const docSafety = isSafeRepoPath(doc);
   if (!docSafety.safe) throw new Error(`unsafe document path — ${docSafety.reason}`);
   const docAbs = join(root, doc);
@@ -257,7 +313,7 @@ export function verifyCanary(report: string, entry: CanaryEntry): VerifyOutcome 
   }
 
   const normalized = normalize(report);
-  if (normalized.includes(`${entry.doc}:${entry.line}`)) return "caught";
+  if (citesLocation(normalized, entry.doc, entry.line)) return "caught";
   if (normalized.includes(normalize(entry.text))) return "caught";
 
   return "missed";

@@ -356,6 +356,49 @@ describe("parseClaims — ledger blocks", () => {
     });
   });
 
+  it("allows a blank line between Delivered: and its entries (formatter-normalized)", () => {
+    const claims = parseClaims(
+      "evidence.md",
+      [
+        "**Ledger:** entry-review",
+        "**Expected:** `rule-audit`",
+        "**Delivered:**",
+        "",
+        "- `rule-audit` — None.",
+      ].join("\n"),
+    );
+
+    expect(claims).toHaveLength(1);
+    expect(claims[0]).toMatchObject({
+      kind: "ledger",
+      delivered: [{ name: "rule-audit", outcome: "None." }],
+    });
+  });
+
+  it("opens a new block when a Ledger opener interrupts an incomplete one", () => {
+    const claims = parseClaims(
+      "evidence.md",
+      [
+        "**Ledger:** cycle-a",
+        "**Ledger:** cycle-b",
+        "**Expected:** `x`",
+        "**Delivered:**",
+        "- `x` — None.",
+      ].join("\n"),
+    );
+
+    expect(claims).toHaveLength(2);
+    expect(claims[0]).toMatchObject({
+      kind: "malformed",
+      source: { doc: "evidence.md", line: 1 },
+    });
+    expect(claims[1]).toMatchObject({
+      kind: "ledger",
+      cycle: "cycle-b",
+      delivered: [{ name: "x", outcome: "None." }],
+    });
+  });
+
   it("allows blank lines between the ledger sections", () => {
     const claims = parseClaims(
       "evidence.md",

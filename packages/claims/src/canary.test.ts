@@ -97,6 +97,44 @@ describe("plantCanary", () => {
     expect(() => plantCanary(root, "docs/design.md")).toThrow(/active canary/);
   });
 
+  it("normalizes a ./-prefixed document path so the merge guard cannot be bypassed", () => {
+    const entry = plantCanary(root, "./docs/design.md");
+    expect(entry.doc).toBe("docs/design.md");
+  });
+
+  it("plants below YAML front matter, never inside it", () => {
+    const withFrontMatter = [
+      "---",
+      "title: My design",
+      "status: draft",
+      "---",
+      "",
+      "First real paragraph of prose.",
+      "",
+    ].join("\n");
+    writeFileSync(join(root, "docs", "fm.md"), withFrontMatter);
+
+    const entry = plantCanary(root, "docs/fm.md");
+    expect(entry.line).toBeGreaterThan(4);
+  });
+
+  it("never plants inside a fenced code block", () => {
+    const fencedFirst = [
+      "# Doc",
+      "",
+      "```",
+      "looks like prose but is quoted code",
+      "```",
+      "",
+      "Actual prose comes after the fence.",
+      "",
+    ].join("\n");
+    writeFileSync(join(root, "docs", "fenced.md"), fencedFirst);
+
+    const entry = plantCanary(root, "docs/fenced.md");
+    expect(entry.line).toBeGreaterThan(5);
+  });
+
   it("refuses to run without a .git directory", () => {
     const bare = mkdtempSync(join(tmpdir(), "nullius-nogit-"));
     writeFileSync(join(bare, "design.md"), DOC);
@@ -130,6 +168,19 @@ describe("verifyCanary", () => {
 
   it("reports missed when nothing references the canary", () => {
     expect(verifyCanary("All clear. No issues found.", entry)).toBe("missed");
+  });
+
+  it("does not score a longer line number or a longer path as caught", () => {
+    expect(
+      verifyCanary("unrelated nit at docs/design.md:41 — rename this", entry),
+    ).toBe("missed");
+    expect(
+      verifyCanary("see foo/docs/design.md:4 for the real issue", entry),
+    ).toBe("missed");
+  });
+
+  it("still scores a doc:line citation followed by punctuation as caught", () => {
+    expect(verifyCanary("flagged (docs/design.md:4).", entry)).toBe("caught");
   });
 
   it("reports tainted when probe machinery leaked into the report, even alongside a catch", () => {

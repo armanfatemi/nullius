@@ -182,6 +182,9 @@ export function parseClaims(doc: string, content: string): Claim[] {
 
     if (ledger !== null) {
       if (ledger.at === "entries") {
+        // Blank lines between entries are tolerated — formatters insert one
+        // between **Delivered:** and its list.
+        if (raw.trim().length === 0) continue;
         const entry = LEDGER_ENTRY.exec(raw);
         if (entry?.[1] !== undefined && entry[2] !== undefined) {
           let outcome = entry[2].trim();
@@ -213,6 +216,17 @@ export function parseClaims(doc: string, content: string): Claim[] {
         ledger = null;
       } else if (raw.trim().length === 0) {
         continue; // Blank lines are allowed between the ledger sections.
+      } else if (LEDGER_OPENER.test(raw)) {
+        // A new opener interrupting an incomplete block: fail the old block
+        // loudly and let the new one open — falls through to the opener code.
+        claims.push({
+          kind: "malformed",
+          raw: "**Ledger:**",
+          source: ledger.claim.source,
+          expected:
+            "invalid ledger block — opened but missing its **Expected:** and **Delivered:** sections",
+        });
+        ledger = null;
       } else if (ledger.at === "expected") {
         const expected = LEDGER_EXPECTED.exec(raw);
         const names =
