@@ -89,13 +89,23 @@ export interface DispatchClaim {
   source: SourceLocation;
 }
 
+/**
+ * Synthetic document-level claim carried by the canary merge guard's
+ * `canary-present` result — never produced by the parser.
+ */
+export interface CanaryClaim {
+  kind: "canary";
+  source: SourceLocation;
+}
+
 export type Claim =
   | PresenceClaim
   | AbsenceClaim
   | MomentClaim
   | MalformedClaim
   | LedgerClaim
-  | DispatchClaim;
+  | DispatchClaim
+  | CanaryClaim;
 
 const EVIDENCE_PREFIX = /^\s*\*\*Evidence:\*\*/;
 

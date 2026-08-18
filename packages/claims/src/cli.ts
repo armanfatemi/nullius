@@ -8,6 +8,13 @@ import { join } from "node:path";
 import { globSync } from "glob";
 
 import {
+  canaryGuardResult,
+  clearCanary,
+  loadActiveCanary,
+  plantCanary,
+  verifyCanary,
+} from "./canary";
+import {
   checkClaims,
   isFailure,
   type CheckOptions,
@@ -27,7 +34,8 @@ const DEFAULT_CONFIG_PATH = "nullius.config.json";
 const USAGE = `usage: nullius <command>
 
 commands:
-  check [globs...]    verify every Evidence Anchor in the matched markdown
+  check [globs...]    verify every grounding marker (Evidence Anchors, Binds
+                      at, attestation ledgers) in the matched markdown
                       documents against the working tree. Run from the repo
                       root (citations are repo-relative). Globs come from the
                       command line, or from the "docs" key of
@@ -39,10 +47,20 @@ commands:
                       claude -p "$(nullius eager-prompt design.md)" — and the
                       model proposes anchors that this checker then verifies.
                       The model proposes; the checker disposes.
+  canary plant <doc>  insert a registered, plausibly-false claim (probe state
+                      lives under .git/nullius, outside the working tree)
+  canary verify <report>
+                      scan review output for the planted claim. Exit codes:
+                      0 CANARY-CAUGHT, 1 CANARY-MISSED, 3 CANARY-TAINTED
+                      (probe machinery leaked into the review — probe invalid)
+  canary status       list the active canary; exit 1 when one is planted
+  canary clear        remove the planted claim, restoring the document
 
 check options:
   --config <path>     config file (default: ${DEFAULT_CONFIG_PATH} if present)
   --require-markers   fail when no grounding markers are found at all
+  --probing           suppress the CANARY-PRESENT merge guard (for the one
+                      actor who knows a probe is live)
   --help              show this message
   --version           print the package version
 
@@ -76,10 +94,16 @@ function describe(result: ClaimResult): string {
       return `ledger ${claim.cycle}`;
     case "dispatch":
       return claim.name;
+    case "canary":
+      return "registered canary";
     case "malformed":
       return claim.raw;
   }
 }
+
+// Wide enough for the longest verdict (UNKNOWN-REVIEWER) plus a space.
+const VERDICT_COLUMN = 16;
+const DETAIL_INDENT = " ".repeat(VERDICT_COLUMN + 1);
 
 function report(results: ClaimResult[]): number {
   let failures = 0;
@@ -90,18 +114,18 @@ function report(results: ClaimResult[]): number {
     const what = describe(result);
 
     if (result.verdict === "ok") {
-      console.log(`OK        ${where}  ${what}`);
+      console.log(`${"OK".padEnd(VERDICT_COLUMN)} ${where}  ${what}`);
       continue;
     }
 
-    const line = `${result.verdict.toUpperCase().padEnd(9)} ${where}  ${what}`;
+    const line = `${result.verdict.toUpperCase().padEnd(VERDICT_COLUMN)} ${where}  ${what}`;
     if (isFailure(result.verdict)) {
       failures += 1;
       console.error(line);
-      console.error(`          ! ${result.detail}`);
+      console.error(`${DETAIL_INDENT}! ${result.detail}`);
     } else {
       console.log(line);
-      console.log(`          ~ ${result.detail}`);
+      console.log(`${DETAIL_INDENT}~ ${result.detail}`);
     }
   }
 
@@ -113,6 +137,7 @@ interface ParsedArgs {
   globs: string[];
   configPath: string | undefined;
   requireMarkers: boolean;
+  probing: boolean;
   help: boolean;
   version: boolean;
 }
@@ -123,6 +148,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     globs: [],
     configPath: undefined,
     requireMarkers: false,
+    probing: false,
     help: false,
     version: false,
   };
@@ -136,6 +162,8 @@ function parseArgs(argv: string[]): ParsedArgs {
       parsed.version = true;
     } else if (arg === "--require-markers") {
       parsed.requireMarkers = true;
+    } else if (arg === "--probing") {
+      parsed.probing = true;
     } else if (arg === "--config") {
       index += 1;
       parsed.configPath = argv[index];
@@ -251,14 +279,30 @@ function runCheck(args: ParsedArgs): number {
 
   const deps = { readFileLines: fileLinesReader(), runSearch: searchRunner() };
 
+  // The canary merge guard: registry content is untrusted and read once; the
+  // guard never opens a file — it only inspects documents already matched.
+  const { entry: activeCanary, warning: canaryWarning } = loadActiveCanary(
+    process.cwd(),
+  );
+  if (canaryWarning !== undefined) {
+    console.error(`warning: ${canaryWarning}`);
+  }
+
   let failures = 0;
   let checked = 0;
+  let guardFired = false;
   const unanchored: { doc: string; lines: number }[] = [];
 
   for (const doc of docs) {
     const content = readFileSync(doc, "utf8");
     const lines = content.split("\n").length;
-    const results = checkClaims(parseClaims(doc, content), deps, options);
+    const parsed = checkClaims(parseClaims(doc, content), deps, options);
+    const guard =
+      activeCanary !== null && !args.probing
+        ? canaryGuardResult(doc, content, activeCanary)
+        : null;
+    if (guard !== null) guardFired = true;
+    const results = guard === null ? parsed : [guard, ...parsed];
 
     if (results.length === 0) {
       unanchored.push({ doc, lines });
@@ -268,6 +312,18 @@ function runCheck(args: ParsedArgs): number {
     checked += results.length;
     console.log(`--- ${doc} — ${results.length} anchor(s) / ${lines} lines`);
     failures += report(results);
+  }
+
+  if (activeCanary !== null) {
+    if (!docs.includes(activeCanary.doc)) {
+      console.error(
+        `warning: the registered canary points at a document outside the matched set (${activeCanary.doc}) — not read; run \`canary status\``,
+      );
+    } else if (!guardFired && !args.probing) {
+      console.error(
+        `warning: the registered canary is no longer present in ${activeCanary.doc} — stale registry; delete .git/nullius/canaries.json after restoring the document`,
+      );
+    }
   }
 
   // Anchor density is reported, never judged: the checker cannot know how
@@ -307,6 +363,99 @@ function runCheck(args: ParsedArgs): number {
   return 0;
 }
 
+function runCanary(args: ParsedArgs): number {
+  const sub = args.globs[0];
+  const root = process.cwd();
+
+  if (sub === "plant") {
+    const doc = args.globs[1];
+    if (doc === undefined || args.globs.length > 2) {
+      console.error("usage: nullius canary plant <doc>");
+      return 2;
+    }
+    try {
+      const entry = plantCanary(root, doc);
+      console.log(`planted ${entry.doc}:${entry.line}`);
+      console.log(
+        "registry: .git/nullius/canaries.json (per-clone, never committed)",
+      );
+      console.log(
+        "run your review, then `nullius canary verify <report>`; `check` will fail CANARY-PRESENT until cleared (suppress with --probing)",
+      );
+      return 0;
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      return 1;
+    }
+  }
+
+  if (sub === "verify") {
+    const reportFile = args.globs[1];
+    if (reportFile === undefined || args.globs.length > 2) {
+      console.error("usage: nullius canary verify <report-file>");
+      return 2;
+    }
+    if (!existsSync(reportFile)) {
+      console.error(`no such file: ${reportFile}`);
+      return 2;
+    }
+    const { entry, warning } = loadActiveCanary(root);
+    if (warning !== undefined) console.error(warning);
+    if (entry === null) {
+      console.error("no active canary — plant one first");
+      return 2;
+    }
+    const outcome = verifyCanary(readFileSync(reportFile, "utf8"), entry);
+    if (outcome === "tainted") {
+      console.log(
+        "CANARY-TAINTED — the review output references the probe machinery; the probe is invalid, not caught",
+      );
+      return 3;
+    }
+    if (outcome === "caught") {
+      console.log(`CANARY-CAUGHT — the review flagged ${entry.doc}:${entry.line}`);
+      return 0;
+    }
+    console.log(
+      `CANARY-MISSED — nothing in the review references ${entry.doc}:${entry.line} or the planted claim`,
+    );
+    return 1;
+  }
+
+  if (sub === "status") {
+    const { entry, warning } = loadActiveCanary(root);
+    if (warning !== undefined) console.error(warning);
+    if (entry === null) {
+      console.log("no active canary");
+      return 0;
+    }
+    console.log(
+      `active canary: ${entry.doc}:${entry.line} (planted ${entry.plantedAt})`,
+    );
+    return 1;
+  }
+
+  if (sub === "clear") {
+    const { entry, warning } = loadActiveCanary(root);
+    if (warning !== undefined) console.error(warning);
+    if (entry === null) {
+      console.log("no active canary — nothing to clear");
+      return 0;
+    }
+    try {
+      clearCanary(root, entry);
+      console.log(`cleared ${entry.doc}:${entry.line}`);
+      return 0;
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      return 1;
+    }
+  }
+
+  console.error(`usage: nullius canary <plant|verify|status|clear>\n\n${USAGE}`);
+  return 2;
+}
+
 function main(): number {
   let args: ParsedArgs;
   try {
@@ -332,6 +481,9 @@ function main(): number {
   }
   if (args.command === "check") {
     return runCheck(args);
+  }
+  if (args.command === "canary") {
+    return runCanary(args);
   }
 
   console.error(`unknown command: ${args.command}\n\n${USAGE}`);

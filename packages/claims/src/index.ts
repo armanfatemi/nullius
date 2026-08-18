@@ -1,12 +1,26 @@
 export {
   parseClaims,
   type AbsenceClaim,
+  type CanaryClaim,
   type Claim,
+  type DispatchClaim,
+  type LedgerClaim,
+  type LedgerDelivery,
+  type LedgerExpected,
   type MalformedClaim,
   type MomentClaim,
   type PresenceClaim,
   type SourceLocation,
 } from "./parseClaims";
+export {
+  canaryGuardResult,
+  clearCanary,
+  loadActiveCanary,
+  plantCanary,
+  verifyCanary,
+  type CanaryEntry,
+  type VerifyOutcome,
+} from "./canary";
 export {
   checkClaims,
   isFailure,

@@ -37,16 +37,16 @@
 
 ## 3. Checker — canary
 
-- [ ] 3.1 Registry module under `.git/nullius/` — single active canary,
+- [x] 3.1 Registry module under `.git/nullius/` — single active canary,
       untrusted-content rules (path safety before any use), tests
-- [ ] 3.2 `canary plant`: claim templates + lexical fact harvesting,
+- [x] 3.2 `canary plant`: claim templates + lexical fact harvesting,
       CI-caught moments excluded, diff-is-only-the-claim property, refusal
       when a canary is active, tests
-- [ ] 3.3 `canary verify`: taint-before-caught ordering, literal substring
+- [x] 3.3 `canary verify`: taint-before-caught ordering, literal substring
       matching only, exit codes 0/1/3, tests
-- [ ] 3.4 `canary clear`: byte-exact restore, stale-line refusal, tests
-- [ ] 3.5 `canary status`: listing and exit semantics, tests
-- [ ] 3.6 `CANARY-PRESENT` merge guard: synthetic document-level result
+- [x] 3.4 `canary clear`: byte-exact restore, stale-line refusal, tests
+- [x] 3.5 `canary status`: listing and exit semantics, tests
+- [x] 3.6 `CANARY-PRESENT` merge guard: synthetic document-level result
       through the existing report path, registry consulted before the
       zero-claim skip, `--probing` suppression, warning for registry entries
       outside the matched set, tests
@@ -56,7 +56,7 @@
 - [ ] 4.1 README: "make absence loud" lane
 - [ ] 4.2 `demo`: one sandbox claim per new check verdict (ledger verdicts +
       `CANARY-PRESENT`), output grouped by capability
-- [ ] 4.3 Widen the report's verdict column (`padEnd(9)` already overflows on
+- [x] 4.3 Widen the report's verdict column (`padEnd(9)` already overflows on
       `COUNT-MISMATCH`; the new names are longer)
 - [ ] 4.4 Release notes: strict-mode Action users and the unpinned-latest
       policy; `reviewers` config key rejected by older pinned checkers

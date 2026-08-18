@@ -369,12 +369,14 @@ export function checkClaims(
       case "ledger":
         return checkLedger(claim, deps, options.reviewers);
       case "dispatch":
-        // Produced by ledger expansion, never parsed — reaching here is a bug.
+      case "canary":
+        // Produced by ledger expansion / the merge guard, never parsed —
+        // reaching here is a bug.
         return [
           {
             claim,
             verdict: "malformed",
-            detail: "internal: dispatch claims are produced, not checked",
+            detail: "internal: dispatch and canary claims are produced, not checked",
           },
         ];
       case "malformed":
