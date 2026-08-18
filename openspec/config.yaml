@@ -1,0 +1,24 @@
+schema: spec-driven
+
+context: |
+  nullius — epistemic discipline for agent systems, mechanically enforced.
+  TypeScript monorepo (pnpm workspaces): packages/claims is the deterministic
+  checker (CLI bin: nullius), plugin/ is the Claude Code plugin, action/ is
+  the GitHub Action, spec/ holds the authoring conventions (Evidence Anchors,
+  Binding Moments).
+  Design principles (see README): deterministic over model-judged; verdicts
+  certify form, never entailment; checked documents are untrusted input;
+  closed vocabularies fail loudly; advisory first.
+
+rules:
+  proposal:
+    - Load-bearing claims about the existing codebase carry Evidence Anchors
+      (spec/evidence-anchors.md). Run the local checker on the artifact before
+      presenting it — `node packages/claims/dist/cli.js check <file>` from the
+      repo root — and fix every failing verdict.
+    - A claim you cannot cite goes to an "Open questions" section instead.
+  design:
+    - Load-bearing claims about the existing codebase carry Evidence Anchors
+      (spec/evidence-anchors.md). Run the local checker on the artifact before
+      presenting it — `node packages/claims/dist/cli.js check <file>` from the
+      repo root — and fix every failing verdict.
