@@ -93,12 +93,14 @@ const result = await retry(() => publish(event), {
 ```
 ````
 
-**Quote something that could be wrong.** Matching is substring-based, so a
-one-character quote is trivially true and establishes nothing. A quote shorter
-than `minAnchorChars` (default 8), or one matching several lines of the file,
-verifies as `WEAK-ANCHOR`: the point of the anchor is that re-reading the file
-could contradict it, and a quote that cannot be contradicted has not made
-anyone look.
+**Quote something that could be wrong, and that occurs once.** Matching is
+substring-based, so a one-character quote is trivially true and establishes
+nothing. A quote shorter than `minAnchorChars` (default 8), or one matching
+several lines of the file, verifies as `WEAK-ANCHOR`: the point of the anchor is
+that re-reading the file could contradict it, and a quote that cannot be
+contradicted has not made anyone look. Length alone never fails a claim — but a
+quote matching several lines becomes a hard `UNPINNED` failure once its line
+number is stale too, because at that point neither half identifies anything.
 
 **Paths must be repo-relative.** Absolute paths, `~`, and `..` traversal are
 rejected as `UNSAFE-PATH` and never read — see the security model below.
@@ -218,7 +220,7 @@ verified and reported as weak — it did not make the author look at a line.
 It passes, because a weak citation is still better than none, but it is
 visible.
 
-**Evidence:** `packages/claims/src/checkClaims.ts:95` — `const DEFAULT_MIN_ANCHOR_CHARS = 8;`
+**Evidence:** `packages/claims/src/checkClaims.ts:105` — `const DEFAULT_MIN_ANCHOR_CHARS = 8;`
 
 **A `FABRICATED` or `COUNT-MISMATCH` verdict is not just a citation typo.**
 Re-examine the decision that claim was supporting.
@@ -306,7 +308,7 @@ and the operating system is the whole safety story.
   and metacharacter escaping are not defences this tool has to get right —
   there is no interpreter left to escape from.
 
-  **Evidence:** `packages/claims/src/runners.ts:150` — `shell: false,`
+  **Evidence:** `packages/claims/src/runners.ts:194` — `shell: false,`
 
   One consequence is deliberate:
   **shell globs are not expanded**. `src/*.ts` is passed through literally and

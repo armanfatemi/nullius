@@ -45,7 +45,7 @@ Document under audit: ${docPath}
 
 - Paths are repo-relative. The quoted text must actually appear on that line (use a double-backtick span when the cited text itself contains a backtick).
 - Absence commands: grep/rg pipelines only, with allowlisted flags. There is no shell — the command is spawned as argv, so metacharacters, redirection and variable expansion are refused, and a '*' glob is passed through literally: use --include=/-g instead. Search paths must be repo-relative, like citations. One output line per match — never grep -c.
-- Quote enough of a line to be WRONG if the code changes: a one- or two-character quote verifies as WEAK-ANCHOR and asserts nothing. For a long or multi-line quote, put it in a fenced block under the marker instead of a code span.
+- Quote enough of a line to be WRONG if the code changes. A quote that matches several lines of the file is WEAK-ANCHOR when it sits on the cited line, and a hard UNPINNED failure once that line number is stale — so quote something that occurs once. A short quote is advisory. For a long or multi-line quote, put it in a fenced block under the marker instead of a code span.
 - An absence anchor is weaker than a presence one: its verdict is SEARCH-CLEAN, certifying the search and never the absence. For a load-bearing absence, stack several searches and state the blind spots that remain.
 - Cite source files, never generated output (codegen, lockfiles, build artifacts).
 - A compatibility-risk claim must also name when it binds: **Binds at:** \`<moment>\`, from this project's closed list: ${moments.join(', ')}. A risk that binds at build/compile time is caught by CI and is not a runtime risk — say so instead of anchoring it.
@@ -54,7 +54,7 @@ Document under audit: ${docPath}
 
     npx -y @nullius-inverba/claims check "${docPath}"
 
-and confirm every marker verifies. A FABRICATED or COUNT-MISMATCH verdict on an anchor you proposed means you fabricated — return to step 2 for that claim.
+and confirm every marker verifies. A FABRICATED, UNPINNED or COUNT-MISMATCH verdict on an anchor you proposed means you fabricated or cited something that identifies nothing — return to step 2 for that claim. DRIFT and WRONG-LINE pass: they mean the line number is stale, not that the claim is false.
 
 ## Document
 

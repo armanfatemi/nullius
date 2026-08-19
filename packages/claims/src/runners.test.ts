@@ -4,20 +4,41 @@
  * end-to-end check proves it is closed.
  */
 
-import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, writeFileSync, chmodSync, mkdirSync, symlinkSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import {
+  existsSync,
+  mkdtempSync,
+  writeFileSync,
+  chmodSync,
+  mkdirSync,
+  rmSync,
+  symlinkSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 
 import { checkClaims } from "./checkClaims";
 import { parseSearchCommand } from "./commandSafety";
 import { parseClaims } from "./parseClaims";
 import { fileLinesReader, searchRunner } from "./runners";
 
+/** Whether a blocking FIFO can be created here, for the kill-path tests. */
+function fifoAvailable(): boolean {
+  const probe = spawnSync("mkfifo", ["--version"], { encoding: "utf8", timeout: 5_000 });
+  return !probe.error;
+}
+
+const sandboxes: string[] = [];
+
+afterAll(() => {
+  for (const root of sandboxes) rmSync(root, { recursive: true, force: true });
+});
+
 function sandbox(): string {
   const root = mkdtempSync(join(tmpdir(), "nullius-runner-"));
+  sandboxes.push(root);
   mkdirSync(join(root, "src"), { recursive: true });
   writeFileSync(join(root, "src", "app.ts"), "const legacyRetryHelper = 1;\n");
   return root;
@@ -101,7 +122,7 @@ describe("search timeouts", () => {
     if (!outcome.ok) expect(outcome.error).toMatch(/exceeded|killed/);
   });
 
-  it("kills a search that would otherwise never return", () => {
+  it.skipIf(!fifoAvailable())("kills a search that would otherwise never return", () => {
     const root = sandbox();
     // A FIFO nobody writes to: grep blocks on the read forever. This is the
     // kill path specifically, and it is deterministic — unlike a "slow regex",
@@ -121,7 +142,7 @@ describe("search timeouts", () => {
     expect(elapsed).toBeLessThan(6_000);
   });
 
-  it("stops running searches once the run-wide budget is spent", () => {
+  it.skipIf(!fifoAvailable())("stops running searches once the run-wide budget is spent", () => {
     const root = sandbox();
     execFileSync("mkfifo", [join(root, "src", "blocking.pipe")]);
     const parsed = parseSearchCommand("grep -n needle src/blocking.pipe");
@@ -249,5 +270,39 @@ describe("the .git credential store", () => {
     // The prune must not make every search vacuous — that would hide the hole
     // rather than close it.
     expect(count(repoWithToken(), "grep -rnI -e legacyRetryHelper src/")).toBe(1);
+  });
+});
+
+describe("the reachability control, against real searches", () => {
+  /** Runs one absence claim end to end and returns its verdict. */
+  function verdictFor(root: string, command: string, expected: number): string {
+    const [result] = checkClaims(
+      parseClaims("doc.md", `**Evidence:** \`${command}\` → ${expected} results`),
+      { readFileLines: fileLinesReader(root), runSearch: searchRunner(root) },
+    );
+    return result?.verdict ?? "none";
+  }
+
+  it("stays quiet on a TRUE absence in a directory that really was searched", () => {
+    // The property the control was rewritten for. Its predecessor truncated the
+    // pattern to a fragment, and a fragment of a genuinely absent identifier is
+    // usually absent too — so it fired on correct claims, which trains readers
+    // to skim past ADVISORY.
+    const root = sandbox();
+    expect(verdictFor(root, "grep -rn -e zzNeverAppearsHerezz src/", 0)).toBe("ok");
+  });
+
+  it("fires when the scope examined no content at all", () => {
+    const root = sandbox();
+    // src/ holds only .ts; an include filter for .py reaches nothing, so the
+    // zero says nothing about the codebase.
+    expect(
+      verdictFor(root, "grep -rn --include=*.py -e legacyRetryHelper src/", 0),
+    ).toBe("advisory");
+  });
+
+  it("does not fire when the claim is non-zero", () => {
+    const root = sandbox();
+    expect(verdictFor(root, "grep -rn -e legacyRetryHelper src/", 1)).toBe("ok");
   });
 });
