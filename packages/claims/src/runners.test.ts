@@ -24,6 +24,12 @@ import { parseSearchCommand } from "./commandSafety";
 import { parseClaims } from "./parseClaims";
 import { fileLinesReader, searchRunner } from "./runners";
 
+/** Whether a binary this test needs is present on the machine. */
+function binaryAvailable(binary: string): boolean {
+  const probe = spawnSync(binary, ["--version"], { encoding: "utf8", timeout: 5_000 });
+  return !probe.error && (probe.status ?? 1) === 0;
+}
+
 /** Whether a blocking FIFO can be created here, for the kill-path tests. */
 function fifoAvailable(): boolean {
   const probe = spawnSync("mkfifo", ["--version"], { encoding: "utf8", timeout: 5_000 });
@@ -221,13 +227,19 @@ describe("the .git credential store", () => {
     return root;
   }
 
-  /** Runs an absence search and returns the match count. */
+  /**
+   * Runs an absence search and returns the match count, failing loudly if the
+   * search could not run at all. Collapsing that into a sentinel count made a
+   * missing binary look like a wrong count ("expected -1 to be 0") instead of
+   * saying what actually went wrong.
+   */
   function count(root: string, command: string): number {
     const parsed = parseSearchCommand(command);
     expect(parsed.safe, `refused: ${parsed.safe ? "" : parsed.reason}`).toBe(true);
-    if (!parsed.safe) return -1;
+    if (!parsed.safe) throw new Error("unreachable");
     const outcome = searchRunner(root)(parsed.plan);
-    return outcome.ok ? outcome.count : -1;
+    if (!outcome.ok) throw new Error(`search did not run: ${outcome.error}`);
+    return outcome.count;
   }
 
   // Refusing `.git` as a written operand is not enough: `grep -r` never needs
@@ -238,6 +250,14 @@ describe("the .git credential store", () => {
     ["grep with an ancestor operand", "grep -rnI -e zzTOKEN[V]ALUEzz ."],
     ["grep with no operand at all", "grep -rnI -e zzTOKEN[V]ALUEzz"],
     ["grep restricted to the config basename", "grep -rnI --include=config -e zzTOKEN[V]ALUEzz ."],
+  ])("cannot be reached by %s", (_label, command) => {
+    expect(count(repoWithToken(), command)).toBe(0);
+  });
+
+  // Split from the grep cases so that a machine without ripgrep reports one
+  // clear "ripgrep is missing" failure (see flagConformance) rather than four
+  // more that look like the prune itself broke.
+  it.skipIf(!binaryAvailable("rg")).each([
     ["rg --hidden", "rg --hidden -e zzTOKEN[V]ALUEzz ."],
     ["rg -uuu", "rg -uuu -e zzTOKEN[V]ALUEzz ."],
     ["rg --no-ignore --hidden", "rg --no-ignore --hidden -e zzTOKEN[V]ALUEzz ."],
