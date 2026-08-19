@@ -21,6 +21,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Rev-stamped anchors (`src/app.ts:12@a1b2c3d`) are settled with
+          # `git show`, which needs the commit they name. The default shallow
+          # clone does not have it — those anchors then fail open as the
+          # advisory UNVERIFIABLE-REV, and the permanent gate goes quiet.
+          # Omit this line if your documents carry no stamped anchors.
+          fetch-depth: 0
       - uses: armanfatemi/nullius/action@main
         with:
           globs: "docs/rfcs/**/*.md"
@@ -57,3 +64,9 @@ instead of stacking new ones.
 - Absence citations execute `grep`/`rg` pipelines from the checked-out repo
   root; the checker's sandbox rejects anything else without executing it (see
   the [security model](../spec/evidence-anchors.md#security-model)).
+- **Squash-merge destroys the commits stamped anchors name.** A document merged
+  that way points at an object the default branch no longer has, and its
+  stamped anchors report `UNVERIFIABLE-REV` from then on — advisory, never a
+  failure. Repositories that keep merge commits, or that re-stamp on merge,
+  keep the hard gate; either way the checker never turns an unreachable commit
+  into an accusation.

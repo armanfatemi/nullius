@@ -1,0 +1,7 @@
+{"kind":"dispatch","id":"d1","task":"find consumers of legacy.published"}
+{"kind":"dispatch","id":"d2","task":"find the retry helper"}
+{"kind":"report","id":"r1","dispatch":"d1","outcome":"empty"}
+{"kind":"verification","id":"v1","target":{"path":"src/retry.ts","hash":"9f2c4a1b8e7d"},"verdict":"safe"}
+{"kind":"verification","id":"v2","target":{"path":"src/retry.ts","hash":"0011deadbeef"},"verdict":"safe"}
+{"kind":"reliance","id":"x1","relies_on":"v1"}
+{"kind":"append","id":"a1"}

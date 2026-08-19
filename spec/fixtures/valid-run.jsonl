@@ -1,0 +1,9 @@
+{"kind":"dispatch","id":"d1","task":"find consumers of legacy.published"}
+{"kind":"report","id":"r1","dispatch":"d1","outcome":"empty","statement":"None."}
+{"kind":"dispatch","id":"d2","task":"find the retry helper"}
+{"kind":"report","id":"r2","dispatch":"d2","outcome":"found","findings":["src/retry.ts exports retry()"]}
+{"kind":"dispatch","id":"d3","task":"check the migration script"}
+{"kind":"report","id":"r3","dispatch":"d3","outcome":"no-report","statement":"agent exited before answering; re-dispatched as d4"}
+{"kind":"verification","id":"v1","target":{"path":"src/retry.ts","hash":"9f2c4a1b8e7d"},"verdict":"safe"}
+{"kind":"reliance","id":"x1","relies_on":"v1"}
+{"kind":"append","id":"a1","corrections_since_last_append":"None."}

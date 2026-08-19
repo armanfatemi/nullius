@@ -22,6 +22,14 @@ comes from the project's closed list. A claim that cannot be re-verified fails
 the run with a verdict that says why: `FABRICATED`, `UNPINNED`,
 `MISSING-FILE`, `COUNT-MISMATCH`, `UNKNOWN-MOMENT`, `MALFORMED`.
 
+An anchor may also stamp the commit it was read at —
+`src/app.ts:12@a1b2c3d` — which splits the two propositions a citation makes
+onto two snapshots. "This text was in this file at that commit" is checked
+with `git show` and can never rot, so it stays a hard gate forever; "it is
+still there" is checked against the working tree and is advisory forever
+(`STALE`). A refactor cannot turn an honest document red, and deleting the
+cited code cannot excuse having invented it.
+
 Why this exists: **a false premise that supports a correct conclusion is
 invisible to every reviewer who agrees with the conclusion** — human or LLM.
 The convention forces the file open at authoring time; the checker keeps the
@@ -73,21 +81,63 @@ their length — reported, never judged: the checker cannot know how many
 claims a document ought to make, but a long plan with zero checkable claims
 should be visible, not silently skipped.
 
-Citations quoted inside fenced code blocks are ignored — a document that
-_quotes_ a citation as an example is not asserting it.
+Citations quoted inside fenced code blocks are ignored, as are four-space
+indented ones — a document that _quotes_ a citation as an example is not
+asserting it. A marker written as a list item (`- **Evidence:** …`) is read
+normally.
 
-For a document with **no anchors yet**, `eager-prompt` emits a refute-first
-audit brief you can hand to any agent harness:
+Rev-stamped anchors need the history they name, so a workflow that gates them
+must not check out shallowly:
 
-```sh
-claude -p "$(npx @nullius-inverba/claims eager-prompt design.md)"
+```yaml
+- uses: actions/checkout@v4
+  with:
+    fetch-depth: 0 # `git show <rev>:<path>` needs the commit the anchor names
 ```
 
-The model extracts the load-bearing claims, tries to _refute_ each against
-the code, and proposes anchors for what survives — which this checker then
-verifies like anyone else's. The model proposes; the checker disposes. Its
-anchors are proposals until the author adopts them — an eager pass improves
-recall, never the guarantee.
+A commit the clone does not have is never treated as evidence against the
+author: the verdict fails open as the advisory `UNVERIFIABLE-REV`, with the
+remedy in the message.
+
+## `nullius audit` — is the claim true?
+
+`check` certifies form, never entailment: a real line, quoted accurately, under
+a sentence it does not support, passes. `audit` is the other half.
+
+```sh
+nullius audit design.md                  # the claims, one dispatch each
+nullius audit design.md --emit-brief c1  # the starved brief for one claim
+nullius audit design.md --extract        # pull the UNANCHORED claims out of the prose
+nullius audit design.md --propose        # retrofit: hunt evidence FOR the document
+```
+
+Extraction of anchored claims is deterministic — the same parser `check` uses.
+Each claim is then dispatched to its own agent with **nothing else**: no title,
+no surrounding paragraph, no conclusion, no sibling claims. Claims presented
+together imply a narrative and a model handed a narrative argues for it; the
+starve is also the smallest prompt-injection surface available. The brief works
+refute-first, offers `UNVERIFIABLE-BY-SEARCH` as a real answer, and returns
+refutations **as anchors** — which `check` then re-verifies. No model is ever
+in the verification path.
+
+`--propose` is the older confirmation-shaped mode (formerly `eager-prompt`,
+which still works). It is what retrofitting an unanchored document needs, and
+it is a peer verb rather than the default: a model sent to find support finds
+support.
+
+## `nullius witness` — did the checking happen?
+
+```sh
+nullius witness validate run.jsonl
+```
+
+Validates the journal a multi-agent run leaves behind against three invariants:
+every dispatch reaches one of three terminal states (`found` / explicit
+`empty` / `no-report` — collapsing the last two launders dead agents into
+evidence of absence), no verification is relied on after the artifact it
+verified changed, and no append omits what it corrected. Exit `1` on any
+invalid record. The schema is
+[spec/witness-journal.md](https://github.com/armanfatemi/nullius/blob/main/spec/witness-journal.md).
 
 ## Configuration
 
@@ -178,9 +228,10 @@ const results = checkClaims(claims, { readFileLines, runSearch }, options);
 const failures = results.filter((r) => isFailure(r.verdict));
 ```
 
-`checkClaims` takes injected `readFileLines` / `runSearch` dependencies, so
-you can run it against a virtual filesystem, a git revision, or a test
-fixture.
+`checkClaims` takes injected `readFileLines` / `runSearch` / `readFileAtRev`
+dependencies, so you can run it against a virtual filesystem, a git revision,
+or a test fixture. `validateJournal`, `extractAuditClaims` and
+`buildAuditBrief` are exported the same way.
 
 ## Part of nullius
 

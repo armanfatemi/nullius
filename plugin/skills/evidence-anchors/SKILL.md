@@ -59,6 +59,20 @@ Open the file. Then write:
   once that line number goes stale — at that point neither half of the citation
   identifies anything. A stale line number on its own is not a failure:
   `DRIFT` and `WRONG-LINE` pass, and tell you the citation needs updating.
+- **Stamp the commit you read.** Run `git rev-parse --short HEAD` and put it in
+  the anchor:
+
+  ```markdown
+  **Evidence:** `path/to/file.ext:LINE@a1b2c3d` — `exact text on that line`
+  ```
+
+  This is worth the extra token. Without it, the checker has only the working
+  tree, so it cannot tell a fabrication from code someone deleted afterwards —
+  and your honest document goes red on an unrelated refactor a month from now.
+  With it, the claim is settled against a commit that cannot change: it passes
+  or fails permanently on what you actually saw, and everything the repository
+  does afterwards is the advisory `STALE`. Use a commit hash, never a branch
+  name — `@main` means something different next week, and is refused.
 - For a long quote, or one spanning lines, put it in a fenced block under the
   marker instead — a multi-line block must match consecutively from the cited
   line:
@@ -128,5 +142,22 @@ npx @nullius-inverba/claims check "<glob for your docs>"
 ```
 
 A `FABRICATED` or `COUNT-MISMATCH` verdict is not a citation typo — re-examine
-the decision that claim was supporting. `DRIFT` passes but tells you the line
-number to update. Do not present a document whose check fails.
+the decision that claim was supporting. `DRIFT`, `WRONG-LINE` and `STALE` pass
+but tell you the line number to update. Do not present a document whose check
+fails.
+
+Two formatting notes, so the checker sees what you meant: a marker written as a
+list item (`- **Evidence:** …`) is read normally, but a marker indented four
+spaces under a paragraph is treated as quoted example text and **ignored** —
+the same as one inside a fenced block. Anchor at the left margin, or as a list
+item.
+
+## When the claim needs more than a citation
+
+`check` certifies that the text is where you said it is. It does not certify
+that the line supports the sentence above it — a real, accurately quoted line
+under a claim it does not entail passes. When a claim is load-bearing enough to
+want that second question asked, hand it to `nullius audit <doc>`: each claim
+goes to its own agent, alone, and is told to refute it. That is also the honest
+route for an absence claim grep cannot settle, which comes back as
+`UNVERIFIABLE-BY-SEARCH` rather than as false confidence.

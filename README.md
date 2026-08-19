@@ -72,7 +72,18 @@ UNSAFE        design.md:42  grep -rn 'x' src/ && rm -rf / → 0
 OK            design.md:46  binds at rollout-window
 UNKNOWN-MOMENT design.md:47  binds at partial-composition
               ! 'partial-composition' is not a binding moment; use one of: build-time, rollout-window, inter-service-skew, event-consumption, replay-migration, data-at-rest
+STALE         design.md:52  src/legacy.ts:1@782d707
+              ~ verified at 782d707; that text is no longer in src/legacy.ts — the code moved on, so re-read it before relying on this claim
+FABRICATED    design.md:57  src/legacy.ts:1@782d707
+              ! text does not appear anywhere in src/legacy.ts as of 782d707 — that commit is immutable, so no later edit can explain this
 ```
+
+Those last two are the same file, the same commit, and the same refactor
+since — with opposite verdicts. That is the point of stamping the commit you
+read (`src/app.ts:12@a1b2c3d`): the claim about the **author** is settled
+against an immutable commit and fails forever, while the claim about the
+**repository** is advisory forever. A document cannot be turned red by someone
+else's refactor, and a fabrication cannot be excused by one.
 
 That `UNSAFE` line is the security model working: checked documents are
 untrusted input, so absence searches are parsed into an argv vector and spawned
@@ -99,6 +110,32 @@ it makes the number legible, and `--require-markers` sets the floor at one).
 The [`[false-premise]` reviewer severity](plugin/reviewers/false-premise.md)
 catches bare-prose claims the anchors missed. And [eager mode](#if-you-just-ask-the-agent-to-do-things)
 retrofits documents that were never anchored at all.
+
+## Three verbs
+
+| Verb      | The question it answers      | How                                |
+| --------- | ---------------------------- | ---------------------------------- |
+| `check`   | Did the author look?         | Deterministic — it opens the file  |
+| `audit`   | Is the claim true?           | A model proposes, `check` disposes |
+| `witness` | Did the checking happen?     | Deterministic — a run's own journal, validated |
+
+`check` is the gate and it certifies **form**: the text is at the cited
+location. It deliberately never certifies **entailment** — a real line, quoted
+accurately, under a sentence it does not support, passes. `audit` is that
+second half: each claim is dispatched to its own agent, alone, with no title,
+no surrounding paragraph and no sibling claims, and told to **refute** it.
+Claims presented together imply a narrative and a model handed a narrative
+argues for it; one starved sentence has nothing to be loyal to. Refutations
+come back as anchors, so `check` re-verifies them — no model is ever in the
+verification path. And `witness` validates the journal a multi-agent run leaves
+behind, because a run's own account of itself is exactly as trustworthy as a
+design doc.
+
+```sh
+nullius audit design.md                  # the claims, one dispatch each
+nullius audit design.md --emit-brief c1  # the starved brief for one claim
+nullius witness validate run.jsonl       # did every dispatch actually terminate?
+```
 
 Anchors attach to **anything a human approves**. Pick your workflow — each
 section stands alone.
@@ -168,16 +205,18 @@ Custom binding-moment vocabulary, drift window, and excludes live in
 
 ## If you just ask the agent to do things
 
-**You get:** a retrofit lane — no doc culture required. Point a refute-first
-audit at any existing document; the model hunts evidence in your code, and
-the checker verifies whatever it proposes. The model proposes; the checker
-disposes.
+**You get:** a retrofit lane — no doc culture required. Point `audit --propose`
+at any existing document; the model hunts evidence in your code, and the
+checker verifies whatever it proposes. The model proposes; the checker
+disposes. (`--propose` is the confirmation-shaped mode — it is what
+retrofitting needs, and it is a peer of the refute-first default rather than
+the main road, because a model sent to find support will find it.)
 
 ```sh
-claude -p "$(npx @nullius-inverba/claims eager-prompt design.md)"
+claude -p "$(npx @nullius-inverba/claims audit design.md --propose)"
 ```
 
-or `/anchor <doc>` with the plugin installed. REFUTED claims come back with
+or `/audit <doc>` with the plugin installed. REFUTED claims come back with
 counter-evidence; SUPPORTED claims get proposed anchors — yours to adopt, and
 adopting them is the entailment review; everything else moves to
 "Open questions". Your PR descriptions are already covered by the Action
@@ -199,16 +238,46 @@ And the checker makes no network calls:
 
 **Evidence:** `grep -rn --include='*.ts' 'node:https' packages/claims/src/` → 0 results
 
+## Why not transclusion?
+
+Tools already exist that pull real source into a document — `embedme`, Sphinx
+`literalinclude`, mdBook `{{#include}}`. They keep the snippet in sync
+automatically. Why write the citation by hand?
+
+**Because a transcluded snippet is true by construction, and that is exactly
+why it proves nothing.** The build step guarantees the text matches the file.
+It guarantees nothing about whether anyone read it — a generated snippet
+attests that a build ran. An Evidence Anchor is written by the author and can
+therefore be **wrong**, which is what makes writing one require opening the
+file. Falsifiability is the product.
+
+So the two compose rather than compete: **transclude for documentation, anchor
+for claims.**
+
+| Approach | Drift-proof? | Catches fabrication? | Machine-re-checkable? |
+| --- | --- | --- | --- |
+| Prose claim | — | ❌ | ❌ |
+| Transclusion (`embedme`, `literalinclude`) | ✅ | ❌ — generated text cannot be wrong | ✅ |
+| GitHub permalink | ✅ | ❌ — nobody clicks it | ❌ |
+| Link checker | — | ❌ — existence, not content | ✅ |
+| Doctest | ✅ | ❌ — behaviour, not the claim | ✅ |
+| **Evidence Anchor** | via `@rev` + `STALE` | ✅ | ✅ |
+
+"A falsifiable, machine-re-checkable assertion about code" is the empty cell.
+Which makes the modest description the accurate one, and it is worth saying
+plainly: this is a linter for a citation format. The epistemics are why the
+format is shaped this way; the linter is what you install.
+
 ## What's here
 
 | Piece                                             | What it is                                                                                                           |
 | ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | [Evidence Anchors spec](spec/evidence-anchors.md) | The authoring convention: load-bearing claims about existing code carry a re-verifiable citation                     |
 | [Binding Moments spec](spec/binding-moments.md)   | The companion for compatibility risks: name _when_ the risk binds, from a closed per-project vocabulary              |
-| [`@nullius-inverba/claims`](packages/claims/)     | The deterministic checker — CLI (`check` / `demo` / `eager-prompt`) + library. It opens files; it never asks a model |
+| [`@nullius-inverba/claims`](packages/claims/)     | The CLI (`check` / `audit` / `witness` / `demo`) + library. `check` and `witness` open files and never ask a model |
 | [GitHub Action](action/)                          | Advisory PR comments, `pr-body` mode, a hard gate when you opt in                                                    |
-| [Claude Code plugin](plugin/)                     | Authoring skill, plan-approval hook, `/ground`, `/anchor`, and the `[false-premise]` reviewer block                  |
-| `witness`                                         | Coming next — the retro kit ([why it's not out yet](packages/witness/README.md))                                     |
+| [Claude Code plugin](plugin/)                     | Authoring skill, plan-approval hook, `/ground`, `/audit`, and the `[false-premise]` reviewer block                   |
+| `witness validate`                                | The run-journal validator — three invariants, no model ([the schema](spec/witness-journal.md))                       |
 
 ## Design principles
 
@@ -229,11 +298,14 @@ And the checker makes no network calls:
 
 ## Roadmap
 
-- **`witness`** — the retrospective kit: a bounded PR-evidence harvester plus
-  the "bad witness" retro-agent conventions. Held back until its conventions
-  have more real-world mileage.
+- **`witness harvest`** — the other half of the retro kit: a bounded
+  PR-evidence harvester plus the "bad witness" retro-agent conventions. The
+  journal validator (`witness validate`) ships now; the harvester is held back
+  until its conventions have more real-world mileage.
+- **Stamping help** — `@rev` anchors are written by hand today. A
+  `--stamp` pass that fills in the commit for anchors that verify against the
+  working tree would remove the last piece of clerical work.
 - Open threads: [`init`](https://github.com/armanfatemi/nullius/issues/1),
-  [`check --rev`](https://github.com/armanfatemi/nullius/issues/2),
   [embedded `--eager`](https://github.com/armanfatemi/nullius/issues/6).
 
 ## Names

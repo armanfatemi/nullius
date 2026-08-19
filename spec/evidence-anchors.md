@@ -93,6 +93,38 @@ const result = await retry(() => publish(event), {
 ```
 ````
 
+### Stamp the commit you read: `path:LINE@<rev>`
+
+```markdown
+**Evidence:** `services/orders/handler.ts:88@a1b2c3d` — `const result = await retry(...)`
+```
+
+The suffix is optional and it changes what the checker is allowed to fail you
+for. Without it there is one snapshot — the working tree — and the two things a
+citation asserts are tangled together in it. With it they come apart:
+
+- **"This text was in this file at `a1b2c3d`"** is checked with
+  `git show a1b2c3d:services/orders/handler.ts`. A commit is immutable, so this
+  answer never changes: it is the **hard gate**, and it stays hard forever.
+- **"It is still there"** is checked against the working tree, and can change
+  through nobody's fault. It is **advisory by construction** — verdict `STALE`,
+  which never fails a run no matter how far the code moves.
+
+Get the value with `git rev-parse --short HEAD` when you read the file. Only a
+commit hash is accepted (7-40 hex characters): `@main` means something different
+next week, which is the mutability the stamp exists to escape, and it is
+refused as `MALFORMED` rather than read as part of the filename.
+
+**Squash-merge, rebase and shallow clones destroy the object a stamp names.**
+When the commit cannot be resolved, the checker **fails open**: a failing
+working-tree verdict is reported as the advisory `UNVERIFIABLE-REV` rather than
+as a fabrication, because a commit this clone never had is not evidence about
+the author. The cost is that a shallow checkout cannot settle history at all —
+so a workflow that gates rev-stamped documents should check out with
+`fetch-depth: 0`. There is a forgery surface here too (an author could hunt
+history for a commit where a claim happens to be true), but that is strictly
+more work than opening the file, so the authoring mechanism survives it.
+
 **Quote something that could be wrong, and that occurs once.** Matching is
 substring-based, so a one-character quote is trivially true and establishes
 nothing. A quote shorter than `minAnchorChars` (default 8), or one matching
@@ -149,6 +181,13 @@ a result. `nullius check` counts presence and search anchors separately in its
 summary for this reason: a proposal resting entirely on absence claims should be
 visible as such at a glance.
 
+**`nullius audit` gives the honest answer a verdict cannot.** "Nothing else
+consumes this event" is unanswerable by grep in a DI codebase, and
+`SEARCH-CLEAN` says only that a search was clean. The audit brief therefore
+offers `UNVERIFIABLE-BY-SEARCH` as a first-class verdict — a real answer that
+names what is out of reach, rather than a failure to do the work. See
+[Auditing what the checker cannot certify](#auditing-what-the-checker-cannot-certify).
+
 **The checker runs a control search of its own.** A search that finds nothing is
 indistinguishable, from the outside, from a search pointed at nothing — the
 wrong directory, a stale `--include`, a glob that expanded to no files. So when
@@ -193,8 +232,11 @@ past the anchors.
 | `WEAK-ANCHOR`    | True, but the quote is too short or too repeated to identify the cited line          | ✅      |
 | `DRIFT`          | Text found within the drift window (default ±3 lines) — the file moved under the doc | ✅      |
 | `WRONG-LINE`     | Distinctive text exists in the file, but not near the cited line — stale, not wrong  | ✅      |
+| `STALE`          | Rev-stamped: true at the commit it names, and the working tree has moved since       | ✅      |
+| `UNVERIFIABLE-REV` | Rev-stamped, and that commit is not in this clone — fails open, see below           | ✅      |
 | `UNPINNED`       | The quote is neither distinctive nor on its cited line — it pins nothing down        | ❌      |
-| `FABRICATED`     | Text does not appear in the file at all                                              | ❌      |
+| `FABRICATED`     | Text does not appear in the file at all — or, for a rev-stamped anchor, was not in it at that commit | ❌      |
+| `MISSING-FILE-AT-REV` | The cited file did not exist at the stamped commit                             | ❌      |
 | `MISSING-FILE`   | The cited file does not exist                                                        | ❌      |
 | `COUNT-MISMATCH` | The absence command returned a different count than claimed                          | ❌      |
 | `UNSAFE-PATH`    | The cited path escaped the repo — never read                                         | ❌      |
@@ -254,12 +296,95 @@ The practical consequence for a docs archive: a document written a year ago
 still fails if it invented a line of code, and no longer fails merely because
 the file grew.
 
+**A stamped anchor makes the split exact rather than inferred.** Without a
+`@rev`, the checker is separating the two axes by heuristic — it forgives a
+moved line because the text is distinctive enough to identify real code, and it
+still has to guess between "this was deleted" and "this was never there".
+`FABRICATED` is therefore a judgement about the working tree, and a large enough
+refactor can produce it against an honest document. With `@rev` the axes are
+checked against two different snapshots and the guessing stops: the gate runs on
+an immutable commit where fabrication is a settled fact, and everything about
+the repository since is `STALE` and advisory. Deleting the cited code cannot
+turn a document red; inventing it cannot ever be excused by deleting it later.
+
 **Scope of the guarantee.** Verdicts certify _form_: the text exists at the
 cited location, the count matches, the moment is in the vocabulary. They never
 certify _entailment_ — a real-but-selectively-quoted line passes. The narrow
 problem this spec closes is unsupported factual claims about observable
 artifacts; whether the evidence supports the decision drawn from it belongs to
 the reviewer layer (see Adoption, the `[false-premise]` severity).
+
+## Why not transclusion?
+
+The obvious objection: tools already exist that pull real source into a
+document — `embedme`, Sphinx `literalinclude`, mdBook `{{#include}}`, MDX
+imports. They keep the snippet in sync automatically. Why write a citation by
+hand instead of generating one?
+
+**Because a transcluded snippet is true by construction, and that is exactly
+why it proves nothing.** The build step guarantees the text matches the file.
+It guarantees nothing about whether anyone read it, understood it, or is
+describing it correctly — the snippet attests that a build ran. An Evidence
+Anchor is written by the author, and can therefore be **wrong**. That is the
+whole mechanism: a citation capable of being false is one that had to be
+checked before it was written, which is what makes the authoring step
+load-bearing. Falsifiability is the product.
+
+The two compose rather than compete: **transclude for documentation, anchor for
+claims.** Showing readers what the code looks like is a documentation problem
+and generation solves it well. Asserting a fact about the codebase that a
+decision rests on is an epistemic problem, and generation cannot touch it.
+
+Every adjacent tool fails in a different direction:
+
+| Approach | Drift-proof? | Catches fabrication? | Machine-re-checkable? |
+| --- | --- | --- | --- |
+| Prose claim ("the enum is `@shareable`") | — | ❌ | ❌ |
+| Transclusion (`embedme`, `literalinclude`, `{{#include}}`) | ✅ | ❌ — generated text cannot be wrong | ✅ (regeneration) |
+| GitHub permalink (`blob/<sha>/file#L12`) | ✅ (immutable) | ❌ — nobody clicks it | ❌ |
+| Link checker | — | ❌ — verifies existence, not content | ✅ |
+| Doctest / executable example | ✅ | ❌ — verifies behaviour, not the claim | ✅ |
+| **Evidence Anchor** | via `@rev` + `STALE` | ✅ | ✅ |
+
+"A falsifiable, machine-re-checkable assertion about code" is the empty cell
+those tools leave. Which makes the modest description accurate, and it is worth
+saying plainly: **this is a linter for a citation format.** The epistemics are
+why the format is shaped the way it is; the linter is what you install.
+
+## Auditing what the checker cannot certify
+
+Verdicts certify form, never entailment — a real line, quoted accurately, under
+a sentence it does not support, passes. Closing that gap needs a model, and a
+model in the verification path would undo the reason to trust any of this. So
+`nullius audit` puts one on the other side of the line:
+
+```sh
+nullius audit design.md                  # the claims, one dispatch each
+nullius audit design.md --emit-brief c1  # the starved brief for one claim
+```
+
+Four properties keep the guarantee where it was:
+
+1. **Extraction is deterministic** where it can be — anchored claims come from
+   the same parser `check` uses. A model is needed only to pull claims that
+   carry no anchor, and that job (`--extract`) may not judge what it extracts.
+2. **One claim per dispatch, starved.** Each brief carries one statement and
+   the evidence offered for it: no title, no surrounding paragraph, no
+   conclusion, and no sibling claims. Claims presented together imply a
+   narrative, and a model handed a narrative argues for it. The starve is also
+   the smallest prompt-injection surface available — one sentence is a much
+   smaller target than a PR-controlled document.
+3. **Refute-first.** The default hypothesis is that the claim is false. A model
+   sent to find support finds support: a real line that exists, verifies, and
+   does not entail the claim. That is the failure this whole spec came from.
+4. **Refutations come back as anchors**, in the grammar above, so `check`
+   re-verifies them deterministically. Nothing a model says is taken on trust —
+   the model proposes, the checker disposes.
+
+`audit --propose` is the older confirmation-shaped mode, kept because
+retrofitting a document that has no anchors at all needs it. It is a peer verb
+and not the default, deliberately: institutionalising the confirmation-shaped
+lane as the main road is how the bias gets built in.
 
 ## Security model
 

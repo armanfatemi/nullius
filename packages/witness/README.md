@@ -1,4 +1,4 @@
-# @nullius-inverba/witness — not yet published
+# @nullius-inverba/witness — partly shipped, partly not
 
 The second half of [nullius](https://github.com/armanfatemi/nullius): a
 retrospective kit for agent-driven work, built on one premise —
@@ -7,6 +7,22 @@ retrospective kit for agent-driven work, built on one premise —
 > context where its early mistakes have been compacted away, it is mildly
 > motivated to look competent, and it cannot see its own wrong assumptions —
 > that is what an assumption is.
+
+**The journal validator ships now**, inside the checker CLI rather than here:
+
+```sh
+nullius witness validate run.jsonl
+```
+
+It enforces three invariants on the record a multi-agent run leaves behind —
+every dispatch reaches one of three terminal states (`found` / explicit `empty`
+/ `no-report`), no verification is relied on after the artifact it verified
+changed, and no append omits what it corrected. Deterministic, no model, same
+DNA as `check`. The schema is [spec/witness-journal.md](../../spec/witness-journal.md).
+
+It lives in `@nullius-inverba/claims` because it is the same kind of thing that
+package already is: a deterministic validator with no model in it. This package
+is reserved for the half that still needs conventions to settle.
 
 What it will ship:
 
@@ -25,6 +41,6 @@ What it will ship:
   sensing and actuation apart is what stops an agent laundering its own
   conclusions into its own guardrails.
 
-It is deliberately unreleased while its conventions accumulate more
-real-world mileage. Until then, the design is documented in the
+The harvester and the retro conventions are deliberately unreleased while they
+accumulate more real-world mileage. Until then, the design is documented in the
 [main README](../../README.md#roadmap).
