@@ -35,6 +35,10 @@ export {
 export {
   fileLinesReader,
   searchRunner,
+  containPath,
+  resolveInsideRoot,
   DEFAULT_SEARCH_TIMEOUT_MS,
+  DEFAULT_RUN_BUDGET_MS,
+  type Containment,
 } from "./runners";
 export { parseConfig, type ClaimsConfig } from "./config";

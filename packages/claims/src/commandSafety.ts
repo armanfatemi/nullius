@@ -605,16 +605,27 @@ export function reachabilityPlan(plan: SearchPlan): SearchPlan | null {
   const first = plan.segments[0];
   if (first === undefined || first.patternIndex === null) return null;
 
+  // Everything after `--` is an operand, never a flag. Without this a file
+  // genuinely named `-F` would be dropped as a pattern-semantic flag, taking a
+  // path out of the searched set and shifting every later index.
+  const separator = first.args.indexOf("--");
+  const operandsFrom = separator === -1 ? first.args.length : separator;
+
   const args: string[] = [];
+  /** Old index -> new index, so operand positions survive the rebuild. */
+  const moved = new Map<number, number>();
   let patternIndex: number | null = null;
+
   for (let index = 0; index < first.args.length; index += 1) {
     const arg = first.args[index] as string;
     if (index === first.patternIndex) {
       patternIndex = args.length;
+      moved.set(index, args.length);
       args.push(MATCH_ANY);
       continue;
     }
-    if (PATTERN_SEMANTIC_FLAGS.has(arg)) continue;
+    if (index < operandsFrom && PATTERN_SEMANTIC_FLAGS.has(arg)) continue;
+    moved.set(index, args.length);
     args.push(arg);
   }
   if (patternIndex === null) return null;
@@ -627,12 +638,13 @@ export function reachabilityPlan(plan: SearchPlan): SearchPlan | null {
         binary: first.binary,
         args,
         patternIndex,
-        // Operand positions shift when a semantic flag is dropped, and the
-        // runner re-checks paths, so recompute rather than reuse.
-        pathIndices: first.pathIndices.map(
-          (original) => original - (first.args.length - args.length),
-        ),
+        // Recomputed from the rebuilt argv rather than shifted by a count,
+        // so this stays correct however the rebuild reorders things.
+        pathIndices: first.pathIndices
+          .map((original) => moved.get(original))
+          .filter((index): index is number => index !== undefined),
       },
     ],
   };
 }
+

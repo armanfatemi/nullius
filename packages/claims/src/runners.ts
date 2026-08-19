@@ -9,7 +9,7 @@ import { readFileSync, realpathSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
 
 import { type SearchOutcome } from './checkClaims';
-import { type SearchPlan } from './commandSafety';
+import { type SearchBinary, type SearchPlan } from './commandSafety';
 
 /** Wall-clock budget for a single absence search, in milliseconds. */
 export const DEFAULT_SEARCH_TIMEOUT_MS = 10_000;
@@ -32,8 +32,28 @@ export const DEFAULT_RUN_BUDGET_MS = 120_000;
 const STAGE_MAX_BUFFER = 256 * 1024 * 1024;
 
 /**
+ * Arguments injected into every search to prune `.git` from the recursive walk.
+ *
+ * Refusing `.git` as a written path operand is not enough, and assuming it was
+ * is the same mistake as guarding one lane and not the other: `grep -r` never
+ * needs the directory NAMED to descend into it. `grep -rn AUTHORIZATION .` — or
+ * with no operand at all, since grep defaults to `.` — walks straight into
+ * `.git/config`, where `actions/checkout` leaves an
+ * `AUTHORIZATION: basic <token>` header by default. The count difference
+ * between a matching and non-matching guess is one clean bit, the Action posts
+ * it into a PR comment, and a document may carry unlimited anchors.
+ *
+ * So the prune happens where the walk happens. ripgrep skips `.git` by default
+ * but not under `--hidden`, `--no-ignore` or `-uuu`; an explicit negated glob
+ * beats all of those, and beats a re-including user glob in either order.
+ */
+function gitPruningArgs(binary: SearchBinary): string[] {
+  return binary === 'grep' ? ['--exclude-dir=.git'] : ['--glob', '!.git/'];
+}
+
+/**
  * Resolves a repo-relative path and confirms it stays inside the root after
- * symlinks are followed.
+ * symlinks are followed, and outside `.git`.
  *
  * `isSafeRepoPath` is a string check, and a string check cannot see a symlink:
  * a committed `evil-link -> /etc/passwd` is a textually blameless
@@ -41,18 +61,40 @@ const STAGE_MAX_BUFFER = 256 * 1024 * 1024;
  * straight out of the repository. Returns null when the path escapes or cannot
  * be resolved.
  */
-export function resolveInsideRoot(root: string, path: string): string | null {
+export type Containment =
+  | { contained: true; path: string }
+  | { contained: false; reason: string };
+
+export function containPath(root: string, path: string): Containment {
   const base = realpathSync.native(resolve(root));
   const target = resolve(base, path);
-  let real: string;
+
+  const judge = (candidate: string): Containment => {
+    if (candidate !== base && !candidate.startsWith(base + sep)) {
+      return { contained: false, reason: 'resolves outside the repository (symlink)' };
+    }
+    // A symlink `gitdir -> .git` resolves to a path that IS inside the repo,
+    // so containment alone does not keep the credentials store out of reach.
+    const inner = candidate.slice(base.length);
+    if (inner.split(/[\\/]/).some((segment) => segment === '.git')) {
+      return { contained: false, reason: "resolves into '.git', which holds the CI token" };
+    }
+    return { contained: true, path: candidate };
+  };
+
   try {
-    real = realpathSync.native(target);
+    return judge(realpathSync.native(target));
   } catch {
     // A path that does not exist cannot escape by symlink; let the caller
     // report the ordinary missing-file outcome.
-    return target.startsWith(base + sep) || target === base ? target : null;
+    return judge(target);
   }
-  return real === base || real.startsWith(base + sep) ? real : null;
+}
+
+/** Convenience wrapper: the resolved path, or null when it is not contained. */
+export function resolveInsideRoot(root: string, path: string): string | null {
+  const verdict = containPath(root, path);
+  return verdict.contained ? verdict.path : null;
 }
 
 /**
@@ -113,11 +155,9 @@ export function searchRunner(
       for (const index of segment.pathIndices) {
         const operand = segment.args[index];
         if (operand === undefined) continue;
-        if (resolveInsideRoot(base, operand) === null) {
-          return {
-            ok: false,
-            error: `search path '${operand}' resolves outside the repository (symlink)`,
-          };
+        const verdict = containPath(base, operand);
+        if (!verdict.contained) {
+          return { ok: false, error: `search path '${operand}' ${verdict.reason}` };
         }
       }
       for (const arg of segment.args) {
@@ -146,7 +186,11 @@ export function searchRunner(
         return { ok: false, error: `search exceeded ${timeoutMs}ms` };
       }
 
-      const result = spawnSync(segment.binary, segment.args, {
+      // Pruning is prepended at spawn time rather than during parsing, so the
+      // operand indices the checks above rely on stay meaningful.
+      const args = [...gitPruningArgs(segment.binary), ...segment.args];
+
+      const result = spawnSync(segment.binary, args, {
         shell: false,
         encoding: 'utf8',
         maxBuffer: STAGE_MAX_BUFFER,

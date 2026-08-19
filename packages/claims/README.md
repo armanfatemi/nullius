@@ -139,9 +139,12 @@ exists to prevent.
 Checked documents are treated as **untrusted input** (in CI they are
 PR-controlled content):
 
+- **`.git` is unreachable** — refused as a path, refused through a symlink, and
+  pruned from every recursive walk (`grep -r` needs no operand to descend into
+  it). Under `actions/checkout` it holds an `AUTHORIZATION: basic <token>`
+  header, and each anchor would otherwise be one bit of it.
 - **Cited paths are validated before any filesystem access** — no absolute
-  paths, no `..` traversal, no `~` expansion, nothing inside `.git` (which holds
-  the CI token). The same guard covers the file operands of an absence search,
+  paths, no `..` traversal, no `~` expansion. The same guard covers the file operands of an absence search,
   so neither lane can be used as a file-probe oracle whose verdict lands in a
   public PR comment. A token naming a location outside the repo is refused
   wherever it appears, so containment does not depend on the per-flag arity

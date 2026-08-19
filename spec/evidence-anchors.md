@@ -275,10 +275,9 @@ and the operating system is the whole safety story.
   comment. So:
 
   1. Paths are checked **before any filesystem access** — no absolute paths, no
-     `..` traversal, no home expansion, and nothing inside `.git` (under
-     `actions/checkout` that directory holds the workflow's credentials). The
-     **same guard covers the file operands of an absence search**: absence and
-     presence are one door, not two.
+     `..` traversal, no home expansion, and nothing inside `.git`. The **same
+     guard covers the file operands of an absence search**: absence and presence
+     are one door, not two.
   2. **Any token that names a location outside the repository is refused
      wherever it appears** — operand, pattern, or flag value. Which words are
      operands depends on a per-flag arity table, and one wrong entry there
@@ -287,8 +286,19 @@ and the operating system is the whole safety story.
      that a regex which looks like an absolute path is refused, loudly.
   3. **Symlinks are resolved before reading or searching.** A string check
      cannot see that a committed `evil-link -> /etc/passwd` is repo-relative in
-     spelling and out-of-repo in fact. Both the reader and the search operands
-     are re-checked against the resolved path.
+     spelling and out-of-repo in fact, nor that `gitdir -> .git` stays inside
+     the repo while still reaching the credentials store. Both the reader and
+     the search operands are re-checked against the resolved path.
+  4. **`.git` is pruned from the recursive walk, not merely from the operand.**
+     This is the layer that a text guard cannot provide: `grep -r` never needs
+     the directory named to descend into it, and with no operand at all it
+     defaults to `.`. Under `actions/checkout` — with `persist-credentials` on,
+     the default — `.git/config` carries an `AUTHORIZATION: basic <token>`
+     header, so the count difference between a matching and a non-matching guess
+     is one bit of that token, and the Action posts it into a PR comment. Every
+     search therefore runs with `--exclude-dir=.git` (grep) or a negated
+     `.git` glob (ripgrep, which skips it by default but not under `--hidden`,
+     `--no-ignore` or `-uuu`). The exclusion beats a re-including user glob.
 - **No shell, ever.** An absence command is tokenised into a CANONICAL argv
   vector — short clusters split, inline flag values separated, `--` before the
   operands — and spawned directly. The argv that runs is exactly the argv that

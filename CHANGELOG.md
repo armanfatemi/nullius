@@ -19,8 +19,14 @@ absence lane, and it is **breaking** — see Migration.
   guard now covers both lanes, in three layers: the string check, a refusal of
   any out-of-repo token wherever it appears (so containment does not depend on
   the arity table), and symlink resolution before anything is read or searched.
-- **`.git` is off limits.** Under `actions/checkout` it holds an
-  `AUTHORIZATION: basic <token>` header, and anchors are unlimited per document.
+- **`.git` is off limits, at the walk and not just the operand.** Under
+  `actions/checkout` it holds an `AUTHORIZATION: basic <token>` header, and
+  anchors are unlimited per document, so each one is a bit. Refusing the written
+  path was not enough: `grep -r` never needs the directory named to descend into
+  it, and defaults to `.` with no operand at all. Searches now run with
+  `--exclude-dir=.git` (grep) or a negated `.git` glob (ripgrep, which skips it
+  by default but not under `--hidden`/`--no-ignore`/`-uuu`), and a symlink
+  resolving into `.git` is refused.
 - **Budgets.** 10s per search, 120s per run, and `RIPGREP_CONFIG_PATH` /
   `GREP_OPTIONS` are stripped from the child environment.
 - Flags that make a search vacuous regardless of the pattern (`-q`, `-m 0`,

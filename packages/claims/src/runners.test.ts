@@ -187,3 +187,67 @@ describe("symlink containment", () => {
     expect(fileLinesReader(root)("alias.ts")?.[0]).toContain("legacyRetryHelper");
   });
 });
+
+describe("the .git credential store", () => {
+  /** A fixture with a persisted actions/checkout credential, as CI produces. */
+  function repoWithToken(): string {
+    const root = sandbox();
+    mkdirSync(join(root, ".git"), { recursive: true });
+    writeFileSync(
+      join(root, ".git", "config"),
+      '[http "https://github.com/"]\n  extraheader = AUTHORIZATION: basic zzTOKENVALUEzz\n',
+    );
+    return root;
+  }
+
+  /** Runs an absence search and returns the match count. */
+  function count(root: string, command: string): number {
+    const parsed = parseSearchCommand(command);
+    expect(parsed.safe, `refused: ${parsed.safe ? "" : parsed.reason}`).toBe(true);
+    if (!parsed.safe) return -1;
+    const outcome = searchRunner(root)(parsed.plan);
+    return outcome.ok ? outcome.count : -1;
+  }
+
+  // Refusing `.git` as a written operand is not enough: `grep -r` never needs
+  // the directory NAMED to descend into it. Each of these returned a nonzero
+  // count before the walk itself was pruned, and the count difference between a
+  // matching and non-matching guess is one bit of the token, posted to a PR.
+  it.each([
+    ["grep with an ancestor operand", "grep -rnI -e zzTOKEN[V]ALUEzz ."],
+    ["grep with no operand at all", "grep -rnI -e zzTOKEN[V]ALUEzz"],
+    ["grep restricted to the config basename", "grep -rnI --include=config -e zzTOKEN[V]ALUEzz ."],
+    ["rg --hidden", "rg --hidden -e zzTOKEN[V]ALUEzz ."],
+    ["rg -uuu", "rg -uuu -e zzTOKEN[V]ALUEzz ."],
+    ["rg --no-ignore --hidden", "rg --no-ignore --hidden -e zzTOKEN[V]ALUEzz ."],
+    ["rg with a glob re-including .git", "rg -uuu --glob '.git/**' -e zzTOKEN[V]ALUEzz ."],
+  ])("cannot be reached by %s", (_label, command) => {
+    expect(count(repoWithToken(), command)).toBe(0);
+  });
+
+  it("refuses a symlink pointing at .git", () => {
+    // `gitdir -> .git` resolves to a path that IS inside the repo, so
+    // containment alone does not keep the credentials store out of reach.
+    const root = repoWithToken();
+    symlinkSync(join(root, ".git"), join(root, "gitdir"));
+
+    const parsed = parseSearchCommand("grep -rnI -e zzTOKEN[V]ALUEzz gitdir/");
+    expect(parsed.safe).toBe(true);
+    if (!parsed.safe) return;
+
+    const outcome = searchRunner(root)(parsed.plan);
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) expect(outcome.error).toContain(".git");
+  });
+
+  it("refuses to READ a file inside .git", () => {
+    const root = repoWithToken();
+    expect(fileLinesReader(root)(".git/config")).toBeNull();
+  });
+
+  it("still searches ordinary repository content", () => {
+    // The prune must not make every search vacuous — that would hide the hole
+    // rather than close it.
+    expect(count(repoWithToken(), "grep -rnI -e legacyRetryHelper src/")).toBe(1);
+  });
+});
