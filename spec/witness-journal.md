@@ -126,6 +126,21 @@ made invalid, and the only way to say nothing is to say it.
 | `DUPLICATE-ID` | Two records claiming one id — references become ambiguous | ❌ |
 | `MALFORMED` | Not JSON, unknown kind, or a required field missing | ❌ |
 
+## Fixtures
+
+Two journals live next to this spec: [`fixtures/valid-run.jsonl`](./fixtures/valid-run.jsonl),
+which exercises all three terminal states and passes, and
+[`fixtures/broken-run.jsonl`](./fixtures/broken-run.jsonl), which breaks each
+invariant once.
+
+```sh
+nullius witness validate spec/fixtures/valid-run.jsonl   # exit 0
+nullius witness validate spec/fixtures/broken-run.jsonl  # exit 1, four findings
+```
+
+Worth wiring into CI alongside the document check — a validator that stops
+catching these is one nobody would notice going quiet.
+
 ## Scope
 
 The validator checks that a journal's own account of itself holds up. It cannot
