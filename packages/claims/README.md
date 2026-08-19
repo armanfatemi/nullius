@@ -19,7 +19,7 @@ opens the cited file and matches the quoted text (tolerating small line
 drift), re-runs the absence search and compares counts, and validates that
 every named [binding moment](https://github.com/armanfatemi/nullius/blob/main/spec/binding-moments.md)
 comes from the project's closed list. A claim that cannot be re-verified fails
-the run with a verdict that says why: `FABRICATED`, `WRONG-LINE`,
+the run with a verdict that says why: `FABRICATED`, `UNPINNED`,
 `MISSING-FILE`, `COUNT-MISMATCH`, `UNKNOWN-MOMENT`, `MALFORMED`.
 
 Why this exists: **a false premise that supports a correct conclusion is

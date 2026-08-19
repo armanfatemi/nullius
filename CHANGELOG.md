@@ -29,6 +29,18 @@ absence lane, and it is **breaking** — see Migration.
 
 ### Verdicts
 
+- **The line number is now a hint, not an assertion.** `WRONG-LINE` and `DRIFT`
+  pass, reporting the delta. A citation asserts two things on two axes: "this
+  text is in this file" is a claim about the author that can be fabricated and
+  can never later become false, while "it is on line N" is a claim about the
+  repository that goes stale whenever someone inserts a line above it.
+  Hard-failing the second turns a correct document red on an unrelated
+  refactor, which is what gets `continue-on-error` added to a workflow.
+  `FABRICATED` still fails permanently.
+- New failing verdict `UNPINNED`, the guard on that relaxation: a quote that is
+  neither distinctive (`minAnchorChars`) nor on its cited line pins nothing
+  down. A weak quote that IS on its cited line stays the passing
+  `WEAK-ANCHOR`.
 - `--require-markers` is now a **per-document** floor. Previously one anchored
   document licensed every unanchored document in the glob.
 - New passing verdict `WEAK-ANCHOR`: the quote is true but too short
@@ -50,6 +62,9 @@ absence lane, and it is **breaking** — see Migration.
 
 ### Migration
 
+- **`WRONG-LINE` no longer fails**, and a new `UNPINNED` verdict does. Documents
+  that were red only from line drift go green; a doc whose anchors are both
+  vague and mislocated goes red.
 - **Shell globs are no longer expanded.** `grep -rn x src/*.ts` now reports a
   missing file instead of silently matching. Use `-r` with `--include=`/`-g`.
 - **`exclude` is a glob against the full repo-relative path**, not a basename.

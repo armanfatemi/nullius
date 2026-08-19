@@ -141,7 +141,7 @@ describe("checkClaims — presence", () => {
 
   it("does not crash when the cited line is past the end of the file", () => {
     const [result] = checkClaims(
-      [presence("schema.graphqls", 9999, "PENDING")],
+      [presence("schema.graphqls", 9999, "enum ProcessorTaskStatus {")],
       deps(),
     );
 
@@ -319,7 +319,7 @@ describe("isFailure", () => {
 
   it("treats every unverified verdict as failing", () => {
     for (const verdict of [
-      "wrong-line",
+      "unpinned",
       "fabricated",
       "missing-file",
       "count-mismatch",
@@ -484,5 +484,63 @@ describe("checkClaims — the reachability control search", () => {
     );
 
     expect(result?.verdict).toBe("ok");
+  });
+});
+
+describe("checkClaims — the two axes of a citation", () => {
+  // "This text is in this file" is a claim about the AUTHOR: it can be
+  // fabricated, and once true no one else's edit can make it false.
+  // "It is on line N" is a claim about the REPOSITORY, and goes stale whenever
+  // someone inserts a line above it. The first is a hard gate forever; the
+  // second is advisory — otherwise an honest document turns red on an unrelated
+  // refactor, which is what teaches a team to add continue-on-error.
+  const distinctive = "enum ProcessorTaskStatus {";
+
+  it("passes a distinctive quote whose line has moved far", () => {
+    // Text is on line 4; cited at 9, well outside the drift window.
+    const [result] = checkClaims([presence("schema.graphqls", 9, distinctive)], deps());
+
+    expect(result?.verdict).toBe("wrong-line");
+    expect(isFailure(result?.verdict ?? "ok")).toBe(false);
+    expect(result?.detail).toContain("stale rather than wrong");
+  });
+
+  it("still fails a quote that is nowhere in the file", () => {
+    const [result] = checkClaims(
+      [presence("schema.graphqls", 4, "enum ProcessorTaskStatus { INVENTED }")],
+      deps(),
+    );
+
+    expect(result?.verdict).toBe("fabricated");
+    expect(isFailure("fabricated")).toBe(true);
+  });
+
+  it("fails a weak quote that is not on its cited line", () => {
+    // The coupling condition: forgiving the line number is only safe while the
+    // TEXT carries information. "PENDING" is under minAnchorChars, so once its
+    // line number is wrong there is nothing left that re-reading could refute.
+    const [result] = checkClaims([presence("schema.graphqls", 1, "PENDING")], deps());
+
+    expect(result?.verdict).toBe("unpinned");
+    expect(isFailure("unpinned")).toBe(true);
+    expect(result?.detail).toContain("pins nothing down");
+  });
+
+  it("tolerates a weak quote that IS on its cited line", () => {
+    // Here the line number is doing the pinning, so the citation still points
+    // somewhere definite — advisory, not a failure.
+    const [result] = checkClaims([presence("schema.graphqls", 5, "PENDING")], deps());
+
+    expect(result?.verdict).toBe("weak-anchor");
+    expect(isFailure("weak-anchor")).toBe(false);
+  });
+
+  it("fails a non-distinctive quote that is not on its cited line", () => {
+    const [result] = checkClaims(
+      [presence("schema.graphqls", 1, "}")],
+      deps(),
+    );
+
+    expect(result?.verdict).toBe("unpinned");
   });
 });

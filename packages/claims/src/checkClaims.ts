@@ -33,8 +33,18 @@ export type Verdict =
   | "weak-anchor"
   /** Text found within a few lines of the cited one — the file moved under the doc. */
   | "drift"
-  /** Text exists in the file, but nowhere near the cited line. */
+  /**
+   * Text exists in the file, but nowhere near the cited line. Passing: the
+   * quote is distinctive enough to identify real code on its own, and a line
+   * number that has moved is a fact about the repository, not about the author.
+   */
   | "wrong-line"
+  /**
+   * The quote is BOTH non-distinctive and not where it was cited. Failing:
+   * neither half of the citation pins anything down, so there is nothing left
+   * that re-reading the file could contradict.
+   */
+  | "unpinned"
   /** Text does not appear in the file at all. */
   | "fabricated"
   | "missing-file"
@@ -94,11 +104,30 @@ export interface CheckOptions {
 const DEFAULT_DRIFT_WINDOW = 3;
 const DEFAULT_MIN_ANCHOR_CHARS = 8;
 
+/**
+ * Passing verdicts.
+ *
+ * `drift` and `wrong-line` are here because a citation asserts two different
+ * things on two different axes. "This text is in this file" is a claim about
+ * the author: it can be fabricated, and once true it can never become false by
+ * anyone else's edit. "It is on line N" is a claim about the repository, and it
+ * goes stale every time someone inserts a line above it. Hard-failing the
+ * second axis means a correct, honestly-written document turns red on an
+ * unrelated refactor — which is what teaches a team to add `continue-on-error`
+ * and stop reading the output.
+ *
+ * So fabrication stays a hard gate forever and position is advisory — but only
+ * while the text half carries real information. A quote too short or too
+ * repeated to identify a line is `unpinned` when it is not where it was cited,
+ * and that fails: forgiving the line number for a quote that pins nothing is
+ * how an anchor gets to assert nothing at all and still show green.
+ */
 const PASSING: ReadonlySet<Verdict> = new Set<Verdict>([
   "ok",
   "advisory",
   "weak-anchor",
   "drift",
+  "wrong-line",
 ]);
 
 export function isFailure(verdict: Verdict): boolean {
@@ -182,35 +211,43 @@ function checkPresence(
   }
 
   const block = citedBlock(claim);
+  const quote = block.map(normalize).join(" ").trim();
+  const matches = countMatches(lines, block);
+
+  // "Distinctive" means the text alone identifies one place in the file. It is
+  // what licenses treating the line number as a hint rather than an assertion.
+  const tooShort = quote.length < minAnchorChars;
+  const tooCommon = matches > 1;
+  const weak = tooShort || tooCommon;
+  const weakDetail = tooShort
+    ? `quote is ${quote.length} character(s) — too short to pin down a line`
+    : `quote matches ${matches} lines in ${claim.path} — it does not identify one`;
+
   if (matchesAt(lines, claim.line, block)) {
-    // The citation is true. Whether it is worth anything is a separate
-    // question: matching is substring-based, so a one-character quote is
-    // trivially verifiable and asserts nothing about the code. An anchor that
-    // does not single out a line has not made the author look at one.
-    const quote = block.map(normalize).join(" ").trim();
-    if (quote.length < minAnchorChars) {
+    if (weak) {
       return {
         claim,
         verdict: "weak-anchor",
-        detail: `quote is ${quote.length} character(s) — too short to pin down a line; quote enough of ${claim.path} to be wrong if the code changes`,
-      };
-    }
-    const matches = countMatches(lines, block);
-    if (matches > 1) {
-      return {
-        claim,
-        verdict: "weak-anchor",
-        detail: `quote matches ${matches} lines in ${claim.path} — it does not identify line ${claim.line}; quote something distinctive`,
+        detail: `${weakDetail}; quote enough of ${claim.path} to be wrong if the code changes`,
       };
     }
     return { claim, verdict: "ok", detail: "" };
   }
+
+  // Everything below here means the text is NOT at the cited line. A weak quote
+  // has nothing left to stand on once its line number is gone.
+  const unpinned = (found: number): ClaimResult => ({
+    claim,
+    verdict: "unpinned",
+    detail: `${weakDetail}, and it is not on line ${claim.line} (nearest match: line ${found}) — this citation pins nothing down`,
+  });
 
   // Near miss — the file gained or lost a few lines since the doc was written.
   const lower = Math.max(1, claim.line - driftWindow);
   const upper = Math.min(lines.length, claim.line + driftWindow);
   for (let candidate = lower; candidate <= upper; candidate += 1) {
     if (matchesAt(lines, candidate, block)) {
+      if (weak) return unpinned(candidate);
       return {
         claim,
         verdict: "drift",
@@ -221,10 +258,11 @@ function checkPresence(
 
   const elsewhere = findBlock(lines, block);
   if (elsewhere !== null) {
+    if (weak) return unpinned(elsewhere);
     return {
       claim,
       verdict: "wrong-line",
-      detail: `text appears on line ${elsewhere}, not ${claim.line}`,
+      detail: `text is on line ${elsewhere}, not ${claim.line} — the quote still identifies real code, so this is stale rather than wrong; update the citation`,
     };
   }
 

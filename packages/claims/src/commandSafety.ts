@@ -60,7 +60,7 @@ export type ParseResult =
   | { safe: true; plan: SearchPlan }
   | { safe: false; reason: string };
 
-type Arity = "none" | "value";
+export type Arity = "none" | "value";
 
 /**
  * Flags that must NEVER be allowlisted, with the reason, so that a later
@@ -170,9 +170,31 @@ const RG_LONG: ReadonlyMap<string, Arity> = new Map([
   ["type", "value"], ["type-not", "value"], ["max-count", "value"],
   ["after-context", "value"], ["before-context", "value"], ["context", "value"],
   ["max-depth", "value"], ["maxdepth", "value"], ["max-filesize", "value"],
-  ["sort", "value"], ["sortr", "value"], ["color", "none"],
+  // Unlike grep's, ripgrep's --color takes a REQUIRED value.
+  ["sort", "value"], ["sortr", "value"], ["color", "value"],
   ["colors", "value"], ["encoding", "value"], ["engine", "value"],
 ]);
+
+/**
+ * The declared arity tables, exposed so a conformance test can check them
+ * against the binaries actually installed. A single wrong cell here is a
+ * security defect, not a usability one: `--color` was declared as taking a
+ * separate value, which made the validator swallow the following operand past
+ * the path guard while grep read it as a file. A hand-maintained model of
+ * another program's getopt behaviour needs a machine checking it.
+ */
+export const FLAG_ARITY_TABLES: Readonly<
+  Record<SearchBinary, { short: ReadonlyMap<string, Arity>; long: ReadonlyMap<string, Arity> }>
+> = {
+  grep: { short: GREP_SHORT, long: GREP_LONG },
+  rg: { short: RG_SHORT, long: RG_LONG },
+};
+
+/** Denied flags per binary, exposed for the same reason. */
+export const DENIED_FLAG_TABLES: Readonly<Record<SearchBinary, ReadonlyMap<string, string>>> = {
+  grep: DENIED_GREP,
+  rg: DENIED_RG,
+};
 
 /** Flags that supply the pattern, so that every positional becomes a path. */
 const PATTERN_FLAGS = new Set(["e", "regexp"]);

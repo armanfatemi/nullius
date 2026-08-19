@@ -55,15 +55,20 @@ verdict class:
 ```
 FABRICATED    design.md:15  src/app.ts:2
               ! text does not appear anywhere in src/app.ts
-COUNT-MISMATCH design.md:28  grep -rn 'retry' src/ → 0
+UNPINNED      design.md:30  src/app.ts:5
+              ! quote is 1 character(s) — too short to pin down a line, and it is
+                not on line 5 (nearest match: line 1)
+COUNT-MISMATCH design.md:38  grep -rn 'retry' src/ → 0
               ! claimed 0, actual 1
-UNSAFE        design.md:32  grep -rn 'x' src/ && rm -rf / → 0
+UNSAFE        design.md:42  grep -rn 'x' src/ && rm -rf / → 0
               ! not executed — contains forbidden character '&'
-UNKNOWN-MOMENT design.md:37  binds at partial-composition
+UNKNOWN-MOMENT design.md:47  binds at partial-composition
               ! 'partial-composition' is not a binding moment; use one of: build-time, rollout-window, …
 WEAK-ANCHOR   design.md:20  src/app.ts:1
               ~ quote is 1 character(s) — too short to pin down a line
-SEARCH-CLEAN  design.md:24  grep -rn 'MAX_RETRIES' src/ → 1
+WRONG-LINE    design.md:25  src/app.ts:5
+              ~ text is on line 1, not 5 — stale rather than wrong; update the citation
+SEARCH-CLEAN  design.md:34  grep -rn 'MAX_RETRIES' src/ → 1
 ```
 
 That `UNSAFE` line is the security model working: checked documents are

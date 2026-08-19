@@ -190,7 +190,8 @@ past the anchors.
 | `ADVISORY`       | Verified, but worth a human glance (see detail)                                      | ✅      |
 | `WEAK-ANCHOR`    | True, but the quote is too short or too repeated to identify the cited line          | ✅      |
 | `DRIFT`          | Text found within the drift window (default ±3 lines) — the file moved under the doc | ✅      |
-| `WRONG-LINE`     | Text exists in the file, but nowhere near the cited line                             | ❌      |
+| `WRONG-LINE`     | Distinctive text exists in the file, but not near the cited line — stale, not wrong  | ✅      |
+| `UNPINNED`       | The quote is neither distinctive nor on its cited line — it pins nothing down        | ❌      |
 | `FABRICATED`     | Text does not appear in the file at all                                              | ❌      |
 | `MISSING-FILE`   | The cited file does not exist                                                        | ❌      |
 | `COUNT-MISMATCH` | The absence command returned a different count than claimed                          | ❌      |
@@ -221,6 +222,35 @@ visible.
 
 **A `FABRICATED` or `COUNT-MISMATCH` verdict is not just a citation typo.**
 Re-examine the decision that claim was supporting.
+
+### Two axes, and only one of them can rot
+
+A presence citation asserts two different things, and they age differently.
+
+- **"This text is in this file"** is a claim about the **author**. It can be
+  fabricated, and once it is true, no one else's edit can make it false. This is
+  the axis the convention exists to police, and it is a hard gate forever.
+- **"It is on line N"** is a claim about the **repository**. It goes stale every
+  time someone inserts a line above it, through no fault of the document.
+
+Hard-failing the second axis makes a correct, honestly written document turn red
+on an unrelated refactor. That is the failure that gets `continue-on-error`
+added to the workflow, and once it is added nobody reads the output again — so
+enforcing the rotting axis costs more grounding than it buys. `DRIFT` and
+`WRONG-LINE` therefore **pass**, reporting the delta so the citation can be
+corrected, while `FABRICATED` fails permanently.
+
+This holds only while the text half carries real information, which is what
+`minAnchorChars` enforces. A quote too short or too repeated to identify a line
+has nothing left to stand on once its line number is wrong: that is `UNPINNED`,
+and it **fails**. A weak quote that _is_ on its cited line still points
+somewhere definite, so it stays the passing `WEAK-ANCHOR`. The two rules are a
+pair — relaxing the line number without enforcing distinctiveness would let an
+anchor assert nothing at all and still show green.
+
+The practical consequence for a docs archive: a document written a year ago
+still fails if it invented a line of code, and no longer fails merely because
+the file grew.
 
 **Scope of the guarantee.** Verdicts certify _form_: the text exists at the
 cited location, the count matches, the moment is in the vocabulary. They never
