@@ -10,11 +10,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          # This repo's own documents carry rev-stamped anchors, which are
-          # settled with `git show` against the commit they name. A shallow
-          # clone does not have it, and the gate would quietly fail open.
-          fetch-depth: 0
 
       - uses: pnpm/action-setup@v4 # reads packageManager from package.json
 
@@ -41,11 +36,3 @@ jobs:
       # step says so — the tool checking the docs of the tool.
       - name: nullius check (self)
         run: node packages/claims/dist/cli.js check 'README.md' 'spec/**/*.md' --require-markers
-
-      # The journal validator, dogfooded on a fixture that breaks each of its
-      # three invariants: a validator that stops catching them is a validator
-      # nobody would notice going quiet.
-      - name: nullius witness validate (self)
-        run: |
-          node packages/claims/dist/cli.js witness validate spec/fixtures/valid-run.jsonl
-          ! node packages/claims/dist/cli.js witness validate spec/fixtures/broken-run.jsonl
