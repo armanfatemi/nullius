@@ -30,8 +30,8 @@ importers:
   packages/evidence-anchors:
     dependencies:
       '@nullius-inverba/claims':
-        specifier: ^0.3.1
-        version: 0.3.1
+        specifier: ^0.6.0
+        version: link:../claims
 
 packages:
 
@@ -366,11 +366,6 @@ packages:
     cpu: [x64]
     os: [linux]
     libc: [glibc]
-
-  '@nullius-inverba/claims@0.3.1':
-    resolution: {integrity: sha512-RTIvLNe4OqoB26ZuA7BOXX3TFn+WevnN1gmigXTFaPV3cCnWUlxLNKwFO9GpYFlS1FLqUZQ5+kRYQATFWQlUqA==}
-    engines: {node: '>=20.19'}
-    hasBin: true
 
   '@rollup/rollup-android-arm-eabi@4.62.4':
     resolution: {integrity: sha512-RrPokAb7dmbxFoeO3TloqHyOjgye8RkBhSqmp4aJMIex4c9r46ZstPnleDQOq1t46VOVjwIuwNogIqbodV1Vvg==}
@@ -1115,10 +1110,6 @@ snapshots:
 
   '@napi-rs/lzma-linux-x64-gnu@1.5.1':
     optional: true
-
-  '@nullius-inverba/claims@0.3.1':
-    dependencies:
-      glob: 13.0.6
 
   '@rollup/rollup-android-arm-eabi@4.62.4':
     optional: true

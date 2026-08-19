@@ -262,7 +262,7 @@ verified and reported as weak — it did not make the author look at a line.
 It passes, because a weak citation is still better than none, but it is
 visible.
 
-**Evidence:** `packages/claims/src/checkClaims.ts:105` — `const DEFAULT_MIN_ANCHOR_CHARS = 8;`
+**Evidence:** `packages/claims/src/checkClaims.ts:143@7412847` — `const DEFAULT_MIN_ANCHOR_CHARS = 8;`
 
 **A `FABRICATED` or `COUNT-MISMATCH` verdict is not just a citation typo.**
 Re-examine the decision that claim was supporting.
@@ -433,7 +433,7 @@ and the operating system is the whole safety story.
   and metacharacter escaping are not defences this tool has to get right —
   there is no interpreter left to escape from.
 
-  **Evidence:** `packages/claims/src/runners.ts:194` — `shell: false,`
+  **Evidence:** `packages/claims/src/runners.ts:271@7412847` — `const result = spawnSync(segment.binary, args, {`
 
   One consequence is deliberate:
   **shell globs are not expanded**. `src/*.ts` is passed through literally and
@@ -457,13 +457,13 @@ and the operating system is the whole safety story.
   a harmless grep flag with ripgrep's reason would be the checker asserting
   something false, which is not a thing this tool gets to do.
 
-  **Evidence:** `packages/claims/src/commandSafety.ts:101` — `["pre", "runs an arbitrary command against every searched file"],`
+  **Evidence:** `packages/claims/src/commandSafety.ts:101@7412847` — `["pre", "runs an arbitrary command against every searched file"],`
 - **Two time budgets.** A single search is killed after 10s
   (`searchTimeoutMs`), and all searches in one run share a 120s budget. The
   per-search limit bounds one anchor; without the run-wide one a document
   simply carries more anchors, and a document may carry unlimited anchors.
 
-  **Evidence:** `packages/claims/src/runners.ts:15` — `export const DEFAULT_SEARCH_TIMEOUT_MS = 10_000;`
+  **Evidence:** `packages/claims/src/runners.ts:18@7412847` — `export const DEFAULT_SEARCH_TIMEOUT_MS = 10_000;`
 - **A clean environment.** `RIPGREP_CONFIG_PATH` and `GREP_OPTIONS` are removed
   from the child environment: both smuggle flags in from outside the validated
   argv.

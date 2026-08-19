@@ -37,7 +37,7 @@ project's CI-caught list (default: `build-time`) passes with an `ADVISORY`
 verdict prompting you to confirm it is documented as a non-risk, not presented
 as a runtime risk.
 
-**Evidence:** `packages/claims/src/checkClaims.ts:403` — `const ciCaughtMoments = options.ciCaughtMoments ?? ["build-time"];`
+**Evidence:** `packages/claims/src/checkClaims.ts:591@7412847` — `const ciCaughtMoments = options.ciCaughtMoments ?? ["build-time"];`
 
 ## Step 2 — if it survives, name the mechanism
 

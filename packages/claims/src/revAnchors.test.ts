@@ -351,3 +351,35 @@ describe("revFileReader against a real repository", () => {
     expect(results[1]?.verdict).toBe("fabricated");
   });
 });
+
+describe("git is spawned once per commit and file, not once per anchor", () => {
+  const roots: string[] = [];
+
+  afterAll(() => {
+    for (const root of roots) rmSync(root, { recursive: true, force: true });
+  });
+
+  it("serves repeated anchors on one file from the first read", () => {
+    const root = mkdtempSync(join(tmpdir(), "nullius-rev-cache-"));
+    roots.push(root);
+    const git = (...args: string[]): string =>
+      execFileSync("git", ["-C", root, ...args], { encoding: "utf8" }).trim();
+    git("init", "-q", "-b", "main");
+    git("config", "user.email", "test@example.com");
+    git("config", "user.name", "Test");
+    mkdirSync(join(root, "src"));
+    writeFileSync(join(root, "src", "app.ts"), AT_REV.join("\n"));
+    git("add", ".");
+    git("commit", "-qm", "first");
+    const first = git("rev-parse", "--short", "HEAD");
+
+    const reader = revFileReader(root);
+    expect(reader("src/app.ts", first).status).toBe("ok");
+
+    // Deleting the repository leaves the cache as the only possible source of
+    // an answer — a second `git show` here could not succeed.
+    rmSync(join(root, ".git"), { recursive: true, force: true });
+
+    expect(reader("src/app.ts", first).status).toBe("ok");
+  });
+});

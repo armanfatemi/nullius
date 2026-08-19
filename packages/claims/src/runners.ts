@@ -147,7 +147,21 @@ const REV_PATTERN = /^[0-9a-f]{7,40}$/;
  * leading `-` is refused anyway rather than relying on that.
  */
 export function revFileReader(root?: string, timeoutMs = DEFAULT_GIT_TIMEOUT_MS) {
+  // One `git show` per (rev, path), not per anchor. A document commonly stamps
+  // many claims against the same commit and the same file, and each of those
+  // would otherwise be its own process.
+  const cache = new Map<string, RevRead>();
+
   return (path: string, rev: string): RevRead => {
+    const key = `${rev}:${path}`;
+    const cached = cache.get(key);
+    if (cached !== undefined) return cached;
+    const result = read(path, rev);
+    cache.set(key, result);
+    return result;
+  };
+
+  function read(path: string, rev: string): RevRead {
     if (!REV_PATTERN.test(rev)) {
       return { status: "unavailable", reason: `'${rev}' is not a commit hash` };
     }
@@ -205,7 +219,7 @@ export function revFileReader(root?: string, timeoutMs = DEFAULT_GIT_TIMEOUT_MS)
       status: "unavailable",
       reason: (result.stderr ?? "").trim().split("\n")[0] ?? "git show failed",
     };
-  };
+  }
 }
 
 export function searchRunner(
