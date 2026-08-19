@@ -19,6 +19,20 @@ export {
   type Verdict,
 } from "./checkClaims";
 export { buildEagerPrompt } from "./eagerPrompt";
+export {
+  buildAuditBrief,
+  buildExtractionBrief,
+  extractAuditClaims,
+  formatAuditPlan,
+  type AuditClaim,
+} from "./audit";
+export {
+  isJournalFailure,
+  validateJournal,
+  type JournalFinding,
+  type JournalReport,
+  type JournalVerdict,
+} from "./witness";
 export { isSafeRepoPath, type PathVerdict } from "./pathSafety";
 export {
   isSafeSearchCommand,

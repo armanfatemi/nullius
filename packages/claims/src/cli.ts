@@ -13,11 +13,18 @@ import {
   type CheckOptions,
   type ClaimResult,
 } from "./checkClaims";
+import {
+  buildAuditBrief,
+  buildExtractionBrief,
+  extractAuditClaims,
+  formatAuditPlan,
+} from "./audit";
 import { parseConfig, type ClaimsConfig } from "./config";
 import { DEMO_DOC_PATH, demoResults, writeDemoFixture } from "./demo";
 import { buildEagerPrompt } from "./eagerPrompt";
 import { parseClaims } from "./parseClaims";
 import { fileLinesReader, revFileReader, searchRunner } from "./runners";
+import { isJournalFailure, validateJournal } from "./witness";
 
 const SPEC_URL =
   "https://github.com/armanfatemi/nullius/blob/main/spec/evidence-anchors.md";
@@ -34,11 +41,16 @@ commands:
                       ${DEFAULT_CONFIG_PATH} when none are given.
   demo                build a sandbox fixture and check it — one claim per
                       verdict class, no adoption required. The ten-second tour.
-  eager-prompt <doc>  emit the refute-first audit brief for a document with no
-                      anchors yet. Run it through any agent harness — e.g.
-                      claude -p "$(nullius eager-prompt design.md)" — and the
-                      model proposes anchors that this checker then verifies.
-                      The model proposes; the checker disposes.
+  audit <doc>         list the document's claims as one dispatch each, for a
+                      model to try to REFUTE. check asks whether the author
+                      looked; audit asks whether the claim is true. Refutations
+                      come back as anchors, so check re-verifies them: the model
+                      proposes, the checker disposes.
+  witness validate <journal.jsonl>
+                      verify that a run's own record holds up — every dispatch
+                      terminated, no verification cited after the thing it
+                      verified changed, no omitted corrections.
+  eager-prompt <doc>  deprecated alias for \`audit <doc> --propose\`.
 
 check options:
   --config <path>     config file (default: ${DEFAULT_CONFIG_PATH} if present)
@@ -46,6 +58,17 @@ check options:
                       markers (the floor is per document, not per run)
   --help              show this message
   --version           print the package version
+
+audit options:
+  --emit-brief <id>   print the starved brief for one claim — one claim per
+                      agent, with no siblings and no surrounding document, so
+                      the model has no narrative to steelman
+  --extract           print the brief that pulls UNANCHORED claims out of the
+                      prose (extraction only; it may not judge them)
+  --propose           the older confirmation-shaped mode: hunt evidence FOR the
+                      document and propose anchors. Kept because retrofitting an
+                      unanchored document needs it — but a model sent to find
+                      support finds support, so prefer the default
 
 The checker verifies a convention: on a repo with no anchors, \`check\` has
 nothing to verify. Adoption starts with the authoring rule (one paste into
@@ -125,6 +148,9 @@ interface ParsedArgs {
   globs: string[];
   configPath: string | undefined;
   requireMarkers: boolean;
+  emitBrief: string | undefined;
+  extract: boolean;
+  propose: boolean;
   help: boolean;
   version: boolean;
 }
@@ -135,6 +161,9 @@ function parseArgs(argv: string[]): ParsedArgs {
     globs: [],
     configPath: undefined,
     requireMarkers: false,
+    emitBrief: undefined,
+    extract: false,
+    propose: false,
     help: false,
     version: false,
   };
@@ -148,6 +177,16 @@ function parseArgs(argv: string[]): ParsedArgs {
       parsed.version = true;
     } else if (arg === "--require-markers") {
       parsed.requireMarkers = true;
+    } else if (arg === "--extract") {
+      parsed.extract = true;
+    } else if (arg === "--propose") {
+      parsed.propose = true;
+    } else if (arg === "--emit-brief") {
+      index += 1;
+      parsed.emitBrief = argv[index];
+      if (parsed.emitBrief === undefined) {
+        throw new Error("--emit-brief requires a claim id (e.g. c1)");
+      }
     } else if (arg === "--config") {
       index += 1;
       parsed.configPath = argv[index];
@@ -198,10 +237,12 @@ function runDemo(): number {
   return 0;
 }
 
-function runEagerPrompt(args: ParsedArgs): number {
+function runAudit(args: ParsedArgs): number {
   const doc = args.globs[0];
   if (doc === undefined || args.globs.length > 1) {
-    console.error(`usage: nullius eager-prompt <doc> [--config <path>]`);
+    console.error(
+      "usage: nullius audit <doc> [--emit-brief <id> | --extract | --propose]",
+    );
     return 2;
   }
   if (!existsSync(doc)) {
@@ -218,7 +259,82 @@ function runEagerPrompt(args: ParsedArgs): number {
   }
 
   const content = readFileSync(doc, "utf8");
-  console.log(buildEagerPrompt(doc, content, config.moments));
+
+  if (args.propose) {
+    console.log(buildEagerPrompt(doc, content, config.moments));
+    return 0;
+  }
+  if (args.extract) {
+    console.log(buildExtractionBrief(doc, content));
+    return 0;
+  }
+
+  const claims = extractAuditClaims(doc, content);
+
+  if (args.emitBrief !== undefined) {
+    const wanted = args.emitBrief;
+    const claim = claims.find((candidate) => candidate.id === wanted);
+    if (claim === undefined) {
+      console.error(
+        `no claim '${wanted}' in ${doc} — run \`nullius audit ${doc}\` for the list`,
+      );
+      return 2;
+    }
+    // Deliberately the ONLY thing on stdout: the brief is piped straight into
+    // an agent, and anything else printed here is context the claim was
+    // supposed to be starved of.
+    console.log(buildAuditBrief(claim, config.moments));
+    return 0;
+  }
+
+  console.log(formatAuditPlan(doc, claims));
+  return 0;
+}
+
+function runWitness(args: ParsedArgs): number {
+  const [sub, journal] = args.globs;
+  if (sub !== "validate" || journal === undefined || args.globs.length > 2) {
+    console.error("usage: nullius witness validate <journal.jsonl>");
+    return 2;
+  }
+  if (!existsSync(journal)) {
+    console.error(`no such file: ${journal}`);
+    return 2;
+  }
+
+  const report = validateJournal(readFileSync(journal, "utf8"));
+
+  let failures = 0;
+  for (const finding of report.findings) {
+    const line = `${finding.verdict.toUpperCase().padEnd(20)} ${journal}:${finding.line}  ${finding.subject}`;
+    if (isJournalFailure(finding.verdict)) {
+      failures += 1;
+      console.error(line);
+      console.error(`                     ! ${finding.detail}`);
+    } else {
+      console.log(line);
+      console.log(`                     ~ ${finding.detail}`);
+    }
+  }
+
+  console.log("");
+  console.log(
+    `${report.records} record(s): ${report.dispatches} dispatch(es), ${report.verifications} verification(s).`,
+  );
+  // Three numbers, never two. A run that dropped agents on the floor and one
+  // where every agent reported nothing summarise identically the moment these
+  // are added together.
+  console.log(
+    `Outcomes: ${report.outcomes.found} found, ${report.outcomes.empty} explicitly empty, ${report.outcomes.noReport} never reported.`,
+  );
+
+  if (failures > 0) {
+    console.error("");
+    console.error(`${failures} invalid record(s) — this run's own account of itself does not hold up.`);
+    return 1;
+  }
+
+  console.log("Journal valid.");
   return 0;
 }
 
@@ -378,8 +494,20 @@ function main(): number {
   if (args.command === "demo") {
     return runDemo();
   }
+  if (args.command === "audit") {
+    return runAudit(args);
+  }
+  if (args.command === "witness") {
+    return runWitness(args);
+  }
   if (args.command === "eager-prompt") {
-    return runEagerPrompt(args);
+    // Kept working so a pinned pipeline does not break; the name moved because
+    // "find evidence for this document" is one mode of auditing, and the
+    // confirmation-shaped one at that.
+    console.error(
+      "note: `eager-prompt` is now `audit <doc> --propose`; the old name still works.",
+    );
+    return runAudit({ ...args, propose: true });
   }
   if (args.command === "check") {
     return runCheck(args);
