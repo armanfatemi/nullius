@@ -1,5 +1,54 @@
 # Changelog
 
+## 0.6.0
+
+Citation rot, and the two verbs the checker could not be.
+
+### Added
+
+- **Rev-stamped anchors: `path/to/file.ts:12@a1b2c3d`.** A citation asserts two
+  different things — "this text was in this file" (a fact about the author) and
+  "it is on line N of it today" (a fact about the repository) — and the checker
+  had only the working tree to settle both. Stamping the commit splits them onto
+  two snapshots: the gate runs against the immutable commit with `git show`, so
+  a `FABRICATED` there is permanent and can never be excused by a later
+  deletion, and the working tree becomes advisory (`STALE`), so no refactor can
+  turn an honest document red. Unstamped anchors behave exactly as before.
+- **`nullius audit <doc>`** — the entailment half `check` deliberately does not
+  certify. Anchored claims are extracted deterministically, then dispatched one
+  per agent, starved of the document, the title, and every sibling claim, and
+  told to refute. Refutations come back as anchors that `check` re-verifies, so
+  no model is in the verification path. `--emit-brief <id>` prints one brief,
+  `--extract` pulls unanchored claims out of prose, `--propose` is the older
+  confirmation-shaped mode (`eager-prompt` still works and points here).
+  `UNVERIFIABLE-BY-SEARCH` is a first-class answer.
+- **`nullius witness validate <journal.jsonl>`** — three invariants on the
+  record a multi-agent run leaves behind: every dispatch reaches one of three
+  terminal states (collapsing "reported nothing" into "never reported" launders
+  dead agents into evidence of absence), no verification is relied on after the
+  artifact it verified changed, and no append omits what it corrected. Schema:
+  [spec/witness-journal.md](spec/witness-journal.md).
+- New verdicts: `STALE`, `UNVERIFIABLE-REV` (both advisory) and
+  `MISSING-FILE-AT-REV` (failing).
+
+### Fixed
+
+- **Four-space indented blocks are quoted context**, like fenced ones. A README
+  showing an example anchor in an indented block was asserting it. Indentation
+  is measured from the enclosing list item's content column, so four spaces
+  under a bullet stays list continuation and is still checked.
+- **Markers written as list items are read**, not reported `MALFORMED`.
+  Bulleting the evidence under the claim it supports is the natural authoring
+  style, and refusing it trained authors away from the marker.
+
+### Notes
+
+- Rev-stamped anchors need the history they name: check out with
+  `fetch-depth: 0`. A commit this clone does not have is never held against the
+  author — the verdict fails open as the advisory `UNVERIFIABLE-REV`, with the
+  remedy in the message. Squash-merge discards the stamped commit, so documents
+  merged that way lose the hard gate and keep the advisory one.
+
 ## 0.5.0
 
 A security release. It closes command execution and file-probe holes in the

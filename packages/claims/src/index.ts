@@ -14,10 +14,25 @@ export {
   type CheckDeps,
   type CheckOptions,
   type ClaimResult,
+  type RevRead,
   type SearchOutcome,
   type Verdict,
 } from "./checkClaims";
 export { buildEagerPrompt } from "./eagerPrompt";
+export {
+  buildAuditBrief,
+  buildExtractionBrief,
+  extractAuditClaims,
+  formatAuditPlan,
+  type AuditClaim,
+} from "./audit";
+export {
+  isJournalFailure,
+  validateJournal,
+  type JournalFinding,
+  type JournalReport,
+  type JournalVerdict,
+} from "./witness";
 export { isSafeRepoPath, type PathVerdict } from "./pathSafety";
 export {
   isSafeSearchCommand,
@@ -34,11 +49,13 @@ export {
 } from "./commandSafety";
 export {
   fileLinesReader,
+  revFileReader,
   searchRunner,
   containPath,
   resolveInsideRoot,
   DEFAULT_SEARCH_TIMEOUT_MS,
   DEFAULT_RUN_BUDGET_MS,
+  DEFAULT_GIT_TIMEOUT_MS,
   type Containment,
 } from "./runners";
 export { parseConfig, type ClaimsConfig } from "./config";

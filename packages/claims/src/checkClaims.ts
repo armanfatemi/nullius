@@ -47,6 +47,22 @@ export type Verdict =
   | "unpinned"
   /** Text does not appear in the file at all. */
   | "fabricated"
+  /**
+   * Rev-stamped anchor: the quote was verified at the commit it names, and the
+   * working tree has since moved away from it. Advisory, permanently — drift
+   * is a fact about the repository, and the gate already passed on the axis
+   * that cannot rot.
+   */
+  | "stale"
+  /**
+   * Rev-stamped anchor whose commit cannot be resolved: a shallow clone, a
+   * squash-merge that discarded the SHA, or a fork without the history. Fails
+   * OPEN — a rev the checker cannot read is not evidence against the author,
+   * and treating it as one rebuilds the treadmill from the other direction.
+   */
+  | "unverifiable-rev"
+  /** The cited file did not exist at the stamped commit. */
+  | "missing-file-at-rev"
   | "missing-file"
   | "count-mismatch"
   /** The cited path escaped the repo (absolute, traversal, or home-relative). */
@@ -66,9 +82,31 @@ export type SearchOutcome =
   | { ok: true; count: number }
   | { ok: false; error: string };
 
+/**
+ * The result of reading a cited file as it stood at an anchor's stamped
+ * revision.
+ *
+ * `unknown-rev` and `unavailable` are kept apart from `no-file` deliberately.
+ * A commit that cannot be resolved is not evidence about anything — it is a
+ * shallow clone, a squash-merge that discarded the SHA, or a fork without the
+ * history — and the checker fails open there. A file that genuinely did not
+ * exist in a commit that DID resolve is a fact about the author.
+ */
+export type RevRead =
+  | { status: "ok"; lines: string[] }
+  | { status: "no-file" }
+  | { status: "unknown-rev" }
+  | { status: "unavailable"; reason: string };
+
 export interface CheckDeps {
   /** Returns the file's lines, or null when the file does not exist. */
   readFileLines: (path: string) => string[] | null;
+  /**
+   * Returns the file's lines as of a commit, for `path:line@rev` anchors.
+   * Optional: a caller with no git available simply gets the fail-open
+   * `unverifiable-rev` path.
+   */
+  readFileAtRev?: (path: string, rev: string) => RevRead;
   /**
    * Runs a search that `commandSafety` has already validated. Takes a parsed
    * plan rather than a string so that no layer below this one is ever in a
@@ -121,6 +159,10 @@ const DEFAULT_MIN_ANCHOR_CHARS = 8;
  * repeated to identify a line is `unpinned` when it is not where it was cited,
  * and that fails: forgiving the line number for a quote that pins nothing is
  * how an anchor gets to assert nothing at all and still show green.
+ *
+ * `stale` and `unverifiable-rev` belong to `path:line@rev` anchors, where the
+ * two axes are checked against two different snapshots rather than being
+ * disentangled from one. See `checkStamped`.
  */
 const PASSING: ReadonlySet<Verdict> = new Set<Verdict>([
   "ok",
@@ -128,6 +170,8 @@ const PASSING: ReadonlySet<Verdict> = new Set<Verdict>([
   "weak-anchor",
   "drift",
   "wrong-line",
+  "stale",
+  "unverifiable-rev",
 ]);
 
 export function isFailure(verdict: Verdict): boolean {
@@ -221,32 +265,17 @@ function locate(lines: string[], block: string[]): MatchSurvey {
   return exact.count > 0 ? exact : survey(lines, block, "substring");
 }
 
-function checkPresence(
+/**
+ * Verdict of the whole citation against ONE snapshot of the file. Used twice
+ * per rev-stamped anchor: once against the commit the anchor names (the gate)
+ * and once against the working tree (the rot check).
+ */
+function evaluateAgainst(
+  lines: string[],
   claim: Extract<Claim, { kind: "presence" }>,
-  deps: CheckDeps,
   driftWindow: number,
   minAnchorChars: number,
-): ClaimResult {
-  // Checked BEFORE any filesystem access: the path comes from PR-controlled
-  // document content (see pathSafety.ts).
-  const pathVerdict = isSafeRepoPath(claim.path);
-  if (!pathVerdict.safe) {
-    return {
-      claim,
-      verdict: "unsafe-path",
-      detail: `not read — ${pathVerdict.reason}`,
-    };
-  }
-
-  const lines = deps.readFileLines(claim.path);
-  if (lines === null) {
-    return {
-      claim,
-      verdict: "missing-file",
-      detail: `no such file: ${claim.path}`,
-    };
-  }
-
+): { verdict: Verdict; detail: string } {
   const block = citedBlock(claim);
   const quote = block.map(normalize).join(" ").trim();
   const where = locate(lines, block);
@@ -262,26 +291,23 @@ function checkPresence(
   if (matchesAt(lines, claim.line, block)) {
     if (ambiguous) {
       return {
-        claim,
         verdict: "weak-anchor",
         detail: `quote matches several lines in ${claim.path} — the line number is doing all the work; quote something distinctive`,
       };
     }
     if (tooShort) {
       return {
-        claim,
         verdict: "weak-anchor",
         detail: `quote is ${quote.length} character(s) — quote enough of ${claim.path} to be wrong if the code changes`,
       };
     }
-    return { claim, verdict: "ok", detail: "" };
+    return { verdict: "ok", detail: "" };
   }
 
   // Below here the text is NOT at the cited line, so the line number can no
   // longer pin anything. An ambiguous quote has nothing left to stand on.
   if (ambiguous) {
     return {
-      claim,
       verdict: "unpinned",
       detail: `quote matches several lines in ${claim.path} and is on none of them at line ${claim.line} — neither half of this citation identifies anything`,
     };
@@ -297,7 +323,6 @@ function checkPresence(
   for (let candidate = lower; candidate <= upper; candidate += 1) {
     if (matchesAt(lines, candidate, block)) {
       return {
-        claim,
         verdict: "drift",
         detail: `text is on line ${candidate}, not ${claim.line} — update the citation${stale}`,
       };
@@ -306,17 +331,180 @@ function checkPresence(
 
   if (where.first !== null) {
     return {
-      claim,
       verdict: "wrong-line",
       detail: `text is on line ${where.first}, not ${claim.line} — the quote still identifies real code, so this is stale rather than wrong; update the citation${stale}`,
     };
   }
 
   return {
-    claim,
     verdict: "fabricated",
     detail: `text does not appear anywhere in ${claim.path}`,
   };
+}
+
+/**
+ * A rev-stamped anchor, checked on both of its axes.
+ *
+ * The two propositions a citation makes are checked against two different
+ * snapshots, and only one of them can fail:
+ *
+ *  - **"This was true at `<rev>`"** — checked against `git show <rev>:<path>`.
+ *    A commit is immutable, so this answer never changes: an anchor that
+ *    passes here passes forever, and one that fails here was false when it was
+ *    written. This is the gate.
+ *  - **"It is still true"** — checked against the working tree. This one can
+ *    change through nobody's fault, so it is advisory (`stale`) by
+ *    construction. Nothing anyone does to the repository later can turn a
+ *    document red.
+ *
+ * That split is the whole point of the `@rev` suffix. Without it the checker
+ * has only the working tree, and so has to choose between failing honest
+ * documents on refactors and forgiving fabrication — the choice that gets
+ * `continue-on-error` added to the workflow.
+ */
+function checkStamped(
+  claim: Extract<Claim, { kind: "presence" }>,
+  rev: string,
+  deps: CheckDeps,
+  driftWindow: number,
+  minAnchorChars: number,
+): ClaimResult {
+  const readAtRev = deps.readFileAtRev;
+  const atRev = readAtRev?.(claim.path, rev) ?? {
+    status: "unavailable" as const,
+    reason: "this checker was built without git access",
+  };
+
+  if (atRev.status === "no-file") {
+    return {
+      claim,
+      verdict: "missing-file-at-rev",
+      detail: `${claim.path} did not exist at ${rev} — a commit cannot change, so this citation was never true`,
+    };
+  }
+
+  if (atRev.status !== "ok") {
+    // Fail OPEN on the rev axis. The commit may be gone because the PR was
+    // squash-merged, because the clone is shallow, or because this is a fork —
+    // none of which is evidence about the author. The working tree still gets
+    // checked, and only its FAILING verdicts are softened: a checker that
+    // cannot read the history it was pointed at does not get to call anyone a
+    // fabricator.
+    const fallback = checkUnstamped(claim, deps, driftWindow, minAnchorChars);
+    if (!isFailure(fallback.verdict)) return fallback;
+    const why =
+      atRev.status === "unknown-rev"
+        ? `commit ${rev} is not in this clone`
+        : atRev.reason;
+    return {
+      claim,
+      verdict: "unverifiable-rev",
+      detail: `${fallback.detail} — and ${why}, so this could not be settled against the commit it names (a shallow clone cannot check history: fetch the full one, e.g. actions/checkout with fetch-depth: 0)`,
+    };
+  }
+
+  const gate = evaluateAgainst(atRev.lines, claim, driftWindow, minAnchorChars);
+
+  if (gate.verdict === "fabricated") {
+    return {
+      claim,
+      verdict: "fabricated",
+      detail: `text does not appear anywhere in ${claim.path} as of ${rev} — that commit is immutable, so no later edit can explain this`,
+    };
+  }
+  if (gate.verdict === "unpinned") {
+    return { claim, verdict: "unpinned", detail: gate.detail };
+  }
+
+  // The gate has passed: the quote WAS in that file at that commit. Everything
+  // below is about the repository since, and none of it can fail.
+  const mispositioned = gate.verdict === "drift" || gate.verdict === "wrong-line";
+
+  const current = deps.readFileLines(claim.path);
+  if (current === null) {
+    return {
+      claim,
+      verdict: "stale",
+      detail: `verified at ${rev}; ${claim.path} no longer exists in the working tree`,
+    };
+  }
+
+  const now = evaluateAgainst(current, claim, driftWindow, minAnchorChars);
+
+  if (mispositioned) {
+    // Worth saying out loud, because it is the one thing a stamped anchor can
+    // get wrong at authoring time without lying: the quote was real, the line
+    // number was not.
+    return {
+      claim,
+      verdict: "advisory",
+      detail: `verified at ${rev}, but the line number was already wrong there — ${gate.detail}`,
+    };
+  }
+
+  if (now.verdict === "ok") return { claim, verdict: "ok", detail: "" };
+  if (now.verdict === "weak-anchor" || gate.verdict === "weak-anchor") {
+    return { claim, verdict: "weak-anchor", detail: gate.detail || now.detail };
+  }
+  if (now.verdict === "fabricated") {
+    return {
+      claim,
+      verdict: "stale",
+      detail: `verified at ${rev}; that text is no longer in ${claim.path} — the code moved on, so re-read it before relying on this claim`,
+    };
+  }
+  return {
+    claim,
+    verdict: "stale",
+    detail: `verified at ${rev}; ${now.detail}`,
+  };
+}
+
+/** An anchor with no `@rev`: one snapshot, today's semantics. */
+function checkUnstamped(
+  claim: Extract<Claim, { kind: "presence" }>,
+  deps: CheckDeps,
+  driftWindow: number,
+  minAnchorChars: number,
+): ClaimResult {
+  const lines = deps.readFileLines(claim.path);
+  if (lines === null) {
+    return {
+      claim,
+      verdict: "missing-file",
+      detail: `no such file: ${claim.path}`,
+    };
+  }
+  const { verdict, detail } = evaluateAgainst(
+    lines,
+    claim,
+    driftWindow,
+    minAnchorChars,
+  );
+  return { claim, verdict, detail };
+}
+
+function checkPresence(
+  claim: Extract<Claim, { kind: "presence" }>,
+  deps: CheckDeps,
+  driftWindow: number,
+  minAnchorChars: number,
+): ClaimResult {
+  // Checked BEFORE any filesystem access: the path comes from PR-controlled
+  // document content (see pathSafety.ts). It gates the git read too — a
+  // `git show <rev>:../../etc/passwd` is the same oracle by another route.
+  const pathVerdict = isSafeRepoPath(claim.path);
+  if (!pathVerdict.safe) {
+    return {
+      claim,
+      verdict: "unsafe-path",
+      detail: `not read — ${pathVerdict.reason}`,
+    };
+  }
+
+  return claim.rev === undefined
+    ? checkUnstamped(claim, deps, driftWindow, minAnchorChars)
+    : checkStamped(claim, claim.rev, deps, driftWindow, minAnchorChars);
 }
 
 function checkAbsence(

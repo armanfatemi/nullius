@@ -9,7 +9,7 @@ agent author Evidence Anchors and a session enforce them:
 | [`skills/evidence-anchors`](skills/evidence-anchors/SKILL.md) | The authoring rule: load-bearing claims about existing code carry citations; applies to design docs, proposals, **plans**, and **PR descriptions** |
 | [`hooks/`](hooks/check-plan.sh)                      | A `PreToolUse` hook on `ExitPlanMode`: the plan's anchors are verified **before the plan is presented for approval**. Fail-open — it never breaks plan mode; it blocks only on a definite failing verdict, feeding the citations back to the agent to fix |
 | [`commands/ground.md`](commands/ground.md)           | `/ground [file…]` — check any document on demand; with no argument, checks the newest plan file                                                          |
-| [`commands/anchor.md`](commands/anchor.md)           | `/anchor [file]` — **eager mode**: refute-first fact-check of an unanchored document; the model proposes anchors, the deterministic checker verifies them |
+| [`commands/audit.md`](commands/audit.md)             | `/audit [file]` — premise audit: one claim per subagent, starved of context and told to refute; refutations come back as anchors the checker re-verifies. `--propose` retrofits a document with no anchors yet |
 | [`reviewers/false-premise.md`](reviewers/false-premise.md) | Paste-ready `[false-premise]` severity + the verbatim descriptive question for your reviewer agents                                                |
 
 ## Why gate the plan?
