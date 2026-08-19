@@ -53,17 +53,25 @@ This builds a sandbox doc plus a sandbox source file and checks one claim per
 verdict class:
 
 ```
+OK            design.md:7  src/app.ts:1
+DRIFT         design.md:11  src/app.ts:3
+              ~ text is on line 1, not 3 — update the citation
 FABRICATED    design.md:15  src/app.ts:2
               ! text does not appear anywhere in src/app.ts
-COUNT-MISMATCH design.md:28  grep -rn 'retry' src/ → 0
-              ! claimed 0, actual 1
-UNSAFE        design.md:32  grep -rn 'x' src/ && rm -rf / → 0
-              ! not executed — contains forbidden character '&'
-UNKNOWN-MOMENT design.md:37  binds at partial-composition
-              ! 'partial-composition' is not a binding moment; use one of: build-time, rollout-window, …
 WEAK-ANCHOR   design.md:20  src/app.ts:1
-              ~ quote is 1 character(s) — too short to pin down a line
-SEARCH-CLEAN  design.md:24  grep -rn 'MAX_RETRIES' src/ → 1
+              ~ quote is 1 character(s) — quote enough of src/app.ts to be wrong if the code changes
+WRONG-LINE    design.md:25  src/app.ts:5
+              ~ text is on line 1, not 5 — the quote still identifies real code, so this is stale rather than wrong; update the citation
+UNPINNED      design.md:30  src/app.ts:5
+              ! quote matches several lines in src/app.ts and is on none of them at line 5 — neither half of this citation identifies anything
+SEARCH-CLEAN  design.md:34  grep -rn 'MAX_RETRIES' src/ → 1
+COUNT-MISMATCH design.md:38  grep -rn 'retry' src/ → 0
+              ! claimed 0, actual 1
+UNSAFE        design.md:42  grep -rn 'x' src/ && rm -rf / → 0
+              ! not executed — contains forbidden character '&'
+OK            design.md:46  binds at rollout-window
+UNKNOWN-MOMENT design.md:47  binds at partial-composition
+              ! 'partial-composition' is not a binding moment; use one of: build-time, rollout-window, inter-service-skew, event-consumption, replay-migration, data-at-rest
 ```
 
 That `UNSAFE` line is the security model working: checked documents are

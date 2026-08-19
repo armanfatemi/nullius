@@ -19,7 +19,7 @@ opens the cited file and matches the quoted text (tolerating small line
 drift), re-runs the absence search and compares counts, and validates that
 every named [binding moment](https://github.com/armanfatemi/nullius/blob/main/spec/binding-moments.md)
 comes from the project's closed list. A claim that cannot be re-verified fails
-the run with a verdict that says why: `FABRICATED`, `WRONG-LINE`,
+the run with a verdict that says why: `FABRICATED`, `UNPINNED`,
 `MISSING-FILE`, `COUNT-MISMATCH`, `UNKNOWN-MOMENT`, `MALFORMED`.
 
 Why this exists: **a false premise that supports a correct conclusion is
@@ -117,10 +117,12 @@ Optional `nullius.config.json` at the repo root (or `--config <path>`):
 - `exclude` — globs, matched against the full repo-relative path, for documents
   to skip (e.g. review logs that quote findings). Use `**/name.md` to skip a
   basename anywhere in the tree; a bare `name.md` matches only at the root.
-- `driftWindow` — how far (± lines) a match still counts as `DRIFT` (passing)
-  rather than `WRONG-LINE` (failing). Default 3.
-- `minAnchorChars` — shortest quote that counts as distinctive. Below it a
-  citation verifies as `WEAK-ANCHOR` rather than `OK`. Default 8.
+- `driftWindow` — how far (± lines) a match is reported as `DRIFT` rather than
+  `WRONG-LINE`. Both pass, so this changes the wording of the advisory, not the
+  exit code. Default 3.
+- `minAnchorChars` — shortest quote that reads as a real citation. Below it a
+  citation verifies as `WEAK-ANCHOR` rather than `OK`; it never fails on length
+  alone. Default 8.
 - `relaxedControl` — re-run a zero-result absence search with a match-anything
   pattern, as a control on whether it examined any content at all. Default true.
 - `searchTimeoutMs` — wall-clock budget for one absence search, in ms. Must be
@@ -139,9 +141,12 @@ exists to prevent.
 Checked documents are treated as **untrusted input** (in CI they are
 PR-controlled content):
 
+- **`.git` is unreachable** — refused as a path, refused through a symlink, and
+  pruned from every recursive walk (`grep -r` needs no operand to descend into
+  it). Under `actions/checkout` it holds an `AUTHORIZATION: basic <token>`
+  header, and each anchor would otherwise be one bit of it.
 - **Cited paths are validated before any filesystem access** — no absolute
-  paths, no `..` traversal, no `~` expansion, nothing inside `.git` (which holds
-  the CI token). The same guard covers the file operands of an absence search,
+  paths, no `..` traversal, no `~` expansion. The same guard covers the file operands of an absence search,
   so neither lane can be used as a file-probe oracle whose verdict lands in a
   public PR comment. A token naming a location outside the repo is refused
   wherever it appears, so containment does not depend on the per-flag arity

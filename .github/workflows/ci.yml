@@ -17,6 +17,11 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+          
+      # The flag-arity conformance test checks the allowlists against the real
+      # binaries. ubuntu-latest ships grep but not ripgrep, and a skipped check
+      # is a green check — so install it rather than lose half the coverage.
+      - run: sudo apt-get update && sudo apt-get install -y ripgrep
 
       - run: pnpm install --frozen-lockfile
 

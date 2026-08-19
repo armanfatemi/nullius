@@ -54,6 +54,11 @@ Open the file. Then write:
   one- or two-character quote is trivially true and asserts nothing; it
   verifies as `WEAK-ANCHOR`. Quote enough of the line that a real change to the
   code would contradict it.
+- **Quote something that occurs once.** A quote matching several lines is
+  `WEAK-ANCHOR` while it sits on its cited line, and a hard `UNPINNED` failure
+  once that line number goes stale — at that point neither half of the citation
+  identifies anything. A stale line number on its own is not a failure:
+  `DRIFT` and `WRONG-LINE` pass, and tell you the citation needs updating.
 - For a long quote, or one spanning lines, put it in a fenced block under the
   marker instead — a multi-line block must match consecutively from the cited
   line:

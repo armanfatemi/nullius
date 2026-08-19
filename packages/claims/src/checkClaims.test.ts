@@ -141,7 +141,7 @@ describe("checkClaims — presence", () => {
 
   it("does not crash when the cited line is past the end of the file", () => {
     const [result] = checkClaims(
-      [presence("schema.graphqls", 9999, "PENDING")],
+      [presence("schema.graphqls", 9999, "enum ProcessorTaskStatus {")],
       deps(),
     );
 
@@ -311,7 +311,7 @@ describe("checkClaims — malformed", () => {
 });
 
 describe("isFailure", () => {
-  it("treats ok, advisory and drift as passing", () => {
+  it("treats every non-failing verdict as passing", () => {
     expect(isFailure("ok")).toBe(false);
     expect(isFailure("advisory")).toBe(false);
     expect(isFailure("drift")).toBe(false);
@@ -319,7 +319,7 @@ describe("isFailure", () => {
 
   it("treats every unverified verdict as failing", () => {
     for (const verdict of [
-      "wrong-line",
+      "unpinned",
       "fabricated",
       "missing-file",
       "count-mismatch",
@@ -349,15 +349,17 @@ describe("checkClaims — anchor distinctiveness", () => {
     source: { doc: "design.md", line: 1 },
   });
 
-  it("flags a quote too short to pin down a line", () => {
-    // Matching is substring-based, so `n` is true of line 1 and asserts nothing.
+  it("flags a short quote as advisory even when it is unique", () => {
     const [result] = checkClaims(
-      [presence(1, "n")],
+      [presence(1, "3;")],
       deps({ readFileLines: () => lines }),
     );
 
     expect(result?.verdict).toBe("weak-anchor");
-    expect(result?.detail).toContain("too short");
+    expect(result?.detail).toContain("character(s)");
+    // Advisory only: a short quote sitting on its cited line still points
+    // somewhere definite.
+    expect(isFailure(result?.verdict ?? "ok")).toBe(false);
   });
 
   it("flags a quote that matches several lines", () => {
@@ -367,7 +369,24 @@ describe("checkClaims — anchor distinctiveness", () => {
     );
 
     expect(result?.verdict).toBe("weak-anchor");
-    expect(result?.detail).toContain("matches 2 lines");
+    expect(result?.detail).toContain("matches several lines");
+  });
+
+  it("does not call a whole-line quote ambiguous because a longer line contains it", () => {
+    // The regression this rule exists to avoid: someone appends a trailing
+    // comment to a copy of the cited line, and a correctly pasted 28-character
+    // quote becomes "ambiguous" — failing the run on exactly the unrelated
+    // refactor the drift tolerance exists to forgive.
+    const withTwin = [
+      "return this.store.get(key);",
+      "return this.store.get(key); // no promotion",
+    ];
+    const [result] = checkClaims(
+      [presence(1, "return this.store.get(key);")],
+      deps({ readFileLines: () => withTwin }),
+    );
+
+    expect(result?.verdict).toBe("ok");
   });
 
   it("still passes a weak anchor — it is advisory, not a gate", () => {
@@ -377,6 +396,16 @@ describe("checkClaims — anchor distinctiveness", () => {
     );
 
     expect(isFailure(result?.verdict ?? "ok")).toBe(false);
+  });
+
+  it("honours a configured minimum", () => {
+    const [result] = checkClaims(
+      [presence(1, "export const MAX_RETRIES = 3;")],
+      deps({ readFileLines: () => lines }),
+      { minAnchorChars: 100 },
+    );
+
+    expect(result?.verdict).toBe("weak-anchor");
   });
 
   it("passes a distinctive quote as ok", () => {
@@ -484,5 +513,64 @@ describe("checkClaims — the reachability control search", () => {
     );
 
     expect(result?.verdict).toBe("ok");
+  });
+});
+
+describe("checkClaims — the two axes of a citation", () => {
+  // "This text is in this file" is a claim about the AUTHOR: it can be
+  // fabricated, and once true no one else's edit can make it false.
+  // "It is on line N" is a claim about the REPOSITORY, and goes stale whenever
+  // someone inserts a line above it. The first is a hard gate forever; the
+  // second is advisory — otherwise an honest document turns red on an unrelated
+  // refactor, which is what teaches a team to add continue-on-error.
+  const distinctive = "enum ProcessorTaskStatus {";
+
+  it("passes a distinctive quote whose line has moved far", () => {
+    // Text is on line 4; cited at 9, well outside the drift window.
+    const [result] = checkClaims([presence("schema.graphqls", 9, distinctive)], deps());
+
+    expect(result?.verdict).toBe("wrong-line");
+    expect(isFailure(result?.verdict ?? "ok")).toBe(false);
+    expect(result?.detail).toContain("stale rather than wrong");
+  });
+
+  it("still fails a quote that is nowhere in the file", () => {
+    const [result] = checkClaims(
+      [presence("schema.graphqls", 4, "enum ProcessorTaskStatus { INVENTED }")],
+      deps(),
+    );
+
+    expect(result?.verdict).toBe("fabricated");
+    expect(isFailure("fabricated")).toBe(true);
+  });
+
+  it("passes a SHORT quote off its line when it still identifies one place", () => {
+    // "PENDING" is under minAnchorChars but occurs exactly once, so re-reading
+    // the file can contradict it — which is the whole test of whether a
+    // citation still asserts something. Failing it would have been the tool
+    // claiming a citation pins nothing while naming the line it pins.
+    const [result] = checkClaims([presence("schema.graphqls", 1, "PENDING")], deps());
+
+    expect(result?.verdict).toBe("wrong-line");
+    expect(isFailure(result?.verdict ?? "ok")).toBe(false);
+    expect(result?.detail).toContain("worth quoting more");
+  });
+
+  it("tolerates a weak quote that IS on its cited line", () => {
+    // Here the line number is doing the pinning, so the citation still points
+    // somewhere definite — advisory, not a failure.
+    const [result] = checkClaims([presence("schema.graphqls", 5, "PENDING")], deps());
+
+    expect(result?.verdict).toBe("weak-anchor");
+    expect(isFailure("weak-anchor")).toBe(false);
+  });
+
+  it("fails a non-distinctive quote that is not on its cited line", () => {
+    const [result] = checkClaims(
+      [presence("schema.graphqls", 1, "}")],
+      deps(),
+    );
+
+    expect(result?.verdict).toBe("unpinned");
   });
 });

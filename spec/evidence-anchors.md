@@ -93,12 +93,14 @@ const result = await retry(() => publish(event), {
 ```
 ````
 
-**Quote something that could be wrong.** Matching is substring-based, so a
-one-character quote is trivially true and establishes nothing. A quote shorter
-than `minAnchorChars` (default 8), or one matching several lines of the file,
-verifies as `WEAK-ANCHOR`: the point of the anchor is that re-reading the file
-could contradict it, and a quote that cannot be contradicted has not made
-anyone look.
+**Quote something that could be wrong, and that occurs once.** Matching is
+substring-based, so a one-character quote is trivially true and establishes
+nothing. A quote shorter than `minAnchorChars` (default 8), or one matching
+several lines of the file, verifies as `WEAK-ANCHOR`: the point of the anchor is
+that re-reading the file could contradict it, and a quote that cannot be
+contradicted has not made anyone look. Length alone never fails a claim — but a
+quote matching several lines becomes a hard `UNPINNED` failure once its line
+number is stale too, because at that point neither half identifies anything.
 
 **Paths must be repo-relative.** Absolute paths, `~`, and `..` traversal are
 rejected as `UNSAFE-PATH` and never read — see the security model below.
@@ -190,7 +192,8 @@ past the anchors.
 | `ADVISORY`       | Verified, but worth a human glance (see detail)                                      | ✅      |
 | `WEAK-ANCHOR`    | True, but the quote is too short or too repeated to identify the cited line          | ✅      |
 | `DRIFT`          | Text found within the drift window (default ±3 lines) — the file moved under the doc | ✅      |
-| `WRONG-LINE`     | Text exists in the file, but nowhere near the cited line                             | ❌      |
+| `WRONG-LINE`     | Distinctive text exists in the file, but not near the cited line — stale, not wrong  | ✅      |
+| `UNPINNED`       | The quote is neither distinctive nor on its cited line — it pins nothing down        | ❌      |
 | `FABRICATED`     | Text does not appear in the file at all                                              | ❌      |
 | `MISSING-FILE`   | The cited file does not exist                                                        | ❌      |
 | `COUNT-MISMATCH` | The absence command returned a different count than claimed                          | ❌      |
@@ -217,10 +220,39 @@ verified and reported as weak — it did not make the author look at a line.
 It passes, because a weak citation is still better than none, but it is
 visible.
 
-**Evidence:** `packages/claims/src/checkClaims.ts:95` — `const DEFAULT_MIN_ANCHOR_CHARS = 8;`
+**Evidence:** `packages/claims/src/checkClaims.ts:105` — `const DEFAULT_MIN_ANCHOR_CHARS = 8;`
 
 **A `FABRICATED` or `COUNT-MISMATCH` verdict is not just a citation typo.**
 Re-examine the decision that claim was supporting.
+
+### Two axes, and only one of them can rot
+
+A presence citation asserts two different things, and they age differently.
+
+- **"This text is in this file"** is a claim about the **author**. It can be
+  fabricated, and once it is true, no one else's edit can make it false. This is
+  the axis the convention exists to police, and it is a hard gate forever.
+- **"It is on line N"** is a claim about the **repository**. It goes stale every
+  time someone inserts a line above it, through no fault of the document.
+
+Hard-failing the second axis makes a correct, honestly written document turn red
+on an unrelated refactor. That is the failure that gets `continue-on-error`
+added to the workflow, and once it is added nobody reads the output again — so
+enforcing the rotting axis costs more grounding than it buys. `DRIFT` and
+`WRONG-LINE` therefore **pass**, reporting the delta so the citation can be
+corrected, while `FABRICATED` fails permanently.
+
+This holds only while the text half carries real information, which is what
+`minAnchorChars` enforces. A quote too short or too repeated to identify a line
+has nothing left to stand on once its line number is wrong: that is `UNPINNED`,
+and it **fails**. A weak quote that _is_ on its cited line still points
+somewhere definite, so it stays the passing `WEAK-ANCHOR`. The two rules are a
+pair — relaxing the line number without enforcing distinctiveness would let an
+anchor assert nothing at all and still show green.
+
+The practical consequence for a docs archive: a document written a year ago
+still fails if it invented a line of code, and no longer fails merely because
+the file grew.
 
 **Scope of the guarantee.** Verdicts certify _form_: the text exists at the
 cited location, the count matches, the moment is in the vocabulary. They never
@@ -245,10 +277,9 @@ and the operating system is the whole safety story.
   comment. So:
 
   1. Paths are checked **before any filesystem access** — no absolute paths, no
-     `..` traversal, no home expansion, and nothing inside `.git` (under
-     `actions/checkout` that directory holds the workflow's credentials). The
-     **same guard covers the file operands of an absence search**: absence and
-     presence are one door, not two.
+     `..` traversal, no home expansion, and nothing inside `.git`. The **same
+     guard covers the file operands of an absence search**: absence and presence
+     are one door, not two.
   2. **Any token that names a location outside the repository is refused
      wherever it appears** — operand, pattern, or flag value. Which words are
      operands depends on a per-flag arity table, and one wrong entry there
@@ -257,8 +288,19 @@ and the operating system is the whole safety story.
      that a regex which looks like an absolute path is refused, loudly.
   3. **Symlinks are resolved before reading or searching.** A string check
      cannot see that a committed `evil-link -> /etc/passwd` is repo-relative in
-     spelling and out-of-repo in fact. Both the reader and the search operands
-     are re-checked against the resolved path.
+     spelling and out-of-repo in fact, nor that `gitdir -> .git` stays inside
+     the repo while still reaching the credentials store. Both the reader and
+     the search operands are re-checked against the resolved path.
+  4. **`.git` is pruned from the recursive walk, not merely from the operand.**
+     This is the layer that a text guard cannot provide: `grep -r` never needs
+     the directory named to descend into it, and with no operand at all it
+     defaults to `.`. Under `actions/checkout` — with `persist-credentials` on,
+     the default — `.git/config` carries an `AUTHORIZATION: basic <token>`
+     header, so the count difference between a matching and a non-matching guess
+     is one bit of that token, and the Action posts it into a PR comment. Every
+     search therefore runs with `--exclude-dir=.git` (grep) or a negated
+     `.git` glob (ripgrep, which skips it by default but not under `--hidden`,
+     `--no-ignore` or `-uuu`). The exclusion beats a re-including user glob.
 - **No shell, ever.** An absence command is tokenised into a CANONICAL argv
   vector — short clusters split, inline flag values separated, `--` before the
   operands — and spawned directly. The argv that runs is exactly the argv that
@@ -266,7 +308,7 @@ and the operating system is the whole safety story.
   and metacharacter escaping are not defences this tool has to get right —
   there is no interpreter left to escape from.
 
-  **Evidence:** `packages/claims/src/runners.ts:150` — `shell: false,`
+  **Evidence:** `packages/claims/src/runners.ts:194` — `shell: false,`
 
   One consequence is deliberate:
   **shell globs are not expanded**. `src/*.ts` is passed through literally and

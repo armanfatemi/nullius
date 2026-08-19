@@ -307,3 +307,34 @@ describe("isSafeSearchCommand — .git and null bytes", () => {
     expect(isSafeSearchCommand("grep -e 'a\0b' src/").safe).toBe(false);
   });
 });
+
+describe("reachabilityPlan — operands are not flags", () => {
+  it("keeps a file operand that happens to be named like a flag", () => {
+    // Everything after `--` is an operand. Dropping a file literally named
+    // `-F` as a "pattern-semantic flag" removed a path from the searched set
+    // and shifted every later index, so pathIndices pointed at `--`.
+    const parsed = parseSearchCommand("grep -rn -e zzz -- -F src");
+    expect(parsed.safe).toBe(true);
+    if (!parsed.safe) return;
+
+    const control = reachabilityPlan(parsed.plan);
+    expect(control).not.toBeNull();
+    const segment = control?.segments[0];
+    expect(segment?.args).toContain("-F");
+    // Every recorded path index must actually point at a path.
+    const pathed = (segment?.pathIndices ?? []).map((index) => segment?.args[index]);
+    expect(pathed).toEqual(["-F", "src"]);
+  });
+
+  it("still drops pattern-semantic flags that really are flags", () => {
+    const parsed = parseSearchCommand("grep -rnwF needle src/");
+    expect(parsed.safe).toBe(true);
+    if (!parsed.safe) return;
+
+    const segment = reachabilityPlan(parsed.plan)?.segments[0];
+    expect(segment?.args).not.toContain("-w");
+    expect(segment?.args).not.toContain("-F");
+    const pathed = (segment?.pathIndices ?? []).map((index) => segment?.args[index]);
+    expect(pathed).toEqual(["src/"]);
+  });
+});

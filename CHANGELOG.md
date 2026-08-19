@@ -19,8 +19,14 @@ absence lane, and it is **breaking** — see Migration.
   guard now covers both lanes, in three layers: the string check, a refusal of
   any out-of-repo token wherever it appears (so containment does not depend on
   the arity table), and symlink resolution before anything is read or searched.
-- **`.git` is off limits.** Under `actions/checkout` it holds an
-  `AUTHORIZATION: basic <token>` header, and anchors are unlimited per document.
+- **`.git` is off limits, at the walk and not just the operand.** Under
+  `actions/checkout` it holds an `AUTHORIZATION: basic <token>` header, and
+  anchors are unlimited per document, so each one is a bit. Refusing the written
+  path was not enough: `grep -r` never needs the directory named to descend into
+  it, and defaults to `.` with no operand at all. Searches now run with
+  `--exclude-dir=.git` (grep) or a negated `.git` glob (ripgrep, which skips it
+  by default but not under `--hidden`/`--no-ignore`/`-uuu`), and a symlink
+  resolving into `.git` is refused.
 - **Budgets.** 10s per search, 120s per run, and `RIPGREP_CONFIG_PATH` /
   `GREP_OPTIONS` are stripped from the child environment.
 - Flags that make a search vacuous regardless of the pattern (`-q`, `-m 0`,
@@ -29,6 +35,24 @@ absence lane, and it is **breaking** — see Migration.
 
 ### Verdicts
 
+- **The line number is now a hint, not an assertion.** `WRONG-LINE` and `DRIFT`
+  pass, reporting the delta. A citation asserts two things on two axes: "this
+  text is in this file" is a claim about the author that can be fabricated and
+  can never later become false, while "it is on line N" is a claim about the
+  repository that goes stale whenever someone inserts a line above it.
+  Hard-failing the second turns a correct document red on an unrelated
+  refactor, which is what gets `continue-on-error` added to a workflow.
+  `FABRICATED` still fails permanently.
+- New failing verdict `UNPINNED`, the guard on that relaxation: a quote that
+  matches SEVERAL lines and is on none of them at the cited line identifies
+  nothing on either axis. Length alone never fails a claim — a short quote
+  matching exactly one line still pins that line, and re-reading the file can
+  still contradict it. Distinctiveness prefers exact whole-line matches, so
+  appending a trailing comment to a copy of a cited line does not make the
+  original quote "ambiguous".
+- `WEAK-ANCHOR` (passing) covers both quality signals: a quote shorter than
+  `minAnchorChars`, or one matching several lines while still sitting on its
+  cited line.
 - `--require-markers` is now a **per-document** floor. Previously one anchored
   document licensed every unanchored document in the glob.
 - New passing verdict `WEAK-ANCHOR`: the quote is true but too short
@@ -50,6 +74,10 @@ absence lane, and it is **breaking** — see Migration.
 
 ### Migration
 
+- **`WRONG-LINE` no longer fails**, and a new `UNPINNED` verdict does. Documents
+  that were red only from line drift go green; a doc whose anchors match several
+  lines and sit on none of them goes red. `driftWindow` now only chooses between
+  two passing verdicts, so it no longer affects the exit code.
 - **Shell globs are no longer expanded.** `grep -rn x src/*.ts` now reports a
   missing file instead of silently matching. Use `-r` with `--include=`/`-g`.
 - **`exclude` is a glob against the full repo-relative path**, not a basename.

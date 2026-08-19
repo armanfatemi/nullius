@@ -23,8 +23,10 @@ export interface ClaimsConfig {
   /** Moments already caught by CI (pass as advisory). Default: ["build-time"]. */
   ciCaughtMoments?: string[];
   /**
-   * Shortest quote that counts as distinctive. Shorter quotes still verify,
-   * but pass as `weak-anchor` rather than `ok`. Default 8.
+   * Shortest quote that reads as a real citation. Shorter quotes still verify
+   * and still pass, as `weak-anchor` rather than `ok` — length alone never
+   * fails a claim. What fails is a quote matching SEVERAL lines while its line
+   * number is also wrong (`unpinned`), which no setting controls. Default 8.
    */
   minAnchorChars?: number;
   /**

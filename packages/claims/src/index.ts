@@ -23,6 +23,9 @@ export {
   isSafeSearchCommand,
   parseSearchCommand,
   reachabilityPlan,
+  DENIED_FLAG_TABLES,
+  FLAG_ARITY_TABLES,
+  type Arity,
   type ParseResult,
   type SafetyVerdict,
   type SearchBinary,
@@ -32,6 +35,10 @@ export {
 export {
   fileLinesReader,
   searchRunner,
+  containPath,
+  resolveInsideRoot,
   DEFAULT_SEARCH_TIMEOUT_MS,
+  DEFAULT_RUN_BUDGET_MS,
+  type Containment,
 } from "./runners";
 export { parseConfig, type ClaimsConfig } from "./config";

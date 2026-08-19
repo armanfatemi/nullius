@@ -33,8 +33,18 @@ export type Verdict =
   | "weak-anchor"
   /** Text found within a few lines of the cited one — the file moved under the doc. */
   | "drift"
-  /** Text exists in the file, but nowhere near the cited line. */
+  /**
+   * Text exists in the file, but nowhere near the cited line. Passing: the
+   * quote is distinctive enough to identify real code on its own, and a line
+   * number that has moved is a fact about the repository, not about the author.
+   */
   | "wrong-line"
+  /**
+   * The quote is BOTH non-distinctive and not where it was cited. Failing:
+   * neither half of the citation pins anything down, so there is nothing left
+   * that re-reading the file could contradict.
+   */
+  | "unpinned"
   /** Text does not appear in the file at all. */
   | "fabricated"
   | "missing-file"
@@ -94,11 +104,30 @@ export interface CheckOptions {
 const DEFAULT_DRIFT_WINDOW = 3;
 const DEFAULT_MIN_ANCHOR_CHARS = 8;
 
+/**
+ * Passing verdicts.
+ *
+ * `drift` and `wrong-line` are here because a citation asserts two different
+ * things on two different axes. "This text is in this file" is a claim about
+ * the author: it can be fabricated, and once true it can never become false by
+ * anyone else's edit. "It is on line N" is a claim about the repository, and it
+ * goes stale every time someone inserts a line above it. Hard-failing the
+ * second axis means a correct, honestly-written document turns red on an
+ * unrelated refactor — which is what teaches a team to add `continue-on-error`
+ * and stop reading the output.
+ *
+ * So fabrication stays a hard gate forever and position is advisory — but only
+ * while the text half carries real information. A quote too short or too
+ * repeated to identify a line is `unpinned` when it is not where it was cited,
+ * and that fails: forgiving the line number for a quote that pins nothing is
+ * how an anchor gets to assert nothing at all and still show green.
+ */
 const PASSING: ReadonlySet<Verdict> = new Set<Verdict>([
   "ok",
   "advisory",
   "weak-anchor",
   "drift",
+  "wrong-line",
 ]);
 
 export function isFailure(verdict: Verdict): boolean {
@@ -116,43 +145,80 @@ function citedBlock(claim: Extract<Claim, { kind: "presence" }>): string[] {
 }
 
 /**
+ * How a quoted line is compared to a source line.
+ *
+ * `substring` is what verifies a citation: quoting part of a line is normal and
+ * legitimate. `exact` exists only to decide DISTINCTIVENESS, because substring
+ * counting cannot tell "this quote is ambiguous" from "someone appended a
+ * trailing comment to a copy of this line". A whole-line quote that appears
+ * verbatim once is distinctive even when a longer line contains it too.
+ */
+type MatchMode = "substring" | "exact";
+
+function lineMatches(line: string, quoted: string, mode: MatchMode): boolean {
+  const target = normalize(quoted);
+  const actual = normalize(line);
+  // A blank quoted line asserts a blank source line. Without this, `includes`
+  // on the empty string matches anything and a blank line in the quote would
+  // silently accept any source line in its place.
+  if (target.length === 0) return actual.length === 0;
+  return mode === "exact" ? actual === target : actual.includes(target);
+}
+
+/**
  * Whether the cited block appears in `lines` starting at 1-based `start`. A
  * multi-line quote must match consecutively — that is what makes the block form
  * a stronger assertion than the inline one rather than a longer one.
  */
-function matchesAt(lines: string[], start: number, block: string[]): boolean {
+function matchesAt(
+  lines: string[],
+  start: number,
+  block: string[],
+  mode: MatchMode = "substring",
+): boolean {
   if (start < 1) return false;
   for (let offset = 0; offset < block.length; offset += 1) {
     const line = lines[start - 1 + offset];
     const quoted = block[offset];
     if (line === undefined || quoted === undefined) return false;
-    const target = normalize(quoted);
-    // A blank quoted line asserts a blank source line. Without this, `includes`
-    // on the empty string matches anything and a blank line in the quote would
-    // silently accept any source line in its place.
-    if (target.length === 0) {
-      if (normalize(line).length !== 0) return false;
-      continue;
-    }
-    if (!normalize(line).includes(target)) return false;
+    if (!lineMatches(line, quoted, mode)) return false;
   }
   return true;
 }
 
-/** How many places in the file the block matches — 1 means it pins a line down. */
-function countMatches(lines: string[], block: string[]): number {
-  let matches = 0;
-  for (let start = 1; start <= lines.length; start += 1) {
-    if (matchesAt(lines, start, block)) matches += 1;
-  }
-  return matches;
+/**
+ * Where the block matches, in one pass. `count` saturates at 2 because every
+ * caller only asks "nowhere, one place, or several?" — and this runs on every
+ * presence claim, including large files with large blocks.
+ */
+interface MatchSurvey {
+  count: 0 | 1 | 2;
+  first: number | null;
 }
 
-function findBlock(lines: string[], block: string[]): number | null {
+function survey(lines: string[], block: string[], mode: MatchMode): MatchSurvey {
+  let count: 0 | 1 | 2 = 0;
+  let first: number | null = null;
   for (let start = 1; start <= lines.length; start += 1) {
-    if (matchesAt(lines, start, block)) return start;
+    if (!matchesAt(lines, start, block, mode)) continue;
+    if (first === null) first = start;
+    count = count === 0 ? 1 : 2;
+    if (count === 2) break;
   }
-  return null;
+  return { count, first };
+}
+
+/**
+ * How many places in the file the quote identifies.
+ *
+ * Exact whole-line matches win when there are any: a quote copied verbatim from
+ * one line is pinned to that line even if some longer line happens to contain
+ * it. Only when the quote never matches a line exactly — a fragment — does the
+ * substring count decide.
+ */
+function locate(lines: string[], block: string[]): MatchSurvey {
+  const exact = survey(lines, block, "exact");
+  return exact.count > 0 ? exact : survey(lines, block, "substring");
 }
 
 function checkPresence(
@@ -182,29 +248,48 @@ function checkPresence(
   }
 
   const block = citedBlock(claim);
+  const quote = block.map(normalize).join(" ").trim();
+  const where = locate(lines, block);
+
+  // Two different questions, and conflating them was a bug. "Is this a GOOD
+  // citation?" is about length, and the answer is advisory. "Is there anything
+  // left to contradict if we forgive the line number?" is about whether the
+  // text identifies ONE place — and only that one can justify failing, because
+  // a short quote matching exactly one line still pins that line.
+  const tooShort = quote.length < minAnchorChars;
+  const ambiguous = where.count > 1;
+
   if (matchesAt(lines, claim.line, block)) {
-    // The citation is true. Whether it is worth anything is a separate
-    // question: matching is substring-based, so a one-character quote is
-    // trivially verifiable and asserts nothing about the code. An anchor that
-    // does not single out a line has not made the author look at one.
-    const quote = block.map(normalize).join(" ").trim();
-    if (quote.length < minAnchorChars) {
+    if (ambiguous) {
       return {
         claim,
         verdict: "weak-anchor",
-        detail: `quote is ${quote.length} character(s) — too short to pin down a line; quote enough of ${claim.path} to be wrong if the code changes`,
+        detail: `quote matches several lines in ${claim.path} — the line number is doing all the work; quote something distinctive`,
       };
     }
-    const matches = countMatches(lines, block);
-    if (matches > 1) {
+    if (tooShort) {
       return {
         claim,
         verdict: "weak-anchor",
-        detail: `quote matches ${matches} lines in ${claim.path} — it does not identify line ${claim.line}; quote something distinctive`,
+        detail: `quote is ${quote.length} character(s) — quote enough of ${claim.path} to be wrong if the code changes`,
       };
     }
     return { claim, verdict: "ok", detail: "" };
   }
+
+  // Below here the text is NOT at the cited line, so the line number can no
+  // longer pin anything. An ambiguous quote has nothing left to stand on.
+  if (ambiguous) {
+    return {
+      claim,
+      verdict: "unpinned",
+      detail: `quote matches several lines in ${claim.path} and is on none of them at line ${claim.line} — neither half of this citation identifies anything`,
+    };
+  }
+
+  const stale = tooShort
+    ? ` (and the quote is only ${quote.length} character(s) — worth quoting more)`
+    : "";
 
   // Near miss — the file gained or lost a few lines since the doc was written.
   const lower = Math.max(1, claim.line - driftWindow);
@@ -214,17 +299,16 @@ function checkPresence(
       return {
         claim,
         verdict: "drift",
-        detail: `text is on line ${candidate}, not ${claim.line} — update the citation`,
+        detail: `text is on line ${candidate}, not ${claim.line} — update the citation${stale}`,
       };
     }
   }
 
-  const elsewhere = findBlock(lines, block);
-  if (elsewhere !== null) {
+  if (where.first !== null) {
     return {
       claim,
       verdict: "wrong-line",
-      detail: `text appears on line ${elsewhere}, not ${claim.line}`,
+      detail: `text is on line ${where.first}, not ${claim.line} — the quote still identifies real code, so this is stale rather than wrong; update the citation${stale}`,
     };
   }
 

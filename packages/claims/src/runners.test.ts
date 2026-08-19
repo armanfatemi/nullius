@@ -4,20 +4,47 @@
  * end-to-end check proves it is closed.
  */
 
-import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, writeFileSync, chmodSync, mkdirSync, symlinkSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import {
+  existsSync,
+  mkdtempSync,
+  writeFileSync,
+  chmodSync,
+  mkdirSync,
+  rmSync,
+  symlinkSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 
 import { checkClaims } from "./checkClaims";
 import { parseSearchCommand } from "./commandSafety";
 import { parseClaims } from "./parseClaims";
 import { fileLinesReader, searchRunner } from "./runners";
 
+/** Whether a binary this test needs is present on the machine. */
+function binaryAvailable(binary: string): boolean {
+  const probe = spawnSync(binary, ["--version"], { encoding: "utf8", timeout: 5_000 });
+  return !probe.error && (probe.status ?? 1) === 0;
+}
+
+/** Whether a blocking FIFO can be created here, for the kill-path tests. */
+function fifoAvailable(): boolean {
+  const probe = spawnSync("mkfifo", ["--version"], { encoding: "utf8", timeout: 5_000 });
+  return !probe.error;
+}
+
+const sandboxes: string[] = [];
+
+afterAll(() => {
+  for (const root of sandboxes) rmSync(root, { recursive: true, force: true });
+});
+
 function sandbox(): string {
   const root = mkdtempSync(join(tmpdir(), "nullius-runner-"));
+  sandboxes.push(root);
   mkdirSync(join(root, "src"), { recursive: true });
   writeFileSync(join(root, "src", "app.ts"), "const legacyRetryHelper = 1;\n");
   return root;
@@ -101,7 +128,7 @@ describe("search timeouts", () => {
     if (!outcome.ok) expect(outcome.error).toMatch(/exceeded|killed/);
   });
 
-  it("kills a search that would otherwise never return", () => {
+  it.skipIf(!fifoAvailable())("kills a search that would otherwise never return", () => {
     const root = sandbox();
     // A FIFO nobody writes to: grep blocks on the read forever. This is the
     // kill path specifically, and it is deterministic — unlike a "slow regex",
@@ -121,7 +148,7 @@ describe("search timeouts", () => {
     expect(elapsed).toBeLessThan(6_000);
   });
 
-  it("stops running searches once the run-wide budget is spent", () => {
+  it.skipIf(!fifoAvailable())("stops running searches once the run-wide budget is spent", () => {
     const root = sandbox();
     execFileSync("mkfifo", [join(root, "src", "blocking.pipe")]);
     const parsed = parseSearchCommand("grep -n needle src/blocking.pipe");
@@ -185,5 +212,117 @@ describe("symlink containment", () => {
     const root = sandbox();
     symlinkSync(join(root, "src", "app.ts"), join(root, "alias.ts"));
     expect(fileLinesReader(root)("alias.ts")?.[0]).toContain("legacyRetryHelper");
+  });
+});
+
+describe("the .git credential store", () => {
+  /** A fixture with a persisted actions/checkout credential, as CI produces. */
+  function repoWithToken(): string {
+    const root = sandbox();
+    mkdirSync(join(root, ".git"), { recursive: true });
+    writeFileSync(
+      join(root, ".git", "config"),
+      '[http "https://github.com/"]\n  extraheader = AUTHORIZATION: basic zzTOKENVALUEzz\n',
+    );
+    return root;
+  }
+
+  /**
+   * Runs an absence search and returns the match count, failing loudly if the
+   * search could not run at all. Collapsing that into a sentinel count made a
+   * missing binary look like a wrong count ("expected -1 to be 0") instead of
+   * saying what actually went wrong.
+   */
+  function count(root: string, command: string): number {
+    const parsed = parseSearchCommand(command);
+    expect(parsed.safe, `refused: ${parsed.safe ? "" : parsed.reason}`).toBe(true);
+    if (!parsed.safe) throw new Error("unreachable");
+    const outcome = searchRunner(root)(parsed.plan);
+    if (!outcome.ok) throw new Error(`search did not run: ${outcome.error}`);
+    return outcome.count;
+  }
+
+  // Refusing `.git` as a written operand is not enough: `grep -r` never needs
+  // the directory NAMED to descend into it. Each of these returned a nonzero
+  // count before the walk itself was pruned, and the count difference between a
+  // matching and non-matching guess is one bit of the token, posted to a PR.
+  it.each([
+    ["grep with an ancestor operand", "grep -rnI -e zzTOKEN[V]ALUEzz ."],
+    ["grep with no operand at all", "grep -rnI -e zzTOKEN[V]ALUEzz"],
+    ["grep restricted to the config basename", "grep -rnI --include=config -e zzTOKEN[V]ALUEzz ."],
+  ])("cannot be reached by %s", (_label, command) => {
+    expect(count(repoWithToken(), command)).toBe(0);
+  });
+
+  // Split from the grep cases so that a machine without ripgrep reports one
+  // clear "ripgrep is missing" failure (see flagConformance) rather than four
+  // more that look like the prune itself broke.
+  it.skipIf(!binaryAvailable("rg")).each([
+    ["rg --hidden", "rg --hidden -e zzTOKEN[V]ALUEzz ."],
+    ["rg -uuu", "rg -uuu -e zzTOKEN[V]ALUEzz ."],
+    ["rg --no-ignore --hidden", "rg --no-ignore --hidden -e zzTOKEN[V]ALUEzz ."],
+    ["rg with a glob re-including .git", "rg -uuu --glob '.git/**' -e zzTOKEN[V]ALUEzz ."],
+  ])("cannot be reached by %s", (_label, command) => {
+    expect(count(repoWithToken(), command)).toBe(0);
+  });
+
+  it("refuses a symlink pointing at .git", () => {
+    // `gitdir -> .git` resolves to a path that IS inside the repo, so
+    // containment alone does not keep the credentials store out of reach.
+    const root = repoWithToken();
+    symlinkSync(join(root, ".git"), join(root, "gitdir"));
+
+    const parsed = parseSearchCommand("grep -rnI -e zzTOKEN[V]ALUEzz gitdir/");
+    expect(parsed.safe).toBe(true);
+    if (!parsed.safe) return;
+
+    const outcome = searchRunner(root)(parsed.plan);
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) expect(outcome.error).toContain(".git");
+  });
+
+  it("refuses to READ a file inside .git", () => {
+    const root = repoWithToken();
+    expect(fileLinesReader(root)(".git/config")).toBeNull();
+  });
+
+  it("still searches ordinary repository content", () => {
+    // The prune must not make every search vacuous — that would hide the hole
+    // rather than close it.
+    expect(count(repoWithToken(), "grep -rnI -e legacyRetryHelper src/")).toBe(1);
+  });
+});
+
+describe("the reachability control, against real searches", () => {
+  /** Runs one absence claim end to end and returns its verdict. */
+  function verdictFor(root: string, command: string, expected: number): string {
+    const [result] = checkClaims(
+      parseClaims("doc.md", `**Evidence:** \`${command}\` → ${expected} results`),
+      { readFileLines: fileLinesReader(root), runSearch: searchRunner(root) },
+    );
+    return result?.verdict ?? "none";
+  }
+
+  it("stays quiet on a TRUE absence in a directory that really was searched", () => {
+    // The property the control was rewritten for. Its predecessor truncated the
+    // pattern to a fragment, and a fragment of a genuinely absent identifier is
+    // usually absent too — so it fired on correct claims, which trains readers
+    // to skim past ADVISORY.
+    const root = sandbox();
+    expect(verdictFor(root, "grep -rn -e zzNeverAppearsHerezz src/", 0)).toBe("ok");
+  });
+
+  it("fires when the scope examined no content at all", () => {
+    const root = sandbox();
+    // src/ holds only .ts; an include filter for .py reaches nothing, so the
+    // zero says nothing about the codebase.
+    expect(
+      verdictFor(root, "grep -rn --include=*.py -e legacyRetryHelper src/", 0),
+    ).toBe("advisory");
+  });
+
+  it("does not fire when the claim is non-zero", () => {
+    const root = sandbox();
+    expect(verdictFor(root, "grep -rn -e legacyRetryHelper src/", 1)).toBe("ok");
   });
 });
