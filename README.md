@@ -228,11 +228,11 @@ The claims below are live anchors — CI runs `nullius check` on this file with
 `--require-markers`, so the green badge above attests this README's own
 claims about the code. The default binding-moment vocabulary is defined here:
 
-**Evidence:** `packages/claims/src/checkClaims.ts:15@7412847` — `export const DEFAULT_BINDING_MOMENTS = [`
+**Evidence:** `packages/claims/src/checkClaims.ts:15@cdae286` — `export const DEFAULT_BINDING_MOMENTS = [`
 
 Path traversal is rejected before any file is read:
 
-**Evidence:** `packages/claims/src/pathSafety.ts:39@7412847` — `return { safe: false, reason: "path traversal ('..') is not allowed" };`
+**Evidence:** `packages/claims/src/pathSafety.ts:39@cdae286` — `return { safe: false, reason: "path traversal ('..') is not allowed" };`
 
 And the checker makes no network calls:
 
