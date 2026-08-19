@@ -19,5 +19,19 @@ export {
 } from "./checkClaims";
 export { buildEagerPrompt } from "./eagerPrompt";
 export { isSafeRepoPath, type PathVerdict } from "./pathSafety";
-export { isSafeSearchCommand, type SafetyVerdict } from "./commandSafety";
+export {
+  isSafeSearchCommand,
+  parseSearchCommand,
+  reachabilityPlan,
+  type ParseResult,
+  type SafetyVerdict,
+  type SearchBinary,
+  type SearchPlan,
+  type SearchSegment,
+} from "./commandSafety";
+export {
+  fileLinesReader,
+  searchRunner,
+  DEFAULT_SEARCH_TIMEOUT_MS,
+} from "./runners";
 export { parseConfig, type ClaimsConfig } from "./config";

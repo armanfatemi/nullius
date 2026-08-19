@@ -96,8 +96,11 @@ Optional `nullius.config.json` at the repo root (or `--config <path>`):
 ```json
 {
   "docs": ["docs/rfcs/**/*.md"],
-  "exclude": ["review-evidence.md"],
+  "exclude": ["**/review-evidence.md"],
   "driftWindow": 3,
+  "minAnchorChars": 8,
+  "relaxedControl": true,
+  "searchTimeoutMs": 10000,
   "moments": [
     "build-time",
     "rollout-window",
@@ -111,9 +114,18 @@ Optional `nullius.config.json` at the repo root (or `--config <path>`):
 ```
 
 - `docs` — default globs when the CLI gets none.
-- `exclude` — basenames to skip (e.g. review logs that quote findings).
+- `exclude` — globs, matched against the full repo-relative path, for documents
+  to skip (e.g. review logs that quote findings). Use `**/name.md` to skip a
+  basename anywhere in the tree; a bare `name.md` matches only at the root.
 - `driftWindow` — how far (± lines) a match still counts as `DRIFT` (passing)
   rather than `WRONG-LINE` (failing). Default 3.
+- `minAnchorChars` — shortest quote that counts as distinctive. Below it a
+  citation verifies as `WEAK-ANCHOR` rather than `OK`. Default 8.
+- `relaxedControl` — re-run a zero-result absence search with a match-anything
+  pattern, as a control on whether it examined any content at all. Default true.
+- `searchTimeoutMs` — wall-clock budget for one absence search, in ms. Must be
+  positive; there is no value that disables it. Default 10000. All searches in a
+  run additionally share a 120s budget.
 - `moments` / `ciCaughtMoments` — your closed binding-moment vocabulary.
   Defaults model a replicated-service backend; a mobile or embedded project
   should define its own.
@@ -127,12 +139,29 @@ exists to prevent.
 Checked documents are treated as **untrusted input** (in CI they are
 PR-controlled content):
 
-- Cited paths are validated **before any filesystem access** — no absolute
-  paths, no `..` traversal, no `~` expansion. Otherwise the checker becomes a
-  file-probe oracle on your CI runner.
-- Absence commands are sandboxed: every pipeline segment must begin with
-  `grep` or `rg`; `;`, `&&`, `||`, `$(`, backticks, and redirection are
-  rejected without execution.
+- **Cited paths are validated before any filesystem access** — no absolute
+  paths, no `..` traversal, no `~` expansion, nothing inside `.git` (which holds
+  the CI token). The same guard covers the file operands of an absence search,
+  so neither lane can be used as a file-probe oracle whose verdict lands in a
+  public PR comment. A token naming a location outside the repo is refused
+  wherever it appears, so containment does not depend on the per-flag arity
+  table being perfect — and symlinks are resolved before anything is read or
+  searched.
+- **Absence commands never touch a shell.** They are tokenised into an argv
+  vector and spawned directly, so there is no command string for a
+  metacharacter to escape. Shell globs are consequently not expanded — use
+  `-r` with `--include=`/`-g`.
+- **Flags are allowlisted, per binary.** Allowlisting `grep`/`rg` alone is not
+  enough: `rg --pre <cmd>` executes `<cmd>` against every searched file.
+  `--pre`, `--pre-glob`, `--hostname-bin`, `-z`, `-f`, `--exclude-from`,
+  `--ignore-file`, `--files`, `-L` and `-q` are refused by name, and any flag
+  not on the allowlist is refused as unrecognised.
+- **Flag denials are per binary**: `rg -L`/`-z` are `--follow`/`--search-zip`
+  and refused; `grep -L`/`-z` are `--files-without-match`/`--null-data` and
+  allowed. `grep -R` is refused because it follows symlinks during its walk.
+- **Searches are time-bounded** — 10s each (`searchTimeoutMs`) and 120s for a
+  whole run — and run with `RIPGREP_CONFIG_PATH` and `GREP_OPTIONS` stripped
+  from the environment.
 
 ## Library API
 

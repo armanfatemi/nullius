@@ -206,3 +206,165 @@ describe("parseClaims", () => {
     ]);
   });
 });
+
+describe("parseClaims — fence delimiters", () => {
+  it("does not let a ``` inside a ~~~ block toggle the fence", () => {
+    // Getting this wrong flips the rest of the document into 'asserting' mode,
+    // so a quoted example becomes a claim the checker enforces.
+    const claims = parseClaims(
+      "doc.md",
+      [
+        "~~~",
+        "an example block that shows a fence:",
+        "```",
+        "**Evidence:** `not/a/real/claim.ts:1` — `quoted example`",
+        "~~~",
+        "",
+        "**Evidence:** `real/file.ts:2` — `real claim`",
+      ].join("\n"),
+    );
+
+    expect(claims).toHaveLength(1);
+    expect(claims[0]).toMatchObject({ kind: "presence", path: "real/file.ts" });
+  });
+
+  it("treats an unterminated fence as swallowing the rest of the document", () => {
+    const claims = parseClaims(
+      "doc.md",
+      ["```", "**Evidence:** `a.ts:1` — `example`"].join("\n"),
+    );
+
+    expect(claims).toEqual([]);
+  });
+});
+
+describe("parseClaims — block form", () => {
+  it("accepts a citation whose quote follows in a fenced block", () => {
+    const claims = parseClaims(
+      "doc.md",
+      [
+        "**Evidence:** `src/app.ts:12`",
+        "",
+        "```ts",
+        "const x = compute();",
+        "```",
+      ].join("\n"),
+    );
+
+    expect(claims).toEqual([
+      {
+        kind: "presence",
+        path: "src/app.ts",
+        line: 12,
+        text: "const x = compute();",
+        source: { doc: "doc.md", line: 1 },
+      },
+    ]);
+  });
+
+  it("keeps further lines of the block as part of the assertion", () => {
+    const claims = parseClaims(
+      "doc.md",
+      ["**Evidence:** `src/app.ts:12`", "```", "const a = 1;", "const b = 2;", "```"].join("\n"),
+    );
+
+    expect(claims[0]).toMatchObject({
+      kind: "presence",
+      text: "const a = 1;",
+      extraLines: ["const b = 2;"],
+    });
+  });
+
+  it("does not re-parse the block body as prose", () => {
+    const claims = parseClaims(
+      "doc.md",
+      [
+        "**Evidence:** `src/app.ts:12`",
+        "```",
+        "**Evidence:** `other.ts:1` — `not a separate claim`",
+        "```",
+      ].join("\n"),
+    );
+
+    // Asserting only the length would pass against the old parser too, which
+    // produced a single `malformed` claim here — so assert the shape.
+    expect(claims).toHaveLength(1);
+    expect(claims[0]).toMatchObject({
+      kind: "presence",
+      path: "src/app.ts",
+      line: 12,
+      text: "**Evidence:** `other.ts:1` — `not a separate claim`",
+    });
+  });
+
+  it("still reports a bare marker with no block as malformed", () => {
+    const claims = parseClaims("doc.md", "**Evidence:** `src/app.ts:12`\n\nprose");
+    expect(claims[0]?.kind).toBe("malformed");
+  });
+});
+
+describe("parseClaims — fence length", () => {
+  it("does not let ``` close a ```` block", () => {
+    // CommonMark: a closer must be at least as long as its opener. The spec and
+    // the plugin skill both use ````markdown blocks containing ``` fences, so
+    // getting this wrong makes the repo fail its own CI on an edit.
+    const claims = parseClaims(
+      "doc.md",
+      [
+        "````markdown",
+        "```",
+        "**Evidence:** `not/a/claim.ts:1` — `example`",
+        "````",
+        "",
+        "**Evidence:** `real/file.ts:2` — `real claim`",
+      ].join("\n"),
+    );
+
+    expect(claims).toHaveLength(1);
+    expect(claims[0]).toMatchObject({ kind: "presence", path: "real/file.ts" });
+  });
+
+  it("closes a ``` block with a longer run", () => {
+    const claims = parseClaims(
+      "doc.md",
+      ["```", "example", "`````", "**Evidence:** `real/file.ts:2` — `real claim`"].join("\n"),
+    );
+
+    expect(claims).toHaveLength(1);
+  });
+});
+
+describe("parseClaims — blank lines in a block quote", () => {
+  it("keeps an interior blank line as part of the quote", () => {
+    // Dropping it made the surviving lines non-consecutive in the source, so a
+    // correctly copy-pasted quote was reported FABRICATED — the most
+    // accusatory verdict the tool has, against an honest author.
+    const claims = parseClaims(
+      "doc.md",
+      [
+        "**Evidence:** `src/app.ts:1`",
+        "```ts",
+        "function a() {",
+        "",
+        "  return 1;",
+        "```",
+      ].join("\n"),
+    );
+
+    expect(claims[0]).toMatchObject({
+      kind: "presence",
+      text: "function a() {",
+      extraLines: ["", "  return 1;"],
+    });
+  });
+
+  it("trims blank padding at the edges of the block", () => {
+    const claims = parseClaims(
+      "doc.md",
+      ["**Evidence:** `src/app.ts:1`", "```", "", "const a = 1;", "", "```"].join("\n"),
+    );
+
+    expect(claims[0]).toMatchObject({ kind: "presence", text: "const a = 1;" });
+    expect((claims[0] as { extraLines?: string[] }).extraLines).toBeUndefined();
+  });
+});

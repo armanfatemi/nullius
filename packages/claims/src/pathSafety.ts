@@ -39,5 +39,15 @@ export function isSafeRepoPath(path: string): PathVerdict {
     return { safe: false, reason: "path traversal ('..') is not allowed" };
   }
 
+  // `.git` is inside the repository but is not source, and under
+  // `actions/checkout` it holds the workflow's credentials: with
+  // `persist-credentials` on (the default) `.git/config` carries an
+  // `AUTHORIZATION: basic <token>` header. A citation that can search it turns
+  // each anchor into one bit of a token-extraction oracle, and a document may
+  // carry unlimited anchors.
+  if (segments.some((segment) => segment === ".git")) {
+    return { safe: false, reason: "paths inside '.git' are not allowed" };
+  }
+
   return { safe: true };
 }

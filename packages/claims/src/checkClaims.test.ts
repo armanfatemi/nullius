@@ -175,13 +175,38 @@ describe("checkClaims — absence", () => {
     source: { doc: "design.md", line: 1 },
   };
 
-  it("passes when the search returns the claimed count", () => {
+  it("passes when the search returns the claimed count and the control finds something", () => {
+    // Call 1 is the cited search, call 2 the broadened control. A control that
+    // finds matches proves the search was aimed somewhere real.
+    let call = 0;
     const [result] = checkClaims(
       [claim],
-      deps({ runSearch: () => ({ ok: true, count: 0 }) }),
+      deps({
+        runSearch: () => {
+          call += 1;
+          return { ok: true, count: call === 1 ? 0 : 7 };
+        },
+      }),
     );
 
     expect(result?.verdict).toBe("ok");
+  });
+
+  it("passes without a control when the claimed count is non-zero", () => {
+    const nonZero: Claim = { ...claim, expectedCount: 3 };
+    let calls = 0;
+    const [result] = checkClaims(
+      [nonZero],
+      deps({
+        runSearch: () => {
+          calls += 1;
+          return { ok: true, count: 3 };
+        },
+      }),
+    );
+
+    expect(result?.verdict).toBe("ok");
+    expect(calls).toBe(1);
   });
 
   it("fails when the claimed count is stale", () => {
@@ -306,5 +331,158 @@ describe("isFailure", () => {
     ] as const) {
       expect(isFailure(verdict)).toBe(true);
     }
+  });
+});
+
+describe("checkClaims — anchor distinctiveness", () => {
+  const lines = [
+    "export const MAX_RETRIES = 3;",
+    "export function retry() {",
+    "  return backoff();",
+    "}",
+  ];
+  const presence = (line: number, text: string): Claim => ({
+    kind: "presence",
+    path: "src/app.ts",
+    line,
+    text,
+    source: { doc: "design.md", line: 1 },
+  });
+
+  it("flags a quote too short to pin down a line", () => {
+    // Matching is substring-based, so `n` is true of line 1 and asserts nothing.
+    const [result] = checkClaims(
+      [presence(1, "n")],
+      deps({ readFileLines: () => lines }),
+    );
+
+    expect(result?.verdict).toBe("weak-anchor");
+    expect(result?.detail).toContain("too short");
+  });
+
+  it("flags a quote that matches several lines", () => {
+    const [result] = checkClaims(
+      [presence(1, "export const")],
+      deps({ readFileLines: () => ["export const A = 1;", "export const B = 2;"] }),
+    );
+
+    expect(result?.verdict).toBe("weak-anchor");
+    expect(result?.detail).toContain("matches 2 lines");
+  });
+
+  it("still passes a weak anchor — it is advisory, not a gate", () => {
+    const [result] = checkClaims(
+      [presence(1, "n")],
+      deps({ readFileLines: () => lines }),
+    );
+
+    expect(isFailure(result?.verdict ?? "ok")).toBe(false);
+  });
+
+  it("passes a distinctive quote as ok", () => {
+    const [result] = checkClaims(
+      [presence(1, "export const MAX_RETRIES = 3;")],
+      deps({ readFileLines: () => lines }),
+    );
+
+    expect(result?.verdict).toBe("ok");
+  });
+
+  it("honours a configured minimum", () => {
+    const [result] = checkClaims(
+      [presence(3, "return backoff();")],
+      deps({ readFileLines: () => lines }),
+      { minAnchorChars: 100 },
+    );
+
+    expect(result?.verdict).toBe("weak-anchor");
+  });
+});
+
+describe("checkClaims — multi-line block citations", () => {
+  const lines = ["const a = 1;", "const b = 2;", "const c = 3;"];
+  const block: Claim = {
+    kind: "presence",
+    path: "src/app.ts",
+    line: 1,
+    text: "const a = 1;",
+    extraLines: ["const b = 2;"],
+    source: { doc: "design.md", line: 1 },
+  };
+
+  it("verifies the cited lines consecutively", () => {
+    const [result] = checkClaims([block], deps({ readFileLines: () => lines }));
+    expect(result?.verdict).toBe("ok");
+  });
+
+  it("fails when the block is not consecutive in the file", () => {
+    const [result] = checkClaims(
+      [block],
+      deps({ readFileLines: () => ["const a = 1;", "const x = 9;", "const b = 2;"] }),
+    );
+    expect(result?.verdict).toBe("fabricated");
+  });
+
+  it("reports drift when the whole block moved", () => {
+    const [result] = checkClaims(
+      [block],
+      deps({ readFileLines: () => ["// header", ...lines] }),
+    );
+    expect(result?.verdict).toBe("drift");
+  });
+});
+
+describe("checkClaims — absence path safety", () => {
+  const oracle: Claim = {
+    kind: "absence",
+    command: "grep -rc AKIAZZTOPSECRET1 /etc/shadow",
+    expectedCount: 0,
+    source: { doc: "design.md", line: 1 },
+  };
+
+  it("refuses to run a search pointed outside the repo", () => {
+    let ran = false;
+    const [result] = checkClaims(
+      [oracle],
+      deps({
+        runSearch: () => {
+          ran = true;
+          return { ok: true, count: 0 };
+        },
+      }),
+    );
+
+    expect(result?.verdict).toBe("unsafe");
+    // The verdict itself is the oracle bit, so the search must not run at all.
+    expect(ran).toBe(false);
+  });
+});
+
+describe("checkClaims — the reachability control search", () => {
+  const claim: Claim = {
+    kind: "absence",
+    command: "grep -rn legacyRetryHelper services/",
+    expectedCount: 0,
+    source: { doc: "design.md", line: 1 },
+  };
+
+  it("downgrades to advisory when the search examined no content at all", () => {
+    const [result] = checkClaims(
+      [claim],
+      deps({ runSearch: () => ({ ok: true, count: 0 }) }),
+    );
+
+    expect(result?.verdict).toBe("advisory");
+    expect(result?.detail).toContain("examined no content");
+  });
+
+  it("can be switched off", () => {
+    const [result] = checkClaims(
+      [claim],
+      deps({ runSearch: () => ({ ok: true, count: 0 }) }),
+      { relaxedControl: false },
+    );
+
+    expect(result?.verdict).toBe("ok");
   });
 });

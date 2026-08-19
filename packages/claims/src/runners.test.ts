@@ -1,0 +1,189 @@
+/**
+ * These tests execute real processes. They exist because the RCE they cover was
+ * not a parsing bug — the command parsed fine and ran anyway — so only an
+ * end-to-end check proves it is closed.
+ */
+
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdtempSync, writeFileSync, chmodSync, mkdirSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { describe, expect, it } from "vitest";
+
+import { checkClaims } from "./checkClaims";
+import { parseSearchCommand } from "./commandSafety";
+import { parseClaims } from "./parseClaims";
+import { fileLinesReader, searchRunner } from "./runners";
+
+function sandbox(): string {
+  const root = mkdtempSync(join(tmpdir(), "nullius-runner-"));
+  mkdirSync(join(root, "src"), { recursive: true });
+  writeFileSync(join(root, "src", "app.ts"), "const legacyRetryHelper = 1;\n");
+  return root;
+}
+
+describe("searchRunner", () => {
+  it("counts matches for an ordinary search", () => {
+    const root = sandbox();
+    const parsed = parseSearchCommand("grep -rn legacyRetryHelper src/");
+    expect(parsed.safe).toBe(true);
+    if (!parsed.safe) return;
+
+    expect(searchRunner(root)(parsed.plan)).toEqual({ ok: true, count: 1 });
+  });
+
+  it("runs a pipeline without a shell", () => {
+    const root = sandbox();
+    const parsed = parseSearchCommand("grep -rn legacy src/ | grep Helper");
+    expect(parsed.safe).toBe(true);
+    if (!parsed.safe) return;
+
+    expect(searchRunner(root)(parsed.plan)).toEqual({ ok: true, count: 1 });
+  });
+
+  it("does not hang when a first-stage search reads stdin", () => {
+    const root = sandbox();
+    const parsed = parseSearchCommand("grep needle");
+    expect(parsed.safe).toBe(true);
+    if (!parsed.safe) return;
+
+    expect(searchRunner(root, 5000)(parsed.plan)).toEqual({ ok: true, count: 0 });
+  });
+
+  it("does not expand globs through a shell, and says so loudly", () => {
+    const root = sandbox();
+    // With no shell there is no glob expansion; grep reports a missing file,
+    // which surfaces as command-error rather than a silent zero.
+    const parsed = parseSearchCommand("grep -n legacy src/*.ts");
+    expect(parsed.safe).toBe(true);
+    if (!parsed.safe) return;
+
+    const outcome = searchRunner(root)(parsed.plan);
+    expect(outcome.ok).toBe(false);
+  });
+});
+
+describe("the --pre remote code execution path", () => {
+  it("never executes the payload, and never reports OK", () => {
+    const root = sandbox();
+    const marker = join(root, "PROOF_OF_RCE");
+    const payload = join(root, "payload.sh");
+    writeFileSync(payload, `#!/bin/sh\ntouch ${marker}\ncat "$1"\n`);
+    chmodSync(payload, 0o755);
+
+    const doc = [
+      "# Deletion proposal",
+      "",
+      "**Evidence:** `rg --pre ./payload.sh legacyRetryHelper payload.sh` → 0 results",
+      "",
+    ].join("\n");
+
+    const [result] = checkClaims(parseClaims("rce.md", doc), {
+      readFileLines: fileLinesReader(root),
+      runSearch: searchRunner(root),
+    });
+
+    expect(result?.verdict).toBe("unsafe");
+    expect(existsSync(marker)).toBe(false);
+  });
+});
+
+describe("search timeouts", () => {
+  it("enforces the budget rather than letting a search run unbounded", () => {
+    const root = sandbox();
+    const parsed = parseSearchCommand("grep -rn legacyRetryHelper src/");
+    expect(parsed.safe).toBe(true);
+    if (!parsed.safe) return;
+
+    const outcome = searchRunner(root, 1)(parsed.plan);
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) expect(outcome.error).toMatch(/exceeded|killed/);
+  });
+
+  it("kills a search that would otherwise never return", () => {
+    const root = sandbox();
+    // A FIFO nobody writes to: grep blocks on the read forever. This is the
+    // kill path specifically, and it is deterministic — unlike a "slow regex",
+    // which grep's PCRE2 optimises away, letting the test pass even with the
+    // timeout removed.
+    execFileSync("mkfifo", [join(root, "src", "blocking.pipe")]);
+    const parsed = parseSearchCommand("grep -n needle src/blocking.pipe");
+    expect(parsed.safe).toBe(true);
+    if (!parsed.safe) return;
+
+    const started = Date.now();
+    const outcome = searchRunner(root, 700)(parsed.plan);
+    const elapsed = Date.now() - started;
+
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) expect(outcome.error).toMatch(/exceeded|killed/);
+    expect(elapsed).toBeLessThan(6_000);
+  });
+
+  it("stops running searches once the run-wide budget is spent", () => {
+    const root = sandbox();
+    execFileSync("mkfifo", [join(root, "src", "blocking.pipe")]);
+    const parsed = parseSearchCommand("grep -n needle src/blocking.pipe");
+    expect(parsed.safe).toBe(true);
+    if (!parsed.safe) return;
+
+    // Per-search timeout alone bounds one anchor; a document can carry
+    // thousands, so the run budget is what bounds the document.
+    const run = searchRunner(root, 300, 500);
+    const started = Date.now();
+    const outcomes = [run(parsed.plan), run(parsed.plan), run(parsed.plan)];
+    const elapsed = Date.now() - started;
+
+    expect(outcomes.every((outcome) => !outcome.ok)).toBe(true);
+    const last = outcomes[2];
+    // Once the run budget is spent, further searches are refused outright
+    // rather than each costing another full per-search timeout.
+    if (last !== undefined && !last.ok) expect(last.error).toMatch(/budget/);
+    expect(elapsed).toBeLessThan(3 * 300);
+  });
+});
+
+describe("symlink containment", () => {
+  it("refuses a search whose operand is a symlink out of the repo", () => {
+    const root = sandbox();
+    writeFileSync("/tmp/nullius-outside-target.txt", "SECRET_TOKEN_ABC\n");
+    symlinkSync("/tmp/nullius-outside-target.txt", join(root, "evil-link"));
+
+    const parsed = parseSearchCommand("grep -c -e SECRET_TOKEN_ABC evil-link");
+    // The path is textually blameless — repo-relative, no traversal — so the
+    // string guard passes it. Only the runner can see the symlink.
+    expect(parsed.safe).toBe(true);
+    if (!parsed.safe) return;
+
+    const outcome = searchRunner(root)(parsed.plan);
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) expect(outcome.error).toMatch(/outside the repository/);
+  });
+
+  it("refuses to READ a symlink out of the repo", () => {
+    const root = sandbox();
+    writeFileSync("/tmp/nullius-outside-target.txt", "SECRET_TOKEN_ABC\n");
+    symlinkSync("/tmp/nullius-outside-target.txt", join(root, "evil-read"));
+
+    // A presence citation needs no search command at all: OK vs FABRICATED is
+    // itself a content oracle over any file the runner can read.
+    const [result] = checkClaims(
+      parseClaims("doc.md", "**Evidence:** `evil-read:1` — `SECRET_TOKEN_ABC`"),
+      { readFileLines: fileLinesReader(root), runSearch: searchRunner(root) },
+    );
+
+    expect(result?.verdict).toBe("missing-file");
+  });
+
+  it("still reads an ordinary file", () => {
+    const root = sandbox();
+    expect(fileLinesReader(root)("src/app.ts")?.[0]).toContain("legacyRetryHelper");
+  });
+
+  it("resolves a symlink that stays inside the repo", () => {
+    const root = sandbox();
+    symlinkSync(join(root, "src", "app.ts"), join(root, "alias.ts"));
+    expect(fileLinesReader(root)("alias.ts")?.[0]).toContain("legacyRetryHelper");
+  });
+});
