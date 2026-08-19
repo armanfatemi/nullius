@@ -17,7 +17,7 @@ import { parseConfig, type ClaimsConfig } from "./config";
 import { DEMO_DOC_PATH, demoResults, writeDemoFixture } from "./demo";
 import { buildEagerPrompt } from "./eagerPrompt";
 import { parseClaims } from "./parseClaims";
-import { fileLinesReader, searchRunner } from "./runners";
+import { fileLinesReader, revFileReader, searchRunner } from "./runners";
 
 const SPEC_URL =
   "https://github.com/armanfatemi/nullius/blob/main/spec/evidence-anchors.md";
@@ -68,7 +68,9 @@ function describe(result: ClaimResult): string {
   const { claim } = result;
   switch (claim.kind) {
     case "presence":
-      return `${claim.path}:${claim.line}`;
+      // The rev is shown: which commit an anchor was settled against is the
+      // difference between "this failed" and "this used to be true".
+      return `${claim.path}:${claim.line}${claim.rev === undefined ? "" : `@${claim.rev}`}`;
     case "absence":
       return `${claim.command} → ${claim.expectedCount}`;
     case "moment":
@@ -175,7 +177,7 @@ function packageVersion(): string {
 
 function runDemo(): number {
   const root = mkdtempSync(join(tmpdir(), "nullius-demo-"));
-  writeDemoFixture(root);
+  const rev = writeDemoFixture(root);
 
   console.log(
     "Demo — a sandbox doc making claims about a sandbox file, one per verdict class.",
@@ -183,7 +185,7 @@ function runDemo(): number {
   console.log(`Fixture: ${root}`);
   console.log("");
   console.log(`--- ${DEMO_DOC_PATH}`);
-  const failures = report(demoResults(root));
+  const failures = report(demoResults(root, rev));
 
   console.log("");
   console.log(
@@ -268,6 +270,9 @@ function runCheck(args: ParsedArgs): number {
 
   const deps = {
     readFileLines: fileLinesReader(),
+    // Only consulted by `path:line@rev` anchors; an unstamped anchor never
+    // shells out to git.
+    readFileAtRev: revFileReader(),
     runSearch: searchRunner(undefined, config.searchTimeoutMs),
   };
 

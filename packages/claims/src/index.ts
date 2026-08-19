@@ -14,6 +14,7 @@ export {
   type CheckDeps,
   type CheckOptions,
   type ClaimResult,
+  type RevRead,
   type SearchOutcome,
   type Verdict,
 } from "./checkClaims";
@@ -34,11 +35,13 @@ export {
 } from "./commandSafety";
 export {
   fileLinesReader,
+  revFileReader,
   searchRunner,
   containPath,
   resolveInsideRoot,
   DEFAULT_SEARCH_TIMEOUT_MS,
   DEFAULT_RUN_BUDGET_MS,
+  DEFAULT_GIT_TIMEOUT_MS,
   type Containment,
 } from "./runners";
 export { parseConfig, type ClaimsConfig } from "./config";

@@ -4,12 +4,21 @@
  *
  * Four marker shapes are recognised:
  *   **Evidence:** `path/to/file.ext:12` — `text on that line`     (presence)
+ *   **Evidence:** `path/to/file.ext:12@a1b2c3d` — `text`          (presence,
+ *                                                                  rev-stamped)
  *   **Evidence:** `path/to/file.ext:12`                           (presence,
  *   ```                                                            block form)
  *   text on that line
  *   ```
  *   **Evidence:** `grep -rn 'x' services/` → 0 results            (absence)
  *   **Binds at:** `rollout-window`                                (mechanism)
+ *
+ * The optional `@<rev>` suffix is what separates the two propositions a
+ * citation makes. Without it the checker can only ask "is this true now?", and
+ * every honest document rots as the repository moves under it. With it, the
+ * hard gate moves onto the axis that cannot rot — "was this true at the commit
+ * the author was looking at?" — and the working tree becomes advisory. See
+ * checkClaims.ts.
  *
  * The block form exists because the inline form breaks down exactly where
  * citations matter most: a long line, or one containing backticks, cannot be
@@ -39,6 +48,13 @@ export interface PresenceClaim {
   kind: "presence";
   path: string;
   line: number;
+  /**
+   * The commit the author verified against, when the anchor is rev-stamped.
+   * Lower-case hex, 7-40 characters — a ref NAME is deliberately not accepted:
+   * `main:src/app.ts` means something different next week, which is the exact
+   * mutability this field exists to escape.
+   */
+  rev?: string;
   /** The first cited line of source. */
   text: string;
   /**
@@ -71,7 +87,13 @@ export interface MalformedClaim {
 
 export type Claim = PresenceClaim | AbsenceClaim | MomentClaim | MalformedClaim;
 
-const EVIDENCE_PREFIX = /^\s*\*\*Evidence:\*\*/;
+/**
+ * An optional list marker is allowed in front of every marker shape: writing
+ * evidence as a bullet under the claim it supports is the natural authoring
+ * style, and reporting it as MALFORMED trains authors away from the marker
+ * rather than towards it.
+ */
+const EVIDENCE_PREFIX = /^\s*(?:[-*+]\s+|\d+[.)]\s+)?\*\*Evidence:\*\*/;
 
 // **Evidence:** `path:LINE` — `quoted source text`
 //
@@ -81,19 +103,20 @@ const EVIDENCE_PREFIX = /^\s*\*\*Evidence:\*\*/;
 // form FIRST — the single-backtick pattern would also match a double-delimited
 // line and capture the inner delimiters as part of the text.
 const PRESENCE_DOUBLE =
-  /^\s*\*\*Evidence:\*\*\s*`(.+):(\d+)`\s*[—–-]+\s*``(.+)``\s*$/;
+  /^\s*(?:[-*+]\s+|\d+[.)]\s+)?\*\*Evidence:\*\*\s*`(.+):(\d+)(@[0-9a-fA-F]{7,40})?`\s*[—–-]+\s*``(.+)``\s*$/;
 const PRESENCE_SINGLE =
-  /^\s*\*\*Evidence:\*\*\s*`(.+):(\d+)`\s*[—–-]+\s*`(.+)`\s*$/;
+  /^\s*(?:[-*+]\s+|\d+[.)]\s+)?\*\*Evidence:\*\*\s*`(.+):(\d+)(@[0-9a-fA-F]{7,40})?`\s*[—–-]+\s*`(.+)`\s*$/;
 
 // **Evidence:** `path:LINE`   — the quote follows in a fenced block.
-const PRESENCE_BLOCK_HEAD = /^\s*\*\*Evidence:\*\*\s*`(.+):(\d+)`\s*$/;
+const PRESENCE_BLOCK_HEAD =
+  /^\s*(?:[-*+]\s+|\d+[.)]\s+)?\*\*Evidence:\*\*\s*`(.+):(\d+)(@[0-9a-fA-F]{7,40})?`\s*$/;
 
 // **Evidence:** `grep ...` → N results
 const ABSENCE =
-  /^\s*\*\*Evidence:\*\*\s*`(.+)`\s*(?:→|->)\s*(\d+)\s+results?\s*$/;
+  /^\s*(?:[-*+]\s+|\d+[.)]\s+)?\*\*Evidence:\*\*\s*`(.+)`\s*(?:→|->)\s*(\d+)\s+results?\s*$/;
 
 // **Binds at:** `moment-id`  (backticks optional)
-const MOMENT = /^\s*\*\*Binds at:\*\*\s*`?([a-z][a-z-]*)`?\s*$/;
+const MOMENT = /^\s*(?:[-*+]\s+|\d+[.)]\s+)?\*\*Binds at:\*\*\s*`?([a-z][a-z-]*)`?\s*$/;
 
 // A fence opener/closer: three or more backticks or tildes at line start.
 const FENCE = /^\s*(`{3,}|~{3,})/;
@@ -163,11 +186,42 @@ function readEvidenceBlock(
   return null;
 }
 
+
+/** Indent in columns, tabs advancing to the next multiple of four. */
+function indentWidth(line: string): number {
+  let width = 0;
+  for (const char of line) {
+    if (char === " ") width += 1;
+    else if (char === "\t") width += 4 - (width % 4);
+    else break;
+  }
+  return width;
+}
+
+/** A bullet or ordered list marker: indent, marker, and the spaces after it. */
+const LIST_MARKER = /^(\s*)([-*+]|\d+[.)])(\s+)/;
+
+/**
+ * The `@rev` capture, normalised to the field the claim carries. Case is folded
+ * because git prints lower-case hex and an author who pastes an upper-case SHA
+ * means the same commit.
+ */
+function revField(captured: string | undefined): { rev?: string } {
+  if (captured === undefined) return {};
+  return { rev: captured.slice(1).toLowerCase() };
+}
+
 export function parseClaims(doc: string, content: string): Claim[] {
   const claims: Claim[] = [];
   const lines = content.split("\n");
   /** The fence we are currently inside, or null. */
   let openFence: Fence | null = null;
+  /** The indent threshold of the indented code block we are inside, or null. */
+  let codeIndent: number | null = null;
+  /** Column where the current list item's content starts; 0 outside a list. */
+  let listContentIndent = 0;
+  /** Whether the previous line was blank — an indented block cannot interrupt a paragraph. */
+  let previousBlank = true;
 
   for (let index = 0; index < lines.length; index += 1) {
     const raw = lines[index];
@@ -180,6 +234,47 @@ export function parseClaims(doc: string, content: string): Claim[] {
       if (closes(openFence, raw)) openFence = null;
       continue;
     }
+
+    if (raw.trim() === "") {
+      // A blank line does not end an indented code block (a blank line between
+      // two indented paragraphs is part of the same block), but it is what
+      // allows the next one to start.
+      previousBlank = true;
+      continue;
+    }
+
+    const indent = indentWidth(raw);
+
+    if (codeIndent !== null) {
+      if (indent >= codeIndent) {
+        previousBlank = false;
+        continue;
+      }
+      codeIndent = null;
+    }
+
+    const marker = LIST_MARKER.exec(raw);
+    if (listContentIndent > 0 && indent < listContentIndent && marker === null) {
+      listContentIndent = 0;
+    }
+    if (marker?.[1] !== undefined && marker[2] !== undefined && marker[3] !== undefined) {
+      // Content column of this item, so an indented block nested inside a list
+      // is measured from the item's text rather than from the page margin.
+      listContentIndent =
+        indentWidth(marker[1]) + marker[2].length + marker[3].length;
+    }
+
+    // An indented code block, per CommonMark: four columns past the enclosing
+    // content column, and not interrupting a paragraph. Its lines are quoted,
+    // not asserted — the same reason fenced blocks are skipped. Without this a
+    // README showing an example anchor in an indented block asserted it.
+    if (previousBlank && indent >= listContentIndent + 4) {
+      codeIndent = listContentIndent + 4;
+      previousBlank = false;
+      continue;
+    }
+    previousBlank = false;
+
     const fence = fenceAt(raw);
     if (fence !== null) {
       openFence = fence;
@@ -213,13 +308,14 @@ export function parseClaims(doc: string, content: string): Claim[] {
     if (
       presence?.[1] !== undefined &&
       presence[2] !== undefined &&
-      presence[3] !== undefined
+      presence[4] !== undefined
     ) {
       claims.push({
         kind: "presence",
         path: presence[1],
         line: Number.parseInt(presence[2], 10),
-        text: presence[3],
+        ...revField(presence[3]),
+        text: presence[4],
         source,
       });
       continue;
@@ -235,6 +331,7 @@ export function parseClaims(doc: string, content: string): Claim[] {
             kind: "presence",
             path: blockHead[1],
             line: Number.parseInt(blockHead[2], 10),
+            ...revField(blockHead[3]),
             text: first,
             // Present only for the block form, so an inline citation parses to
             // exactly the shape it always did.

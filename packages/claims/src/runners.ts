@@ -8,8 +8,11 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, realpathSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
 
-import { type SearchOutcome } from './checkClaims';
+import { type RevRead, type SearchOutcome } from './checkClaims';
 import { type SearchBinary, type SearchPlan } from './commandSafety';
+
+/** Wall-clock budget for a single `git show`, in milliseconds. */
+export const DEFAULT_GIT_TIMEOUT_MS = 10_000;
 
 /** Wall-clock budget for a single absence search, in milliseconds. */
 export const DEFAULT_SEARCH_TIMEOUT_MS = 10_000;
@@ -127,6 +130,81 @@ export function fileLinesReader(root?: string) {
     } catch {
       return null;
     }
+  };
+}
+
+/** Lower-case hex, 7-40 chars. Anything else never reaches `git`. */
+const REV_PATTERN = /^[0-9a-f]{7,40}$/;
+
+/**
+ * Reads `path` as of `rev` with `git show`.
+ *
+ * Both operands come from PR-controlled document content, so both are checked
+ * before the spawn: the rev must be hex (a ref NAME would be both mutable and
+ * a place to hide `--upload-pack=`-style trickery), and the path must already
+ * have passed `isSafeRepoPath`. `git show <rev>:<path>` takes one argument, so
+ * there is no operand position for a path to be re-read as a flag — but a
+ * leading `-` is refused anyway rather than relying on that.
+ */
+export function revFileReader(root?: string, timeoutMs = DEFAULT_GIT_TIMEOUT_MS) {
+  return (path: string, rev: string): RevRead => {
+    if (!REV_PATTERN.test(rev)) {
+      return { status: "unavailable", reason: `'${rev}' is not a commit hash` };
+    }
+    if (path.startsWith("-") || path.includes("\0")) {
+      return { status: "unavailable", reason: `'${path}' is not a readable path` };
+    }
+
+    const base = root ?? process.cwd();
+    const result = spawnSync("git", ["-C", base, "show", `${rev}:${path}`], {
+      shell: false,
+      encoding: "utf8",
+      maxBuffer: STAGE_MAX_BUFFER,
+      timeout: timeoutMs,
+      killSignal: "SIGKILL",
+      input: "",
+      env: childEnv(),
+    });
+
+    if (result.error) {
+      const error = result.error as NodeJS.ErrnoException;
+      return {
+        status: "unavailable",
+        reason: error.code === "ENOENT" ? "git is not installed" : error.message,
+      };
+    }
+    if (result.status === 0) {
+      return { status: "ok", lines: (result.stdout ?? "").split("\n") };
+    }
+
+    const stderr = (result.stderr ?? "").toLowerCase();
+    // git distinguishes "I have never heard of this commit" from "that commit
+    // exists and does not contain that file", and the two verdicts differ:
+    // one fails open, the other fails. The revision check runs FIRST, because
+    // an unresolvable rev is the ambiguous case and must not be reported as a
+    // fact about the file.
+    if (stderr.includes("not a git repository")) {
+      return { status: "unavailable", reason: "not a git repository" };
+    }
+    if (
+      stderr.includes("unknown revision") ||
+      stderr.includes("invalid object name") ||
+      stderr.includes("not a valid object name") ||
+      stderr.includes("bad object") ||
+      stderr.includes("ambiguous argument")
+    ) {
+      return { status: "unknown-rev" };
+    }
+    if (
+      stderr.includes("exists on disk, but not in") ||
+      stderr.includes("does not exist in")
+    ) {
+      return { status: "no-file" };
+    }
+    return {
+      status: "unavailable",
+      reason: (result.stderr ?? "").trim().split("\n")[0] ?? "git show failed",
+    };
   };
 }
 

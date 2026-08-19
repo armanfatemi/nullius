@@ -368,3 +368,113 @@ describe("parseClaims — blank lines in a block quote", () => {
     expect((claims[0] as { extraLines?: string[] }).extraLines).toBeUndefined();
   });
 });
+
+describe("indented code blocks are quoted, not asserted", () => {
+  it("ignores an anchor inside a four-space indented block", () => {
+    const doc = [
+      "Here is how you write one:",
+      "",
+      "    **Evidence:** `src/app.ts:1` — `never asserted`",
+      "",
+      "That was an example.",
+    ].join("\n");
+
+    expect(parseClaims("readme.md", doc)).toEqual([]);
+  });
+
+  it("keeps reading anchors after the indented block ends", () => {
+    const doc = [
+      "Example:",
+      "",
+      "    **Evidence:** `src/example.ts:1` — `quoted`",
+      "",
+      "And a real one:",
+      "",
+      "**Evidence:** `src/app.ts:1` — `asserted`",
+    ].join("\n");
+
+    const claims = parseClaims("readme.md", doc);
+
+    expect(claims).toHaveLength(1);
+    expect(claims[0]).toMatchObject({ path: "src/app.ts" });
+  });
+
+  it("does not swallow an indented anchor that is list continuation", () => {
+    // Four spaces under a bullet is the item's own text, not a code block —
+    // silently skipping it would mean checking less than the author wrote.
+    const doc = [
+      "- The retry helper already exists.",
+      "",
+      "    **Evidence:** `src/app.ts:1` — `export function retry()`",
+    ].join("\n");
+
+    const claims = parseClaims("design.md", doc);
+
+    expect(claims).toHaveLength(1);
+    expect(claims[0]).toMatchObject({ kind: "presence", path: "src/app.ts" });
+  });
+
+  it("treats eight spaces under a bullet as a code block", () => {
+    const doc = [
+      "- How to write one:",
+      "",
+      "        **Evidence:** `src/app.ts:1` — `quoted`",
+    ].join("\n");
+
+    expect(parseClaims("design.md", doc)).toEqual([]);
+  });
+
+  it("does not treat an indented continuation line as a code block", () => {
+    // An indented block cannot interrupt a paragraph, so this is prose.
+    const doc = [
+      "A sentence that runs on",
+      "    **Evidence:** `src/app.ts:1` — `still asserted`",
+    ].join("\n");
+
+    expect(parseClaims("design.md", doc)).toHaveLength(1);
+  });
+
+  it("keeps a blank line from ending an indented block", () => {
+    const doc = [
+      "Example:",
+      "",
+      "    **Evidence:** `src/a.ts:1` — `quoted`",
+      "",
+      "    **Evidence:** `src/b.ts:1` — `also quoted`",
+    ].join("\n");
+
+    expect(parseClaims("readme.md", doc)).toEqual([]);
+  });
+});
+
+describe("markers written as list items", () => {
+  it("reads a bulleted presence anchor", () => {
+    const claims = parseClaims(
+      "design.md",
+      "- **Evidence:** `src/app.ts:12` — `const x = 1;`",
+    );
+
+    expect(claims[0]).toMatchObject({ kind: "presence", path: "src/app.ts", line: 12 });
+  });
+
+  it("reads a numbered absence anchor", () => {
+    const claims = parseClaims(
+      "design.md",
+      "1. **Evidence:** `grep -rn 'x' src/` → 0 results",
+    );
+
+    expect(claims[0]).toMatchObject({ kind: "absence", expectedCount: 0 });
+  });
+
+  it("reads a bulleted binding moment", () => {
+    const claims = parseClaims("design.md", "* **Binds at:** `rollout-window`");
+
+    expect(claims[0]).toMatchObject({ kind: "moment", moment: "rollout-window" });
+  });
+
+  it("still reports a malformed bulleted marker", () => {
+    const claims = parseClaims("design.md", "- **Evidence:** it's in the file somewhere");
+
+    expect(claims[0]).toMatchObject({ kind: "malformed" });
+  });
+});
