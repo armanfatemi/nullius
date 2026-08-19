@@ -478,3 +478,61 @@ describe("markers written as list items", () => {
     expect(claims[0]).toMatchObject({ kind: "malformed" });
   });
 });
+
+describe("a list marker cannot lift its own line out of a code block", () => {
+  it("ignores a bulleted anchor inside an indented block", () => {
+    const doc = [
+      "Write your evidence like this:",
+      "",
+      "    - **Evidence:** `src/app.ts:12` — `const x = 1`",
+    ].join("\n");
+
+    expect(parseClaims("readme.md", doc)).toEqual([]);
+  });
+
+  it("ignores a numbered anchor inside an indented block", () => {
+    const doc = [
+      "Write your evidence like this:",
+      "",
+      "    1. **Evidence:** `src/app.ts:12` — `const x = 1`",
+    ].join("\n");
+
+    expect(parseClaims("readme.md", doc)).toEqual([]);
+  });
+
+  it("still reads a bulleted anchor at the margin", () => {
+    expect(
+      parseClaims("design.md", "- **Evidence:** `src/a.ts:1` — `helper`"),
+    ).toHaveLength(1);
+  });
+
+  it("measures a tab-separated list marker as four columns", () => {
+    // `-\tItem` puts its text at column 4, so a continuation at column 6 is
+    // list content. Counting the tab as one column made the threshold 6 and
+    // swallowed a real anchor as quoted text — a silent skip.
+    const doc = [
+      "-\tItem text",
+      "",
+      "      **Evidence:** `src/app.ts:12` — `const x = 1`",
+    ].join("\n");
+
+    expect(parseClaims("design.md", doc)).toHaveLength(1);
+  });
+});
+
+describe("absurdly long lines are bounded", () => {
+  it("reports a marker line past the cap instead of matching it", () => {
+    // The marker patterns backtrack quadratically on a long line of
+    // near-misses, and documents are untrusted input.
+    const line = `**Evidence:** ${"`a:1`-".repeat(40_000)}`;
+    const started = Date.now();
+    const claims = parseClaims("design.md", line);
+
+    expect(claims[0]).toMatchObject({ kind: "malformed" });
+    expect(Date.now() - started).toBeLessThan(1_000);
+  });
+
+  it("leaves a long non-marker line alone", () => {
+    expect(parseClaims("design.md", "x".repeat(5_000))).toEqual([]);
+  });
+});

@@ -198,6 +198,29 @@ function indentWidth(line: string): number {
   return width;
 }
 
+/** Columns occupied by a whole prefix, tabs advancing to the next stop. */
+function columnWidth(prefix: string): number {
+  let width = 0;
+  for (const char of prefix) {
+    width += char === "\t" ? 4 - (width % 4) : 1;
+  }
+  return width;
+}
+
+/**
+ * Longest line the marker patterns are run against.
+ *
+ * The patterns backtrack quadratically on a long line of near-misses, so a
+ * single 240KB line of `` `a:1`-` `` repeats costs seconds of CPU — and a
+ * document is untrusted input that a CI job or a plan-mode hook feeds straight
+ * in. A line this long is not a citation under any reading, so it is reported
+ * rather than matched.
+ */
+const MAX_MARKER_LINE = 4096;
+
+/** Cheap, backtracking-free test for "this line opens some marker". */
+const MARKER_PREFIX = /^\s{0,16}(?:[-*+]\s|\d{1,3}[.)]\s)?\s{0,4}\*\*(?:Evidence|Binds at):\*\*/;
+
 /** A bullet or ordered list marker: indent, marker, and the spaces after it. */
 const LIST_MARKER = /^(\s*)([-*+]|\d+[.)])(\s+)/;
 
@@ -253,27 +276,38 @@ export function parseClaims(doc: string, content: string): Claim[] {
       codeIndent = null;
     }
 
-    const marker = LIST_MARKER.exec(raw);
-    if (listContentIndent > 0 && indent < listContentIndent && marker === null) {
+    // Leaving the enclosing list item: a line indented less than its content
+    // column is no longer inside it.
+    if (listContentIndent > 0 && indent < listContentIndent) {
       listContentIndent = 0;
-    }
-    if (marker?.[1] !== undefined && marker[2] !== undefined && marker[3] !== undefined) {
-      // Content column of this item, so an indented block nested inside a list
-      // is measured from the item's text rather than from the page margin.
-      listContentIndent =
-        indentWidth(marker[1]) + marker[2].length + marker[3].length;
     }
 
     // An indented code block, per CommonMark: four columns past the enclosing
     // content column, and not interrupting a paragraph. Its lines are quoted,
     // not asserted — the same reason fenced blocks are skipped. Without this a
     // README showing an example anchor in an indented block asserted it.
+    //
+    // This runs BEFORE the line's own list marker is read, and the order is
+    // the whole point: reading the marker first let a line raise its own
+    // content column above its own indent, so `    - **Evidence:** …` could
+    // never be classified as code and a README documenting the bulleted form
+    // asserted its own example.
     if (previousBlank && indent >= listContentIndent + 4) {
       codeIndent = listContentIndent + 4;
       previousBlank = false;
       continue;
     }
     previousBlank = false;
+
+    const marker = LIST_MARKER.exec(raw);
+    if (marker?.[0] !== undefined) {
+      // Content column of this item, so an indented block nested inside a list
+      // is measured from the item's text rather than from the page margin.
+      // Measured with `columnWidth`, not `.length`: `-\tItem` puts its text at
+      // column 4, and counting the tab as one column lowered the code
+      // threshold enough to swallow a real anchor as quoted text.
+      listContentIndent = columnWidth(marker[0]);
+    }
 
     const fence = fenceAt(raw);
     if (fence !== null) {
@@ -282,6 +316,19 @@ export function parseClaims(doc: string, content: string): Claim[] {
     }
 
     const source: SourceLocation = { doc, line: index + 1 };
+
+    // Bounded before any marker pattern sees the line. The prefix test runs on
+    // a slice so even this check cannot be made expensive.
+    if (raw.length > MAX_MARKER_LINE) {
+      if (MARKER_PREFIX.test(raw.slice(0, 200))) {
+        claims.push({
+          kind: "malformed",
+          raw: `${raw.slice(0, 60).trim()}… (line is ${raw.length} characters)`,
+          source,
+        });
+      }
+      continue;
+    }
 
     const moment = MOMENT.exec(raw);
     if (moment?.[1] !== undefined) {

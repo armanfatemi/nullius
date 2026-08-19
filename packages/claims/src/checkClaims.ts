@@ -54,13 +54,6 @@ export type Verdict =
    * that cannot rot.
    */
   | "stale"
-  /**
-   * Rev-stamped anchor whose commit cannot be resolved: a shallow clone, a
-   * squash-merge that discarded the SHA, or a fork without the history. Fails
-   * OPEN — a rev the checker cannot read is not evidence against the author,
-   * and treating it as one rebuilds the treadmill from the other direction.
-   */
-  | "unverifiable-rev"
   /** The cited file did not exist at the stamped commit. */
   | "missing-file-at-rev"
   | "missing-file"
@@ -76,6 +69,14 @@ export interface ClaimResult {
   claim: Claim;
   verdict: Verdict;
   detail: string;
+  /**
+   * Set when a `@rev` anchor could not be settled against the commit it names,
+   * so this verdict came from the working tree alone. The stamp bought
+   * nothing here — the run is being checked the way an unstamped document is,
+   * and a caller that reports "verified" without saying so is overstating what
+   * ran. See `checkStamped`.
+   */
+  stampUnverified?: true;
 }
 
 export type SearchOutcome =
@@ -103,8 +104,8 @@ export interface CheckDeps {
   readFileLines: (path: string) => string[] | null;
   /**
    * Returns the file's lines as of a commit, for `path:line@rev` anchors.
-   * Optional: a caller with no git available simply gets the fail-open
-   * `unverifiable-rev` path.
+   * Optional: with no git available a stamped anchor is simply checked the way
+   * an unstamped one is.
    */
   readFileAtRev?: (path: string, rev: string) => RevRead;
   /**
@@ -160,9 +161,9 @@ const DEFAULT_MIN_ANCHOR_CHARS = 8;
  * and that fails: forgiving the line number for a quote that pins nothing is
  * how an anchor gets to assert nothing at all and still show green.
  *
- * `stale` and `unverifiable-rev` belong to `path:line@rev` anchors, where the
- * two axes are checked against two different snapshots rather than being
- * disentangled from one. See `checkStamped`.
+ * `stale` belongs to `path:line@rev` anchors, where the two axes are checked
+ * against two different snapshots rather than being disentangled from one.
+ * See `checkStamped`.
  */
 const PASSING: ReadonlySet<Verdict> = new Set<Verdict>([
   "ok",
@@ -171,7 +172,6 @@ const PASSING: ReadonlySet<Verdict> = new Set<Verdict>([
   "drift",
   "wrong-line",
   "stale",
-  "unverifiable-rev",
 ]);
 
 export function isFailure(verdict: Verdict): boolean {
@@ -379,27 +379,37 @@ function checkStamped(
     return {
       claim,
       verdict: "missing-file-at-rev",
-      detail: `${claim.path} did not exist at ${rev} — a commit cannot change, so this citation was never true`,
+      // "did not exist" would be the checker asserting something it has not
+      // established: a directory DOES exist at that commit, it just is not a
+      // file anyone can quote a line of.
+      detail: `${claim.path} does not name a readable file in ${rev} — absent, or not a regular file. A commit cannot change, so this citation was never true`,
     };
   }
 
   if (atRev.status !== "ok") {
-    // Fail OPEN on the rev axis. The commit may be gone because the PR was
-    // squash-merged, because the clone is shallow, or because this is a fork —
-    // none of which is evidence about the author. The working tree still gets
-    // checked, and only its FAILING verdicts are softened: a checker that
-    // cannot read the history it was pointed at does not get to call anyone a
-    // fabricator.
+    // The commit cannot be read. It may be gone because the PR was
+    // squash-merged, because the clone is shallow, or because this is a fork.
+    // It may equally be a commit that never existed, because the rev is part
+    // of the document and the document is untrusted.
+    //
+    // An earlier version could not tell those apart and softened the failing
+    // verdict, reasoning that a checker unable to read history should not call
+    // anyone a fabricator. That was a total bypass of the one hard gate this
+    // tool has: appending `@0000000` to any invented citation turned a red run
+    // green, and nothing but the document decides the rev. So the working-tree
+    // verdict now stands exactly as it would for an unstamped anchor —
+    // failures included. A stamp can win an anchor the permanent gate; it can
+    // never lose it the ordinary one.
     const fallback = checkUnstamped(claim, deps, driftWindow, minAnchorChars);
-    if (!isFailure(fallback.verdict)) return fallback;
     const why =
       atRev.status === "unknown-rev"
         ? `commit ${rev} is not in this clone`
         : atRev.reason;
+    const note = `the stamp could not be honoured (${why}), so this was judged against the working tree alone — for the permanent gate, fetch the full history (e.g. actions/checkout with fetch-depth: 0)`;
     return {
-      claim,
-      verdict: "unverifiable-rev",
-      detail: `${fallback.detail} — and ${why}, so this could not be settled against the commit it names (a shallow clone cannot check history: fetch the full one, e.g. actions/checkout with fetch-depth: 0)`,
+      ...fallback,
+      detail: fallback.detail === "" ? note : `${fallback.detail}; ${note}`,
+      stampUnverified: true,
     };
   }
 

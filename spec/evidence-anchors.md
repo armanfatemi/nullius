@@ -116,11 +116,22 @@ next week, which is the mutability the stamp exists to escape, and it is
 refused as `MALFORMED` rather than read as part of the filename.
 
 **Squash-merge, rebase and shallow clones destroy the object a stamp names.**
-When the commit cannot be resolved, the checker **fails open**: a failing
-working-tree verdict is reported as the advisory `UNVERIFIABLE-REV` rather than
-as a fabrication, because a commit this clone never had is not evidence about
-the author. The cost is that a shallow checkout cannot settle history at all —
-so a workflow that gates rev-stamped documents should check out with
+When the commit cannot be resolved, the anchor is judged **exactly as an
+unstamped one would be** — against the working tree, failures included. The run
+then reports how many stamps went unhonoured, so a misconfigured checkout is
+visible rather than silent.
+
+That rule is deliberately blunt, and an earlier draft got it wrong in an
+instructive way. Reasoning that "a checker unable to read history should not
+call anyone a fabricator", it softened the failing verdict to an advisory. But
+**the rev is part of the document, and the document is untrusted**: appending
+`@0000000` to any invented citation turned a red run green, which is a total
+bypass of the only hard gate this convention has. The asymmetry is the fix — a
+stamp can win an anchor the permanent gate, and can never lose it the ordinary
+one.
+
+The consequence is that a shallow checkout cannot settle history at all, so a
+workflow that gates rev-stamped documents should check out with
 `fetch-depth: 0`. There is a forgery surface here too (an author could hunt
 history for a commit where a claim happens to be true), but that is strictly
 more work than opening the file, so the authoring mechanism survives it.
@@ -233,10 +244,9 @@ past the anchors.
 | `DRIFT`          | Text found within the drift window (default ±3 lines) — the file moved under the doc | ✅      |
 | `WRONG-LINE`     | Distinctive text exists in the file, but not near the cited line — stale, not wrong  | ✅      |
 | `STALE`          | Rev-stamped: true at the commit it names, and the working tree has moved since       | ✅      |
-| `UNVERIFIABLE-REV` | Rev-stamped, and that commit is not in this clone — fails open, see below           | ✅      |
 | `UNPINNED`       | The quote is neither distinctive nor on its cited line — it pins nothing down        | ❌      |
 | `FABRICATED`     | Text does not appear in the file at all — or, for a rev-stamped anchor, was not in it at that commit | ❌      |
-| `MISSING-FILE-AT-REV` | The cited file did not exist at the stamped commit                             | ❌      |
+| `MISSING-FILE-AT-REV` | The stamped commit resolved and does not contain that file (absent, or not a regular file) | ❌      |
 | `MISSING-FILE`   | The cited file does not exist                                                        | ❌      |
 | `COUNT-MISMATCH` | The absence command returned a different count than claimed                          | ❌      |
 | `UNSAFE-PATH`    | The cited path escaped the repo — never read                                         | ❌      |
@@ -458,6 +468,40 @@ and the operating system is the whole safety story.
   something false, which is not a thing this tool gets to do.
 
   **Evidence:** `packages/claims/src/commandSafety.ts:101@7412847` — `["pre", "runs an arbitrary command against every searched file"],`
+- **The git lane is confined the same way the filesystem lane is.** A
+  `path:line@rev` anchor names both a commit and a file, and both come from the
+  document, so reading history needed its own guards rather than inheriting the
+  search lane's:
+
+  1. **Existence is asked, never inferred.** `git cat-file -e <rev>^{commit}`
+     answers "is this commit here?" with an exit status. Classifying `git
+     show`'s stderr instead was subtly wrong: git reports `invalid object name`
+     only below 40 hex, because at 40 the rev is already a complete object id
+     and it moves on to a *path* error — so a full SHA, which is what
+     `git rev-parse HEAD` produces, was read as a fact about the file and
+     hard-failed honest citations on every shallow clone.
+  2. **Paths resolve from the checker's root, not the repository's top.** In
+     `<rev>:<path>` a bare path is resolved from the top of the tree, so
+     running the checker in a subdirectory of a larger repository let a
+     citation read files *above* the root that the working-tree lane refuses.
+     The path is passed as `<rev>:./<path>`, which resolves relative to the
+     root, matching the filesystem lane.
+  3. **Blobs only.** `git show <rev>:<dir>` prints a directory listing and
+     exits 0, which would let a quote verify against a tree and turn the
+     checker into a directory enumerator. `cat-file blob` refuses non-files.
+  4. **Bounded.** A per-read timeout, a 60s run-wide git budget, a 32MB buffer,
+     and a capped read cache. Without the cache cap a document stamping many
+     anchors against large files pinned every one in memory: git deduplicates a
+     repeated blob on disk, so a `.git` of a few hundred kilobytes re-expanded
+     into gigabytes of retained strings — a denial of service written in a
+     document.
+
+  One property is inherent rather than guarded: a stamped anchor can read any
+  blob reachable from a resolvable commit, including content later deleted from
+  the working tree. That is the same repository the reader already has, so it
+  crosses no trust boundary that cloning does not — but a secret purged from
+  `HEAD` and left in history is readable through an anchor, and purging it from
+  history is the only fix.
 - **Two time budgets.** A single search is killed after 10s
   (`searchTimeoutMs`), and all searches in one run share a 120s budget. The
   per-search limit bounds one anchor; without the run-wide one a document

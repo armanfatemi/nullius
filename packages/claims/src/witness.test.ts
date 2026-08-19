@@ -247,3 +247,44 @@ describe("journal shape", () => {
     expect(isJournalFailure("stale-verification")).toBe(true);
   });
 });
+
+describe("journal order is load-bearing", () => {
+  it("refuses a report that terminates a dispatch appearing later", () => {
+    // Order is the whole basis of invariant 2, so a lookup that ignores it
+    // validates a journal in which an answer was recorded before its question.
+    const report = validateJournal(
+      journal(
+        { kind: "report", id: "r1", dispatch: "d1", outcome: "empty", statement: "None." },
+        { kind: "dispatch", id: "d1" },
+      ),
+    );
+
+    expect(report.findings.map((finding) => finding.verdict)).toEqual([
+      "dangling-reference",
+      "no-terminal",
+    ]);
+  });
+
+  it("reports an append that names a target without a hash", () => {
+    const report = validateJournal(
+      journal(
+        { kind: "verification", id: "v1", target: { path: "a.ts", hash: "h1" } },
+        {
+          kind: "append",
+          id: "a1",
+          corrections_since_last_append: "None.",
+          target: { path: "a.ts" },
+        },
+        { kind: "reliance", id: "x1", relies_on: "v1" },
+      ),
+    );
+
+    expect(report.findings.map((finding) => finding.verdict)).toEqual(["malformed"]);
+  });
+
+  it("leaves an append with no target at all alone", () => {
+    expect(
+      verdicts(journal({ kind: "append", id: "a1", corrections_since_last_append: "None." })),
+    ).toEqual([]);
+  });
+});

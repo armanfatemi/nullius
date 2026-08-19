@@ -396,6 +396,7 @@ function runCheck(args: ParsedArgs): number {
   let checked = 0;
   let presenceAnchors = 0;
   let absenceAnchors = 0;
+  let unhonouredStamps = 0;
   const unanchored: { doc: string; lines: number }[] = [];
 
   for (const doc of docs) {
@@ -410,6 +411,7 @@ function runCheck(args: ParsedArgs): number {
     }
 
     checked += results.length;
+    unhonouredStamps += results.filter((result) => result.stampUnverified === true).length;
     presenceAnchors += claims.filter((claim) => claim.kind === "presence").length;
     absenceAnchors += claims.filter((claim) => claim.kind === "absence").length;
     console.log(`--- ${doc} — ${results.length} anchor(s) / ${lines} lines`);
@@ -438,6 +440,16 @@ function runCheck(args: ParsedArgs): number {
   if (checked > 0) {
     console.log(
       `${presenceAnchors} presence anchor(s), ${absenceAnchors} search anchor(s).`,
+    );
+  }
+
+  // Said once, not per anchor. These claims were judged against the working
+  // tree like unstamped ones, so the permanent gate did not run for them —
+  // and a run that reports "verified" without saying so overstates what
+  // happened. The usual cause is a shallow clone.
+  if (unhonouredStamps > 0) {
+    console.log(
+      `${unhonouredStamps} stamped anchor(s) could not be settled against the commit they name — checked against the working tree only. For the permanent gate, fetch the full history (actions/checkout with fetch-depth: 0).`,
     );
   }
 

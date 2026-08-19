@@ -48,13 +48,13 @@ describe("extraction", () => {
     expect(claims.map((claim) => claim.statement).join(" ")).not.toContain("Q3");
   });
 
-  it("skips an anchor whose only preceding line is a heading", () => {
+  it("uses a heading as the statement when there is no prose above", () => {
     const claims = extractAuditClaims(
       "design.md",
-      ["## Evidence", "", "**Evidence:** `src/a.ts:1` — `x`"].join("\n"),
+      ["## The helper already exists", "", "**Evidence:** `src/a.ts:1` — `x`"].join("\n"),
     );
 
-    expect(claims).toEqual([]);
+    expect(claims[0]?.statement).toBe("The helper already exists");
   });
 
   it("reads a statement written as a list item without its bullet", () => {
@@ -139,5 +139,51 @@ describe("the dispatch plan", () => {
 
     expect(plan).toContain("no anchored claims");
     expect(plan).toContain("--extract");
+  });
+});
+
+describe("statement extraction skips what is quoted, not just its delimiters", () => {
+  it("does not take a fenced source line as the claim", () => {
+    const claims = extractAuditClaims(
+      "d.md",
+      [
+        "The retry limit is three.",
+        "",
+        "```yaml",
+        "retries: 3",
+        "```",
+        "",
+        "**Evidence:** `config.yaml:2` — `retries: 3`",
+      ].join("\n"),
+    );
+
+    expect(claims[0]?.statement).toBe("The retry limit is three.");
+  });
+
+  it("does not take a blockquoted marker as the claim", () => {
+    const claims = extractAuditClaims(
+      "d.md",
+      [
+        "The helper exists.",
+        "",
+        "> **Evidence:** `src/x.ts:1` — `quoted example`",
+        "",
+        "**Evidence:** `src/y.ts:1` — `real`",
+      ].join("\n"),
+    );
+
+    expect(claims[0]?.statement).toBe("The helper exists.");
+  });
+
+  it("falls back to a heading rather than dropping the claim", () => {
+    // "## The retry limit is three" over its evidence is an ordinary ADR
+    // shape; returning nothing made a document of nothing but anchored claims
+    // report "no anchored claims to audit".
+    const claims = extractAuditClaims(
+      "d.md",
+      ["## The retry limit is three", "", "**Evidence:** `src/a.ts:1` — `retries = 3`"].join("\n"),
+    );
+
+    expect(claims[0]?.statement).toBe("The retry limit is three");
   });
 });

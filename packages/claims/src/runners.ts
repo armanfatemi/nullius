@@ -4,15 +4,22 @@
  * working directory) and `demo` (against a sandbox fixture root).
  */
 
-import { spawnSync } from 'node:child_process';
+import { spawnSync, type SpawnSyncReturns } from 'node:child_process';
 import { readFileSync, realpathSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
 
 import { type RevRead, type SearchOutcome } from './checkClaims';
 import { type SearchBinary, type SearchPlan } from './commandSafety';
 
-/** Wall-clock budget for a single `git show`, in milliseconds. */
+/** Wall-clock budget for a single git read, in milliseconds. */
 export const DEFAULT_GIT_TIMEOUT_MS = 10_000;
+
+/**
+ * Wall-clock budget for ALL git reads in one run. The per-read timeout bounds
+ * one anchor; without a run-wide budget a document simply carries more stamped
+ * anchors, and a document may carry unlimited anchors.
+ */
+export const DEFAULT_GIT_RUN_BUDGET_MS = 60_000;
 
 /** Wall-clock budget for a single absence search, in milliseconds. */
 export const DEFAULT_SEARCH_TIMEOUT_MS = 10_000;
@@ -137,29 +144,133 @@ export function fileLinesReader(root?: string) {
 const REV_PATTERN = /^[0-9a-f]{7,40}$/;
 
 /**
- * Reads `path` as of `rev` with `git show`.
+ * Buffer cap for one git read. Far smaller than the search lane's, because a
+ * cited SOURCE file is being read rather than a repository's grep output — and
+ * every byte read here is a byte the checker may retain.
+ */
+const GIT_MAX_BUFFER = 32 * 1024 * 1024;
+
+/**
+ * Total characters the read cache may retain across a whole run.
+ *
+ * The cache is an optimisation, never a correctness requirement, so it stops
+ * growing rather than growing without bound. A document stamping many anchors
+ * against large files otherwise pins every one of them in memory for the life
+ * of the process: git deduplicates a repeated blob on disk, so a repository
+ * whose `.git` is a few hundred kilobytes can be re-expanded per cache key
+ * into gigabytes of retained JS strings. That is a denial of service written
+ * in a document.
+ */
+const GIT_CACHE_MAX_CHARS = 8 * 1024 * 1024;
+
+/**
+ * Reads `path` as of `rev`, for `path:line@rev` anchors.
  *
  * Both operands come from PR-controlled document content, so both are checked
- * before the spawn: the rev must be hex (a ref NAME would be both mutable and
+ * before any spawn: the rev must be hex (a ref NAME would be both mutable and
  * a place to hide `--upload-pack=`-style trickery), and the path must already
- * have passed `isSafeRepoPath`. `git show <rev>:<path>` takes one argument, so
- * there is no operand position for a path to be re-read as a flag — but a
- * leading `-` is refused anyway rather than relying on that.
+ * have passed `isSafeRepoPath`. Three further decisions are load-bearing:
+ *
+ *  1. **Existence is asked directly, never inferred from an error string.**
+ *     `git cat-file -e <rev>^{commit}` answers "is this commit here?" with an
+ *     exit status. Reading `git show`'s stderr instead looked equivalent and
+ *     was not: git reports `invalid object name` only when the rev is SHORTER
+ *     than 40 hex, because at 40 it is already a syntactically complete object
+ *     id — so it skips ahead to a *path* error. A full SHA, which is exactly
+ *     what `git rev-parse HEAD` and `$GITHUB_SHA` produce, was therefore read
+ *     as "that commit exists and lacks this file" and hard-failed an honest
+ *     citation on every shallow clone.
+ *  2. **The path is resolved relative to the root, with `./`.** In
+ *     `<rev>:<path>` a bare path resolves from the TOP of the repository, not
+ *     from `-C`'s directory. Running the checker in a subdirectory of a larger
+ *     repository therefore let a citation read files ABOVE the root that the
+ *     working-tree lane refuses — the same content oracle by another door.
+ *     `./` makes git resolve from the given directory, matching
+ *     `fileLinesReader`.
+ *  3. **Blobs only.** `git show <rev>:<dir>` prints a directory listing and
+ *     exits 0, so a quote could "verify" against a tree and turn the checker
+ *     into a directory enumerator. `cat-file blob` refuses anything that is
+ *     not a file.
  */
-export function revFileReader(root?: string, timeoutMs = DEFAULT_GIT_TIMEOUT_MS) {
-  // One `git show` per (rev, path), not per anchor. A document commonly stamps
-  // many claims against the same commit and the same file, and each of those
-  // would otherwise be its own process.
+export function revFileReader(
+  root?: string,
+  timeoutMs = DEFAULT_GIT_TIMEOUT_MS,
+  runBudgetMs = DEFAULT_GIT_RUN_BUDGET_MS,
+) {
+  // One read per (rev, path), not per anchor: a document commonly stamps many
+  // claims against the same commit and the same file.
   const cache = new Map<string, RevRead>();
+  let cachedChars = 0;
+  /** Memoised commit-existence answers, so N anchors on one rev cost one probe. */
+  const commits = new Map<string, RevRead | null>();
+  let spentMs = 0;
 
-  return (path: string, rev: string): RevRead => {
-    const key = `${rev}:${path}`;
-    const cached = cache.get(key);
-    if (cached !== undefined) return cached;
-    const result = read(path, rev);
-    cache.set(key, result);
-    return result;
-  };
+  /** A completed spawn, or the verdict to return instead of one. */
+  type Spawned =
+    | { ran: true; result: SpawnSyncReturns<string> }
+    | { ran: false; read: RevRead };
+
+  function git(args: string[]): Spawned {
+    if (spentMs >= runBudgetMs) {
+      return {
+        ran: false,
+        read: {
+          status: "unavailable",
+          reason: `run git budget of ${runBudgetMs}ms is exhausted — this document's stamped anchors cost too much to keep reading`,
+        },
+      };
+    }
+
+    const started = Date.now();
+    const result: SpawnSyncReturns<string> = spawnSync("git", args, {
+      shell: false,
+      encoding: "utf8",
+      maxBuffer: GIT_MAX_BUFFER,
+      timeout: Math.min(timeoutMs, runBudgetMs - spentMs),
+      killSignal: "SIGKILL",
+      input: "",
+      env: childEnv(),
+    });
+    spentMs += Date.now() - started;
+
+    if (result.error) {
+      const error = result.error as NodeJS.ErrnoException;
+      const reason =
+        error.code === "ENOENT"
+          ? "git is not installed"
+          : error.code === "ETIMEDOUT"
+            ? `git read exceeded ${timeoutMs}ms`
+            : error.message;
+      return { ran: false, read: { status: "unavailable", reason } };
+    }
+    if (result.signal !== null) {
+      return {
+        ran: false,
+        read: { status: "unavailable", reason: `git read killed by ${result.signal}` },
+      };
+    }
+    return { ran: true, result };
+  }
+
+  /** Whether the commit is in this clone. Memoised per rev. */
+  function commitProblem(base: string, rev: string): RevRead | null {
+    const remembered = commits.get(rev);
+    if (remembered !== undefined) return remembered;
+
+    const probe = git(["-C", base, "cat-file", "-e", `${rev}^{commit}`]);
+    // A budget or spawn failure is NOT remembered: it says nothing about the
+    // commit, and a later anchor must not inherit it as an answer.
+    if (!probe.ran) return probe.read;
+
+    let verdict: RevRead | null = null;
+    if (probe.result.status !== 0) {
+      verdict = (probe.result.stderr ?? "").toLowerCase().includes("not a git repository")
+        ? { status: "unavailable", reason: "not a git repository" }
+        : { status: "unknown-rev" };
+    }
+    commits.set(rev, verdict);
+    return verdict;
+  }
 
   function read(path: string, rev: string): RevRead {
     if (!REV_PATTERN.test(rev)) {
@@ -170,56 +281,45 @@ export function revFileReader(root?: string, timeoutMs = DEFAULT_GIT_TIMEOUT_MS)
     }
 
     const base = root ?? process.cwd();
-    const result = spawnSync("git", ["-C", base, "show", `${rev}:${path}`], {
-      shell: false,
-      encoding: "utf8",
-      maxBuffer: STAGE_MAX_BUFFER,
-      timeout: timeoutMs,
-      killSignal: "SIGKILL",
-      input: "",
-      env: childEnv(),
-    });
 
-    if (result.error) {
-      const error = result.error as NodeJS.ErrnoException;
-      return {
-        status: "unavailable",
-        reason: error.code === "ENOENT" ? "git is not installed" : error.message,
-      };
-    }
-    if (result.status === 0) {
-      return { status: "ok", lines: (result.stdout ?? "").split("\n") };
+    // Asked and answered before the file is named, so "this commit is not
+    // here" can never be reported as a fact about the file.
+    const problem = commitProblem(base, rev);
+    if (problem !== null) return problem;
+
+    // `./` keeps the path relative to `base`; `blob` refuses trees.
+    const probe = git(["-C", base, "cat-file", "blob", `${rev}:./${path}`]);
+    if (!probe.ran) return probe.read;
+
+    if (probe.result.status === 0) {
+      return { status: "ok", lines: (probe.result.stdout ?? "").split("\n") };
     }
 
-    const stderr = (result.stderr ?? "").toLowerCase();
-    // git distinguishes "I have never heard of this commit" from "that commit
-    // exists and does not contain that file", and the two verdicts differ:
-    // one fails open, the other fails. The revision check runs FIRST, because
-    // an unresolvable rev is the ambiguous case and must not be reported as a
-    // fact about the file.
-    if (stderr.includes("not a git repository")) {
-      return { status: "unavailable", reason: "not a git repository" };
-    }
-    if (
-      stderr.includes("unknown revision") ||
-      stderr.includes("invalid object name") ||
-      stderr.includes("not a valid object name") ||
-      stderr.includes("bad object") ||
-      stderr.includes("ambiguous argument")
-    ) {
-      return { status: "unknown-rev" };
-    }
-    if (
-      stderr.includes("exists on disk, but not in") ||
-      stderr.includes("does not exist in")
-    ) {
-      return { status: "no-file" };
-    }
-    return {
-      status: "unavailable",
-      reason: (result.stderr ?? "").trim().split("\n")[0] ?? "git show failed",
-    };
+    // The commit resolved, so whatever is left concerns the path: absent, or
+    // not a file. Either way the citation does not name a readable source line.
+    return { status: "no-file" };
   }
+
+  return (path: string, rev: string): RevRead => {
+    const key = `${rev}:${path}`;
+    const cached = cache.get(key);
+    if (cached !== undefined) return cached;
+
+    const result = read(path, rev);
+
+    // Verdicts are tiny and always worth keeping; file contents are kept only
+    // while the budget allows, after which the cache simply stops growing.
+    if (result.status !== "ok") {
+      cache.set(key, result);
+    } else {
+      const size = result.lines.reduce((total, line) => total + line.length + 1, 0);
+      if (cachedChars + size <= GIT_CACHE_MAX_CHARS) {
+        cachedChars += size;
+        cache.set(key, result);
+      }
+    }
+    return result;
+  };
 }
 
 export function searchRunner(

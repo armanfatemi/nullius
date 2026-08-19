@@ -28,8 +28,7 @@ Citation rot, and the two verbs the checker could not be.
   dead agents into evidence of absence), no verification is relied on after the
   artifact it verified changed, and no append omits what it corrected. Schema:
   [spec/witness-journal.md](spec/witness-journal.md).
-- New verdicts: `STALE`, `UNVERIFIABLE-REV` (both advisory) and
-  `MISSING-FILE-AT-REV` (failing).
+- New verdicts: `STALE` (advisory) and `MISSING-FILE-AT-REV` (failing).
 
 ### Fixed
 
@@ -44,10 +43,17 @@ Citation rot, and the two verbs the checker could not be.
 ### Notes
 
 - Rev-stamped anchors need the history they name: check out with
-  `fetch-depth: 0`. A commit this clone does not have is never held against the
-  author — the verdict fails open as the advisory `UNVERIFIABLE-REV`, with the
-  remedy in the message. Squash-merge discards the stamped commit, so documents
-  merged that way lose the hard gate and keep the advisory one.
+  `fetch-depth: 0`. A commit this clone does not have is judged exactly as an
+  unstamped anchor would be — against the working tree, failures included — and
+  the summary reports how many stamps went unhonoured. A stamp can win an
+  anchor the permanent gate; it can never lose it the ordinary one. Squash-merge
+  discards the stamped commit, so documents merged that way fall back to the
+  ordinary check.
+- The git lane reads with `git cat-file`, resolves cited paths relative to the
+  checker's root (`<rev>:./<path>`), accepts blobs only, and is bounded by a
+  per-read timeout, a 60s run budget, and a capped read cache. Running the
+  checker from a subdirectory of a larger repository no longer lets a citation
+  read files above the root.
 
 ## 0.5.0
 

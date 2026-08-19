@@ -95,9 +95,12 @@ must not check out shallowly:
     fetch-depth: 0 # `git show <rev>:<path>` needs the commit the anchor names
 ```
 
-A commit the clone does not have is never treated as evidence against the
-author: the verdict fails open as the advisory `UNVERIFIABLE-REV`, with the
-remedy in the message.
+A commit the clone does not have is judged exactly as an unstamped anchor
+would be — against the working tree, failures included — and the run reports
+how many stamps went unhonoured. A stamp can win an anchor the permanent gate;
+it can never lose it the ordinary one. (An earlier draft softened those
+failures instead, which meant appending `@0000000` to any invented citation
+turned a red run green: the rev is part of the untrusted document.)
 
 ## `nullius audit` — is the claim true?
 

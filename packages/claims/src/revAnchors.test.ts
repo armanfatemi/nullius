@@ -146,15 +146,27 @@ describe("rev-stamped anchors — the rot axis", () => {
   });
 });
 
-describe("rev-stamped anchors — an unreadable commit fails open", () => {
-  it("does not call an author a fabricator when the commit is not in the clone", () => {
+describe("rev-stamped anchors — an unreadable commit buys nothing, and costs nothing", () => {
+  it("does NOT let an unreadable commit excuse a fabrication", () => {
+    // The rev comes from the document, and the document is untrusted: if an
+    // unresolvable commit softened this verdict, appending `@0000000` to any
+    // invented citation would turn a red run green.
     const [result] = checkClaims(
       [stamped(2, "  const attempts = 5;")],
       deps(["unrelated"], { status: "unknown-rev" }),
     );
 
-    expect(result?.verdict).toBe("unverifiable-rev");
-    expect(isFailure("unverifiable-rev")).toBe(false);
+    expect(result?.verdict).toBe("fabricated");
+    expect(isFailure(result?.verdict ?? "ok")).toBe(true);
+  });
+
+  it("says the stamp went unhonoured, with the remedy", () => {
+    const [result] = checkClaims(
+      [stamped(2, "  const attempts = 5;")],
+      deps(["unrelated"], { status: "unknown-rev" }),
+    );
+
+    expect(result?.stampUnverified).toBe(true);
     expect(result?.detail).toContain("fetch-depth: 0");
   });
 
@@ -165,15 +177,25 @@ describe("rev-stamped anchors — an unreadable commit fails open", () => {
     );
 
     expect(result?.verdict).toBe("ok");
+    expect(result?.stampUnverified).toBe(true);
   });
 
-  it("falls open the same way when no git reader was supplied at all", () => {
+  it("behaves like an unstamped anchor when no git reader was supplied at all", () => {
     const [result] = checkClaims([stamped(2, "  const attempts = 5;")], {
       readFileLines: () => ["unrelated"],
       runSearch: () => ({ ok: true, count: 0 }),
     });
 
-    expect(result?.verdict).toBe("unverifiable-rev");
+    expect(result?.verdict).toBe("fabricated");
+  });
+
+  it("never turns a working-tree PASS into a failure", () => {
+    const [result] = checkClaims(
+      [stamped(2, "  const attempts = 5;")],
+      deps(["", "  const attempts = 5;"], { status: "unknown-rev" }),
+    );
+
+    expect(isFailure(result?.verdict ?? "fabricated")).toBe(false);
   });
 
   it("never reads a path that escaped the repo, stamped or not", () => {
@@ -381,5 +403,86 @@ describe("git is spawned once per commit and file, not once per anchor", () => {
     rmSync(join(root, ".git"), { recursive: true, force: true });
 
     expect(reader("src/app.ts", first).status).toBe("ok");
+  });
+});
+
+describe("revFileReader against a real repository — the awkward cases", () => {
+  const roots: string[] = [];
+
+  afterAll(() => {
+    for (const root of roots) rmSync(root, { recursive: true, force: true });
+  });
+
+  function repo(): { root: string; full: string } {
+    const root = mkdtempSync(join(tmpdir(), "nullius-rev-edge-"));
+    roots.push(root);
+    const git = (...args: string[]): string =>
+      execFileSync("git", ["-C", root, ...args], { encoding: "utf8" }).trim();
+    git("init", "-q", "-b", "main");
+    git("config", "user.email", "test@example.com");
+    git("config", "user.name", "Test");
+    mkdirSync(join(root, "src"));
+    writeFileSync(join(root, "src", "app.ts"), AT_REV.join("\n"));
+    writeFileSync(join(root, "secret.env"), "SECRET=hunter2\n");
+    git("add", ".");
+    git("commit", "-qm", "first");
+    return { root, full: git("rev-parse", "HEAD") };
+  }
+
+  it("reports a FULL 40-character SHA that is not in the clone as unknown, not as a missing file", () => {
+    // git only says "invalid object name" below 40 hex; at 40 it is already a
+    // complete object id and reports a PATH error instead. Classifying on
+    // that string hard-failed every honest anchor stamped with
+    // `git rev-parse HEAD` on a shallow clone.
+    const { root } = repo();
+    const absent = "0123456789abcdef0123456789abcdef01234567";
+
+    expect(absent).toHaveLength(40);
+    expect(revFileReader(root)("src/app.ts", absent).status).toBe("unknown-rev");
+  });
+
+  it("reads a full-length SHA that IS in the clone", () => {
+    const { root, full } = repo();
+    const read = revFileReader(root)("src/app.ts", full);
+
+    expect(read.status).toBe("ok");
+    expect(read.status === "ok" && read.lines[1]).toBe("  const attempts = 5;");
+  });
+
+  it("refuses a directory, rather than verifying a quote against a tree listing", () => {
+    const { root, full } = repo();
+
+    expect(revFileReader(root)("src", full).status).toBe("no-file");
+  });
+
+  it("resolves paths from the given root, not from the top of the repository", () => {
+    // `<rev>:<path>` resolves from the repository top, so running the checker
+    // in a subdirectory of a larger repo let a citation read files ABOVE the
+    // root that the working-tree lane refuses.
+    const { root, full } = repo();
+    const nested = join(root, "src");
+
+    expect(revFileReader(nested)("secret.env", full).status).toBe("no-file");
+    expect(revFileReader(root)("secret.env", full).status).toBe("ok");
+  });
+
+  it("stops reading once the run-wide budget is spent", () => {
+    const { root, full } = repo();
+    const read = revFileReader(root, 10_000, 0);
+
+    const outcome = read("src/app.ts", full);
+    expect(outcome.status).toBe("unavailable");
+    expect(outcome.status === "unavailable" && outcome.reason).toContain("budget");
+  });
+
+  it("does not remember a budget failure as an answer about the commit", () => {
+    // A run-out-of-budget verdict says nothing about whether the commit
+    // exists; caching it as one would poison every later anchor on that rev.
+    const { root, full } = repo();
+    const reader = revFileReader(root, 10_000, 1);
+
+    reader("src/app.ts", full);
+    // A fresh reader with a real budget must still get the true answer.
+    expect(revFileReader(root)("src/app.ts", full).status).toBe("ok");
   });
 });

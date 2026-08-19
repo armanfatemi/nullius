@@ -46,23 +46,70 @@ export interface AuditClaim {
 
 const HEADING = /^\s{0,3}#{1,6}\s/;
 const MARKER = /^\s*(?:[-*+]\s+|\d+[.)]\s+)?\*\*(?:Evidence|Binds at):\*\*/;
-const FENCE = /^\s*(?:`{3,}|~{3,})/;
 const BULLET_ONLY = /^\s*(?:[-*+]|\d+[.)])\s*$/;
 const QUOTE_PREFIX = /^\s*>\s?/;
+
+/**
+ * Line indices (0-based) that sit inside a fenced code block.
+ *
+ * Computed forwards, because a fence's state cannot be read from a backwards
+ * scan: testing each line against the fence pattern only finds the
+ * DELIMITERS, so the block's interior fell through and a quoted source line
+ * became the audited claim.
+ */
+function fencedLines(lines: string[]): Set<number> {
+  const inside = new Set<number>();
+  let open: { delimiter: string; length: number } | null = null;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const raw = lines[index] ?? "";
+    const match = /^\s*(`{3,}|~{3,})/.exec(raw);
+    const run = match?.[1];
+    if (open === null) {
+      if (run !== undefined) {
+        open = { delimiter: run[0] as string, length: run.length };
+        inside.add(index);
+      }
+      continue;
+    }
+    inside.add(index);
+    if (run !== undefined && run[0] === open.delimiter && run.length >= open.length) {
+      open = null;
+    }
+  }
+  return inside;
+}
 
 /**
  * The prose statement an anchor is offered in support of: the nearest
  * preceding line that is neither a marker, a heading, nor part of a fenced
  * block. That is the sentence whose truth the anchor is being used to
  * establish, and the one the checker cannot judge.
+ *
+ * A heading is used as a last resort rather than abandoning the claim.
+ * "## The retry limit is three" over its evidence is an ordinary ADR shape,
+ * and returning nothing for it dropped the anchor out of the audit plan
+ * entirely — a document made of nothing but anchored claims reported "no
+ * anchored claims to audit".
  */
-function statementAbove(lines: string[], markerIndex: number): { text: string; line: number } | null {
+function statementAbove(
+  lines: string[],
+  markerIndex: number,
+  fenced: Set<number>,
+): { text: string; line: number } | null {
   for (let index = markerIndex - 1; index >= 0; index -= 1) {
     const raw = lines[index] ?? "";
-    const text = raw.replace(QUOTE_PREFIX, "").trim();
+    if (fenced.has(index)) continue;
+    // The quote prefix is stripped before the marker tests, not after: a
+    // blockquoted marker is still a marker, and treating it as prose made the
+    // citation itself the claim under audit.
+    const unquoted = raw.replace(QUOTE_PREFIX, "");
+    const text = unquoted.trim();
     if (text === "") continue;
-    if (MARKER.test(raw) || FENCE.test(raw) || BULLET_ONLY.test(raw)) continue;
-    if (HEADING.test(raw)) return null;
+    if (MARKER.test(unquoted) || BULLET_ONLY.test(unquoted)) continue;
+    if (HEADING.test(unquoted)) {
+      return { text: text.replace(/^#{1,6}\s+/, "").trim(), line: index + 1 };
+    }
     return { text: stripListMarker(text), line: index + 1 };
   }
   return null;
@@ -95,6 +142,7 @@ function anchorText(claim: Claim): string | null {
  */
 export function extractAuditClaims(doc: string, content: string): AuditClaim[] {
   const lines = content.split("\n");
+  const fenced = fencedLines(lines);
   const claims = parseClaims(doc, content);
   const byStatement = new Map<number, AuditClaim>();
   const ordered: AuditClaim[] = [];
@@ -102,7 +150,7 @@ export function extractAuditClaims(doc: string, content: string): AuditClaim[] {
   for (const claim of claims) {
     const anchor = anchorText(claim);
     if (anchor === null) continue;
-    const statement = statementAbove(lines, claim.source.line - 1);
+    const statement = statementAbove(lines, claim.source.line - 1, fenced);
     if (statement === null) continue;
 
     const existing = byStatement.get(statement.line);

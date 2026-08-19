@@ -200,6 +200,13 @@ export function validateJournal(content: string): JournalReport {
   // --- Pass 2: the three invariants, walked in journal order, because two of
   // them are questions about what happened BETWEEN two records.
   const terminals = new Map<string, JournalRecord>();
+  /**
+   * Dispatches seen so far in THIS pass, so a report can only terminate one
+   * that already happened. Looking the id up in the whole-file index instead
+   * made the check order-blind: an answer recorded before its dispatch
+   * validated clean, in a journal whose order is the thing being trusted.
+   */
+  const dispatched = new Set<string>();
   const outcomes = { found: 0, empty: 0, noReport: 0 };
   /** Latest hash seen for each artifact path, as of the current line. */
   const hashes = new Map<string, { hash: string; line: number }>();
@@ -212,6 +219,7 @@ export function validateJournal(content: string): JournalReport {
     switch (record.kind) {
       case "dispatch":
         dispatches += 1;
+        dispatched.add(record.id);
         break;
 
       case "report": {
@@ -226,7 +234,11 @@ export function validateJournal(content: string): JournalReport {
           break;
         }
         const dispatch = byId.get(target as string);
-        if (dispatch === undefined || dispatch.kind !== "dispatch") {
+        if (
+          dispatch === undefined ||
+          dispatch.kind !== "dispatch" ||
+          !dispatched.has(dispatch.id)
+        ) {
           findings.push({
             line: record.line,
             verdict: "dangling-reference",
@@ -363,7 +375,20 @@ export function validateJournal(content: string): JournalReport {
           });
         }
         const target = asTarget(record.raw.target);
-        if (target !== null) hashes.set(target.path, { hash: target.hash, line: record.line });
+        if (target !== null) {
+          hashes.set(target.path, { hash: target.hash, line: record.line });
+        } else if (record.raw.target !== undefined) {
+          // Reported, not discarded: an append is one of the two records that
+          // can invalidate a verification, so a malformed target here silently
+          // preserves a stale reliance that should have been caught.
+          findings.push({
+            line: record.line,
+            verdict: "malformed",
+            subject: record.id,
+            detail:
+              'this append names a "target" but not a usable {"path": ..., "hash": ...} — an artifact change recorded without a hash cannot invalidate the verification it supersedes',
+          });
+        }
         break;
       }
     }
