@@ -285,7 +285,7 @@ describe("revFileReader against a real repository", () => {
   });
 
   function repo(): { root: string; first: string } {
-    const root = mkdtempSync(join(tmpdir(), "nullius-rev-"));
+    const root = mkdtempSync(join(tmpdir(), "fiducial-rev-"));
     roots.push(root);
     const git = (...args: string[]): string =>
       execFileSync("git", ["-C", root, ...args], { encoding: "utf8" }).trim();
@@ -360,7 +360,7 @@ describe("git is spawned once per commit and file, not once per anchor", () => {
   });
 
   it("serves repeated anchors on one file from the first read", () => {
-    const root = mkdtempSync(join(tmpdir(), "nullius-rev-cache-"));
+    const root = mkdtempSync(join(tmpdir(), "fiducial-rev-cache-"));
     roots.push(root);
     const git = (...args: string[]): string =>
       execFileSync("git", ["-C", root, ...args], { encoding: "utf8" }).trim();

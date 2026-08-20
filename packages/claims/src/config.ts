@@ -1,5 +1,5 @@
 /**
- * `nullius.config.json` — optional per-repo configuration for the CLI.
+ * `fiducial.config.json` — optional per-repo configuration for the CLI.
  *
  * Validation is strict (unknown keys are rejected) because a typo'd key —
  * `momments`, `exclde` — would otherwise silently fall back to defaults, and a
@@ -52,6 +52,40 @@ const KNOWN_KEYS = new Set([
 function isStringArray(value: unknown): value is string[] {
   return (
     Array.isArray(value) && value.every((entry) => typeof entry === "string")
+  );
+}
+
+/** The config filename the CLI looks for when none is passed on the command line. */
+export const CONFIG_PATH = "fiducial.config.json";
+
+/**
+ * The filename this tool used before it was renamed. Still read when the
+ * current one is absent, so a repo that configured the checker under the old
+ * name keeps working across the rename rather than silently falling back to
+ * defaults — and a checker that quietly checks less than you configured is the
+ * exact failure this file's strict validation exists to prevent.
+ */
+export const LEGACY_CONFIG_PATH = "nullius.config.json";
+
+/**
+ * Which config file to read, given what is on disk. `exists` is injected so
+ * the precedence rule is testable without touching a filesystem.
+ *
+ * An explicitly passed path is never silently substituted: asking for a config
+ * that is not there is an error, not a reason to fall back to another file.
+ */
+export function resolveConfigPath(
+  explicitPath: string | undefined,
+  exists: (path: string) => boolean,
+): string | undefined {
+  if (explicitPath !== undefined) {
+    if (!exists(explicitPath)) {
+      throw new Error(`config file not found: ${explicitPath}`);
+    }
+    return explicitPath;
+  }
+  return [CONFIG_PATH, LEGACY_CONFIG_PATH].find((candidate) =>
+    exists(candidate),
   );
 }
 

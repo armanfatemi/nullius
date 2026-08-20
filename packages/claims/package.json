@@ -1,16 +1,16 @@
 {
-  "name": "@nullius-inverba/claims",
+  "name": "fiducial",
   "version": "0.6.0",
   "description": "Deterministic checker for Evidence Anchors \u2014 machine-verifiable claims about a codebase in design docs, RFCs, and agent-written proposals.",
   "license": "MIT",
   "author": "Arman Fatemi",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/armanfatemi/nullius.git",
+    "url": "git+https://github.com/armanfatemi/fiducial.git",
     "directory": "packages/claims"
   },
-  "homepage": "https://github.com/armanfatemi/nullius",
-  "bugs": "https://github.com/armanfatemi/nullius/issues",
+  "homepage": "https://github.com/armanfatemi/fiducial",
+  "bugs": "https://github.com/armanfatemi/fiducial/issues",
   "keywords": [
     "agents",
     "llm",
@@ -29,7 +29,7 @@
     "node": ">=20.19"
   },
   "bin": {
-    "nullius": "dist/cli.js"
+    "fiducial": "dist/cli.js"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

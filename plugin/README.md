@@ -1,4 +1,4 @@
-# nullius — Claude Code plugin
+# fiducial — Claude Code plugin
 
 The convention attaches to **anything a human approves**: a plan-mode plan, a
 PR description, a design doc or ADR. This plugin ships the pieces that make an
@@ -24,9 +24,9 @@ discarded afterward is irrelevant — the damage is done at approval.
 ## Hook configuration
 
 The hook looks for the newest recently-modified `.md` under
-`$NULLIUS_PLAN_DIR`, `.claude/plans`, then `~/.claude/plans`. Set
-`NULLIUS_PLAN_DIR` if your plans live elsewhere, and `NULLIUS_BIN` (e.g.
-`pnpm exec nullius`) to pin a locally installed checker instead of `npx`.
+`$FIDUCIAL_PLAN_DIR`, `.claude/plans`, then `~/.claude/plans`. Set
+`FIDUCIAL_PLAN_DIR` if your plans live elsewhere, and `FIDUCIAL_BIN` (e.g.
+`pnpm exec fiducial`) to pin a locally installed checker instead of `npx`.
 
 ## Not on Claude Code?
 

@@ -1,6 +1,6 @@
-# @nullius-inverba/witness — partly shipped, partly not
+# fiducial witness — partly shipped, partly not
 
-The second half of [nullius](https://github.com/armanfatemi/nullius): a
+The second half of [fiducial](https://github.com/armanfatemi/fiducial): a
 retrospective kit for agent-driven work, built on one premise —
 
 > **The agent that just did the work is a bad witness.** It is deep in a long
@@ -11,7 +11,7 @@ retrospective kit for agent-driven work, built on one premise —
 **The journal validator ships now**, inside the checker CLI rather than here:
 
 ```sh
-nullius witness validate run.jsonl
+fiducial witness validate run.jsonl
 ```
 
 It enforces three invariants on the record a multi-agent run leaves behind —
@@ -20,7 +20,7 @@ every dispatch reaches one of three terminal states (`found` / explicit `empty`
 changed, and no append omits what it corrected. Deterministic, no model, same
 DNA as `check`. The schema is [spec/witness-journal.md](../../spec/witness-journal.md).
 
-It lives in `@nullius-inverba/claims` because it is the same kind of thing that
+It lives in `fiducial` because it is the same kind of thing that
 package already is: a deterministic validator with no model in it. This package
 is reserved for the half that still needs conventions to settle.
 

@@ -2,7 +2,39 @@
 
 ## 0.6.0
 
-Citation rot, and the two verbs the checker could not be.
+Citation rot, the two verbs the checker could not be, and a new name.
+
+### Renamed
+
+**`@nullius-inverba/claims` is now `fiducial`.** The CLI bin, the repo, and the
+package are all one word now, and the npm scope is gone. A *fiducial* is a
+marker placed so everything else in a scene can be measured against it — which
+only works because the marker itself is checkable. That is what an Evidence
+Anchor is, so it is what the tool is called.
+
+The convention did **not** change. `**Evidence:**` markers, every verdict name,
+`spec/evidence-anchors.md`, and the authoring skill all keep their spelling —
+documents written before the rename check identically after it.
+
+Nothing configured under the old name silently stops working. Where a name was
+part of the interface, the pre-rename spelling is still honoured:
+
+| Was | Now | Old still works |
+| --- | --- | --- |
+| `nullius.config.json` | `fiducial.config.json` | read when the new name is absent |
+| `NULLIUS_BIN` | `FIDUCIAL_BIN` | yes |
+| `NULLIUS_PLAN_DIR` | `FIDUCIAL_PLAN_DIR` | yes |
+| `NULLIUS_REQUIRE_MARKERS` | `FIDUCIAL_REQUIRE_MARKERS` | yes |
+| `<!-- nullius-claims -->` PR comment | `<!-- fiducial -->` | matched, so threads update rather than duplicate |
+
+An explicitly passed `--config` path is the one exception: it is never
+substituted. Asking for a config that is not there is an error, because quietly
+reading a different file would hand you a run you did not configure.
+
+**`evidence-anchors` (the npm package) is retired**, not renamed. It was an
+alias that re-exported the checker, and carrying two published names for one
+tool cost maintenance and bought confusion. The *convention* it was named after
+is unaffected.
 
 ### Added
 
@@ -14,7 +46,7 @@ Citation rot, and the two verbs the checker could not be.
   a `FABRICATED` there is permanent and can never be excused by a later
   deletion, and the working tree becomes advisory (`STALE`), so no refactor can
   turn an honest document red. Unstamped anchors behave exactly as before.
-- **`nullius audit <doc>`** — the entailment half `check` deliberately does not
+- **`fiducial audit <doc>`** — the entailment half `check` deliberately does not
   certify. Anchored claims are extracted deterministically, then dispatched one
   per agent, starved of the document, the title, and every sibling claim, and
   told to refute. Refutations come back as anchors that `check` re-verifies, so
@@ -22,7 +54,7 @@ Citation rot, and the two verbs the checker could not be.
   `--extract` pulls unanchored claims out of prose, `--propose` is the older
   confirmation-shaped mode (`eager-prompt` still works and points here).
   `UNVERIFIABLE-BY-SEARCH` is a first-class answer.
-- **`nullius witness validate <journal.jsonl>`** — three invariants on the
+- **`fiducial witness validate <journal.jsonl>`** — three invariants on the
   record a multi-agent run leaves behind: every dispatch reaches one of three
   terminal states (collapsing "reported nothing" into "never reported" launders
   dead agents into evidence of absence), no verification is relied on after the

@@ -2,12 +2,12 @@
 description: Verify the Evidence Anchors in a document (defaults to the newest plan file)
 ---
 
-Verify Evidence Anchors with the nullius checker.
+Verify Evidence Anchors with the fiducial checker.
 
 If `$ARGUMENTS` names one or more files or globs, run:
 
 ```sh
-npx -y @nullius-inverba/claims check $ARGUMENTS
+npx -y fiducial check $ARGUMENTS
 ```
 
 If no argument was given, locate the most recently modified `.md` file in the

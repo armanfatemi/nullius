@@ -39,7 +39,7 @@ alternative**, or when it asserts that something does **not** exist.
 
 ## Division of labor with the checker
 
-`npx @nullius-inverba/claims check` deterministically verifies every claim written in
+`npx fiducial check` deterministically verifies every claim written in
 the structured `**Evidence:**` / `**Binds at:**` form — run it BEFORE
 dispatching reviewers, because fixing a false premise changes the design the
 reviewers would be reading. The reviewer's job is the remainder: load-bearing

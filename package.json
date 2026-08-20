@@ -1,7 +1,7 @@
 {
-  "name": "nullius-monorepo",
+  "name": "fiducial-monorepo",
   "private": true,
-  "description": "nullius — epistemic discipline for agent systems, mechanically enforced. Monorepo for the @nullius-inverba/* packages.",
+  "description": "fiducial — epistemic discipline for agent systems, mechanically enforced. Monorepo for the fiducial checker.",
   "license": "MIT",
   "packageManager": "pnpm@11.5.1",
   "engines": {

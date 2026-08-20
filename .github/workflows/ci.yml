@@ -66,12 +66,12 @@ jobs:
       # The journal validator, dogfooded on a fixture that breaks each of its
       # three invariants: a validator that stops catching them is a validator
       # nobody would notice going quiet.
-      - name: nullius witness validate (self)
+      - name: fiducial witness validate (self)
         run: |
           node packages/claims/dist/cli.js witness validate spec/fixtures/valid-run.jsonl
           ! node packages/claims/dist/cli.js witness validate spec/fixtures/broken-run.jsonl
       # Dogfood: the README carries live Evidence Anchors into this repo's own
       # source. If the code drifts out from under the README's claims, this
       # step says so — the tool checking the docs of the tool.
-      - name: nullius check (self)
+      - name: fiducial check (self)
         run: node packages/claims/dist/cli.js check 'README.md' 'spec/**/*.md' --require-markers

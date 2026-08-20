@@ -110,7 +110,7 @@ moments — a mobile team's are more like:
 }
 ```
 
-Set them in `nullius.config.json`. Keep the list **closed and short** — the
+Set them in `fiducial.config.json`. Keep the list **closed and short** — the
 mechanism only works if an invented moment fails the check
 (`UNKNOWN-MOMENT`) instead of sliding through as plausible prose. If your
 list grows past ~8 entries, you are probably naming symptoms, not binding

@@ -1,5 +1,5 @@
 /**
- * `nullius witness validate` — the deterministic half of the retro kit.
+ * `fiducial witness validate` — the deterministic half of the retro kit.
  *
  * `check` asks whether the author looked. This asks a different question, and
  * one nothing else in the toolchain asks: **did the checking itself actually

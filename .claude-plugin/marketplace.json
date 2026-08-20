@@ -1,12 +1,12 @@
 {
-  "name": "nullius",
+  "name": "fiducial",
   "owner": {
     "name": "Arman Fatemi",
     "url": "https://github.com/armanfatemi"
   },
   "plugins": [
     {
-      "name": "nullius",
+      "name": "fiducial",
       "source": "./plugin",
       "description": "Evidence Anchors for agent-written design docs: the authoring skill that makes claims about existing code machine-verifiable, plus a [false-premise] reviewer kit.",
       "version": "0.1.0"

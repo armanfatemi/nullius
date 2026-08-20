@@ -14,8 +14,8 @@ and follow them exactly.
 List the claims, then audit each one **in its own subagent**:
 
 ```sh
-npx -y @nullius-inverba/claims audit <doc>
-npx -y @nullius-inverba/claims audit <doc> --emit-brief <claim-id>
+npx -y fiducial audit <doc>
+npx -y fiducial audit <doc> --emit-brief <claim-id>
 ```
 
 Dispatch each brief to a **separate** agent, and give that agent the brief and
@@ -27,7 +27,7 @@ add context.
 Collect the verdicts:
 
 - **REFUTED** — the counter-evidence comes back as anchors. Verify them with
-  `npx -y @nullius-inverba/claims check <doc>` like anyone else's, then report
+  `npx -y fiducial check <doc>` like anyone else's, then report
   the claim, the counter-evidence, and the note that the decision it supported
   needs re-examining.
 - **SUPPORTED** — report where the agent went looking for the counter-example.
@@ -43,7 +43,7 @@ that is the correlation the split exists to break.
 Retrofit it first, with the confirmation-shaped mode:
 
 ```sh
-npx -y @nullius-inverba/claims audit <doc> --propose
+npx -y fiducial audit <doc> --propose
 ```
 
 Follow the emitted brief to the letter — in particular:
@@ -57,12 +57,12 @@ Follow the emitted brief to the letter — in particular:
 - Stamp the commit you read (`git rev-parse --short HEAD`) into each anchor:
   `path/to/file.ts:12@a1b2c3d`. That is what keeps the claim checkable after
   the code moves on.
-- Finish by running `npx -y @nullius-inverba/claims check` on the document and
+- Finish by running `npx -y fiducial check` on the document and
   confirm every proposed anchor verifies. A `FABRICATED` or `COUNT-MISMATCH`
   on your own anchor means you fabricated — redo that claim from the code.
 
 Then run the anchored flow above.
 
 If the `audit` command is unavailable (older package version), fall back to
-`eager-prompt <doc>`, and tell the user to update `@nullius-inverba/claims`
+`eager-prompt <doc>`, and tell the user to update `fiducial`
 rather than improvising the protocol.

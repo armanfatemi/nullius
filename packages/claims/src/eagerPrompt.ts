@@ -1,11 +1,11 @@
 /**
- * `nullius eager-prompt <doc>` — the refute-first audit brief for a document
+ * `fiducial eager-prompt <doc>` — the refute-first audit brief for a document
  * with NO anchors yet.
  *
  * Eager mode cannot be deterministic (extracting claims from prose and
  * hunting evidence are model tasks), so the CLI does not run a model. It
  * ships the PROTOCOL: a brief any harness can execute
- * (`claude -p "$(nullius eager-prompt design.md)"`), whose only permitted
+ * (`claude -p "$(fiducial eager-prompt design.md)"`), whose only permitted
  * output is candidate anchors — which the deterministic checker then verifies
  * like anyone else's. The model proposes; the checker disposes.
  *
@@ -52,7 +52,7 @@ Document under audit: ${docPath}
 
 5. Present everything as a proposed edit to the document for the author's review. Do NOT present your anchors as verified truth — they are proposals, and the author adopting them is the entailment review. Then run:
 
-    npx -y @nullius-inverba/claims check "${docPath}"
+    npx -y fiducial check "${docPath}"
 
 and confirm every marker verifies. A FABRICATED, UNPINNED or COUNT-MISMATCH verdict on an anchor you proposed means you fabricated or cited something that identifies nothing — return to step 2 for that claim. DRIFT and WRONG-LINE pass: they mean the line number is stale, not that the claim is false.
 

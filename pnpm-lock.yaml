@@ -27,12 +27,6 @@ importers:
         specifier: ^3.0.0
         version: 3.2.7(@types/node@22.20.1)
 
-  packages/evidence-anchors:
-    dependencies:
-      '@nullius-inverba/claims':
-        specifier: ^0.6.0
-        version: link:../claims
-
 packages:
 
   '@esbuild/aix-ppc64@0.27.7':

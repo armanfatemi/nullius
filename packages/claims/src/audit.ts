@@ -1,5 +1,5 @@
 /**
- * `nullius audit` — the premise auditor.
+ * `fiducial audit` — the premise auditor.
  *
  * `check` answers "did the author look?" and stops there, deliberately: its
  * verdicts certify FORM, never entailment. A real line, quoted accurately,
@@ -198,7 +198,7 @@ export function formatAuditPlan(docPath: string, claims: AuditClaim[]): string {
 Anchored claims are extracted deterministically; a document with none needs its
 claims pulled out of the prose first:
 
-  nullius audit ${docPath} --extract
+  fiducial audit ${docPath} --extract
 
 Feed each extracted sentence back as a claim of its own. One claim per dispatch
 is the point — a model handed several at once will reconcile them into a story.`;
@@ -220,13 +220,13 @@ is the point — a model handed several at once will reconcile them into a story
     "",
     "Dispatch each to its OWN agent, with nothing else in its context:",
     "",
-    `  nullius audit ${docPath} --emit-brief ${claims[0]?.id ?? "c1"}`,
+    `  fiducial audit ${docPath} --emit-brief ${claims[0]?.id ?? "c1"}`,
     "",
     "Refutations come back as anchors. Re-verify them the same way as anyone",
-    `else's: nullius check ${docPath}`,
+    `else's: fiducial check ${docPath}`,
     "",
     "This document's prose may also carry claims with no anchor at all, which",
-    `are invisible here: nullius audit ${docPath} --extract`,
+    `are invisible here: fiducial audit ${docPath} --extract`,
   );
   return lines.join("\n");
 }

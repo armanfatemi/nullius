@@ -43,7 +43,7 @@ afterAll(() => {
 });
 
 function sandbox(): string {
-  const root = mkdtempSync(join(tmpdir(), "nullius-runner-"));
+  const root = mkdtempSync(join(tmpdir(), "fiducial-runner-"));
   sandboxes.push(root);
   mkdirSync(join(root, "src"), { recursive: true });
   writeFileSync(join(root, "src", "app.ts"), "const legacyRetryHelper = 1;\n");
@@ -174,8 +174,8 @@ describe("search timeouts", () => {
 describe("symlink containment", () => {
   it("refuses a search whose operand is a symlink out of the repo", () => {
     const root = sandbox();
-    writeFileSync("/tmp/nullius-outside-target.txt", "SECRET_TOKEN_ABC\n");
-    symlinkSync("/tmp/nullius-outside-target.txt", join(root, "evil-link"));
+    writeFileSync("/tmp/fiducial-outside-target.txt", "SECRET_TOKEN_ABC\n");
+    symlinkSync("/tmp/fiducial-outside-target.txt", join(root, "evil-link"));
 
     const parsed = parseSearchCommand("grep -c -e SECRET_TOKEN_ABC evil-link");
     // The path is textually blameless — repo-relative, no traversal — so the
@@ -190,8 +190,8 @@ describe("symlink containment", () => {
 
   it("refuses to READ a symlink out of the repo", () => {
     const root = sandbox();
-    writeFileSync("/tmp/nullius-outside-target.txt", "SECRET_TOKEN_ABC\n");
-    symlinkSync("/tmp/nullius-outside-target.txt", join(root, "evil-read"));
+    writeFileSync("/tmp/fiducial-outside-target.txt", "SECRET_TOKEN_ABC\n");
+    symlinkSync("/tmp/fiducial-outside-target.txt", join(root, "evil-read"));
 
     // A presence citation needs no search command at all: OK vs FABRICATED is
     // itself a content oracle over any file the runner can read.

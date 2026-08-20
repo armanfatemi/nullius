@@ -14,7 +14,7 @@ import {
 import { parseClaims } from './parseClaims';
 
 // Runs the real flow: fixture on disk, real file reads, real grep.
-const root = mkdtempSync(join(tmpdir(), 'nullius-demo-test-'));
+const root = mkdtempSync(join(tmpdir(), 'fiducial-demo-test-'));
 
 afterAll(() => {
   rmSync(root, { recursive: true, force: true });

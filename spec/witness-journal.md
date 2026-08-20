@@ -1,7 +1,7 @@
 # The Witness Journal
 
 **Version 0.1 — draft.** The record a multi-agent run leaves behind, and the
-three invariants [`nullius witness validate`](../packages/claims/) enforces on
+three invariants [`fiducial witness validate`](../packages/claims/) enforces on
 it. Companion to [Evidence Anchors](./evidence-anchors.md), which does the same
 job for documents.
 
@@ -134,8 +134,8 @@ which exercises all three terminal states and passes, and
 invariant once.
 
 ```sh
-nullius witness validate spec/fixtures/valid-run.jsonl   # exit 0
-nullius witness validate spec/fixtures/broken-run.jsonl  # exit 1, four findings
+fiducial witness validate spec/fixtures/valid-run.jsonl   # exit 0
+fiducial witness validate spec/fixtures/broken-run.jsonl  # exit 1, four findings
 ```
 
 Worth wiring into CI alongside the document check — a validator that stops

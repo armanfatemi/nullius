@@ -27,7 +27,7 @@ describe('buildEagerPrompt', () => {
   it('carries the anchor grammar and the checker handoff', () => {
     expect(prompt).toContain('**Evidence:**');
     expect(prompt).toContain('→ N results');
-    expect(prompt).toContain('@nullius-inverba/claims check "docs/design.md"');
+    expect(prompt).toContain('fiducial check "docs/design.md"');
   });
 
   it('frames anchors as proposals, never verified truth', () => {

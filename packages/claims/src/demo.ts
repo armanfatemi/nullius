@@ -1,5 +1,5 @@
 /**
- * `nullius demo` — build a sandbox fixture and break it in front of the user.
+ * `fiducial demo` — build a sandbox fixture and break it in front of the user.
  *
  * The `check` command verifies a convention, so on a repo that has not adopted
  * the convention it verifies nothing. This is the ten-second first touch
@@ -163,8 +163,8 @@ function commitFixture(root: string): string | null {
 
   try {
     git('init', '-q', '-b', 'main');
-    git('config', 'user.email', 'demo@nullius.invalid');
-    git('config', 'user.name', 'nullius demo');
+    git('config', 'user.email', 'demo@fiducial.invalid');
+    git('config', 'user.name', 'fiducial demo');
     git('config', 'commit.gpgsign', 'false');
     git('add', '.');
     git('commit', '-qm', 'demo fixture', '--no-verify');

@@ -1,11 +1,4 @@
 packages:
   - packages/*
-# `evidence-anchors` depends on `@nullius-inverba/claims` by plain semver range rather
-# than the `workspace:` protocol, so the published manifest is correct under
-# either `pnpm publish` or `npm publish`. pnpm 11 defaults this to false, which
-# would send it to the registry for a version that only exists locally.
-linkWorkspacePackages: true
 allowBuilds:
   esbuild: true
-minimumReleaseAgeExclude:
-  - '@nullius-inverba/claims@0.3.1'

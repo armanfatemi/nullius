@@ -1,4 +1,4 @@
-name: 'nullius claims check'
+name: 'fiducial check'
 description: >-
   Verify Evidence Anchors — machine-verifiable claims about the codebase in
   design docs, PR descriptions, and agent-written proposals. Advisory PR
@@ -12,7 +12,7 @@ inputs:
     description: >-
       Space-separated glob patterns for the documents to check (quoted so the
       shell does not expand them), e.g. "docs/rfcs/**/*.md". Omit to use the
-      "docs" key of nullius.config.json. If neither is present, the docs check
+      "docs" key of fiducial.config.json. If neither is present, the docs check
       is skipped (PR-body mode can still run).
     default: ''
   pr-body:
@@ -22,7 +22,7 @@ inputs:
       pull_request events. Default true.
     default: 'true'
   config:
-    description: Path to a nullius.config.json (defaults to repo root if present).
+    description: Path to a fiducial.config.json (defaults to repo root if present).
     default: ''
   strict:
     description: Fail the job when any claim is unverified. Default false (advisory).
@@ -60,7 +60,9 @@ runs:
           run_docs=true
         elif [ -n "$CONFIG" ] && [ -f "$CONFIG" ]; then
           run_docs=true
-        elif [ -f nullius.config.json ]; then
+        elif [ -f fiducial.config.json ] || [ -f nullius.config.json ]; then
+          # The pre-rename filename is honoured here too, so an existing
+          # workflow does not quietly stop checking its configured docs.
           run_docs=true
         fi
 
@@ -75,7 +77,7 @@ runs:
           # Globs are word-split deliberately so multiple patterns work; the
           # CLI does its own globbing, so patterns must reach it unexpanded.
           # shellcheck disable=SC2086
-          docs_output=$(npx -y @nullius-inverba/claims check $GLOBS "${args[@]}" 2>&1)
+          docs_output=$(npx -y fiducial check $GLOBS "${args[@]}" 2>&1)
           docs_status=$?
           if [ $docs_status -ne 0 ]; then status=$docs_status; fi
           combined="=== docs ===
@@ -85,15 +87,15 @@ runs:
         if [ "$PR_BODY_MODE" = "true" ] && [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
           # Read the body from the event file, never via expression
           # interpolation — the description is PR-controlled content.
-          jq -r '.pull_request.body // ""' "$GITHUB_EVENT_PATH" > .nullius-pr-description.md
-          if [ -s .nullius-pr-description.md ]; then
-            body_output=$(npx -y @nullius-inverba/claims check .nullius-pr-description.md 2>&1)
+          jq -r '.pull_request.body // ""' "$GITHUB_EVENT_PATH" > .fiducial-pr-description.md
+          if [ -s .fiducial-pr-description.md ]; then
+            body_output=$(npx -y fiducial check .fiducial-pr-description.md 2>&1)
             body_status=$?
             if [ $body_status -ne 0 ]; then status=$body_status; fi
           else
             body_output="(empty PR description — nothing to check)"
           fi
-          rm -f .nullius-pr-description.md
+          rm -f .fiducial-pr-description.md
           combined="$combined
 
         === PR description ===
@@ -101,13 +103,13 @@ runs:
         fi
 
         if [ -z "$combined" ]; then
-          combined="Nothing to check: no globs, no nullius.config.json, and no PR body target."
+          combined="Nothing to check: no globs, no fiducial.config.json, and no PR body target."
         fi
         set -e
 
         echo "$combined"
         {
-          echo '## nullius claims check'
+          echo '## fiducial check'
           echo '```'
           echo "$combined"
           echo '```'
@@ -115,9 +117,9 @@ runs:
 
         echo "status=$status" >> "$GITHUB_OUTPUT"
         {
-          echo 'output<<NULLIUS_EOF'
+          echo 'output<<FIDUCIAL_EOF'
           echo "$combined"
-          echo 'NULLIUS_EOF'
+          echo 'FIDUCIAL_EOF'
         } >> "$GITHUB_OUTPUT"
 
     - name: Upsert PR comment
@@ -131,17 +133,21 @@ runs:
         STATUS: ${{ steps.check.outputs.status }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
       run: |
-        marker='<!-- nullius-claims -->'
+        marker='<!-- fiducial -->'
+        # Comments posted before the rename carry the old marker. Matching both
+        # means an existing PR thread is UPDATED rather than gaining a duplicate.
+        legacy_marker='<!-- nullius-claims -->'
         if [ "$STATUS" = "0" ]; then
           headline='✅ all grounding markers verified'
         else
           headline='❌ unverified claims found'
         fi
-        body=$(printf '%s\n## nullius claims check — %s\n\n```\n%s\n```\n\n_[Evidence Anchors](https://github.com/armanfatemi/nullius/blob/main/spec/evidence-anchors.md): open the cited file and correct the claim, or move it to "Open questions"._\n' \
+        body=$(printf '%s\n## fiducial check — %s\n\n```\n%s\n```\n\n_[Evidence Anchors](https://github.com/armanfatemi/fiducial/blob/main/spec/evidence-anchors.md): open the cited file and correct the claim, or move it to "Open questions"._\n' \
           "$marker" "$headline" "$REPORT")
 
         existing=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" --paginate \
-          | jq -r --arg m "$marker" '[.[] | select(.body | startswith($m)) | .id][0] // empty') || existing=''
+          | jq -r --arg m "$marker" --arg l "$legacy_marker" \
+              '[.[] | select((.body | startswith($m)) or (.body | startswith($l))) | .id][0] // empty') || existing=''
 
         if [ -n "$existing" ]; then
           gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$existing" -f body="$body" >/dev/null || true

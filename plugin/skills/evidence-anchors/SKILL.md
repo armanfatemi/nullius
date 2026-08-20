@@ -1,6 +1,6 @@
 ---
 name: evidence-anchors
-description: Ground documents in verifiable citations. Use whenever writing or editing ANY document a human will approve or review that asserts something about the EXISTING codebase — a design doc, proposal, RFC, ADR, risk assessment, a PLAN (including plan mode), or a PR DESCRIPTION. Load-bearing claims must carry Evidence Anchors that the deterministic checker (npx @nullius-inverba/claims) can re-verify; a claim you cannot cite goes to "Open questions" instead.
+description: Ground documents in verifiable citations. Use whenever writing or editing ANY document a human will approve or review that asserts something about the EXISTING codebase — a design doc, proposal, RFC, ADR, risk assessment, a PLAN (including plan mode), or a PR DESCRIPTION. Load-bearing claims must carry Evidence Anchors that the deterministic checker (npx fiducial) can re-verify; a claim you cannot cite goes to "Open questions" instead.
 ---
 
 # Evidence Anchors — grounding claims about existing code
@@ -18,7 +18,7 @@ the anchor gates the approval moment, not the archive — and a PR description,
 which is the one claim-carrying document every workflow has. When a plan or
 PR body asserts something load-bearing about existing code, anchor it.
 
-Full spec: https://github.com/armanfatemi/nullius/blob/main/spec/evidence-anchors.md
+Full spec: https://github.com/armanfatemi/fiducial/blob/main/spec/evidence-anchors.md
 
 ## What needs an anchor
 
@@ -117,7 +117,7 @@ Run the search. Then write the search and its result:
 When claiming a change risks version-skew breakage, first ask: **is this
 caught at build time** (types, codegen, schema composition)? If CI catches
 it, it is not a runtime risk — delete the paragraph. If it survives, name
-when it binds, from the project's closed list (see `nullius.config.json`, or
+when it binds, from the project's closed list (see `fiducial.config.json`, or
 the default six for replicated services):
 
 ```markdown
@@ -131,14 +131,14 @@ the default six for replicated services):
 Then cite the fact that makes the moment real (replica count, the consumer
 subscription, the strategy block's absence).
 
-Spec: https://github.com/armanfatemi/nullius/blob/main/spec/binding-moments.md
+Spec: https://github.com/armanfatemi/fiducial/blob/main/spec/binding-moments.md
 
 ## Before presenting the document
 
 Run the checker from the repo root and fix every failure:
 
 ```sh
-npx @nullius-inverba/claims check "<glob for your docs>"
+npx fiducial check "<glob for your docs>"
 ```
 
 A `FABRICATED` or `COUNT-MISMATCH` verdict is not a citation typo — re-examine
@@ -157,7 +157,7 @@ item.
 `check` certifies that the text is where you said it is. It does not certify
 that the line supports the sentence above it — a real, accurately quoted line
 under a claim it does not entail passes. When a claim is load-bearing enough to
-want that second question asked, hand it to `nullius audit <doc>`: each claim
+want that second question asked, hand it to `fiducial audit <doc>`: each claim
 goes to its own agent, alone, and is told to refute it. That is also the honest
 route for an absence claim grep cannot settle, which comes back as
 `UNVERIFIABLE-BY-SEARCH` rather than as false confidence.

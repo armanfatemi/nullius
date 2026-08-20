@@ -1,14 +1,14 @@
 <p align="center">
-  <img src="docs/banner.jpg" alt="nullius — mechanically enforced epistemic discipline for agent systems" width="100%">
+  <img src="docs/banner.jpg" alt="fiducial — mechanically enforced epistemic discipline for agent systems" width="100%">
 </p>
 
-# nullius
+# fiducial
 
 **Epistemic discipline for agent systems — mechanically enforced.**
 
-[![CI](https://github.com/armanfatemi/nullius/actions/workflows/ci.yml/badge.svg)](https://github.com/armanfatemi/nullius/actions/workflows/ci.yml)
-[![npm](https://img.shields.io/npm/v/%40nullius-inverba%2Fclaims)](https://www.npmjs.com/package/@nullius-inverba/claims)
-[![license](https://img.shields.io/npm/l/%40nullius-inverba%2Fclaims)](LICENSE)
+[![CI](https://github.com/armanfatemi/fiducial/actions/workflows/ci.yml/badge.svg)](https://github.com/armanfatemi/fiducial/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/fiducial)](https://www.npmjs.com/package/fiducial)
+[![license](https://img.shields.io/npm/l/fiducial)](LICENSE)
 [![status: work in progress](https://img.shields.io/badge/status-work%20in%20progress-orange)](#roadmap)
 
 > [!NOTE]
@@ -53,7 +53,7 @@ that re-executes every citation, forever.
 ## Try it in ten seconds
 
 ```sh
-npx @nullius-inverba/claims demo    # unscoped alias: npx evidence-anchors demo
+npx fiducial demo
 ```
 
 This builds a sandbox doc plus a sandbox source file and checks one claim per
@@ -143,9 +143,9 @@ behind, because a run's own account of itself is exactly as trustworthy as a
 design doc.
 
 ```sh
-nullius audit design.md                  # the claims, one dispatch each
-nullius audit design.md --emit-brief c1  # the starved brief for one claim
-nullius witness validate run.jsonl       # did every dispatch actually terminate?
+fiducial audit design.md                  # the claims, one dispatch each
+fiducial audit design.md --emit-brief c1  # the starved brief for one claim
+fiducial witness validate run.jsonl       # did every dispatch actually terminate?
 ```
 
 Anchors attach to **anything a human approves**. Pick your workflow — each
@@ -158,8 +158,8 @@ still a document making load-bearing claims, and the person skimming it for
 thirty seconds before approving is the most exposed reviewer there is.
 
 ```
-/plugin marketplace add armanfatemi/nullius
-/plugin install nullius@nullius
+/plugin marketplace add armanfatemi/fiducial
+/plugin install fiducial@fiducial
 ```
 
 The plugin's `ExitPlanMode` hook checks every plan's anchors automatically
@@ -185,7 +185,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0 # `git show <rev>:<path>` needs the commit an anchor names
-      - uses: armanfatemi/nullius/action@main
+      - uses: armanfatemi/fiducial/action@main
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 ```
@@ -207,14 +207,14 @@ doc.
    AGENTS.md, or Cursor rules.
 2. Check locally, from the repo root:
    ```sh
-   npx @nullius-inverba/claims check "docs/rfcs/**/*.md"
+   npx fiducial check "docs/rfcs/**/*.md"
    ```
 3. Gate in CI: the Action above with `globs: "docs/rfcs/**/*.md"` and
    `require-markers: true` — a proposal with no anchors at all is not a pass.
    The floor is per document, so one anchored file cannot license the rest.
 
 Custom binding-moment vocabulary, drift window, and excludes live in
-`nullius.config.json`: [packages/claims/](packages/claims/).
+`fiducial.config.json`: [packages/claims/](packages/claims/).
 
 ## If you just ask the agent to do things
 
@@ -226,7 +226,7 @@ retrofitting needs, and it is a peer of the refute-first default rather than
 the main road, because a model sent to find support will find it.)
 
 ```sh
-claude -p "$(npx @nullius-inverba/claims audit design.md --propose)"
+claude -p "$(npx fiducial audit design.md --propose)"
 ```
 
 or `/audit <doc>` with the plugin installed. REFUTED claims come back with
@@ -237,7 +237,7 @@ above.
 
 ## This README is checked by the tool
 
-The claims below are live anchors — CI runs `nullius check` on this file with
+The claims below are live anchors — CI runs `fiducial check` on this file with
 `--require-markers`, so the green badge above attests this README's own
 claims about the code. The default binding-moment vocabulary is defined here:
 
@@ -287,7 +287,7 @@ format is shaped this way; the linter is what you install.
 | ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | [Evidence Anchors spec](spec/evidence-anchors.md) | The authoring convention: load-bearing claims about existing code carry a re-verifiable citation                     |
 | [Binding Moments spec](spec/binding-moments.md)   | The companion for compatibility risks: name _when_ the risk binds, from a closed per-project vocabulary              |
-| [`@nullius-inverba/claims`](packages/claims/)     | The CLI (`check` / `audit` / `witness` / `demo`) + library. `check` and `witness` open files and never ask a model |
+| [`fiducial`](packages/claims/)     | The CLI (`check` / `audit` / `witness` / `demo`) + library. `check` and `witness` open files and never ask a model |
 | [GitHub Action](action/)                          | Advisory PR comments, `pr-body` mode, a hard gate when you opt in                                                    |
 | [Claude Code plugin](plugin/)                     | Authoring skill, plan-approval hook, `/ground`, `/audit`, and the `[false-premise]` reviewer block                   |
 | `witness validate`                                | The run-journal validator — three invariants, no model ([the schema](spec/witness-journal.md))                       |
@@ -318,17 +318,32 @@ format is shaped this way; the linter is what you install.
 - **Stamping help** — `@rev` anchors are written by hand today. A
   `--stamp` pass that fills in the commit for anchors that verify against the
   working tree would remove the last piece of clerical work.
-- Open threads: [`init`](https://github.com/armanfatemi/nullius/issues/1),
-  [embedded `--eager`](https://github.com/armanfatemi/nullius/issues/6).
+- Open threads: [`init`](https://github.com/armanfatemi/fiducial/issues/1),
+  [embedded `--eager`](https://github.com/armanfatemi/fiducial/issues/6).
 
 ## Names
 
-The repo and the CLI bin are **nullius**, the first word of the motto the
-Royal Society chose in the 1660s — coined for eminent men asserting things
-fluently while rooms of other eminent men nodded. The npm scope
-[`@nullius-inverba`](https://www.npmjs.com/org/nullius-inverba) takes the
-whole of it; [`evidence-anchors`](https://www.npmjs.com/package/evidence-anchors)
-is the same checker under the name of the thing it checks. Extracted from a working
+**fiducial** (n.) — a marker placed in a scene so that everything else can be
+measured against it. Surveyors set them in concrete on hilltops; microscopes
+and telescopes carry them in the optical path; a printed sheet gets
+registration marks so the colour plates land where they should. The point of a
+fiducial is never the mark itself. It is that the mark is *checkable*, and so
+the measurement is too. An Evidence Anchor is the same object, in a document.
+
+The word descends from _fiducia_, Latin for trust — the same root as
+_fiduciary_. Which sits oddly beside the motto this project was built on:
+
+> _Nullius in verba_ — "take nobody's word for it."
+
+The Royal Society chose that in the 1660s, coined for eminent men asserting
+things fluently while rooms of other eminent men nodded. The tension is the
+point. A fiducial is not something you trust because someone vouched for it —
+it is the one thing in the frame you can go and **check**, which is exactly why
+everything else can be measured against it. Trust in the only sense the word
+should have carried.
+
+The repo, the CLI bin, and the npm package are all
+[`fiducial`](https://www.npmjs.com/package/fiducial). Extracted from a working
 agent pipeline, where it gates every proposal before any reviewer reads it.
 
 ## License

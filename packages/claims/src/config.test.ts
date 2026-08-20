@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { parseConfig } from "./config";
+import {
+  CONFIG_PATH,
+  LEGACY_CONFIG_PATH,
+  parseConfig,
+  resolveConfigPath,
+} from "./config";
 
 describe("parseConfig", () => {
   it("accepts a full valid config", () => {
@@ -13,7 +18,7 @@ describe("parseConfig", () => {
           moments: ["app-store-review", "client-version-skew"],
           ciCaughtMoments: [],
         },
-        "nullius.config.json",
+        "fiducial.config.json",
       ),
     ).toEqual({
       docs: ["docs/rfcs/**/*.md"],
@@ -25,7 +30,7 @@ describe("parseConfig", () => {
   });
 
   it("accepts an empty object", () => {
-    expect(parseConfig({}, "nullius.config.json")).toEqual({});
+    expect(parseConfig({}, "fiducial.config.json")).toEqual({});
   });
 
   it("rejects a non-object", () => {
@@ -90,5 +95,40 @@ describe("parseConfig — checker tuning keys", () => {
     expect(() => parseConfig({ relaxedControl: "yes" }, "c.json")).toThrow(
       /must be a boolean/,
     );
+  });
+});
+
+describe("resolveConfigPath", () => {
+  const onDisk = (...paths: string[]) => (path: string) => paths.includes(path);
+
+  it("prefers the current filename when both are present", () => {
+    expect(resolveConfigPath(undefined, onDisk(CONFIG_PATH, LEGACY_CONFIG_PATH))).toBe(
+      CONFIG_PATH,
+    );
+  });
+
+  it("falls back to the pre-rename filename when only it is present", () => {
+    // A repo configured before the rename keeps being checked as configured.
+    // Silently reverting to defaults would check LESS than the author asked
+    // for, which is the failure this tool exists to make loud.
+    expect(resolveConfigPath(undefined, onDisk(LEGACY_CONFIG_PATH))).toBe(
+      LEGACY_CONFIG_PATH,
+    );
+  });
+
+  it("returns undefined when neither is present", () => {
+    expect(resolveConfigPath(undefined, onDisk())).toBeUndefined();
+  });
+
+  it("never substitutes a fallback for an explicitly requested path", () => {
+    // Asking for a config that is not there is an error. Quietly reading a
+    // different file would hand the author a run they did not configure.
+    expect(() => resolveConfigPath("custom.json", onDisk(LEGACY_CONFIG_PATH))).toThrow(
+      "config file not found: custom.json",
+    );
+  });
+
+  it("uses an explicit path that does exist", () => {
+    expect(resolveConfigPath("custom.json", onDisk("custom.json"))).toBe("custom.json");
   });
 });

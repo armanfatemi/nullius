@@ -1,6 +1,6 @@
-# nullius claims check — GitHub Action
+# fiducial check — GitHub Action
 
-Runs [`@nullius-inverba/claims`](../packages/claims/) on your PRs and reports every
+Runs [`fiducial`](../packages/claims/) on your PRs and reports every
 unverified [Evidence Anchor](../spec/evidence-anchors.md). **Advisory by
 default** — it comments and summarizes but never fails the job until you opt
 into `strict`. Start advisory; go strict once the team trusts the verdicts.
@@ -28,7 +28,7 @@ jobs:
           # advisory UNVERIFIABLE-REV, and the permanent gate goes quiet.
           # Omit this line if your documents carry no stamped anchors.
           fetch-depth: 0
-      - uses: armanfatemi/nullius/action@main
+      - uses: armanfatemi/fiducial/action@main
         with:
           globs: "docs/rfcs/**/*.md"
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -38,7 +38,7 @@ jobs:
 
 | Input             | Default | Meaning                                                                                                       |
 | ----------------- | ------- | ------------------------------------------------------------------------------------------------------------- |
-| `globs`           | `''`    | Space-separated doc globs; omit to use `nullius.config.json` docs (no globs + no config skips the docs check) |
+| `globs`           | `''`    | Space-separated doc globs; omit to use `fiducial.config.json` docs (no globs + no config skips the docs check) |
 | `pr-body`         | `true`  | Also check the **PR description itself** — the one claim-carrying document every workflow has                 |
 | `config`          | `''`    | Explicit config path                                                                                          |
 | `strict`          | `false` | Fail the job on unverified claims                                                                             |
@@ -58,8 +58,8 @@ instead of stacking new ones.
 
 ## Notes
 
-- The action runs `npx -y @nullius-inverba/claims`, so it always uses the latest
-  published checker; pin a version with your own `npx @nullius-inverba/claims@x.y.z`
+- The action runs `npx -y fiducial`, so it always uses the latest
+  published checker; pin a version with your own `npx fiducial@x.y.z`
   step if you need reproducibility.
 - Absence citations execute `grep`/`rg` pipelines from the checked-out repo
   root; the checker's sandbox rejects anything else without executing it (see

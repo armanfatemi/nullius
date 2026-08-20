@@ -1,6 +1,6 @@
-# @nullius-inverba/claims
+# fiducial
 
-Deterministic checker for **[Evidence Anchors](https://github.com/armanfatemi/nullius/blob/main/spec/evidence-anchors.md)** —
+Deterministic checker for **[Evidence Anchors](https://github.com/armanfatemi/fiducial/blob/main/spec/evidence-anchors.md)** —
 machine-verifiable claims about a codebase in design docs, RFCs, ADRs, and
 agent-written proposals.
 
@@ -14,10 +14,10 @@ A document asserts things about your code:
 **Binds at:** `rollout-window`
 ```
 
-`nullius check` re-verifies every one of them against the working tree: it
+`fiducial check` re-verifies every one of them against the working tree: it
 opens the cited file and matches the quoted text (tolerating small line
 drift), re-runs the absence search and compares counts, and validates that
-every named [binding moment](https://github.com/armanfatemi/nullius/blob/main/spec/binding-moments.md)
+every named [binding moment](https://github.com/armanfatemi/fiducial/blob/main/spec/binding-moments.md)
 comes from the project's closed list. A claim that cannot be re-verified fails
 the run with a verdict that says why: `FABRICATED`, `UNPINNED`,
 `MISSING-FILE`, `COUNT-MISMATCH`, `UNKNOWN-MOMENT`, `MALFORMED`.
@@ -42,14 +42,14 @@ First touch — watch every verdict fire against a sandbox fixture, no adoption
 required:
 
 ```sh
-npx @nullius-inverba/claims demo
+npx fiducial demo
 ```
 
 The checker verifies a convention, so real adoption starts on the authoring
 side: paste the
-[authoring rule](https://github.com/armanfatemi/nullius/blob/main/plugin/skills/evidence-anchors/SKILL.md)
+[authoring rule](https://github.com/armanfatemi/fiducial/blob/main/plugin/skills/evidence-anchors/SKILL.md)
 into your agents' instructions (or install the
-[plugin](https://github.com/armanfatemi/nullius/tree/main/plugin)), and the
+[plugin](https://github.com/armanfatemi/fiducial/tree/main/plugin)), and the
 check gates the next design doc they write. It also works with no agents at
 all — hand-anchor the load-bearing claims in one architecture doc and CI
 becomes a drift alarm for your documentation.
@@ -62,13 +62,13 @@ mode), or a formal doc.
 Run from the repo root (citations are repo-relative):
 
 ```sh
-npx @nullius-inverba/claims check "docs/rfcs/**/*.md"
+npx fiducial check "docs/rfcs/**/*.md"
 
 # multiple globs
-npx @nullius-inverba/claims check "docs/rfcs/**/*.md" "docs/adr/*.md"
+npx fiducial check "docs/rfcs/**/*.md" "docs/adr/*.md"
 
 # fail when no grounding markers are found at all
-npx @nullius-inverba/claims check "openspec/changes/my-change/**/*.md" --require-markers
+npx fiducial check "openspec/changes/my-change/**/*.md" --require-markers
 ```
 
 Exit codes: `0` all claims verified (or none present), `1` at least one
@@ -99,16 +99,16 @@ A commit the clone does not have is never treated as evidence against the
 author: the verdict fails open as the advisory `UNVERIFIABLE-REV`, with the
 remedy in the message.
 
-## `nullius audit` — is the claim true?
+## `fiducial audit` — is the claim true?
 
 `check` certifies form, never entailment: a real line, quoted accurately, under
 a sentence it does not support, passes. `audit` is the other half.
 
 ```sh
-nullius audit design.md                  # the claims, one dispatch each
-nullius audit design.md --emit-brief c1  # the starved brief for one claim
-nullius audit design.md --extract        # pull the UNANCHORED claims out of the prose
-nullius audit design.md --propose        # retrofit: hunt evidence FOR the document
+fiducial audit design.md                  # the claims, one dispatch each
+fiducial audit design.md --emit-brief c1  # the starved brief for one claim
+fiducial audit design.md --extract        # pull the UNANCHORED claims out of the prose
+fiducial audit design.md --propose        # retrofit: hunt evidence FOR the document
 ```
 
 Extraction of anchored claims is deterministic — the same parser `check` uses.
@@ -125,10 +125,10 @@ which still works). It is what retrofitting an unanchored document needs, and
 it is a peer verb rather than the default: a model sent to find support finds
 support.
 
-## `nullius witness` — did the checking happen?
+## `fiducial witness` — did the checking happen?
 
 ```sh
-nullius witness validate run.jsonl
+fiducial witness validate run.jsonl
 ```
 
 Validates the journal a multi-agent run leaves behind against three invariants:
@@ -137,11 +137,11 @@ every dispatch reaches one of three terminal states (`found` / explicit
 evidence of absence), no verification is relied on after the artifact it
 verified changed, and no append omits what it corrected. Exit `1` on any
 invalid record. The schema is
-[spec/witness-journal.md](https://github.com/armanfatemi/nullius/blob/main/spec/witness-journal.md).
+[spec/witness-journal.md](https://github.com/armanfatemi/fiducial/blob/main/spec/witness-journal.md).
 
 ## Configuration
 
-Optional `nullius.config.json` at the repo root (or `--config <path>`):
+Optional `fiducial.config.json` at the repo root (or `--config <path>`):
 
 ```json
 {
@@ -221,7 +221,7 @@ PR-controlled content):
 ## Library API
 
 ```ts
-import { parseClaims, checkClaims, isFailure } from "@nullius-inverba/claims";
+import { parseClaims, checkClaims, isFailure } from "fiducial";
 
 const claims = parseClaims("design.md", content);
 const results = checkClaims(claims, { readFileLines, runSearch }, options);
@@ -233,8 +233,13 @@ dependencies, so you can run it against a virtual filesystem, a git revision,
 or a test fixture. `validateJournal`, `extractAuditClaims` and
 `buildAuditBrief` are exported the same way.
 
-## Part of nullius
+## The name
 
-_Nullius in verba_ — "take nobody's word for it." This package is the
-claims half of [nullius](https://github.com/armanfatemi/nullius), epistemic
-discipline for agent systems, mechanically enforced. MIT.
+A **fiducial** is a marker placed so that everything else in the frame can be
+measured against it — and it works because the marker itself is checkable. An
+Evidence Anchor is the same object in a document.
+
+_Nullius in verba_ — "take nobody's word for it," the Royal Society's motto
+since the 1660s — is why the marker has to be checkable at all. Epistemic
+discipline for agent systems, mechanically enforced:
+[armanfatemi/fiducial](https://github.com/armanfatemi/fiducial). MIT.

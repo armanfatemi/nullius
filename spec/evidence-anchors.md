@@ -1,7 +1,7 @@
 # Evidence Anchors
 
 **Version 0.1 — draft.** The authoring convention checked by
-[`@nullius-inverba/claims`](../packages/claims/). Its companion,
+[`fiducial`](../packages/claims/). Its companion,
 [Binding Moments](./binding-moments.md), covers claims about _when_ a
 compatibility risk binds.
 
@@ -177,11 +177,11 @@ An absence anchor forces them to run one search — which they can do wrong in a
 second and still pass. The claim class carrying the most weight in a deletion
 proposal ("nothing else consumes this") is the one the authoring pressure
 reaches least. Read absence anchors as an invitation to audit the search, not as
-a result. `nullius check` counts presence and search anchors separately in its
+a result. `fiducial check` counts presence and search anchors separately in its
 summary for this reason: a proposal resting entirely on absence claims should be
 visible as such at a glance.
 
-**`nullius audit` gives the honest answer a verdict cannot.** "Nothing else
+**`fiducial audit` gives the honest answer a verdict cannot.** "Nothing else
 consumes this event" is unanswerable by grep in a DI codebase, and
 `SEARCH-CLEAN` says only that a search was clean. The audit brief therefore
 offers `UNVERIFIABLE-BY-SEARCH` as a first-class verdict — a real answer that
@@ -222,7 +222,7 @@ past the anchors.
 
 ## Verdicts
 
-`nullius check` re-verifies every anchor and reports one verdict per claim:
+`fiducial check` re-verifies every anchor and reports one verdict per claim:
 
 | Verdict          | Meaning                                                                              | Passes? |
 | ---------------- | ------------------------------------------------------------------------------------ | ------- |
@@ -356,11 +356,11 @@ why the format is shaped the way it is; the linter is what you install.
 Verdicts certify form, never entailment — a real line, quoted accurately, under
 a sentence it does not support, passes. Closing that gap needs a model, and a
 model in the verification path would undo the reason to trust any of this. So
-`nullius audit` puts one on the other side of the line:
+`fiducial audit` puts one on the other side of the line:
 
 ```sh
-nullius audit design.md                  # the claims, one dispatch each
-nullius audit design.md --emit-brief c1  # the starved brief for one claim
+fiducial audit design.md                  # the claims, one dispatch each
+fiducial audit design.md --emit-brief c1  # the starved brief for one claim
 ```
 
 Four properties keep the guarantee where it was:
@@ -479,13 +479,13 @@ ADR, an ephemeral plan-mode plan (the anchor gates the approval moment, not
 the archive), or a PR description, which is the one claim-carrying document
 every workflow has. Pick whichever artifact your workflow already produces.
 
-1. **See it fire first**: `npx @nullius-inverba/claims demo` builds a sandbox
+1. **See it fire first**: `npx fiducial demo` builds a sandbox
    fixture — one claim per verdict class — and checks it. No adoption
    required; ten seconds.
 2. **Author-side**: teach your agents (or your team) the convention — the
    [plugin](../plugin/) ships a skill for Claude Code, and the skill text is
    plain markdown you can paste into any harness's instructions file.
-3. **Check locally**: `npx @nullius-inverba/claims check "docs/rfcs/**/*.md"` from the
+3. **Check locally**: `npx fiducial check "docs/rfcs/**/*.md"` from the
    repo root.
 4. **Check in CI**: start **advisory** (report, never block). Let the team see
    verdicts on PRs for a few weeks before making the check `strict` — a red

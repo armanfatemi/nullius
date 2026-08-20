@@ -19,7 +19,12 @@ import {
   extractAuditClaims,
   formatAuditPlan,
 } from "./audit";
-import { parseConfig, type ClaimsConfig } from "./config";
+import {
+  CONFIG_PATH,
+  parseConfig,
+  resolveConfigPath,
+  type ClaimsConfig,
+} from "./config";
 import { DEMO_DOC_PATH, demoResults, writeDemoFixture } from "./demo";
 import { buildEagerPrompt } from "./eagerPrompt";
 import { parseClaims } from "./parseClaims";
@@ -27,11 +32,11 @@ import { fileLinesReader, revFileReader, searchRunner } from "./runners";
 import { isJournalFailure, validateJournal } from "./witness";
 
 const SPEC_URL =
-  "https://github.com/armanfatemi/nullius/blob/main/spec/evidence-anchors.md";
+  "https://github.com/armanfatemi/fiducial/blob/main/spec/evidence-anchors.md";
 
-const DEFAULT_CONFIG_PATH = "nullius.config.json";
+const DEFAULT_CONFIG_PATH = CONFIG_PATH;
 
-const USAGE = `usage: nullius <command>
+const USAGE = `usage: fiducial <command>
 
 commands:
   check [globs...]    verify every Evidence Anchor in the matched markdown
@@ -77,11 +82,8 @@ your agents' instructions) — see the spec.
 spec: ${SPEC_URL}`;
 
 function loadConfig(explicitPath: string | undefined): ClaimsConfig {
-  const path = explicitPath ?? DEFAULT_CONFIG_PATH;
-  if (!existsSync(path)) {
-    if (explicitPath !== undefined) {
-      throw new Error(`config file not found: ${explicitPath}`);
-    }
+  const path = resolveConfigPath(explicitPath, existsSync);
+  if (path === undefined) {
     return {};
   }
   return parseConfig(JSON.parse(readFileSync(path, "utf8")), path);
@@ -215,7 +217,7 @@ function packageVersion(): string {
 }
 
 function runDemo(): number {
-  const root = mkdtempSync(join(tmpdir(), "nullius-demo-"));
+  const root = mkdtempSync(join(tmpdir(), "fiducial-demo-"));
   const rev = writeDemoFixture(root);
 
   console.log(
@@ -231,7 +233,7 @@ function runDemo(): number {
     `${failures} failing claim(s) — a real \`check\` would exit 1 here; the demo exits 0.`,
   );
   console.log(
-    `Poke the fixture and re-run: cd ${root} && npx @nullius-inverba/claims check ${DEMO_DOC_PATH}`,
+    `Poke the fixture and re-run: cd ${root} && npx fiducial check ${DEMO_DOC_PATH}`,
   );
   console.log(`Authoring convention: ${SPEC_URL}`);
   return 0;
@@ -241,7 +243,7 @@ function runAudit(args: ParsedArgs): number {
   const doc = args.globs[0];
   if (doc === undefined || args.globs.length > 1) {
     console.error(
-      "usage: nullius audit <doc> [--emit-brief <id> | --extract | --propose]",
+      "usage: fiducial audit <doc> [--emit-brief <id> | --extract | --propose]",
     );
     return 2;
   }
@@ -276,7 +278,7 @@ function runAudit(args: ParsedArgs): number {
     const claim = claims.find((candidate) => candidate.id === wanted);
     if (claim === undefined) {
       console.error(
-        `no claim '${wanted}' in ${doc} — run \`nullius audit ${doc}\` for the list`,
+        `no claim '${wanted}' in ${doc} — run \`fiducial audit ${doc}\` for the list`,
       );
       return 2;
     }
@@ -294,7 +296,7 @@ function runAudit(args: ParsedArgs): number {
 function runWitness(args: ParsedArgs): number {
   const [sub, journal] = args.globs;
   if (sub !== "validate" || journal === undefined || args.globs.length > 2) {
-    console.error("usage: nullius witness validate <journal.jsonl>");
+    console.error("usage: fiducial witness validate <journal.jsonl>");
     return 2;
   }
   if (!existsSync(journal)) {
