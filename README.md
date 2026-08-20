@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/banner.jpg" alt="nullius — mechanically enforced epistemic discipline for agent systems" width="100%">
+</p>
+
 # nullius
 
 **Epistemic discipline for agent systems — mechanically enforced.**
@@ -5,14 +9,17 @@
 [![CI](https://github.com/armanfatemi/nullius/actions/workflows/ci.yml/badge.svg)](https://github.com/armanfatemi/nullius/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/%40nullius-inverba%2Fclaims)](https://www.npmjs.com/package/@nullius-inverba/claims)
 [![license](https://img.shields.io/npm/l/%40nullius-inverba%2Fclaims)](LICENSE)
+[![status: work in progress](https://img.shields.io/badge/status-work%20in%20progress-orange)](#roadmap)
+
+> [!NOTE]
+> **This project is a work in progress.** The conventions here are in daily
+> use by the pipeline they came from, and still moving. Both releases so far
+> carried breaking changes — read
+> [the changelog](CHANGELOG.md) before upgrading. Issues and pushback welcome.
 
 _Nullius in verba_ — "take nobody's word for it." An agent's claim about your
 code is not knowledge, it is text. This repo turns that text into something a
 machine can refuse.
-
-> Young and under active development — the conventions here are in daily use
-> by the pipeline they came from, and still moving. Issues and pushback
-> welcome.
 
 A document claims something about your code:
 
@@ -84,6 +91,10 @@ read (`src/app.ts:12@a1b2c3d`): the claim about the **author** is settled
 against an immutable commit and fails forever, while the claim about the
 **repository** is advisory forever. A document cannot be turned red by someone
 else's refactor, and a fabrication cannot be excused by one.
+
+Stamped anchors need the history they name, so check out with `fetch-depth: 0`.
+A commit this clone does not have is never held against the author: the verdict
+fails open as the advisory `UNVERIFIABLE-REV`, with the remedy in the message.
 
 That `UNSAFE` line is the security model working: checked documents are
 untrusted input, so absence searches are parsed into an argv vector and spawned
@@ -172,6 +183,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # `git show <rev>:<path>` needs the commit an anchor names
       - uses: armanfatemi/nullius/action@main
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
