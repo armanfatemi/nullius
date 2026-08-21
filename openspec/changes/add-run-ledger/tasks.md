@@ -44,16 +44,14 @@ Scope is the kernel only. The producer skill, `witness record`, and
       kinds, both merge outcomes, and a `looks-good` discharging a dispatch
 - [x] 4.3 `spec/fixtures/v0.3-broken-run.jsonl` — trips both new verdicts plus
       every new `MALFORMED` and `DANGLING-REFERENCE` path (26 findings)
-- [ ] 4.4 Re-pin the two `spec/witness-journal.md` anchors — **blocked until
-      this work is committed.** Both moved (`witness.ts:123`→`127`,
-      `546`→`676`) and both now report `STALE`, which is advisory and does not
-      fail the gate. The fix is `path:NEW_LINE@<new-commit>`, and per
-      `spec/evidence-anchors.md` the stamp must name the commit the file was
-      read at — a hash that does not exist yet. Re-pin in a follow-up commit,
-      as `24d074f` did for the last change. Do **not** repoint the line number
-      while keeping `@e505e32`: that turns an advisory `STALE` into a hard
-      `FABRICATED` failure, because the text was not on that line at that
-      commit.
+- [x] 4.4 Re-pin the two `spec/witness-journal.md` anchors. Both moved
+      (`123`→`127`, `546`→`689`) and were reported `STALE`, which is advisory.
+      Re-stamped at `e20533f`, the commit the file was read at, so both now
+      verify `OK` — a bare line number would have gone stale again on the next
+      edit. Note the trap: repointing the line while keeping `@e505e32` would
+      have turned an advisory `STALE` into a hard `FABRICATED`, because the
+      text was not on that line at that commit.
+
 
 ## 5. Verification
 
