@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
@@ -53,6 +54,27 @@ if (!built) {
   console.warn(`cli.characterization: ${CLI} is missing — run \`pnpm build\`. Suite SKIPPED.`);
 }
 
+/**
+ * Presence is not freshness. `existsSync` passes on a dist/ built from any
+ * earlier commit, and this suite would then characterize the PREVIOUS version
+ * of the CLI while reporting green — the exact failure CLAUDE.md warns about,
+ * in the one suite whose job is to notice it.
+ */
+suite("the binary under test is not stale", () => {
+  it("was built after the newest source file", () => {
+    const srcDir = fileURLToPath(new URL(".", import.meta.url));
+    const newest = readdirSync(srcDir)
+      .filter((name) => name.endsWith(".ts") && !name.endsWith(".test.ts"))
+      .map((name) => statSync(join(srcDir, name)).mtimeMs)
+      .reduce((a, b) => Math.max(a, b), 0);
+
+    expect(
+      statSync(CLI).mtimeMs,
+      "dist/cli.js is older than src — run `pnpm build`; this suite is testing the previous version",
+    ).toBeGreaterThanOrEqual(newest);
+  });
+});
+
 suite("CLI characterization — top-level", () => {
   it("prints the version and exits 0", () => {
     const result = run("--version");
@@ -96,6 +118,33 @@ suite("CLI characterization — top-level", () => {
 
     expect(result.code).toBe(2);
     expect(result.output).toContain("--config requires a path argument");
+  });
+
+  // The refactor broke every one of these and no test noticed, in a suite
+  // whose stated job is to record what the CLI does. `<command> --help` is
+  // the most-typed help form there is, and USAGE lists --help and --version
+  // under "check options:".
+  it("honours --help and --version after a command, not just before one", () => {
+    for (const argv of [
+      ["check", "--help"],
+      ["check", "-h"],
+      ["check", "--version"],
+      ["audit", "--help"],
+      ["witness", "--help"],
+      ["audit", "doc.md", "--help"],
+    ]) {
+      const result = run(...argv);
+      expect(result.code, argv.join(" ")).toBe(0);
+    }
+  });
+
+  it("answers --help even when the rest of the line is nonsense", () => {
+    // Which is usually why someone is asking.
+    expect(run("check", "--bogus", "--help").code).toBe(0);
+  });
+
+  it("treats -- as an operand separator", () => {
+    expect(run("check", "--", "README.md").code).toBe(0);
   });
 
   it("rejects --emit-brief with no value", () => {
@@ -214,7 +263,36 @@ suite("CLI characterization — audit", () => {
     const result = run("eager-prompt", "README.md");
 
     expect(result.code).toBe(0);
-    expect(result.output).toContain("eager-prompt");
+    expect(result.stderr).toContain("eager-prompt");
+  });
+
+  // A review mutated `propose` to false and to a dead branch; both left the
+  // whole suite green. The deprecation note above is printed from a branch
+  // gated on the ALIAS, independent of `propose`, so it proved nothing about
+  // whether proposing happens. These compare the actual emitted document.
+  it("makes --propose emit the eager prompt, not the ordinary plan", () => {
+    const plan = run("audit", "README.md");
+    const proposed = run("audit", "README.md", "--propose");
+
+    expect(proposed.code).toBe(0);
+    expect(proposed.stdout).not.toBe(plan.stdout);
+    expect(proposed.stdout.length).toBeGreaterThan(0);
+  });
+
+  it("makes eager-prompt emit exactly what --propose emits", () => {
+    const alias = run("eager-prompt", "README.md");
+    const explicit = run("audit", "README.md", "--propose");
+
+    // The alias's only difference is the note on stderr.
+    expect(alias.stdout).toBe(explicit.stdout);
+  });
+
+  it("makes --extract emit something different again", () => {
+    const extract = run("audit", "README.md", "--extract");
+    const plan = run("audit", "README.md");
+
+    expect(extract.code).toBe(0);
+    expect(extract.stdout).not.toBe(plan.stdout);
   });
 });
 

@@ -122,7 +122,9 @@ describe("idempotency", () => {
     const second = applyPlan(plan(root));
 
     expect(second.written).toEqual([]);
-    expect(second.unchanged).toHaveLength(3);
+    // Counted from the plan rather than hardcoded, so adding an artifact to a
+    // profile does not silently weaken the idempotency claim.
+    expect(second.unchanged).toHaveLength(plan(root).files.length);
   });
 
   it("re-renders a file a user edited, because the kit owns it outright", () => {
@@ -171,9 +173,35 @@ describe("what init writes stays readable by the kernel", () => {
     const profile = findProfile("specs");
     if (profile === null) throw new Error("no specs profile");
 
-    // The whole point of reserving configVersion: init writes it from the
-    // start, and a kernel that predates the reservation must not choke.
     expect(() => parseConfig(JSON.parse(renderConfig(profile)), "c.json")).not.toThrow();
+  });
+
+  /**
+   * The predecessor of this test imported the LOCAL parseConfig and claimed it
+   * showed "a kernel that predates the reservation must not choke" — which is
+   * the one thing it could not show, since the local parser is the one that
+   * added the key. init briefly wrote `configVersion`, and every published
+   * kernel rejected it.
+   *
+   * So the property is asserted against the released key set directly, rather
+   * than against a parser that moves with this branch.
+   */
+  it("writes only keys that RELEASED kernels accept", () => {
+    const releasedKeys = new Set([
+      "docs",
+      "exclude",
+      "driftWindow",
+      "moments",
+      "ciCaughtMoments",
+    ]);
+
+    for (const name of PROFILE_NAMES) {
+      const profile = findProfile(name);
+      if (profile === null) throw new Error(`no profile ${name}`);
+      for (const key of Object.keys(JSON.parse(renderConfig(profile)) as object)) {
+        expect(releasedKeys, `${name} writes '${key}'`).toContain(key);
+      }
+    }
   });
 
   it("sets the specs profile's docs glob to openspec", () => {
@@ -189,12 +217,34 @@ describe("what init writes stays readable by the kernel", () => {
 describe("the generated workflow", () => {
   const profile = findProfile("specs");
 
-  it("pins the action rather than tracking a moving ref", () => {
+  // The old version of this test passed the ref in and asserted the output
+  // contained it — true of `(_, ref) => ref`. The real pin is the literal in
+  // cli.ts, which is what the CLI-level test below actually exercises.
+  it("interpolates whatever ref it is given, and nothing else", () => {
     if (profile === null) throw new Error("no specs profile");
-    const yaml = renderWorkflow(profile, "armanfatemi/nullius/action@v1");
 
-    expect(yaml).toContain("action@v1");
-    expect(yaml).not.toContain("action@main");
+    expect(renderWorkflow(profile, "acme/thing@v9")).toContain("uses: acme/thing@v9");
+    expect(renderWorkflow(profile, "acme/thing@v9")).not.toContain("@main");
+  });
+
+  it("makes the specs profile's workflow able to FAIL a pull request", () => {
+    if (profile === null) throw new Error("no specs profile");
+
+    // The Action defaults strict:false, so without this the "full discipline"
+    // profile produces a red PR comment and a green job.
+    expect(renderWorkflow(profile, "x@v1")).toMatch(/^\s+strict: true$/m);
+  });
+
+  it("says so in the file when a profile's gate is only advisory", () => {
+    const prs = findProfile("prs");
+    if (prs === null) throw new Error("no prs profile");
+    const yaml = renderWorkflow(prs, "x@v1");
+
+    // The advisory NOTE mentions `strict: true` in prose, which is the point —
+    // so this has to match the YAML key, not the sentence describing it.
+    expect(yaml).not.toMatch(/^\s+strict: true$/m);
+    expect(yaml).toContain("Advisory");
+    expect(yaml).toContain("strict: true");
   });
 
   it("sets fetch-depth: 0, without which every rev-stamp degrades silently", () => {

@@ -32,6 +32,14 @@ export interface Profile {
   docs: string[];
   /** Whether the config sets `require-markers` for CI. */
   requireMarkers: boolean;
+  /**
+   * Whether the generated workflow FAILS a pull request, or merely comments.
+   * The Action defaults to advisory, so a profile that promises a gate has to
+   * ask for one — otherwise its summary describes something the file does not
+   * do. Advisory stays the default for `prs`, where a repo adopting nullius
+   * should not have every open PR turn red on day one.
+   */
+  strictCi: boolean;
   /** Files this profile is responsible for. */
   artifacts: ArtifactPlan[];
   /**
@@ -60,10 +68,29 @@ const KIT_CONFIG: ArtifactPlan = {
   reason: "kit settings — kept out of nullius.config.json, whose unknown keys are fatal to older kernels",
 };
 
+/**
+ * The pointer, not the content. A one-line reference into a kit-owned file
+ * dodges the four wounds every managed-block scheme collects: users editing
+ * inside markers, version strings causing merge conflicts, marker conventions
+ * colliding, and blocks outliving uninstallation as cargo-culted instructions.
+ */
+const AUTHORING_POINTER: ArtifactPlan = {
+  path: ".nullius/authoring.md",
+  ownership: "kit-owned",
+  reason: "the authoring rule, pointed at from your agent instructions",
+};
+
 const PLUGIN_STEPS = [
   "/plugin marketplace add armanfatemi/nullius",
   "/plugin install nullius@nullius",
 ];
+
+/**
+ * Surfaced by EVERY profile, not just `plans`. On Claude Code the kit refuses
+ * to write hooks because the plugin owns them — so a profile that declines to
+ * write them and also never says how to get them leaves the user with neither.
+ */
+const CLAUDE_CODE_STEPS = [...PLUGIN_STEPS];
 
 export const PROFILES: readonly Profile[] = [
   {
@@ -71,9 +98,11 @@ export const PROFILES: readonly Profile[] = [
     summary: "plan mode — anchors checked before you hit approve",
     docs: [".claude/plans/**/*.md"],
     requireMarkers: false,
-    artifacts: [CONFIG, KIT_CONFIG],
+    // No workflow: plan mode is local, and there is nothing for CI to gate.
+    strictCi: false,
+    artifacts: [CONFIG, KIT_CONFIG, AUTHORING_POINTER],
     manualSteps: [
-      ...PLUGIN_STEPS,
+      ...CLAUDE_CODE_STEPS,
       "The plugin's ExitPlanMode hook then checks each plan's anchors; it fails open and never blocks plan mode.",
     ],
   },
@@ -82,9 +111,13 @@ export const PROFILES: readonly Profile[] = [
     summary: "PR descriptions and agent reviews — the CI gate",
     docs: ["docs/**/*.md"],
     requireMarkers: false,
-    artifacts: [CONFIG, KIT_CONFIG, WORKFLOW],
+    // Advisory on purpose: a repo adopting nullius should not have every open
+    // PR turn red on day one. The generated file says how to tighten it.
+    strictCi: false,
+    artifacts: [CONFIG, KIT_CONFIG, WORKFLOW, AUTHORING_POINTER],
     manualSteps: [
-      "Paste plugin/skills/evidence-anchors/SKILL.md into your agents' instructions (CLAUDE.md, AGENTS.md, or Cursor rules).",
+      "Point your agents' instructions at .nullius/authoring.md (CLAUDE.md, AGENTS.md, or Cursor rules) — one line, so nothing needs merging on upgrade.",
+      ...CLAUDE_CODE_STEPS,
     ],
   },
   {
@@ -95,9 +128,13 @@ export const PROFILES: readonly Profile[] = [
     // document so one anchored file cannot license the rest.
     docs: ["openspec/**/*.md"],
     requireMarkers: true,
-    artifacts: [CONFIG, KIT_CONFIG, WORKFLOW],
+    // "The full discipline" has to be able to fail, or the summary describes
+    // something the generated workflow does not do.
+    strictCi: true,
+    artifacts: [CONFIG, KIT_CONFIG, WORKFLOW, AUTHORING_POINTER],
     manualSteps: [
-      "Paste plugin/skills/evidence-anchors/SKILL.md into your agents' instructions (CLAUDE.md, AGENTS.md, or Cursor rules).",
+      "Point your agents' instructions at .nullius/authoring.md (CLAUDE.md, AGENTS.md, or Cursor rules) — one line, so nothing needs merging on upgrade.",
+      ...CLAUDE_CODE_STEPS,
     ],
   },
 ] as const;

@@ -15,7 +15,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import { isJournalFailure, validateJournal, type JournalOrigin } from "@nullius-inverba/claims";
@@ -87,7 +87,6 @@ function main(): number {
   if (options === null) return 2;
 
   const [command, sub] = argv;
-  if (command === "init") return runInit(argv.slice(1));
   if (command !== "witness") {
     console.error(`unknown command: ${String(command)}\n\n${USAGE}`);
     return 2;
@@ -162,6 +161,12 @@ function parseInit(argv: readonly string[]): InitOptions | null {
         console.error("--root needs a directory");
         return null;
       }
+      if (value.trim() === "") {
+        // resolve("") is process.cwd(), so `--root "$REPO"` with REPO unset
+        // would silently initialise whatever directory the shell is in.
+        console.error("--root was empty — refusing to fall back to the current directory");
+        return null;
+      }
       options.root = value;
     } else {
       console.error(`unknown flag for \`init\`: ${String(arg)}\n\n${USAGE}`);
@@ -179,6 +184,12 @@ function runInit(argv: readonly string[]): number {
   const root = resolve(options.root);
   if (!existsSync(root)) {
     console.error(`no such directory: ${root}`);
+    return 2;
+  }
+  if (!statSync(root).isDirectory()) {
+    // existsSync alone let a FILE through, and the plan then promised three
+    // creates before mkdir died on it.
+    console.error(`not a directory: ${root}`);
     return 2;
   }
 
@@ -219,8 +230,22 @@ function runInit(argv: readonly string[]): number {
   const result = applyPlan(plan);
   console.log("");
   console.log(
-    `${result.written.length} written, ${result.unchanged.length} already current, ${result.skipped.length} skipped.`,
+    `${result.written.length} written, ${result.unchanged.length} already current, ${result.skipped.length} skipped, ${result.failed.length} failed.`,
   );
+
+  if (result.failed.length > 0) {
+    console.error("");
+    for (const failure of result.failed) {
+      console.error(`  FAILED  ${failure.path}`);
+      console.error(`          ${failure.reason}`);
+    }
+    // Non-zero, and the counts above say exactly which files did land. A
+    // partial apply reported as success is the shape of lie this repo exists
+    // to refuse.
+    console.error("");
+    console.error("Some files were not written. The counts above are what actually happened.");
+    return 1;
+  }
   return 0;
 }
 

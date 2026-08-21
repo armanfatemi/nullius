@@ -82,6 +82,11 @@ function requireValue(
  * "unknown option" would understate it — the option is known, just not here.
  */
 function rejectMisplaced(flag: string, command: string): never {
+  // Unreachable for global flags — parseCli intercepts them first — but the
+  // guard keeps that true if the interception ever moves.
+  if (GLOBAL_FLAGS.has(flag)) {
+    throw new CliError(`${flag} is handled before command parsing; this is a bug in the kit`);
+  }
   const owner = FLAG_OWNERS.get(flag);
   if (owner !== undefined && owner !== command) {
     throw new CliError(
@@ -91,12 +96,32 @@ function rejectMisplaced(flag: string, command: string): never {
   throw new CliError(`unknown option for \`${command}\`: ${flag}`);
 }
 
+/**
+ * `--help` and `--version` belong to no command and to every command.
+ * `nullius check --help` is the most-typed help form there is, and the USAGE
+ * text lists both under "check options:" — so scoping them to argv[0] made the
+ * CLI reject a flag its own help advertises.
+ */
+const GLOBAL_FLAGS: ReadonlySet<string> = new Set(["--help", "-h", "--version"]);
+
+function globalFlag(argv: readonly string[]): Command | null {
+  if (argv.some((arg) => arg === "--version")) return { kind: "version" };
+  if (argv.some((arg) => arg === "--help" || arg === "-h")) {
+    return { kind: "help", requested: true };
+  }
+  return null;
+}
+
 export function parseCli(argv: readonly string[]): Command {
   const [first, ...rest] = argv;
 
   if (first === undefined) return { kind: "help", requested: false };
-  if (first === "--version") return { kind: "version" };
-  if (first === "--help" || first === "-h") return { kind: "help", requested: true };
+
+  // Checked across the whole of argv, before anything else: help must work
+  // even when the rest of the line is nonsense, which is usually why someone
+  // is asking for it.
+  const global = globalFlag(argv);
+  if (global !== null) return global;
 
   if (first.startsWith("-")) {
     // The command used to be findable anywhere in argv, so this parsed. Say
@@ -119,10 +144,23 @@ export function parseCli(argv: readonly string[]): Command {
   return parseAudit(rest, first === "eager-prompt");
 }
 
-function parseCheck(argv: readonly string[]): CheckArgs {
+/**
+ * Everything after a bare `--` is an operand, however it starts. Without this
+ * there is no way to name a file whose name begins with a dash — the old
+ * parser passed such names through by accident, and per-command parsing turned
+ * that accident into a hard error with no escape hatch.
+ */
+function splitOperands(argv: readonly string[]): { flags: readonly string[]; literal: readonly string[] } {
+  const index = argv.indexOf("--");
+  if (index === -1) return { flags: argv, literal: [] };
+  return { flags: argv.slice(0, index), literal: argv.slice(index + 1) };
+}
+
+function parseCheck(rawArgv: readonly string[]): CheckArgs {
+  const { flags: argv, literal } = splitOperands(rawArgv);
   const args: CheckArgs = {
     kind: "check",
-    globs: [],
+    globs: [...literal],
     configPath: undefined,
     requireMarkers: false,
   };
@@ -145,10 +183,11 @@ function parseCheck(argv: readonly string[]): CheckArgs {
   return args;
 }
 
-function parseAudit(argv: readonly string[], viaAlias: boolean): AuditArgs {
+function parseAudit(rawArgv: readonly string[], viaAlias: boolean): AuditArgs {
+  const { flags: argv, literal } = splitOperands(rawArgv);
   const args: AuditArgs = {
     kind: "audit",
-    docs: [],
+    docs: [...literal],
     configPath: undefined,
     emitBrief: undefined,
     extract: false,
@@ -183,9 +222,10 @@ function parseAudit(argv: readonly string[], viaAlias: boolean): AuditArgs {
  * `witness` takes a subcommand and an operand and no flags at all. Its arity
  * is checked by the runner, which already owns the usage string.
  */
-function parseWitness(argv: readonly string[]): WitnessArgs {
+function parseWitness(rawArgv: readonly string[]): WitnessArgs {
+  const { flags: argv, literal } = splitOperands(rawArgv);
   for (const arg of argv) {
     if (arg.startsWith("-")) rejectMisplaced(arg, "witness");
   }
-  return { kind: "witness", operands: [...argv] };
+  return { kind: "witness", operands: [...argv, ...literal] };
 }
