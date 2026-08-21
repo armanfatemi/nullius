@@ -129,6 +129,14 @@ does not own. `NULLIUS_WITNESS_PROBE=1` saves each raw payload verbatim to
 `.nullius/probes/<event>.json` — ground truth about the version that is
 actually installed, for `doctor` to diagnose against.
 
+## Building this package
+
+`pnpm build` before `pnpm type-check` or `pnpm test`, from the repo root. The
+kit imports the kernel by package name like any other consumer, so both its
+types and `validateJournal` at runtime resolve out of `packages/claims/dist` —
+which a fresh checkout does not have. The alternative, pointing this package at
+the kernel's source, would check it against internals it does not ship against.
+
 ## Still unreleased
 
 Reserved for the conventions that have not settled:

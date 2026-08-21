@@ -57,11 +57,21 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # Build first, and not as a matter of taste. The kit imports the kernel
+      # the way any consumer does — by package name — so tsc resolves its types
+      # from packages/claims/dist, and vitest resolves validateJournal from the
+      # same place at runtime. Neither exists on a fresh checkout until this
+      # step runs, so a clean clone cannot type-check or test without it.
+      #
+      # The upside of leaving it this way rather than pointing the kit at the
+      # kernel's source: the kit is checked against what the kernel PUBLISHES,
+      # not against its internals. pnpm builds in topological order, so the
+      # kernel is ready before the kit compiles against it.
+      - run: pnpm build
+
       - run: pnpm type-check
 
       - run: pnpm test
-
-      - run: pnpm build
 
       # The journal validator, dogfooded on a fixture that breaks each of its
       # three invariants: a validator that stops catching them is a validator
