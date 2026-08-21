@@ -1,7 +1,26 @@
-# Witness — journal schema v0.2 and recording
+# witness Specification
 
-## ADDED Requirements
+## Purpose
 
+The record a multi-agent run leaves behind, and what makes it worth trusting.
+
+A journal is text about work agents did, so it gets the treatment a design
+document gets here: invariants a machine can refuse, and no model anywhere in
+the path. Three failures it exists to make visible — silence read as a clean
+result, a verification quoted after its subject changed, and omission read as
+"nothing to report".
+
+What the schema adds beyond those invariants is provenance. `origin: "hooks"`
+means the harness runtime emitted the records and the agent had no opportunity
+to decline; `origin: "self-reported"` means an agent wrote them about its own
+work, which certifies internal consistency and nothing else. Output that lets
+those blur will be read as the flattering one, so the summary always says
+which.
+
+This is the capture layer for a run ledger; see `openspec/project.md` for where
+that goes.
+
+## Requirements
 ### Requirement: Journal version header
 
 A journal SHALL begin with a header record
@@ -51,18 +70,40 @@ SHALL contain no correlation logic — they invoke the CLI and nothing else.
 
 ### Requirement: Claude Code correlation topology
 
-Dispatch records SHALL be written from `PreToolUse` on `Task`; report records
-SHALL be written from `PostToolUse` on `Task`, joined by `tool_use_id` when the
-payload carries it. When it does not, the join SHALL fall back to a content
-hash of the dispatch input and the report record SHALL carry `ambiguous: true`
-— recorded ambiguity, never a silent guess. `SubagentStop` SHALL NOT be used
-for correlation.
+Correlation SHALL use only keys the harness supplies. Order, timing, and
+adjacency SHALL NOT be used to pair records, since any such pairing breaks
+precisely in the parallel case the journal exists for.
+
+Dispatch records SHALL be written from `PreToolUse` on the subagent tool, which
+the harness may name `Task` or `Agent`. Where the payload carries a
+`tool_use_id`, it SHALL be the dispatch key; where it does not, the key SHALL be
+a content hash of the dispatch input and the resulting report SHALL carry
+`ambiguous: true` — recorded ambiguity, never a silent guess.
+
+A `PostToolUse` payload on the subagent tool whose response acknowledges an
+asynchronous launch rather than reporting a result SHALL NOT be recorded as a
+terminal. It SHALL instead establish a link from the harness's agent id to the
+dispatch key. The link is producer state and SHALL NOT be a journal record.
+Where such a payload carries a real response instead, it SHALL be the terminal.
+
+`SubagentStop` SHALL write the terminal report for a linked dispatch, joined by
+its `agent_id`, carrying the subagent's final message. Where an `agent_id`
+resolves to no link, nothing SHALL be recorded and the reason SHALL be reported
+— an unlinked stop means the terminal already exists or the dispatch was never
+recorded, and a report naming an invented dispatch would be worse than silence.
 
 #### Scenario: parallel subagents stay distinguishable
 
-- **WHEN** three Task dispatches run in parallel and all complete
+- **WHEN** three dispatches run in parallel and all complete
 - **THEN** the journal holds three dispatch records and three report records,
   each report referencing the dispatch it terminates
+
+#### Scenario: a launch acknowledgement is not a result
+
+- **WHEN** a `PostToolUse` payload on the subagent tool reports
+  `status: "async_launched"`
+- **THEN** no terminal is recorded, the dispatch remains open, and the agent id
+  is linked to it
 
 ### Requirement: Session-end terminals
 
@@ -88,3 +129,4 @@ certifies internal consistency only.
 - **WHEN** a valid journal carries `origin: "self-reported"`
 - **THEN** the summary includes the self-reported label alongside
   "Journal valid."
+

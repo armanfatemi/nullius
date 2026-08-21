@@ -26,6 +26,22 @@
  * Order is load-bearing — invariant 2 is a question about what happened
  * BETWEEN two records — so a reordered journal is a different journal.
  *
+ * **Schema 0.2** adds two things, both in service of the same three
+ * invariants. A `journal` header record says which schema a journal is written
+ * to and — the part that matters — who wrote it: `origin: "hooks"` means the
+ * harness runtime emitted these records and the agent could not decline to;
+ * `origin: "self-reported"` means an agent wrote them about itself, which
+ * certifies internal consistency and nothing else. And a `mutation` kind
+ * records a file change, which advances the per-path hash map for invariant 2
+ * without pretending anything was checked: an edit verifies nothing, so
+ * nothing may rest on one.
+ *
+ * A journal with no header is read as 0.1 — everything that existed before
+ * this record did. A header naming a version this build does not know stops
+ * validation with one `UNSUPPORTED-VERSION` finding, because the alternative
+ * is a cascade of `MALFORMED` findings that buries the single fact worth
+ * knowing: the validator is older than the journal.
+ *
  * See spec/witness-journal.md.
  */
 
@@ -49,7 +65,27 @@ export type JournalVerdict =
   /** An append that does not say what it corrected. */
   | "omitted-corrections"
   /** Two records claiming the same id. */
-  | "duplicate-id";
+  | "duplicate-id"
+  /** The journal declares a schema this build cannot read. Terminal, and alone. */
+  | "unsupported-version";
+
+/**
+ * Who emitted the records. The whole subject of the tool is the difference
+ * between "the harness attests this" and "the agent says so", so the journal
+ * carries it and the summary prints it.
+ */
+export type JournalOrigin = "hooks" | "self-reported";
+
+/** The v0.2 header record: which schema, and whose account. */
+export interface JournalHeader {
+  version: string;
+  /** null when the header omits `origin` or names one this schema does not know. */
+  origin: JournalOrigin | null;
+  /** The harness session this journal belongs to, when the producer knows it. */
+  session: string | null;
+  /** startup / resume / clear / compact — a fork in journal identity, made visible. */
+  source: string | null;
+}
 
 export interface JournalFinding {
   /** 1-based line in the journal. */
@@ -62,12 +98,19 @@ export interface JournalFinding {
 
 export interface JournalReport {
   findings: JournalFinding[];
+  /** Records the validator could read. Rejected lines appear in `findings`. */
   records: number;
   dispatches: number;
   /** Terminal outcomes, counted apart — the point of invariant 1 is that
    *  these three numbers are three numbers. */
   outcomes: { found: number; empty: number; noReport: number };
   verifications: number;
+  /** Recorded file changes. They move the hash map; they verify nothing. */
+  mutations: number;
+  /** The schema the journal declares. Headerless journals declare none and are read as 0.1. */
+  version: string;
+  /** The header record, or null when the journal carries none. */
+  header: JournalHeader | null;
 }
 
 const PASSING: ReadonlySet<JournalVerdict> = new Set<JournalVerdict>(["ok"]);
@@ -80,8 +123,22 @@ export function isJournalFailure(verdict: JournalVerdict): boolean {
 const OUTCOMES = ["found", "empty", "no-report"] as const;
 type Outcome = (typeof OUTCOMES)[number];
 
-const KINDS = ["dispatch", "report", "verification", "reliance", "append"] as const;
-type Kind = (typeof KINDS)[number];
+/**
+ * Kinds are a closed list PER VERSION, not one growing list. A `mutation` in a
+ * headerless journal is a record from a schema that journal never claimed, and
+ * saying so beats accepting it: the version header exists precisely so schema
+ * drift is diagnosable rather than merely loud.
+ */
+const KINDS_V01 = ["dispatch", "report", "verification", "reliance", "append"] as const;
+const KINDS_V02 = [...KINDS_V01, "mutation"] as const;
+type Kind = (typeof KINDS_V02)[number];
+
+/** Schemas this build can read. Anything else is UNSUPPORTED-VERSION. */
+const VERSIONS = ["0.1", "0.2"] as const;
+const ORIGINS = ["hooks", "self-reported"] as const;
+
+/** The version applied to a journal that carries no header. */
+const IMPLIED_VERSION = "0.1";
 
 interface JournalRecord {
   line: number;
@@ -102,8 +159,8 @@ function isObject(value: unknown): value is { [key: string]: unknown } {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function asKind(value: unknown): Kind | null {
-  return KINDS.find((kind) => kind === value) ?? null;
+function asKind(value: unknown, vocabulary: readonly Kind[]): Kind | null {
+  return vocabulary.find((kind) => kind === value) ?? null;
 }
 
 function asOutcome(value: unknown): Outcome | null {
@@ -122,12 +179,132 @@ function nonEmptyString(value: unknown): boolean {
   return typeof value === "string" && value.trim().length > 0;
 }
 
+function optionalString(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value : null;
+}
+
+interface HeaderScan {
+  header: JournalHeader | null;
+  /** 1-based line the header occupies, or null when there is no header. */
+  line: number | null;
+  findings: JournalFinding[];
+  /** True when the schema is unreadable and nothing further should be attempted. */
+  stop: boolean;
+  /** The version to validate under. */
+  version: string;
+}
+
+/**
+ * A fresh scan each time, never a shared constant. The `findings` array is
+ * mutable, and one module-level instance would be handed to every headerless
+ * journal in the process — so the first finding pushed here would start
+ * appearing in unrelated reports, in a validator whose whole job is not
+ * confusing one document's problems for another's.
+ */
+function headerless(): HeaderScan {
+  return { header: null, line: null, findings: [], stop: false, version: IMPLIED_VERSION };
+}
+
+/**
+ * Read the first record, if it is a header. Everything about how the rest of
+ * the journal is read follows from this — including whether it is read at all.
+ */
+function scanHeader(lines: string[]): HeaderScan {
+  for (let index = 0; index < lines.length; index += 1) {
+    const raw = (lines[index] ?? "").trim();
+    if (raw.length === 0) continue;
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      // Unparseable first line: not a header, and pass 1 will report it.
+      return headerless();
+    }
+    if (!isObject(parsed) || parsed["kind"] !== "journal") return headerless();
+
+    const line = index + 1;
+    const declared = parsed["version"];
+    const version = typeof declared === "string" ? declared : null;
+    if (version === null || !VERSIONS.some((known) => known === version)) {
+      // One finding, and then silence. Reporting every subsequent record as
+      // MALFORMED would be technically true and practically useless: the
+      // records are fine, this build is old.
+      return {
+        header: null,
+        line,
+        stop: true,
+        version: version ?? "(absent)",
+        findings: [
+          {
+            line,
+            verdict: "unsupported-version",
+            subject: version ?? "(absent)",
+            detail:
+              version === null
+                ? `a journal header needs "version" — without it the schema is unknowable, and guessing at it is how a validator reports confident nonsense (this build reads: ${VERSIONS.join(", ")})`
+                : `journal declares schema ${version}; this build reads ${VERSIONS.join(", ")} — nothing further was read, because records written to a schema this build does not know are not records it can judge`,
+          },
+        ],
+      };
+    }
+
+    // The version is readable, so the rest of the journal is. A broken
+    // `origin` is a defect in the header, not a reason to stop: the schema is
+    // known, and the invariants are what the journal is for.
+    const findings: JournalFinding[] = [];
+    const origin = ORIGINS.find((known) => known === parsed["origin"]) ?? null;
+    if (origin === null) {
+      findings.push({
+        line,
+        verdict: "malformed",
+        subject: "journal",
+        detail: `a journal header needs "origin": one of ${ORIGINS.join(", ")} — a journal that does not say whether the harness or the agent wrote it invites the reading that flatters it`,
+      });
+    }
+
+    return {
+      header: {
+        version,
+        origin,
+        session: optionalString(parsed["session"]),
+        source: optionalString(parsed["source"]),
+      },
+      line,
+      findings,
+      stop: false,
+      version,
+    };
+  }
+
+  return headerless();
+}
+
 export function validateJournal(content: string): JournalReport {
-  const findings: JournalFinding[] = [];
   const records: JournalRecord[] = [];
   const byId = new Map<string, JournalRecord>();
 
   const lines = content.split("\n");
+
+  // --- Pass 0: which schema is this, and whose account of the run is it?
+  const scan = scanHeader(lines);
+  if (scan.stop) {
+    // Deliberately zero counts: nothing after the header was read, and
+    // reporting counts for records nobody looked at is the shape of lie this
+    // whole file exists to refuse.
+    return {
+      findings: scan.findings,
+      records: 0,
+      dispatches: 0,
+      outcomes: { found: 0, empty: 0, noReport: 0 },
+      verifications: 0,
+      mutations: 0,
+      version: scan.version,
+      header: null,
+    };
+  }
+  const findings: JournalFinding[] = [...scan.findings];
+  const vocabulary: readonly Kind[] = scan.version === IMPLIED_VERSION ? KINDS_V01 : KINDS_V02;
 
   // --- Pass 1: shape. A record that does not parse cannot be reasoned about,
   // and is reported rather than skipped: a journal the validator silently
@@ -136,6 +313,7 @@ export function validateJournal(content: string): JournalReport {
     const raw = (lines[index] ?? "").trim();
     if (raw.length === 0) continue;
     const line = index + 1;
+    if (line === scan.line) continue; // the header, already read in pass 0
 
     let parsed: unknown;
     try {
@@ -160,13 +338,31 @@ export function validateJournal(content: string): JournalReport {
       continue;
     }
 
-    const kind = asKind(parsed["kind"]);
+    if (parsed["kind"] === "journal") {
+      // A header anywhere but line 1 is not a header — it is a second account
+      // of the same run, or the same one appended twice. Either way the reader
+      // would have to guess which one governs.
+      findings.push({
+        line,
+        verdict: "malformed",
+        subject: "journal",
+        detail:
+          "a journal header must be the first record — a header further down governs nothing, and a reader would have to guess which account applies",
+      });
+      continue;
+    }
+
+    const kind = asKind(parsed["kind"], vocabulary);
     if (kind === null) {
+      const laterSchema = KINDS_V02.find((known) => known === parsed["kind"]);
       findings.push({
         line,
         verdict: "malformed",
         subject: String(parsed["id"] ?? raw.slice(0, 40)),
-        detail: `unknown kind ${JSON.stringify(parsed["kind"])} — expected one of: ${KINDS.join(", ")}`,
+        detail:
+          laterSchema === undefined
+            ? `unknown kind ${JSON.stringify(parsed["kind"])} — expected one of: ${vocabulary.join(", ")}`
+            : `kind ${JSON.stringify(parsed["kind"])} arrived in schema 0.2, and this journal is read as ${scan.version} — declare it with a {"kind":"journal","version":"0.2",…} first record`,
       });
       continue;
     }
@@ -207,6 +403,7 @@ export function validateJournal(content: string): JournalReport {
   const verified = new Map<string, { path: string; hash: string }>();
   let dispatches = 0;
   let verifications = 0;
+  let mutations = 0;
 
   for (const record of records) {
     switch (record.kind) {
@@ -325,11 +522,18 @@ export function validateJournal(content: string): JournalReport {
         }
         const source = verified.get(on as string);
         if (source === undefined) {
+          // Naming a mutation is the interesting failure, and worth its own
+          // sentence: an edit is evidence that something CHANGED, which is the
+          // opposite of evidence that something was checked.
+          const named = byId.get(on as string);
           findings.push({
             line: record.line,
             verdict: "dangling-reference",
             subject: record.id,
-            detail: `no verification with id '${String(on)}' appears earlier in this journal`,
+            detail:
+              named?.kind === "mutation"
+                ? `relies on '${String(on)}', which is a mutation — a mutation records that an artifact changed, never that anything was checked, so nothing can rest on one`
+                : `no verification with id '${String(on)}' appears earlier in this journal`,
           });
           break;
         }
@@ -347,6 +551,26 @@ export function validateJournal(content: string): JournalReport {
             detail: `relies on '${String(on)}', which verified ${source.path} at ${short(source.hash)} — that artifact changed to ${short(latest.hash)} on line ${latest.line}, so the verification no longer covers what this rests on`,
           });
         }
+        break;
+      }
+
+      case "mutation": {
+        // Invariant 2's other half. An edit does not verify anything, so this
+        // record never enters `verified` — but it MUST move the hash map, or a
+        // verification quoted across an edit stays quotable.
+        mutations += 1;
+        const target = asTarget(record.raw.target);
+        if (target === null) {
+          findings.push({
+            line: record.line,
+            verdict: "malformed",
+            subject: record.id,
+            detail:
+              'a mutation needs "target": {"path": ..., "hash": ...} — a change that does not say what it changed cannot invalidate the verification it invalidated',
+          });
+          break;
+        }
+        hashes.set(target.path, { hash: target.hash, line: record.line });
         break;
       }
 
@@ -388,10 +612,18 @@ export function validateJournal(content: string): JournalReport {
 
   return {
     findings,
-    records: records.length,
+    // Records the validator could READ: the header plus everything that got
+    // past pass 1. Lines rejected as malformed or duplicate-id are reported as
+    // findings and deliberately not counted here — but they are also lines in
+    // the file, so this number is not the file's line count and must not be
+    // described as one.
+    records: records.length + (scan.line === null ? 0 : 1),
     dispatches,
     outcomes,
     verifications,
+    mutations,
+    version: scan.version,
+    header: scan.header,
   };
 }
 

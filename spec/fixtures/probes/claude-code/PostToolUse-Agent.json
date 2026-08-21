@@ -1,0 +1,26 @@
+{
+  "session_id": "0fe3082b-38d4-4b06-8b16-9b60f82998fc",
+  "transcript_path": "/home/user/.claude/projects/-home-user-project/0fe3082b-38d4-4b06-8b16-9b60f82998fc.jsonl",
+  "cwd": "/home/user/project/9efd9df7-d0dd-4b32-acc8-1331abd8ef19/scratchpad/probe3",
+  "prompt_id": "f4095b6f-b44c-4b35-97de-8c96cce1ec8e",
+  "permission_mode": "default",
+  "hook_event_name": "PostToolUse",
+  "tool_name": "Agent",
+  "tool_input": {
+    "description": "Find retry helper definition in src/",
+    "prompt": "Search the src/ directory for any retry helper functions or utilities. Look for files containing \"retry\" in the name or containing functions like `withRetry`, `retry`, `useRetry`, or similar patterns. Report the exact file path and line number where the main retry function is defined.",
+    "subagent_type": "Explore"
+  },
+  "tool_response": {
+    "isAsync": true,
+    "status": "async_launched",
+    "agentId": "ab210a2c41e64ee5f",
+    "description": "Find retry helper definition in src/",
+    "resolvedModel": "claude-haiku-4-5-20251001",
+    "prompt": "Search the src/ directory for any retry helper functions or utilities. Look for files containing \"retry\" in the name or containing functions like `withRetry`, `retry`, `useRetry`, or similar patterns. Report the exact file path and line number where the main retry function is defined.",
+    "outputFile": "/home/user/project/0fe3082b-38d4-4b06-8b16-9b60f82998fc/tasks/ab210a2c41e64ee5f.output",
+    "canReadOutputFile": true
+  },
+  "tool_use_id": "toolu_016zBxm3MUUD4KMxjmGr9BFj",
+  "duration_ms": 5
+}

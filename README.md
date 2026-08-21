@@ -50,6 +50,14 @@ pipeline this tool was extracted from — the incident is told in
 is a citation convention (**Evidence Anchors**) plus a deterministic checker
 that re-executes every citation, forever.
 
+Where this came from, at length:
+[Nobody Opposed the Delay](https://armanfatemi.substack.com/p/nobody-opposed-the-delay)
+— why the useful question about a wrong claim is not why it was made but what
+happened to the objection, and why the answer turned out to be a pipeline
+rather than a better reviewer. It also tells the second incident behind this
+repo: a rule checker that went quiet for a week while everything looked fine,
+which is where the insistence on making absence loud comes from.
+
 ## Try it in ten seconds
 
 ```sh
@@ -289,8 +297,9 @@ format is shaped this way; the linter is what you install.
 | [Binding Moments spec](spec/binding-moments.md)   | The companion for compatibility risks: name _when_ the risk binds, from a closed per-project vocabulary              |
 | [`@nullius-inverba/claims`](packages/claims/)     | The CLI (`check` / `audit` / `witness` / `demo`) + library. `check` and `witness` open files and never ask a model |
 | [GitHub Action](action/)                          | Advisory PR comments, `pr-body` mode, a hard gate when you opt in                                                    |
-| [Claude Code plugin](plugin/)                     | Authoring skill, plan-approval hook, `/ground`, `/audit`, and the `[false-premise]` reviewer block                   |
+| [Claude Code plugin](plugin/)                     | Authoring skill, plan-approval hook, witness recording hooks, `/ground`, `/audit`, and the `[false-premise]` reviewer block |
 | `witness validate`                                | The run-journal validator — three invariants, no model ([the schema](spec/witness-journal.md))                       |
+| [`@nullius-inverba/kit`](packages/kit/)           | The producer: `witness record` writes the journal from harness hooks, so the record is not the agent's account of itself |
 
 ## Design principles
 

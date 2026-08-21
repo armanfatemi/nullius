@@ -1,0 +1,27 @@
+{
+  "session_id": "0fe3082b-38d4-4b06-8b16-9b60f82998fc",
+  "transcript_path": "/home/user/.claude/projects/-home-user-project/0fe3082b-38d4-4b06-8b16-9b60f82998fc.jsonl",
+  "cwd": "/home/user/project/9efd9df7-d0dd-4b32-acc8-1331abd8ef19/scratchpad/probe3",
+  "prompt_id": "f4095b6f-b44c-4b35-97de-8c96cce1ec8e",
+  "permission_mode": "default",
+  "hook_event_name": "Stop",
+  "stop_hook_active": false,
+  "last_assistant_message": "Both Explore agents are running in parallel. I'll report the results once they complete.",
+  "background_tasks": [
+    {
+      "id": "ab210a2c41e64ee5f",
+      "type": "subagent",
+      "status": "running",
+      "description": "Find retry helper definition in src/",
+      "agent_type": "Explore"
+    },
+    {
+      "id": "aadea4f3d57e80663",
+      "type": "subagent",
+      "status": "running",
+      "description": "Find debounce helper in src/",
+      "agent_type": "Explore"
+    }
+  ],
+  "session_crons": []
+}

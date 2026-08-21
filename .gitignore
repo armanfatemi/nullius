@@ -2,3 +2,7 @@ node_modules/
 dist/
 *.tgz
 .DS_Store
+# Run journals and harness probes are per-machine artefacts. Fixtures that are
+# meant to be read live under spec/fixtures/ and are committed deliberately.
+.nullius/runs/
+.nullius/probes/

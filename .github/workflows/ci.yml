@@ -57,11 +57,21 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # Build first, and not as a matter of taste. The kit imports the kernel
+      # the way any consumer does — by package name — so tsc resolves its types
+      # from packages/claims/dist, and vitest resolves validateJournal from the
+      # same place at runtime. Neither exists on a fresh checkout until this
+      # step runs, so a clean clone cannot type-check or test without it.
+      #
+      # The upside of leaving it this way rather than pointing the kit at the
+      # kernel's source: the kit is checked against what the kernel PUBLISHES,
+      # not against its internals. pnpm builds in topological order, so the
+      # kernel is ready before the kit compiles against it.
+      - run: pnpm build
+
       - run: pnpm type-check
 
       - run: pnpm test
-
-      - run: pnpm build
 
       # The journal validator, dogfooded on a fixture that breaks each of its
       # three invariants: a validator that stops catching them is a validator
@@ -70,6 +80,53 @@ jobs:
         run: |
           node packages/claims/dist/cli.js witness validate spec/fixtures/valid-run.jsonl
           ! node packages/claims/dist/cli.js witness validate spec/fixtures/broken-run.jsonl
+          # v0.1 compatibility is a promise, so it is a checked promise: a
+          # headerless journal must still validate under the v0.2 build.
+          node packages/claims/dist/cli.js witness validate spec/fixtures/v0.1-run.jsonl
+          # And a schema from the future must fail as ONE finding, not a cascade.
+          ! node packages/claims/dist/cli.js witness validate spec/fixtures/future-run.jsonl
+          # A journal the hook pack actually produced, from a real session with
+          # two parallel subagents. The synthetic fixtures are what the schema
+          # says; this one is what the harness does.
+          node packages/claims/dist/cli.js witness validate spec/fixtures/hooks-run.jsonl
+      # The producer, end to end and under contention. Hook payloads in,
+      # journal out, validator's verdict on it — and the parallel case is the
+      # one that matters: several subagent hooks append to one file at once,
+      # and a half-written line is the single failure a journal cannot
+      # survive. A unit test cannot prove this; concurrent processes can.
+      - name: nullius witness record (round trip, parallel)
+        run: |
+          set -euo pipefail
+          work=$(mktemp -d)
+          kit="node packages/kit/dist/cli.js"
+          for i in $(seq 1 12); do
+            printf '{"session_id":"ci","hook_event_name":"PreToolUse","tool_name":"Task","tool_use_id":"t%s","tool_input":{"description":"probe %s"}}' "$i" "$i" \
+              | $kit witness record --root "$work" 2>> "$work/notes.log" &
+          done
+          wait
+          printf '{"session_id":"ci","hook_event_name":"SessionEnd","reason":"clear"}' \
+            | $kit witness record --root "$work" 2>> "$work/notes.log"
+          journal="$work/.nullius/runs/ci.jsonl"
+
+          # A refused append is a legitimate outcome under contention — the
+          # writer drops the record rather than mangle the file. But it makes
+          # the journal short, and a bare count assertion would then read as a
+          # correlation bug and send a maintainer into record.ts. Name it.
+          if grep -q "holds the lock" "$work/notes.log"; then
+            echo "A writer was refused the append lock, so this journal is short by design:" >&2
+            cat "$work/notes.log" >&2
+            exit 1
+          fi
+
+          lines=$(wc -l < "$journal")
+          if [ "$lines" -ne 25 ]; then   # header + 12 dispatches + 12 sealed terminals
+            echo "expected 25 records, got $lines — with no lock refusal to explain it" >&2
+            cat "$journal" >&2
+            exit 1
+          fi
+          while read -r line; do node -e 'JSON.parse(process.argv[1])' "$line"; done < "$journal"
+          node packages/claims/dist/cli.js witness validate "$journal"
+
       # Dogfood: the README carries live Evidence Anchors into this repo's own
       # source. If the code drifts out from under the README's claims, this
       # step says so — the tool checking the docs of the tool.
