@@ -20,6 +20,9 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import { isJournalFailure, validateJournal, type JournalOrigin } from "@nullius-inverba/claims";
 
+import { detect, mayWriteHooks } from "./detect";
+import { findProfile, PROFILE_NAMES, PROFILES } from "./profiles";
+import { applyPlan, buildPlan, formatPlan } from "./render";
 import {
   appendRecords,
   journalPathFor,
@@ -40,6 +43,7 @@ const ADVISORY_LIMIT = 10;
 const USAGE = `nullius-kit — witness recording for agent runs
 
 usage:
+  nullius-kit init [--profile <name>] [--dry-run] [--yes] [--root <dir>]
   nullius-kit witness record [--origin hooks|self-reported] [--root <dir>]
   nullius-kit witness check  [--root <dir>]
 
@@ -76,10 +80,14 @@ function main(): number {
     return argv.length === 0 ? 2 : 0;
   }
 
+  // `init` owns its own flags; the witness options parser would reject them.
+  if (argv[0] === "init") return runInit(argv.slice(1));
+
   const options = parseOptions(argv);
   if (options === null) return 2;
 
   const [command, sub] = argv;
+  if (command === "init") return runInit(argv.slice(1));
   if (command !== "witness") {
     console.error(`unknown command: ${String(command)}\n\n${USAGE}`);
     return 2;
@@ -120,6 +128,110 @@ function parseOptions(argv: readonly string[]): CliOptions | null {
   }
 
   return options;
+}
+
+interface InitOptions {
+  profile: string | null;
+  dryRun: boolean;
+  root: string;
+}
+
+function parseInit(argv: readonly string[]): InitOptions | null {
+  const options: InitOptions = { profile: null, dryRun: false, root: process.cwd() };
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === "--dry-run") {
+      options.dryRun = true;
+    } else if (arg === "--yes" || arg === "-y") {
+      // Accepted and inert: init never prompts, so there is nothing to confirm.
+      // Refusing the flag would break the copy-pasteable line in the README
+      // for no gain; silently accepting it is honest because the promise it
+      // asks for is one init already keeps.
+      continue;
+    } else if (arg === "--profile") {
+      const value = argv[(index += 1)];
+      if (value === undefined) {
+        console.error(`--profile needs a name (${PROFILE_NAMES.join(", ")})`);
+        return null;
+      }
+      options.profile = value;
+    } else if (arg === "--root") {
+      const value = argv[(index += 1)];
+      if (value === undefined) {
+        console.error("--root needs a directory");
+        return null;
+      }
+      options.root = value;
+    } else {
+      console.error(`unknown flag for \`init\`: ${String(arg)}\n\n${USAGE}`);
+      return null;
+    }
+  }
+
+  return options;
+}
+
+function runInit(argv: readonly string[]): number {
+  const options = parseInit(argv);
+  if (options === null) return 2;
+
+  const root = resolve(options.root);
+  if (!existsSync(root)) {
+    console.error(`no such directory: ${root}`);
+    return 2;
+  }
+
+  const detection = detect(root);
+  const name = options.profile ?? detection.suggestedProfile;
+  const profile = findProfile(name);
+  if (profile === null) {
+    console.error(
+      `unknown profile: ${name}\n\nprofiles:\n${PROFILES.map((entry) => `  ${entry.name.padEnd(7)} ${entry.summary}`).join("\n")}`,
+    );
+    return 2;
+  }
+
+  if (options.profile === null) {
+    console.log(`Detected profile \`${profile.name}\` — ${detection.reason}.`);
+    console.log("Override with --profile <name>.");
+    console.log("");
+  }
+
+  const plan = buildPlan({
+    root,
+    profile,
+    kitVersion: packageVersion(),
+    // Pinned by default. @main is a moving target, and a workflow that
+    // silently changes behaviour is the thing this repo exists to object to.
+    actionRef: "armanfatemi/nullius/action@v1",
+    hookPolicy: mayWriteHooks(detection.harness),
+  });
+
+  console.log(formatPlan(plan, options.dryRun));
+
+  if (options.dryRun) {
+    console.log("");
+    console.log("Dry run — the working tree is unchanged.");
+    return 0;
+  }
+
+  const result = applyPlan(plan);
+  console.log("");
+  console.log(
+    `${result.written.length} written, ${result.unchanged.length} already current, ${result.skipped.length} skipped.`,
+  );
+  return 0;
+}
+
+function packageVersion(): string {
+  try {
+    const url = new URL("../package.json", import.meta.url);
+    const manifest = JSON.parse(readFileSync(url, "utf8")) as { version?: string };
+    return manifest.version ?? "unknown";
+  } catch {
+    return "unknown";
+  }
 }
 
 function runRecord(options: CliOptions): number {
