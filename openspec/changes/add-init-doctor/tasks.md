@@ -32,5 +32,5 @@
 
 ## 4. Docs
 
-- [ ] 4.1 README quickstart becomes `init` first, personas second
-- [ ] 4.2 Document the managed-artifact conventions in the kit README
+- [x] 4.1 README quickstart becomes `init` first, personas second
+- [x] 4.2 Document the managed-artifact conventions in the kit README

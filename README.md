@@ -58,6 +58,39 @@ rather than a better reviewer. It also tells the second incident behind this
 repo: a rule checker that went quiet for a week while everything looked fine,
 which is where the insistence on making absence loud comes from.
 
+## Set it up in one command
+
+```sh
+npx @nullius-inverba/kit init            # detects your repo, prints every file it writes
+npx @nullius-inverba/kit init --dry-run  # or see the plan first, and write nothing
+```
+
+It picks a profile from what is actually on disk — `openspec/` means the specs
+profile, `docs/` means prs, neither means plans — and says which and why.
+Override with `--profile plans|prs|specs`. The personas below are those three
+profiles; reading them is optional now.
+
+Two things `init` deliberately will not do, and prints instead of doing:
+
+- **It writes no hooks.** On Claude Code the plugin delivers those, and a
+  second copy is a path nothing can tell apart from the first. It shows you the
+  two `/plugin` lines.
+- **It does not edit your agent instructions beyond one line.** Content goes in
+  a kit-owned file under `.nullius/`; your CLAUDE.md gets a pointer at it, so
+  upgrades never need merging.
+
+Then, whenever something stops working:
+
+```sh
+npx @nullius-inverba/kit doctor          # and `--fix` to re-render what it manages
+```
+
+Every mechanism here fails open — a hook that cannot run must never break your
+session — so every failure is silent by design. `doctor` is where that silence
+gets a voice. It checks only what local state can prove, labels the rest `??`
+rather than guessing, and ends by running a fixture through your installed
+recorder and validator so the last line is a verdict you can re-run.
+
 ## Try it in ten seconds
 
 ```sh
