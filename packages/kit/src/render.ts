@@ -69,7 +69,13 @@ function planFile(
   return { path, disposition: "update", contents, reason };
 }
 
-export function renderConfig(profile: Profile): string {
+/**
+ * Keys `init` sets. Everything else in nullius.config.json belongs to the user
+ * and is carried through untouched.
+ */
+const KIT_OWNED_CONFIG_KEYS = new Set(["docs"]);
+
+export function renderConfig(profile: Profile, existing?: string): string {
   // `configVersion` is deliberately NOT written yet.
   //
   // The kernel reserves it, but that reservation is unreleased: every
@@ -81,9 +87,28 @@ export function renderConfig(profile: Profile): string {
   // A reservation only buys compatibility once the writer waits for a release
   // that contains it. Add it here when the kernel carrying it has shipped and
   // the Action pins a floor at that version.
-  const config: Record<string, unknown> = {
-    docs: profile.docs,
-  };
+  // nullius.config.json is a KERNEL file with eight valid keys, and the one
+  // users most often tune. Rewriting it wholesale silently deleted `exclude`,
+  // `driftWindow`, `minAnchorChars` and the rest — with no warning and no
+  // mention in the write-log. Only the keys this tool owns are replaced.
+  let preserved: Record<string, unknown> = {};
+  if (existing !== undefined) {
+    try {
+      const parsed: unknown = JSON.parse(existing);
+      if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+        preserved = Object.fromEntries(
+          Object.entries(parsed as Record<string, unknown>).filter(
+            ([key]) => !KIT_OWNED_CONFIG_KEYS.has(key),
+          ),
+        );
+      }
+    } catch {
+      // Unparseable: keep nothing rather than guess at its contents. The file
+      // is replaced, which is the only safe reading of "it is already broken".
+    }
+  }
+
+  const config: Record<string, unknown> = { docs: profile.docs, ...preserved };
   return `${JSON.stringify(config, null, 2)}\n`;
 }
 
@@ -222,7 +247,12 @@ function planPointer(root: string): PlannedFile | null {
       };
     }
 
-    if (existing.includes(POINTER_LINE)) {
+    // Compared with whitespace collapsed. An exact substring match is defeated
+    // by any markdown formatter that re-wraps prose — and then a second copy
+    // is appended on every run, growing without bound in any repo whose
+    // formatter runs on commit.
+    const flatten = (text: string): string => text.replace(/\s+/g, " ");
+    if (flatten(existing).includes(flatten(POINTER_LINE))) {
       return {
         path: host,
         disposition: "unchanged",
@@ -251,16 +281,37 @@ export interface PlanOptions {
   actionRef: string;
   /** From `mayWriteHooks` — carried so the plan can explain the omission. */
   hookPolicy: { allowed: boolean; reason: string };
+  /**
+   * Whether a user-owned file may be touched at all.
+   *
+   * False for `doctor --fix`, whose contract is that user-owned files come out
+   * byte-identical. A user who deliberately deleted the pointer had it
+   * silently reinstated on every repair otherwise.
+   */
+  touchUserFiles?: boolean;
 }
 
 export function buildPlan(options: PlanOptions): Plan {
   const { root, profile, kitVersion, actionRef, hookPolicy } = options;
+  const touchUserFiles = options.touchUserFiles ?? true;
   const files: PlannedFile[] = [];
   const notes: string[] = [];
 
   for (const artifact of profile.artifacts) {
     if (artifact.path === "nullius.config.json") {
-      files.push(planFile(root, artifact.path, renderConfig(profile), artifact.reason));
+      const configPath = join(root, artifact.path);
+      const existing = existsSync(configPath)
+        ? (() => {
+            try {
+              return readFileSync(configPath, "utf8");
+            } catch {
+              return undefined;
+            }
+          })()
+        : undefined;
+      files.push(
+        planFile(root, artifact.path, renderConfig(profile, existing), artifact.reason),
+      );
     } else if (artifact.path === ".nullius/kit.json") {
       files.push(
         planFile(root, artifact.path, renderKitConfig(profile, kitVersion), artifact.reason),
@@ -271,13 +322,19 @@ export function buildPlan(options: PlanOptions): Plan {
       );
     } else if (artifact.path === ".nullius/authoring.md") {
       files.push(planFile(root, artifact.path, renderAuthoring(profile), artifact.reason));
-      const pointer = planPointer(root);
-      if (pointer === null) {
-        notes.push(
-          `No agent-instructions file found (${POINTER_HOSTS.join(" or ")}) — add this line to yours: ${POINTER_LINE}`,
-        );
+      if (!touchUserFiles) {
+        // doctor --fix: user-owned files come out byte-identical, so the
+        // pointer is neither added nor re-added here.
+        notes.push("User-owned files left untouched; the pointer is `init`'s to place.");
       } else {
-        files.push(pointer);
+        const pointer = planPointer(root);
+        if (pointer === null) {
+          notes.push(
+            `No agent-instructions file found (${POINTER_HOSTS.join(" or ")}) — add this line to yours: ${POINTER_LINE}`,
+          );
+        } else {
+          files.push(pointer);
+        }
       }
     } else {
       // Never silently dropped. A profile can name an artifact no renderer

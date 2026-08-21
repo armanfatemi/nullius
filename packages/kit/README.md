@@ -60,9 +60,14 @@ staying quiet:
 
 **2. Pointers, not rendered content, in files you own.** Managed content lives
 in kit-owned files under `.nullius/`. Your CLAUDE.md or AGENTS.md gets one
-line pointing at it — appended once, idempotent, with the rest of the file
-copied through untouched. `init` never creates such a file; inventing someone's
+line pointing at it — appended once by `init`, with the rest of the file copied
+through untouched. `init` never creates such a file; inventing someone's
 agent-instructions file is not this tool's decision.
+
+The presence check compares with whitespace collapsed, so a markdown formatter
+that re-wraps the line does not cause a second copy to be appended. And
+`doctor --fix` does not place the pointer at all: user-owned files come out of
+a repair byte-identical, so removing the line stays removed.
 
 A block would collect four wounds a pointer does not: users edit inside the
 markers, version strings conflict on every release, marker conventions collide
@@ -108,6 +113,15 @@ check that exercises the pipeline end to end.
 
 `--fix` re-renders managed artifacts using the profile recorded in
 `.nullius/kit.json` — what was installed, not what the repo looks like today.
+If that file is unreadable it **refuses**, rather than falling back to
+detection: guessing there would rewrite which documents are checked and whether
+CI can fail, on the strength of a directory listing.
+
+It also replaces only the keys it owns in `nullius.config.json` (`docs`).
+That file is the kernel's, with eight valid keys and the ones users actually
+tune — `exclude`, `driftWindow`, `minAnchorChars` — and they are carried
+through untouched.
+
 There is no `update` verb; diagnose-then-repair is one mental model.
 
 ## `witness record`

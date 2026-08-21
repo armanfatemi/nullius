@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
@@ -287,5 +287,149 @@ describe("doctor — the report", () => {
     });
 
     expect(text).toContain("1 ok, 1 failing, 1 not checkable from here, 1 observation(s)");
+  });
+});
+
+/**
+ * Each case here was a wrong verdict a review reproduced. The predecessor took
+ * "the first whitespace token containing a slash" as the binary, which picked
+ * redirection targets, passed on any directory, and failed on shell forms that
+ * work — four false FAILs on working installs and one false pass on a command
+ * that cannot run at all.
+ */
+describe("doctor — hook resolution says only what it can settle", () => {
+  function withHook(command: string) {
+    const root = scratch();
+    mkdirSync(join(root, ".claude"));
+    writeFileSync(
+      join(root, ".claude", "settings.json"),
+      JSON.stringify({
+        hooks: { PreToolUse: [{ matcher: "*", hooks: [{ type: "command", command }] }] },
+      }),
+    );
+    return { root, checks: check(root).checks };
+  }
+
+  it("never reports pass for a directory — accessSync(dir, X_OK) succeeds", () => {
+    // WAS: `ok`, printing the repo root as the resolved command.
+    const { checks } = withHook("nullius-kit witness record --root ./");
+    const hook = checks.find((entry) => entry.name.includes("hook command"));
+
+    expect(hook?.status).not.toBe("pass");
+  });
+
+  it("does not mistake a redirection target for the binary", () => {
+    for (const command of [
+      "nullius-kit witness record >/dev/null 2>&1",
+      "nullius-kit witness record 2>>/tmp/n.log",
+    ]) {
+      const hook = withHook(command).checks.find((entry) => entry.name.includes("hook command"));
+      // The verdict must be about `nullius-kit`, never about /dev/null.
+      expect(hook?.name, command).toContain("nullius-kit");
+    }
+  });
+
+  it("declines to judge an UNBRACED shell variable, not just a braced one", () => {
+    // WAS: braced was `??`, unbraced was a false FAIL. The repo's own plugin
+    // uses the braced form, which is why only that one was handled.
+    // Both forms must be MANAGED commands, or there is no check to inspect —
+    // the kit claims only what its own command-path convention matches.
+    for (const command of [
+      'node "${CLAUDE_PROJECT_DIR}/.nullius/hooks/rec.sh" record',
+      'node "$CLAUDE_PROJECT_DIR/.nullius/hooks/rec.sh" record',
+    ]) {
+      const hook = withHook(command).checks.find((entry) => entry.name.includes("hook command"));
+      expect(hook?.status, command).toBe("unknown");
+    }
+  });
+
+  it("declines to judge a home-relative path rather than failing it", () => {
+    const hook = withHook("~/bin/nullius-kit witness record").checks.find((entry) =>
+      entry.name.includes("hook command"),
+    );
+
+    expect(hook?.status).toBe("unknown");
+  });
+
+  it("makes a missing PATH binary LOUD, as the spec requires", () => {
+    // `??` here would mean a dead hook reports exit 0. `nullius-kit` is a
+    // managed command by convention and is not installed globally in test.
+    const { root, checks } = withHook("nullius-kit witness record");
+    const hook = checks.find((entry) => entry.name.includes("hook command"));
+
+    expect(hook?.status).toBe("fail");
+    expect(check(root).failed).toBe(true);
+  });
+
+  it("checks the executable bit whatever the shim is named", () => {
+    // WAS: only enforced for `.sh`, so a non-executable shim under any other
+    // name reported pass — and spec.md:66 asks for "shims executable".
+    const root = scratch();
+    mkdirSync(join(root, ".claude"));
+    mkdirSync(join(root, ".nullius", "hooks"), { recursive: true });
+    const shim = join(root, ".nullius", "hooks", "record");
+    writeFileSync(shim, "#!/bin/sh\n");
+    chmodSync(shim, 0o644);
+    writeFileSync(
+      join(root, ".claude", "settings.json"),
+      JSON.stringify({
+        hooks: {
+          PreToolUse: [
+            { matcher: "*", hooks: [{ type: "command", command: ".nullius/hooks/record" }] },
+          ],
+        },
+      }),
+    );
+
+    const hook = check(root).checks.find((entry) => entry.name.includes("hook command"));
+    expect(hook?.status).toBe("fail");
+    expect(hook?.detail).toContain("not executable");
+  });
+
+  it("checks the SCRIPT when the command is an interpreter", () => {
+    const root = scratch();
+    mkdirSync(join(root, ".claude"));
+    writeFileSync(
+      join(root, ".claude", "settings.json"),
+      JSON.stringify({
+        hooks: {
+          PreToolUse: [
+            {
+              matcher: "*",
+              hooks: [{ type: "command", command: "node packages/kit/dist/cli.js witness record" }],
+            },
+          ],
+        },
+      }),
+    );
+
+    const hook = check(root).checks.find((entry) => entry.name.includes("hook command"));
+    // node exists; the script does not. The script is what goes missing.
+    expect(hook?.status).toBe("fail");
+    expect(hook?.detail).toContain("cli.js");
+  });
+});
+
+describe("doctor — a diagnostic must not throw on a broken repo", () => {
+  it("reports rather than crashes when runs/ is not a directory", () => {
+    const root = scratch();
+    mkdirSync(join(root, ".nullius"));
+    writeFileSync(join(root, ".nullius", "runs"), "i am a file\n");
+
+    // The state a diagnostic exists for is exactly when an unguarded read
+    // throws. Used to exit with a raw Node stack trace.
+    expect(() => check(root)).not.toThrow();
+    expect(check(root).checks.some((entry) => entry.status === "fail")).toBe(true);
+  });
+
+  it("reports rather than crashes when the workflow is unreadable", () => {
+    const root = scratch();
+    mkdirSync(join(root, ".github", "workflows"), { recursive: true });
+    // A directory where the file should be — same class as EACCES, without
+    // needing to chmod in a test.
+    mkdirSync(join(root, ".github", "workflows", "claims.yml"));
+
+    expect(() => check(root)).not.toThrow();
+    expect(check(root).checks.find((entry) => entry.name === "CI workflow")?.status).toBe("fail");
   });
 });

@@ -21,7 +21,7 @@
  */
 
 import { accessSync, constants, existsSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 
 import { isJournalFailure, parseConfig, validateJournal } from "@nullius-inverba/claims";
 
@@ -94,51 +94,141 @@ function readManagedHooks(root: string): { entries: HookEntry[]; unreadable: boo
   }
 }
 
+/** Shell operators that are not the command, and whose operands are not either. */
+const REDIRECTIONS = /^\d*(>>|>|<<|<|2>&1|&>)/;
+
+/** Interpreters whose FIRST argument is the thing that actually has to exist. */
+const INTERPRETERS = new Set(["node", "npx", "bun", "deno", "bash", "sh", "zsh", "python", "python3"]);
+
+/** A PATH lookup, so a bare command name is checked rather than shrugged at. */
+function onPath(name: string): string | null {
+  const dirs = (process.env["PATH"] ?? "").split(":").filter((dir) => dir.length > 0);
+  for (const dir of dirs) {
+    const candidate = join(dir, name);
+    try {
+      accessSync(candidate, constants.X_OK);
+      if (statSync(candidate).isFile()) return candidate;
+    } catch {
+      // Not here; keep looking.
+    }
+  }
+  return null;
+}
+
+/** Words that are neither the command nor its interpreter's script. */
+function commandWords(command: string): string[] {
+  return command
+    .trim()
+    .split(/\s+/)
+    .filter((word) => word.length > 0 && !REDIRECTIONS.test(word));
+}
+
+function unquote(word: string): string {
+  return word.replace(/^["']/, "").replace(/["']$/, "");
+}
+
+/** Anything the shell — not this tool — is responsible for expanding. */
+function needsShell(word: string): boolean {
+  return /[$~*?]/.test(word);
+}
+
 /**
  * Whether a hook's command can actually run.
  *
- * The command is a shell string, so this resolves the first path-shaped token
- * in it rather than pretending to parse a shell. A command it cannot make
- * sense of is reported `unknown`, not `pass` — the whole point of this check
- * is the hook whose binary moved.
+ * Deliberately conservative in one direction only. A wrong `pass` here is the
+ * worst outcome available: this check exists FOR the hook whose binary moved,
+ * and a green line saying so is worse than no line. A wrong `fail` is nearly as
+ * bad in practice, because it exits non-zero and breaks a working install — so
+ * anything this cannot settle honestly is `unknown`, never a guess in either
+ * direction.
+ *
+ * The predecessor took "the first whitespace token containing a slash" as the
+ * binary. That selected redirection targets (`>/dev/null`), passed on any
+ * directory because `accessSync(dir, X_OK)` succeeds, and failed on `$VAR`,
+ * `~/bin/...` and inner-quoted paths — four wrong verdicts on working hooks
+ * and one wrong pass on a command that cannot run at all.
  */
 function resolveHookCommand(root: string, command: string): Check {
-  const stripped = command.replace(/^"|"$/g, "");
-  const token = stripped.split(/\s+/).find((part) => part.includes("/") || part.endsWith(".sh"));
+  const label = command.length > 70 ? `${command.slice(0, 70)}…` : command;
+  const words = commandWords(command).map(unquote);
+  const head = words[0];
 
-  if (token === undefined) {
-    return {
-      name: `hook command: ${command.slice(0, 60)}`,
-      status: "unknown",
-      detail: "no path-shaped token in the command — cannot tell whether it resolves",
-    };
+  if (head === undefined) {
+    return { name: `hook command: ${label}`, status: "unknown", detail: "empty command" };
   }
-  if (token.includes("${")) {
-    // ${CLAUDE_PLUGIN_ROOT} and friends are expanded by the harness, not here.
+  if (needsShell(head)) {
     return {
-      name: `hook command: ${token}`,
+      name: `hook command: ${head}`,
       status: "unknown",
-      detail: "contains a variable the harness expands at run time — not resolvable from here",
+      detail: "the shell expands this at run time — not resolvable from here",
     };
   }
 
-  const candidate = token.startsWith("/") ? token : join(root, token);
+  // `node path/to/cli.js …` — node is on PATH, and the SCRIPT is the thing
+  // that goes missing. A script need not be executable to be run this way, so
+  // only its existence is checked.
+  if (INTERPRETERS.has(head)) {
+    const script = words.slice(1).find((word) => !word.startsWith("-"));
+    if (script === undefined || needsShell(script)) {
+      return {
+        name: `hook command: ${head}`,
+        status: "unknown",
+        detail:
+          script === undefined
+            ? `${head} with no script argument — nothing to resolve`
+            : "the script path is expanded by the shell at run time",
+      };
+    }
+    // npx resolves from the registry when the package is absent locally, so a
+    // missing file is not evidence the hook is broken.
+    if (head === "npx") {
+      return {
+        name: `hook command: ${script}`,
+        status: "unknown",
+        detail: "npx resolves at run time, from node_modules or the registry",
+      };
+    }
+    const target = isAbsolute(script) ? script : join(root, script);
+    if (!existsSync(target)) {
+      return { name: `hook command: ${script}`, status: "fail", detail: `does not exist: ${target}` };
+    }
+    if (!statSync(target).isFile()) {
+      return { name: `hook command: ${script}`, status: "fail", detail: `not a file: ${target}` };
+    }
+    return { name: `hook command: ${script}`, status: "pass", detail: target };
+  }
+
+  // A bare name is a PATH lookup, and a missing one IS a dead hook — the spec
+  // requires that to be loud rather than shrugged at.
+  if (!head.includes("/")) {
+    const found = onPath(head);
+    return found === null
+      ? {
+          name: `hook command: ${head}`,
+          status: "fail",
+          detail: `not found on PATH — the hook would fail to start`,
+        }
+      : { name: `hook command: ${head}`, status: "pass", detail: found };
+  }
+
+  const candidate = isAbsolute(head) ? head : join(root, head);
   if (!existsSync(candidate)) {
-    return {
-      name: `hook command: ${token}`,
-      status: "fail",
-      detail: `does not exist: ${candidate}`,
-    };
+    return { name: `hook command: ${head}`, status: "fail", detail: `does not exist: ${candidate}` };
+  }
+  if (!statSync(candidate).isFile()) {
+    // accessSync(dir, X_OK) succeeds on any directory, which is how a
+    // redirection target used to resolve green.
+    return { name: `hook command: ${head}`, status: "fail", detail: `not a file: ${candidate}` };
   }
   try {
+    // Invoked directly, so it must be executable — whatever it is named. The
+    // predecessor only enforced this for `.sh`, which let a non-executable
+    // shim under any other name report `pass`.
     accessSync(candidate, constants.X_OK);
   } catch {
-    // A .js run through node need not be executable; a .sh invoked directly must be.
-    if (candidate.endsWith(".sh")) {
-      return { name: `hook command: ${token}`, status: "fail", detail: `not executable: ${candidate}` };
-    }
+    return { name: `hook command: ${head}`, status: "fail", detail: `not executable: ${candidate}` };
   }
-  return { name: `hook command: ${token}`, status: "pass", detail: candidate };
+  return { name: `hook command: ${head}`, status: "pass", detail: candidate };
 }
 
 function checkConfigs(root: string): Check[] {
@@ -228,15 +318,25 @@ function checkJournalDir(root: string): Check[] {
       detail: "no runs/ directory yet — nothing has been recorded, which is not evidence of a fault",
     });
   } else {
-    const journals = readdirSync(runs).filter((name) => name.endsWith(".jsonl"));
-    checks.push({
-      name: "journals recorded",
-      status: "fact",
-      detail:
-        journals.length === 0
-          ? "no journals recorded — a fact about this directory, not a verdict on the hooks"
-          : `${journals.length} journal(s) present`,
-    });
+    // Guarded. A diagnostic is what someone runs when the repo is already in a
+    // bad state, which is exactly when an unguarded read throws.
+    try {
+      const journals = readdirSync(runs).filter((name) => name.endsWith(".jsonl"));
+      checks.push({
+        name: "journals recorded",
+        status: "fact",
+        detail:
+          journals.length === 0
+            ? "no journals recorded — a fact about this directory, not a verdict on the hooks"
+            : `${journals.length} journal(s) present`,
+      });
+    } catch (error) {
+      checks.push({
+        name: "journals recorded",
+        status: "fail",
+        detail: `runs/ exists but cannot be listed: ${error instanceof Error ? error.message : String(error)}`,
+      });
+    }
   }
 
   return checks;
@@ -247,7 +347,16 @@ function checkWorkflow(root: string): Check {
   if (!existsSync(path)) {
     return { name: "CI workflow", status: "fact", detail: "absent — no CI gate in this repo" };
   }
-  const contents = readFileSync(path, "utf8");
+  let contents: string;
+  try {
+    contents = readFileSync(path, "utf8");
+  } catch (error) {
+    return {
+      name: "CI workflow",
+      status: "fail",
+      detail: `present but unreadable: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
   if (!contents.includes("fetch-depth: 0")) {
     // Not cosmetic. Without it `git show <rev>:<path>` fails, every
     // rev-stamped anchor degrades to the advisory UNVERIFIABLE-REV, and the

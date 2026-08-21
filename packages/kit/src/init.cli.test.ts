@@ -294,3 +294,94 @@ suite("doctor --fix", () => {
     expect(readFileSync(join(root, ".claude", "settings.json"), "utf8")).toBe(settings);
   });
 });
+
+suite("doctor --fix — refuses to guess, and refuses to destroy", () => {
+  it("REFUSES a corrupt kit.json instead of silently switching profile", () => {
+    const root = scratch();
+    mkdirSync(join(root, "openspec"));
+    run("init", "--root", root, "--profile", "prs");
+    writeFileSync(join(root, ".nullius", "kit.json"), '{ "profile": "prs", ');
+
+    const result = run("doctor", "--root", root, "--fix");
+
+    // Corrupt and absent used to collapse into the same null, and null fell
+    // through to re-detection: openspec/ is present, so a `prs` repo became
+    // `specs` — gaining `strict: true`, which is the difference between a PR
+    // comment and a failing job.
+    expect(result.code).toBe(2);
+    expect(result.output).toContain("Refusing to guess");
+    expect(readFileSync(join(root, "nullius.config.json"), "utf8")).toContain("docs/**/*.md");
+  });
+
+  it("preserves kernel config keys the kit does not own", () => {
+    const root = scratch();
+    mkdirSync(join(root, "docs"));
+    run("init", "--root", root, "--profile", "prs");
+    writeFileSync(
+      join(root, "nullius.config.json"),
+      '{"docs":["WRONG/**"],"exclude":["docs/vendor/**"],"minAnchorChars":20}',
+    );
+
+    run("doctor", "--root", root, "--fix");
+    const config = JSON.parse(readFileSync(join(root, "nullius.config.json"), "utf8")) as Record<
+      string,
+      unknown
+    >;
+
+    // nullius.config.json is a KERNEL file with eight valid keys, and the one
+    // users tune. --fix owns `docs` and nothing else.
+    expect(config["docs"]).toEqual(["docs/**/*.md"]);
+    expect(config["exclude"]).toEqual(["docs/vendor/**"]);
+    expect(config["minAnchorChars"]).toBe(20);
+  });
+
+  it("leaves user-owned files byte-identical, per the spec scenario", () => {
+    const root = scratch();
+    mkdirSync(join(root, "docs"));
+    writeFileSync(join(root, "CLAUDE.md"), "# Rules\n\nmine\n");
+    run("init", "--root", root, "--profile", "prs");
+    // The user deliberately removes the pointer.
+    writeFileSync(join(root, "CLAUDE.md"), "# Rules\n\nmine\n");
+    const before = readFileSync(join(root, "CLAUDE.md"), "utf8");
+
+    run("doctor", "--root", root, "--fix");
+
+    expect(readFileSync(join(root, "CLAUDE.md"), "utf8")).toBe(before);
+  });
+
+  it("accounts for skipped files, not just written and failed", () => {
+    const root = scratch();
+    run("init", "--root", root, "--profile", "plans");
+
+    expect(run("doctor", "--root", root, "--fix").stdout).toContain("skipped");
+  });
+});
+
+suite("init — the pointer survives a markdown formatter", () => {
+  it("does not duplicate when the line has been re-wrapped", () => {
+    const root = scratch();
+    mkdirSync(join(root, "docs"));
+    // Exactly what `prettier --prose-wrap always` produces, or a human.
+    writeFileSync(
+      join(root, "CLAUDE.md"),
+      "# My project\n\nLoad-bearing claims about existing code carry an Evidence Anchor — see\n`.nullius/authoring.md`.\n",
+    );
+
+    run("init", "--root", root, "--profile", "prs");
+    const copies = readFileSync(join(root, "CLAUDE.md"), "utf8").split("Evidence Anchor").length - 1;
+
+    // An exact substring check grew a second copy on every run — unboundedly,
+    // in any repo whose formatter runs on commit.
+    expect(copies).toBe(1);
+  });
+
+  it("still appends when the line is genuinely absent", () => {
+    const root = scratch();
+    mkdirSync(join(root, "docs"));
+    writeFileSync(join(root, "CLAUDE.md"), "# My project\n");
+
+    run("init", "--root", root, "--profile", "prs");
+
+    expect(readFileSync(join(root, "CLAUDE.md"), "utf8")).toContain(".nullius/authoring.md");
+  });
+});

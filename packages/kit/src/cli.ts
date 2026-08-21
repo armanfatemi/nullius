@@ -310,10 +310,26 @@ function runDoctor(argv: readonly string[]): number {
   if (options.fix) {
     const detection = detect(root);
     const kit = readKitProfile(root);
-    const profile = findProfile(kit ?? detection.suggestedProfile);
-    if (profile === null) {
-      console.error(`cannot re-render: unknown profile \`${String(kit)}\` in .nullius/kit.json`);
+
+    if (kit.kind === "unreadable") {
+      // Refuse rather than fall back to detection. Guessing here rewrites the
+      // repo's CI gating semantics on the strength of a directory listing.
+      console.error(`cannot re-render: .nullius/kit.json is unreadable — ${kit.reason}`);
+      console.error(
+        "Refusing to guess the profile from repo shape: that would silently change which documents are checked, and whether CI can fail.",
+      );
+      console.error("Fix the file, or re-run `init --profile <name>` to set it deliberately.");
       return 2;
+    }
+
+    const name = kit.kind === "found" ? kit.profile : detection.suggestedProfile;
+    const profile = findProfile(name);
+    if (profile === null) {
+      console.error(`cannot re-render: unknown profile \`${name}\` in .nullius/kit.json`);
+      return 2;
+    }
+    if (kit.kind === "absent") {
+      console.log(`No .nullius/kit.json — using the detected profile \`${profile.name}\` (${detection.reason}).`);
     }
 
     console.log(`Re-rendering managed artifacts for profile \`${profile.name}\`.`);
@@ -323,10 +339,12 @@ function runDoctor(argv: readonly string[]): number {
       kitVersion: packageVersion(),
       actionRef: ACTION_REF,
       hookPolicy: mayWriteHooks(detection.harness),
+      // User-owned files come out byte-identical from a repair.
+      touchUserFiles: false,
     });
     const applied = applyPlan(plan);
     console.log(
-      `  ${applied.written.length} re-rendered, ${applied.unchanged.length} already current, ${applied.failed.length} failed.`,
+      `  ${applied.written.length} re-rendered, ${applied.unchanged.length} already current, ${applied.skipped.length} skipped, ${applied.failed.length} failed.`,
     );
     for (const failure of applied.failed) {
       console.error(`  FAILED  ${failure.path}: ${failure.reason}`);
@@ -346,15 +364,35 @@ function runDoctor(argv: readonly string[]): number {
   return report.failed ? 1 : 0;
 }
 
-/** The profile a previous `init` recorded, so `--fix` re-renders the same one. */
-function readKitProfile(root: string): string | null {
+/**
+ * The profile a previous `init` recorded, so `--fix` re-renders the same one.
+ *
+ * "Corrupt" and "absent" are different answers and must not collapse. They did:
+ * both returned null, and null fell through to re-detection — so a truncated
+ * write or a bad merge silently converted a `prs` repo to `specs`, which turns
+ * CI from advisory to blocking. A corrupt config is the single most likely
+ * state after an interrupted write, and it is the one that must refuse.
+ */
+type KitProfile =
+  | { kind: "found"; profile: string }
+  | { kind: "absent" }
+  | { kind: "unreadable"; reason: string };
+
+function readKitProfile(root: string): KitProfile {
   const path = join(root, ".nullius", "kit.json");
-  if (!existsSync(path)) return null;
+  if (!existsSync(path)) return { kind: "absent" };
+  let raw: string;
   try {
-    const parsed = JSON.parse(readFileSync(path, "utf8")) as { profile?: unknown };
-    return typeof parsed.profile === "string" ? parsed.profile : null;
-  } catch {
-    return null;
+    raw = readFileSync(path, "utf8");
+  } catch (error) {
+    return { kind: "unreadable", reason: error instanceof Error ? error.message : String(error) };
+  }
+  try {
+    const parsed = JSON.parse(raw) as { profile?: unknown };
+    if (typeof parsed.profile === "string") return { kind: "found", profile: parsed.profile };
+    return { kind: "unreadable", reason: "no `profile` string in .nullius/kit.json" };
+  } catch (error) {
+    return { kind: "unreadable", reason: error instanceof Error ? error.message : String(error) };
   }
 }
 

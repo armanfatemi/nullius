@@ -1,7 +1,7 @@
 {
   "name": "nullius-monorepo",
   "private": true,
-  "description": "nullius — epistemic discipline for agent systems, mechanically enforced. Monorepo for the @nullius-inverba/* packages.",
+  "description": "nullius \u2014 epistemic discipline for agent systems, mechanically enforced. Monorepo for the @nullius-inverba/* packages.",
   "license": "MIT",
   "packageManager": "pnpm@11.5.1",
   "engines": {
@@ -9,7 +9,7 @@
   },
   "scripts": {
     "build": "pnpm -r build",
-    "test": "pnpm -r test",
+    "test": "pnpm -r --no-bail test",
     "type-check": "pnpm -r type-check"
   }
 }
