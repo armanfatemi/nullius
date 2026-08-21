@@ -44,6 +44,12 @@ stays a hard gate and only the line number goes advisory (`STALE`).
 Never repoint a line number while keeping an old stamp: that turns an advisory
 `STALE` into a hard `FABRICATED`, because the text was not there at that commit.
 
+**Squash-merge destroys the commit a stamp names.** This repo merges PRs with
+merge commits for that reason — a squash leaves every anchor stamped against a
+branch commit unreachable from `main`, and the checker then fails open with the
+advisory `UNVERIFIABLE-REV`: CI stays green while the hard gate silently stops
+existing. If a PR is squashed anyway, re-pin its anchors to the squash commit.
+
 Verify with the tool, never by hand — a line-by-line script only knows "does
 line N match" and misses `FABRICATED` / `WEAK-ANCHOR` / `UNPINNED` / `DRIFT`:
 

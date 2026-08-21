@@ -195,7 +195,7 @@ Both lines are needed: `install` resolves `nullius@nullius` as
 a journal into your project, so it happens only where a human asked for it —
 the hooks check for the directory and exit silently otherwise:
 
-**Evidence:** `plugin/hooks/witness-record.sh:28@da88cff` — `    if [ ! -d "$root/.nullius" ]; then`
+**Evidence:** `plugin/hooks/witness-record.sh:28@6f2428f` — `    if [ ! -d "$root/.nullius" ]; then`
 
 Set `NULLIUS_WITNESS=1` instead if you would rather not commit the directory.
 The agent still cannot decline to be recorded — that is the point — but a
@@ -211,7 +211,7 @@ By default the hooks fetch the published recorder. To pin a local build —
 which is what this repo does, so it dogfoods its own kit rather than a copy
 from npm — set `NULLIUS_KIT_BIN` in `.claude/settings.json`:
 
-**Evidence:** `plugin/hooks/witness-record.sh:37@da88cff` — `runner="${NULLIUS_KIT_BIN:-npx -y @nullius-inverba/kit}"`
+**Evidence:** `plugin/hooks/witness-record.sh:37@6f2428f` — `runner="${NULLIUS_KIT_BIN:-npx -y @nullius-inverba/kit}"`
 
 ```json
 { "env": { "NULLIUS_KIT_BIN": "node packages/kit/dist/cli.js" } }
@@ -221,7 +221,7 @@ from npm — set `NULLIUS_KIT_BIN` in `.claude/settings.json`:
 them keyed on `${CLAUDE_PLUGIN_ROOT}`, and a second copy is a path nothing can
 tell apart from the first:
 
-**Evidence:** `plugin/hooks/hooks.json:34@da88cff` — `    "SubagentStop": [`
+**Evidence:** `plugin/hooks/hooks.json:34@6f2428f` — `    "SubagentStop": [`
 
 Recording is the hooks tier — what the harness attests and the agent had no
 opportunity to decline. The self-reported tier, where an agent states what it
