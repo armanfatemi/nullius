@@ -50,6 +50,14 @@ pipeline this tool was extracted from — the incident is told in
 is a citation convention (**Evidence Anchors**) plus a deterministic checker
 that re-executes every citation, forever.
 
+Where this came from, at length:
+[Nobody Opposed the Delay](https://armanfatemi.substack.com/p/nobody-opposed-the-delay)
+— why the useful question about a wrong claim is not why it was made but what
+happened to the objection, and why the answer turned out to be a pipeline
+rather than a better reviewer. It also tells the second incident behind this
+repo: a rule checker that went quiet for a week while everything looked fine,
+which is where the insistence on making absence loud comes from.
+
 ## Try it in ten seconds
 
 ```sh
