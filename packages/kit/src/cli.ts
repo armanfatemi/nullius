@@ -15,11 +15,15 @@
  */
 
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import { isJournalFailure, validateJournal, type JournalOrigin } from "@nullius-inverba/claims";
 
+import { detect, mayWriteHooks } from "./detect";
+import { formatReport, runChecks } from "./doctor";
+import { findProfile, PROFILE_NAMES, PROFILES } from "./profiles";
+import { applyPlan, buildPlan, formatPlan } from "./render";
 import {
   appendRecords,
   journalPathFor,
@@ -40,6 +44,8 @@ const ADVISORY_LIMIT = 10;
 const USAGE = `nullius-kit — witness recording for agent runs
 
 usage:
+  nullius-kit init   [--profile <name>] [--dry-run] [--yes] [--root <dir>]
+  nullius-kit doctor [--fix] [--root <dir>]
   nullius-kit witness record [--origin hooks|self-reported] [--root <dir>]
   nullius-kit witness check  [--root <dir>]
 
@@ -75,6 +81,11 @@ function main(): number {
     console.log(USAGE);
     return argv.length === 0 ? 2 : 0;
   }
+
+  // `init` and `doctor` own their own flags; the witness options parser would
+  // reject them.
+  if (argv[0] === "init") return runInit(argv.slice(1));
+  if (argv[0] === "doctor") return runDoctor(argv.slice(1));
 
   const options = parseOptions(argv);
   if (options === null) return 2;
@@ -120,6 +131,279 @@ function parseOptions(argv: readonly string[]): CliOptions | null {
   }
 
   return options;
+}
+
+/**
+ * Pinned by default. `@main` is a moving target, and a workflow that silently
+ * changes behaviour is the thing this repo exists to object to.
+ */
+const ACTION_REF = "armanfatemi/nullius/action@v1";
+
+interface InitOptions {
+  profile: string | null;
+  dryRun: boolean;
+  root: string;
+}
+
+function parseInit(argv: readonly string[]): InitOptions | null {
+  const options: InitOptions = { profile: null, dryRun: false, root: process.cwd() };
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === "--dry-run") {
+      options.dryRun = true;
+    } else if (arg === "--yes" || arg === "-y") {
+      // Accepted and inert: init never prompts, so there is nothing to confirm.
+      // Refusing the flag would break the copy-pasteable line in the README
+      // for no gain; silently accepting it is honest because the promise it
+      // asks for is one init already keeps.
+      continue;
+    } else if (arg === "--profile") {
+      const value = argv[(index += 1)];
+      if (value === undefined) {
+        console.error(`--profile needs a name (${PROFILE_NAMES.join(", ")})`);
+        return null;
+      }
+      options.profile = value;
+    } else if (arg === "--root") {
+      const value = argv[(index += 1)];
+      if (value === undefined) {
+        console.error("--root needs a directory");
+        return null;
+      }
+      if (value.trim() === "") {
+        // resolve("") is process.cwd(), so `--root "$REPO"` with REPO unset
+        // would silently initialise whatever directory the shell is in.
+        console.error("--root was empty — refusing to fall back to the current directory");
+        return null;
+      }
+      options.root = value;
+    } else {
+      console.error(`unknown flag for \`init\`: ${String(arg)}\n\n${USAGE}`);
+      return null;
+    }
+  }
+
+  return options;
+}
+
+function runInit(argv: readonly string[]): number {
+  const options = parseInit(argv);
+  if (options === null) return 2;
+
+  const root = resolve(options.root);
+  if (!existsSync(root)) {
+    console.error(`no such directory: ${root}`);
+    return 2;
+  }
+  if (!statSync(root).isDirectory()) {
+    // existsSync alone let a FILE through, and the plan then promised three
+    // creates before mkdir died on it.
+    console.error(`not a directory: ${root}`);
+    return 2;
+  }
+
+  const detection = detect(root);
+  const name = options.profile ?? detection.suggestedProfile;
+  const profile = findProfile(name);
+  if (profile === null) {
+    console.error(
+      `unknown profile: ${name}\n\nprofiles:\n${PROFILES.map((entry) => `  ${entry.name.padEnd(7)} ${entry.summary}`).join("\n")}`,
+    );
+    return 2;
+  }
+
+  if (options.profile === null) {
+    console.log(`Detected profile \`${profile.name}\` — ${detection.reason}.`);
+    console.log("Override with --profile <name>.");
+    console.log("");
+  }
+
+  const plan = buildPlan({
+    root,
+    profile,
+    kitVersion: packageVersion(),
+    actionRef: ACTION_REF,
+    hookPolicy: mayWriteHooks(detection.harness),
+  });
+
+  console.log(formatPlan(plan, options.dryRun));
+
+  if (options.dryRun) {
+    console.log("");
+    console.log("Dry run — the working tree is unchanged.");
+    return 0;
+  }
+
+  const result = applyPlan(plan);
+  console.log("");
+  console.log(
+    `${result.written.length} written, ${result.unchanged.length} already current, ${result.skipped.length} skipped, ${result.failed.length} failed.`,
+  );
+
+  if (result.failed.length > 0) {
+    console.error("");
+    for (const failure of result.failed) {
+      console.error(`  FAILED  ${failure.path}`);
+      console.error(`          ${failure.reason}`);
+    }
+    // Non-zero, and the counts above say exactly which files did land. A
+    // partial apply reported as success is the shape of lie this repo exists
+    // to refuse.
+    console.error("");
+    console.error("Some files were not written. The counts above are what actually happened.");
+    return 1;
+  }
+  return 0;
+}
+
+interface DoctorOpts {
+  fix: boolean;
+  root: string;
+}
+
+function parseDoctor(argv: readonly string[]): DoctorOpts | null {
+  const options: DoctorOpts = { fix: false, root: process.cwd() };
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === "--fix") {
+      options.fix = true;
+    } else if (arg === "--root") {
+      const value = argv[(index += 1)];
+      if (value === undefined) {
+        console.error("--root needs a directory");
+        return null;
+      }
+      if (value.trim() === "") {
+        console.error("--root was empty — refusing to fall back to the current directory");
+        return null;
+      }
+      options.root = value;
+    } else {
+      console.error(`unknown flag for \`doctor\`: ${String(arg)}\n\n${USAGE}`);
+      return null;
+    }
+  }
+
+  return options;
+}
+
+function runDoctor(argv: readonly string[]): number {
+  const options = parseDoctor(argv);
+  if (options === null) return 2;
+
+  const root = resolve(options.root);
+  if (!existsSync(root)) {
+    console.error(`no such directory: ${root}`);
+    return 2;
+  }
+  if (!statSync(root).isDirectory()) {
+    console.error(`not a directory: ${root}`);
+    return 2;
+  }
+
+  // --fix first, so the checks below describe the repaired state rather than
+  // the one the user is about to stop having. There is no separate `update`
+  // verb: diagnose-then-repair is one mental model, and a second verb would
+  // answer no question this one does not.
+  if (options.fix) {
+    const detection = detect(root);
+    const kit = readKitProfile(root);
+
+    if (kit.kind === "unreadable") {
+      // Refuse rather than fall back to detection. Guessing here rewrites the
+      // repo's CI gating semantics on the strength of a directory listing.
+      console.error(`cannot re-render: .nullius/kit.json is unreadable — ${kit.reason}`);
+      console.error(
+        "Refusing to guess the profile from repo shape: that would silently change which documents are checked, and whether CI can fail.",
+      );
+      console.error("Fix the file, or re-run `init --profile <name>` to set it deliberately.");
+      return 2;
+    }
+
+    const name = kit.kind === "found" ? kit.profile : detection.suggestedProfile;
+    const profile = findProfile(name);
+    if (profile === null) {
+      console.error(`cannot re-render: unknown profile \`${name}\` in .nullius/kit.json`);
+      return 2;
+    }
+    if (kit.kind === "absent") {
+      console.log(`No .nullius/kit.json — using the detected profile \`${profile.name}\` (${detection.reason}).`);
+    }
+
+    console.log(`Re-rendering managed artifacts for profile \`${profile.name}\`.`);
+    const plan = buildPlan({
+      root,
+      profile,
+      kitVersion: packageVersion(),
+      actionRef: ACTION_REF,
+      hookPolicy: mayWriteHooks(detection.harness),
+      // User-owned files come out byte-identical from a repair.
+      touchUserFiles: false,
+    });
+    const applied = applyPlan(plan);
+    console.log(
+      `  ${applied.written.length} re-rendered, ${applied.unchanged.length} already current, ${applied.skipped.length} skipped, ${applied.failed.length} failed.`,
+    );
+    for (const failure of applied.failed) {
+      console.error(`  FAILED  ${failure.path}: ${failure.reason}`);
+    }
+    // Hook entries are deliberately untouched. `--fix` may only ever modify
+    // artifacts matching the kit's own command-path convention, and the kit
+    // writes no hooks at all — so there is nothing here it owns.
+    console.log("");
+  }
+
+  const report = runChecks({
+    root,
+    probeDir: join(root, "spec", "fixtures", "probes", "claude-code"),
+  });
+  console.log(formatReport(report));
+
+  return report.failed ? 1 : 0;
+}
+
+/**
+ * The profile a previous `init` recorded, so `--fix` re-renders the same one.
+ *
+ * "Corrupt" and "absent" are different answers and must not collapse. They did:
+ * both returned null, and null fell through to re-detection — so a truncated
+ * write or a bad merge silently converted a `prs` repo to `specs`, which turns
+ * CI from advisory to blocking. A corrupt config is the single most likely
+ * state after an interrupted write, and it is the one that must refuse.
+ */
+type KitProfile =
+  | { kind: "found"; profile: string }
+  | { kind: "absent" }
+  | { kind: "unreadable"; reason: string };
+
+function readKitProfile(root: string): KitProfile {
+  const path = join(root, ".nullius", "kit.json");
+  if (!existsSync(path)) return { kind: "absent" };
+  let raw: string;
+  try {
+    raw = readFileSync(path, "utf8");
+  } catch (error) {
+    return { kind: "unreadable", reason: error instanceof Error ? error.message : String(error) };
+  }
+  try {
+    const parsed = JSON.parse(raw) as { profile?: unknown };
+    if (typeof parsed.profile === "string") return { kind: "found", profile: parsed.profile };
+    return { kind: "unreadable", reason: "no `profile` string in .nullius/kit.json" };
+  } catch (error) {
+    return { kind: "unreadable", reason: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+function packageVersion(): string {
+  try {
+    const url = new URL("../package.json", import.meta.url);
+    const manifest = JSON.parse(readFileSync(url, "utf8")) as { version?: string };
+    return manifest.version ?? "unknown";
+  } catch {
+    return "unknown";
+  }
 }
 
 function runRecord(options: CliOptions): number {

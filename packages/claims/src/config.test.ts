@@ -92,3 +92,39 @@ describe("parseConfig — checker tuning keys", () => {
     );
   });
 });
+
+/**
+ * The reservation exists because unknown keys are a hard error here. A repo
+ * initialised by a newer kit must not break an older kernel pinned in CI, and
+ * the only way to buy that is to accept the key before anything writes it.
+ */
+describe("parseConfig — the configVersion reservation", () => {
+  it("accepts configVersion without complaint", () => {
+    expect(() => parseConfig({ configVersion: 1 }, "c.json")).not.toThrow();
+  });
+
+  it("ignores it — a reserved key is not a parsed one", () => {
+    // Deliberately absent from the result. Reading it would make this build
+    // depend on a schema that has not been designed yet.
+    expect(parseConfig({ configVersion: 1 }, "c.json")).toEqual({});
+  });
+
+  it("does not type-check the value, so a future format cannot break this build", () => {
+    // If today's kernel demanded a number and the key later became "2.0",
+    // every pinned older CI would fail on a repo it should merely not
+    // understand — the exact breakage the reservation is meant to prevent.
+    for (const value of [1, "2.0", null, { major: 3 }, []]) {
+      expect(() => parseConfig({ configVersion: value }, "c.json")).not.toThrow();
+    }
+  });
+
+  it("still rejects keys that are genuinely unknown", () => {
+    expect(() => parseConfig({ configversion: 1 }, "c.json")).toThrow(/unknown key 'configversion'/);
+  });
+
+  it("coexists with real settings", () => {
+    expect(parseConfig({ configVersion: 1, driftWindow: 5 }, "c.json")).toEqual({
+      driftWindow: 5,
+    });
+  });
+});

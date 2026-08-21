@@ -19,6 +19,7 @@ import {
   extractAuditClaims,
   formatAuditPlan,
 } from "./audit";
+import { CliError, parseCli, type AuditArgs, type CheckArgs, type WitnessArgs } from "./cliArgs";
 import { parseConfig, type ClaimsConfig } from "./config";
 import { DEMO_DOC_PATH, demoResults, writeDemoFixture } from "./demo";
 import { buildEagerPrompt } from "./eagerPrompt";
@@ -143,68 +144,6 @@ function report(results: ClaimResult[]): number {
   return failures;
 }
 
-interface ParsedArgs {
-  command: string | undefined;
-  globs: string[];
-  configPath: string | undefined;
-  requireMarkers: boolean;
-  emitBrief: string | undefined;
-  extract: boolean;
-  propose: boolean;
-  help: boolean;
-  version: boolean;
-}
-
-function parseArgs(argv: string[]): ParsedArgs {
-  const parsed: ParsedArgs = {
-    command: undefined,
-    globs: [],
-    configPath: undefined,
-    requireMarkers: false,
-    emitBrief: undefined,
-    extract: false,
-    propose: false,
-    help: false,
-    version: false,
-  };
-
-  for (let index = 0; index < argv.length; index += 1) {
-    const arg = argv[index];
-    if (arg === undefined) continue;
-    if (arg === "--help" || arg === "-h") {
-      parsed.help = true;
-    } else if (arg === "--version") {
-      parsed.version = true;
-    } else if (arg === "--require-markers") {
-      parsed.requireMarkers = true;
-    } else if (arg === "--extract") {
-      parsed.extract = true;
-    } else if (arg === "--propose") {
-      parsed.propose = true;
-    } else if (arg === "--emit-brief") {
-      index += 1;
-      parsed.emitBrief = argv[index];
-      if (parsed.emitBrief === undefined) {
-        throw new Error("--emit-brief requires a claim id (e.g. c1)");
-      }
-    } else if (arg === "--config") {
-      index += 1;
-      parsed.configPath = argv[index];
-      if (parsed.configPath === undefined) {
-        throw new Error("--config requires a path argument");
-      }
-    } else if (arg.startsWith("--")) {
-      throw new Error(`unknown option: ${arg}`);
-    } else if (parsed.command === undefined) {
-      parsed.command = arg;
-    } else {
-      parsed.globs.push(arg);
-    }
-  }
-
-  return parsed;
-}
-
 function packageVersion(): string {
   // dist/cli.js sits one level below the package root.
   const url = new URL("../package.json", import.meta.url);
@@ -237,9 +176,9 @@ function runDemo(): number {
   return 0;
 }
 
-function runAudit(args: ParsedArgs): number {
-  const doc = args.globs[0];
-  if (doc === undefined || args.globs.length > 1) {
+function runAudit(args: AuditArgs): number {
+  const doc = args.docs[0];
+  if (doc === undefined || args.docs.length > 1) {
     console.error(
       "usage: nullius audit <doc> [--emit-brief <id> | --extract | --propose]",
     );
@@ -291,9 +230,9 @@ function runAudit(args: ParsedArgs): number {
   return 0;
 }
 
-function runWitness(args: ParsedArgs): number {
-  const [sub, journal] = args.globs;
-  if (sub !== "validate" || journal === undefined || args.globs.length > 2) {
+function runWitness(args: WitnessArgs): number {
+  const [sub, journal] = args.operands;
+  if (sub !== "validate" || journal === undefined || args.operands.length > 2) {
     console.error("usage: nullius witness validate <journal.jsonl>");
     return 2;
   }
@@ -373,7 +312,7 @@ function provenance(report: JournalReport): string {
   }
 }
 
-function runCheck(args: ParsedArgs): number {
+function runCheck(args: CheckArgs): number {
   let config: ClaimsConfig;
   try {
     config = loadConfig(args.configPath);
@@ -510,46 +449,43 @@ function runCheck(args: ParsedArgs): number {
 }
 
 function main(): number {
-  let args: ParsedArgs;
+  let command;
   try {
-    args = parseArgs(process.argv.slice(2));
+    command = parseCli(process.argv.slice(2));
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
+    // A parse error prints its own sentence and the usage, because the two
+    // together are what tell someone which of the two they got wrong.
+    if (error instanceof CliError) console.error(`\n${USAGE}`);
     return 2;
   }
 
-  if (args.version) {
-    console.log(packageVersion());
-    return 0;
+  switch (command.kind) {
+    case "version":
+      console.log(packageVersion());
+      return 0;
+    case "help":
+      console.log(USAGE);
+      // No arguments is not the same request as `--help`, and the exit code
+      // is where the difference is visible to a script.
+      return command.requested ? 0 : 2;
+    case "demo":
+      return runDemo();
+    case "check":
+      return runCheck(command);
+    case "witness":
+      return runWitness(command);
+    case "audit":
+      if (command.viaAlias) {
+        // Kept working so a pinned pipeline does not break; the name moved
+        // because "find evidence for this document" is one mode of auditing,
+        // and the confirmation-shaped one at that.
+        console.error(
+          "note: `eager-prompt` is now `audit <doc> --propose`; the old name still works.",
+        );
+      }
+      return runAudit(command);
   }
-  if (args.help || args.command === undefined) {
-    console.log(USAGE);
-    return args.help ? 0 : 2;
-  }
-  if (args.command === "demo") {
-    return runDemo();
-  }
-  if (args.command === "audit") {
-    return runAudit(args);
-  }
-  if (args.command === "witness") {
-    return runWitness(args);
-  }
-  if (args.command === "eager-prompt") {
-    // Kept working so a pinned pipeline does not break; the name moved because
-    // "find evidence for this document" is one mode of auditing, and the
-    // confirmation-shaped one at that.
-    console.error(
-      "note: `eager-prompt` is now `audit <doc> --propose`; the old name still works.",
-    );
-    return runAudit({ ...args, propose: true });
-  }
-  if (args.command === "check") {
-    return runCheck(args);
-  }
-
-  console.error(`unknown command: ${args.command}\n\n${USAGE}`);
-  return 2;
 }
 
 process.exit(main());

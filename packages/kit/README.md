@@ -17,6 +17,113 @@ A journal the agent writes about itself has exactly that problem. A journal the
 **harness runtime** writes does not: hooks fire whether or not the agent finds
 them convenient, and an agent cannot decline to be recorded.
 
+## `init` and `doctor` — and what the kit claims ownership of
+
+```sh
+nullius-kit init [--profile plans|prs|specs] [--dry-run] [--yes] [--root <dir>]
+nullius-kit doctor [--fix] [--root <dir>]
+```
+
+`init` is non-interactive by design. Its most common operator is an agent
+driving a terminal, then CI, then a human pasting from a README — all three
+need flags and a printed record, not a wizard. `--yes` is accepted and inert
+for that reason: there is nothing to confirm.
+
+### The plan is the unit
+
+`init` builds a complete plan, prints it, and only then applies it. `--dry-run`
+is the same code path minus the final step, so it cannot drift from the real
+one — a dry run that runs different code is a dry run that lies.
+
+Every line of the write-log says what happened and why:
+
+```
+  create    nullius.config.json
+            which documents to check, and how strictly
+  unchanged .nullius/kit.json
+            kit settings — kept out of nullius.config.json
+```
+
+A write that fails is reported per file and exits non-zero. A partial apply
+reported as success is the shape of lie this tool exists to refuse.
+
+### Ownership — four rules
+
+**1. One delivery mechanism per artifact.** On Claude Code the plugin delivers
+hooks, skills and commands. `init` writes none of them, and says so rather than
+staying quiet:
+
+```
+  note: No hook entries written: the plugin delivers the hooks; a second
+  copy is a path doctor cannot disambiguate.
+```
+
+**2. Pointers, not rendered content, in files you own.** Managed content lives
+in kit-owned files under `.nullius/`. Your CLAUDE.md or AGENTS.md gets one
+line pointing at it — appended once by `init`, with the rest of the file copied
+through untouched. `init` never creates such a file; inventing someone's
+agent-instructions file is not this tool's decision.
+
+The presence check compares with whitespace collapsed, so a markdown formatter
+that re-wraps the line does not cause a second copy to be appended. And
+`doctor --fix` does not place the pointer at all: user-owned files come out of
+a repair byte-identical, so removing the line stays removed.
+
+A block would collect four wounds a pointer does not: users edit inside the
+markers, version strings conflict on every release, marker conventions collide
+with other tools, and blocks outlive uninstallation as cargo-culted
+instructions. Removing a pointer is deleting one line.
+
+**3. Hook identity is the command path.** `.claude/settings.json` hook entries
+are anonymous objects — JSON has no comments and the schema no id field — so
+the command string is the only durable identity. `doctor --fix` modifies only
+entries whose command resolves to this kit. The plugin's
+`${CLAUDE_PLUGIN_ROOT}` hooks are deliberately not matched: claiming them would
+mean editing another mechanism's entries.
+
+**4. Kit settings live in `.nullius/kit.json`.** Never as new keys in
+`nullius.config.json`, whose unknown keys are a hard error — the right
+behaviour for a checker, and fatal for cohabitation, since one kit key there
+would break every older kernel pinned in CI.
+
+### What `doctor` will and will not say
+
+Four statuses, counted separately so they cannot be summed into a reassuring
+total:
+
+| | |
+| --- | --- |
+| `ok` | checked, and it holds |
+| `FAIL` | checked, and it does not — exits non-zero |
+| `??` | **not checkable from here.** Never guessed either way |
+| `--` | an observation with no verdict attached |
+
+The `--` row is the one that matters most. An empty journal directory reports
+*"no journals recorded — a fact about this directory, not a verdict on the
+hooks"*, and does not fail the run. An idle repo must not look broken.
+
+`doctor` is local-only. "Is the journal receiving records" as a remote check is
+either an mtime heuristic or network calls in a tool whose README carries a
+live anchor asserting it makes none.
+
+It ends with a **live proof**: a synthetic dispatch through the installed
+recorder, validated by the installed validator, verdict printed. A list of
+green configuration checks is a claim about configuration; this is the only
+check that exercises the pipeline end to end.
+
+`--fix` re-renders managed artifacts using the profile recorded in
+`.nullius/kit.json` — what was installed, not what the repo looks like today.
+If that file is unreadable it **refuses**, rather than falling back to
+detection: guessing there would rewrite which documents are checked and whether
+CI can fail, on the strength of a directory listing.
+
+It also replaces only the keys it owns in `nullius.config.json` (`docs`).
+That file is the kernel's, with eight valid keys and the ones users actually
+tune — `exclude`, `driftWindow`, `minAnchorChars` — and they are carried
+through untouched.
+
+There is no `update` verb; diagnose-then-repair is one mental model.
+
 ## `witness record`
 
 One hook payload on stdin, one journal record appended under an advisory lock:
