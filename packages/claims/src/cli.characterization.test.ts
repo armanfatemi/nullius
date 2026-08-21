@@ -82,11 +82,13 @@ suite("CLI characterization — top-level", () => {
     expect(result.output).toContain("unknown command: frobnicate");
   });
 
-  it("rejects an unknown option with exit 2", () => {
+  it("rejects an unknown option, naming the command it was offered to", () => {
     const result = run("check", "--bogus");
 
     expect(result.code).toBe(2);
-    expect(result.output).toContain("unknown option: --bogus");
+    // Was `unknown option: --bogus` before per-command parsing. The command
+    // name is the addition: the same flag can be unknown here and fine there.
+    expect(result.output).toContain("unknown option for `check`: --bogus");
   });
 
   it("rejects --config with no value", () => {
@@ -105,32 +107,44 @@ suite("CLI characterization — top-level", () => {
 });
 
 /**
- * The shared flag namespace, recorded exactly as it behaves. This is the
- * behaviour task 1.1 exists to remove, so it is pinned rather than asserted as
- * correct: after the refactor these expectations SHOULD need updating, and the
- * update is the moment to decide the new contract deliberately.
+ * These four cases are the whole point of task 1.1, and they are the only
+ * expectations in this file that the refactor was allowed to change. Each one
+ * records what it used to do, because "a flag from another command is accepted
+ * and ignored" is a failure a reader will not believe was ever shipped unless
+ * the old behaviour is written down next to the new one.
  */
-suite("CLI characterization — the shared flag namespace (pre-refactor)", () => {
-  it("accepts a flag BEFORE the command name", () => {
+suite("CLI — flags belong to commands", () => {
+  it("refuses a flag placed before the command, and says where it goes", () => {
+    // WAS: exit 1 — the flag was honoured from before the verb, because one
+    // parser scanned all of argv for both commands and options.
     const result = run("--require-markers", "check", "CLAUDE.md");
 
-    // CLAUDE.md carries no anchors, so --require-markers makes this exit 1.
-    // The point of the case is that the flag was honoured from before the verb.
-    expect(result.code).toBe(1);
+    expect(result.code).toBe(2);
+    expect(result.output).toContain("the command comes first");
   });
 
-  it("silently accepts an audit-only flag on check, and ignores it", () => {
+  it("refuses an audit-only flag on check, naming its real owner", () => {
+    // WAS: exit 0, flag silently ignored.
     const result = run("check", "CLAUDE.md", "--extract");
 
-    expect(result.code).toBe(0);
-    expect(result.output).not.toContain("unknown option");
+    expect(result.code).toBe(2);
+    expect(result.output).toContain("--extract is an option of `audit`");
   });
 
-  it("silently accepts a check-only flag on audit, and ignores it", () => {
+  it("refuses a check-only flag on audit, naming its real owner", () => {
+    // WAS: exit 0, flag silently ignored — the dangerous one. A user who
+    // believed --require-markers gated that run was wrong, and nothing said so.
     const result = run("audit", "README.md", "--require-markers");
 
-    expect(result.code).toBe(0);
-    expect(result.output).not.toContain("unknown option");
+    expect(result.code).toBe(2);
+    expect(result.output).toContain("--require-markers is an option of `check`");
+  });
+
+  it("refuses flags on witness, which takes none", () => {
+    const result = run("witness", "validate", "spec/fixtures/valid-run.jsonl", "--oops");
+
+    expect(result.code).toBe(2);
+    expect(result.output).toContain("unknown option for `witness`");
   });
 });
 

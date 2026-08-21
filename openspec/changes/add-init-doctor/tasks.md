@@ -2,7 +2,7 @@
 
 ## 1. Kernel prerequisites
 
-- [ ] 1.1 Restructure the CLI to per-command parsers (hand-rolled is fine;
+- [x] 1.1 Restructure the CLI to per-command parsers (hand-rolled is fine;
       the shared flag namespace is what must go)
 - [ ] 1.2 Reserve `configVersion` in kernel config (accept and ignore)
 - [ ] 1.3 Tag the Action `v1`; update README to pin it
