@@ -23,11 +23,11 @@
 
 ## 3. doctor
 
-- [ ] 3.1 Local checks (hooks resolvable, shims executable, configs parseable,
+- [x] 3.1 Local checks (hooks resolvable, shims executable, configs parseable,
       journal dir writable, workflow present)
-- [ ] 3.2 Harness payload probe integration (from add-witness-recording 3.4)
-- [ ] 3.3 Live fixture proof as the final step
-- [ ] 3.4 `--fix`: re-render managed artifacts; ownership matching via the
+- [x] 3.2 Harness payload probe integration (from add-witness-recording 3.4)
+- [x] 3.3 Live fixture proof as the final step
+- [x] 3.4 `--fix`: re-render managed artifacts; ownership matching via the
       command-path convention only
 
 ## 4. Docs

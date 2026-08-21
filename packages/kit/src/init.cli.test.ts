@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
@@ -183,5 +183,114 @@ suite("init — the action ref is pinned at the call site", () => {
     // is the only test that pins the real default.
     expect(contents).toContain("armanfatemi/nullius/action@v1");
     expect(contents).not.toContain("action@main");
+  });
+});
+
+suite("doctor — the command surface", () => {
+  it("exits 0 on a repo with nothing wrong", () => {
+    const result = run("doctor", "--root", scratch());
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("live proof");
+  });
+
+  it("ends with the live proof, not with a list of green checks", () => {
+    const lines: string[] = run("doctor", "--root", scratch()).stdout.trimEnd().split("\n");
+    const isCheckLine = (line: string): boolean => /^\s{2}(ok|--|\?\?)\s/.test(line);
+    const proofIndex = lines.findIndex((line) => line.includes("live proof"));
+
+    let lastCheck = -1;
+    for (let index = 0; index < lines.length; index += 1) {
+      if (isCheckLine(lines[index] ?? "")) lastCheck = index;
+    }
+
+    expect(proofIndex).toBeGreaterThanOrEqual(0);
+    expect(proofIndex).toBe(lastCheck);
+  });
+
+  it("exits 1 when a managed hook's command does not resolve", () => {
+    const root = scratch();
+    mkdirSync(join(root, ".claude"));
+    writeFileSync(
+      join(root, ".claude", "settings.json"),
+      JSON.stringify({
+        hooks: {
+          PreToolUse: [
+            { matcher: "Task", hooks: [{ type: "command", command: ".nullius/hooks/gone.sh" }] },
+          ],
+        },
+      }),
+    );
+
+    const result = run("doctor", "--root", root);
+
+    expect(result.code).toBe(1);
+    expect(result.output).toContain("gone.sh");
+  });
+
+  it("stays green on an idle repo with an empty journal directory", () => {
+    const root = scratch();
+    mkdirSync(join(root, ".nullius", "runs"), { recursive: true });
+
+    const result = run("doctor", "--root", root);
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("not a verdict");
+  });
+
+  it("refuses an empty --root, like init", () => {
+    expect(run("doctor", "--root", "").code).toBe(2);
+  });
+
+  it("rejects an unknown flag", () => {
+    const result = run("doctor", "--root", scratch(), "--bogus");
+
+    expect(result.code).toBe(2);
+    expect(result.output).toContain("unknown flag");
+  });
+});
+
+suite("doctor --fix", () => {
+  it("re-renders a managed artifact someone edited", () => {
+    const root = scratch();
+    mkdirSync(join(root, "openspec"));
+    run("init", "--root", root, "--profile", "specs");
+    writeFileSync(join(root, "nullius.config.json"), '{"docs":["WRONG/**"]}\n');
+
+    const result = run("doctor", "--root", root, "--fix");
+
+    expect(result.stdout).toContain("Re-rendering");
+    expect(readFileSync(join(root, "nullius.config.json"), "utf8")).toContain("openspec/**/*.md");
+  });
+
+  it("re-renders using the profile a previous init recorded", () => {
+    const root = scratch();
+    // No openspec/ here, so detection alone would say `plans`. kit.json is
+    // what makes --fix reproduce the profile actually installed.
+    run("init", "--root", root, "--profile", "specs");
+    rmSync(join(root, ".github", "workflows", "claims.yml"));
+
+    run("doctor", "--root", root, "--fix");
+
+    expect(existsSync(join(root, ".github", "workflows", "claims.yml"))).toBe(true);
+  });
+
+  it("does not touch a hook entry it does not own", () => {
+    const root = scratch();
+    mkdirSync(join(root, ".claude"));
+    const settings = JSON.stringify({
+      hooks: {
+        PreToolUse: [
+          { matcher: "Bash", hooks: [{ type: "command", command: "./scripts/theirs.sh" }] },
+        ],
+      },
+    });
+    writeFileSync(join(root, ".claude", "settings.json"), settings);
+
+    run("doctor", "--root", root, "--fix");
+
+    // Byte-identical. --fix owns artifacts matching the kit's command-path
+    // convention and nothing else; the kit writes no hooks at all.
+    expect(readFileSync(join(root, ".claude", "settings.json"), "utf8")).toBe(settings);
   });
 });

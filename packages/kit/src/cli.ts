@@ -21,6 +21,7 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { isJournalFailure, validateJournal, type JournalOrigin } from "@nullius-inverba/claims";
 
 import { detect, mayWriteHooks } from "./detect";
+import { formatReport, runChecks } from "./doctor";
 import { findProfile, PROFILE_NAMES, PROFILES } from "./profiles";
 import { applyPlan, buildPlan, formatPlan } from "./render";
 import {
@@ -43,7 +44,8 @@ const ADVISORY_LIMIT = 10;
 const USAGE = `nullius-kit — witness recording for agent runs
 
 usage:
-  nullius-kit init [--profile <name>] [--dry-run] [--yes] [--root <dir>]
+  nullius-kit init   [--profile <name>] [--dry-run] [--yes] [--root <dir>]
+  nullius-kit doctor [--fix] [--root <dir>]
   nullius-kit witness record [--origin hooks|self-reported] [--root <dir>]
   nullius-kit witness check  [--root <dir>]
 
@@ -80,8 +82,10 @@ function main(): number {
     return argv.length === 0 ? 2 : 0;
   }
 
-  // `init` owns its own flags; the witness options parser would reject them.
+  // `init` and `doctor` own their own flags; the witness options parser would
+  // reject them.
   if (argv[0] === "init") return runInit(argv.slice(1));
+  if (argv[0] === "doctor") return runDoctor(argv.slice(1));
 
   const options = parseOptions(argv);
   if (options === null) return 2;
@@ -128,6 +132,12 @@ function parseOptions(argv: readonly string[]): CliOptions | null {
 
   return options;
 }
+
+/**
+ * Pinned by default. `@main` is a moving target, and a workflow that silently
+ * changes behaviour is the thing this repo exists to object to.
+ */
+const ACTION_REF = "armanfatemi/nullius/action@v1";
 
 interface InitOptions {
   profile: string | null;
@@ -213,9 +223,7 @@ function runInit(argv: readonly string[]): number {
     root,
     profile,
     kitVersion: packageVersion(),
-    // Pinned by default. @main is a moving target, and a workflow that
-    // silently changes behaviour is the thing this repo exists to object to.
-    actionRef: "armanfatemi/nullius/action@v1",
+    actionRef: ACTION_REF,
     hookPolicy: mayWriteHooks(detection.harness),
   });
 
@@ -247,6 +255,107 @@ function runInit(argv: readonly string[]): number {
     return 1;
   }
   return 0;
+}
+
+interface DoctorOpts {
+  fix: boolean;
+  root: string;
+}
+
+function parseDoctor(argv: readonly string[]): DoctorOpts | null {
+  const options: DoctorOpts = { fix: false, root: process.cwd() };
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === "--fix") {
+      options.fix = true;
+    } else if (arg === "--root") {
+      const value = argv[(index += 1)];
+      if (value === undefined) {
+        console.error("--root needs a directory");
+        return null;
+      }
+      if (value.trim() === "") {
+        console.error("--root was empty — refusing to fall back to the current directory");
+        return null;
+      }
+      options.root = value;
+    } else {
+      console.error(`unknown flag for \`doctor\`: ${String(arg)}\n\n${USAGE}`);
+      return null;
+    }
+  }
+
+  return options;
+}
+
+function runDoctor(argv: readonly string[]): number {
+  const options = parseDoctor(argv);
+  if (options === null) return 2;
+
+  const root = resolve(options.root);
+  if (!existsSync(root)) {
+    console.error(`no such directory: ${root}`);
+    return 2;
+  }
+  if (!statSync(root).isDirectory()) {
+    console.error(`not a directory: ${root}`);
+    return 2;
+  }
+
+  // --fix first, so the checks below describe the repaired state rather than
+  // the one the user is about to stop having. There is no separate `update`
+  // verb: diagnose-then-repair is one mental model, and a second verb would
+  // answer no question this one does not.
+  if (options.fix) {
+    const detection = detect(root);
+    const kit = readKitProfile(root);
+    const profile = findProfile(kit ?? detection.suggestedProfile);
+    if (profile === null) {
+      console.error(`cannot re-render: unknown profile \`${String(kit)}\` in .nullius/kit.json`);
+      return 2;
+    }
+
+    console.log(`Re-rendering managed artifacts for profile \`${profile.name}\`.`);
+    const plan = buildPlan({
+      root,
+      profile,
+      kitVersion: packageVersion(),
+      actionRef: ACTION_REF,
+      hookPolicy: mayWriteHooks(detection.harness),
+    });
+    const applied = applyPlan(plan);
+    console.log(
+      `  ${applied.written.length} re-rendered, ${applied.unchanged.length} already current, ${applied.failed.length} failed.`,
+    );
+    for (const failure of applied.failed) {
+      console.error(`  FAILED  ${failure.path}: ${failure.reason}`);
+    }
+    // Hook entries are deliberately untouched. `--fix` may only ever modify
+    // artifacts matching the kit's own command-path convention, and the kit
+    // writes no hooks at all — so there is nothing here it owns.
+    console.log("");
+  }
+
+  const report = runChecks({
+    root,
+    probeDir: join(root, "spec", "fixtures", "probes", "claude-code"),
+  });
+  console.log(formatReport(report));
+
+  return report.failed ? 1 : 0;
+}
+
+/** The profile a previous `init` recorded, so `--fix` re-renders the same one. */
+function readKitProfile(root: string): string | null {
+  const path = join(root, ".nullius", "kit.json");
+  if (!existsSync(path)) return null;
+  try {
+    const parsed = JSON.parse(readFileSync(path, "utf8")) as { profile?: unknown };
+    return typeof parsed.profile === "string" ? parsed.profile : null;
+  } catch {
+    return null;
+  }
 }
 
 function packageVersion(): string {
