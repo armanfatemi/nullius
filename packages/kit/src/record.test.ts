@@ -4,11 +4,11 @@ import { planRecords, type RecordContext } from "./record";
 
 function context(overrides: Partial<RecordContext> = {}): RecordContext {
   return {
-    origin: "hooks",
     now: () => "2026-08-21T12:00:00.000Z",
     locateTarget: (path) => ({ path, hash: "cafebabe0011" }),
     openDispatches: () => [],
     resolveAgent: () => null,
+    hasTerminal: () => false,
     ...overrides,
   };
 }
@@ -47,7 +47,7 @@ describe("dispatch — PreToolUse on Task", () => {
   it("records a dispatch when the harness calls the tool Agent", () => {
     // Claude Code 2.1.238 sends tool_name "Agent" for the subagent tool while
     // hook matchers still accept "Task". Probed, not assumed:
-    // spec/fixtures/probes/claude-code/PreToolUse.json.
+    // spec/fixtures/probes/claude-code/PreToolUse-Agent.json.
     const plan = planRecords(
       {
         hook_event_name: "PreToolUse",
@@ -149,6 +149,21 @@ describe("report — PostToolUse on Task", () => {
     expect(plan.records).toEqual([]);
     expect(plan.note).toContain("launch");
     expect(plan.link).toEqual({ agentId: "ab210a2c41e64ee5f", dispatch: "d:toolu_01ABC" });
+  });
+
+  it("records no link for an async launch that names no agent, and still no terminal", () => {
+    const plan = planRecords(
+      { ...base, tool_response: { isAsync: true, status: "async_launched" } },
+      context(),
+    );
+
+    // Both halves matter. Inventing an id would write a link key no real
+    // SubagentStop can match, and two such launches would overwrite each
+    // other — ambiguity resolved by fabrication, which is what this file says
+    // it never does. And the acknowledgement is still not a report.
+    expect(plan.link).toBeNull();
+    expect(plan.records).toEqual([]);
+    expect(plan.note).toContain("no agent id");
   });
 
   it("caps a long response and says that it capped it", () => {
@@ -363,5 +378,42 @@ describe("terminal — SubagentStop", () => {
     );
 
     expect(plan.records).toHaveLength(1);
+  });
+});
+
+describe("a subagent that reports after its dispatch was sealed", () => {
+  const stop = {
+    hook_event_name: "SubagentStop",
+    session_id: "sess-1",
+    agent_id: "ag1",
+    last_assistant_message: "found it in src/retry.ts",
+  };
+
+  it("corrects the ledger instead of writing a second terminal", () => {
+    const plan = planRecords(
+      stop,
+      context({ resolveAgent: () => "d:tA", hasTerminal: (id) => id === "d:tA" }),
+    );
+
+    // Session end sealed d:tA as no-report; the subagent then came back. A
+    // second report would be DUPLICATE-TERMINAL and the journal would fail
+    // validation over a fact it recorded correctly. An append is the schema's
+    // own way of saying "here is what I am correcting".
+    expect(plan.records).toHaveLength(1);
+    expect(plan.records[0]).toMatchObject({ kind: "append" });
+    const correction = String(
+      (plan.records[0] as { corrections_since_last_append: string }).corrections_since_last_append,
+    );
+    expect(correction).toContain("d:tA");
+    expect(correction).toContain("src/retry.ts");
+  });
+
+  it("still writes the ordinary terminal when nothing sealed the dispatch", () => {
+    const plan = planRecords(
+      stop,
+      context({ resolveAgent: () => "d:tA", hasTerminal: () => false }),
+    );
+
+    expect(plan.records[0]).toMatchObject({ kind: "report", outcome: "found" });
   });
 });

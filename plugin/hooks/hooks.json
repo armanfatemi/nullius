@@ -11,7 +11,7 @@
         ]
       },
       {
-        "matcher": "Task|Agent",
+        "matcher": "^(Task|Agent)$",
         "hooks": [
           {
             "type": "command",
@@ -22,7 +22,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Task|Agent|Edit|Write|MultiEdit|NotebookEdit",
+        "matcher": "^(Task|Agent|Edit|Write|MultiEdit|NotebookEdit)$",
         "hooks": [
           {
             "type": "command",

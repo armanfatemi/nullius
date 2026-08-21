@@ -37,5 +37,12 @@ esac
 runner="${NULLIUS_KIT_BIN:-npx -y @nullius-inverba/kit}"
 
 # shellcheck disable=SC2086
-$runner witness record --root "$root" || true
+# The runner's failure is NOT swallowed. `|| true` here would mean that a
+# missing package, a broken install, or an npx resolution failure all look
+# identical to a session in which nothing happened — an empty .nullius/runs is
+# indistinguishable from "no subagents were dispatched", which is the exact
+# confusion this tool exists to prevent. So: still exit 0, but say so.
+if ! $runner witness record --root "$root"; then
+  echo "nullius witness: the recorder could not run (\"$runner\"), so nothing was recorded for this event. If @nullius-inverba/kit is not installed, set NULLIUS_KIT_BIN to a local build — e.g. NULLIUS_KIT_BIN=\"node /path/to/packages/kit/dist/cli.js\"." >&2
+fi
 exit 0

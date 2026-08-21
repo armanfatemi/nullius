@@ -27,8 +27,9 @@ import {
   openDispatchesIn,
   recordLink,
   resolveLink,
+  terminalsIn,
 } from "./journalFile";
-import { planRecords, type RecordContext } from "./record";
+import { planRecords, type RecordContext, type RecordPlan } from "./record";
 
 /** The schema this build writes. The validator reads 0.1 and 0.2. */
 const SCHEMA_VERSION = "0.2";
@@ -137,7 +138,6 @@ function runRecord(options: CliOptions): number {
 
   const links = linksPathFor(file);
   const context: RecordContext = {
-    origin: options.origin,
     now: () => new Date().toISOString(),
     locateTarget: (path) => locateTarget(root, path),
     // Read lazily: only session end asks, and only session end should pay for
@@ -145,14 +145,42 @@ function runRecord(options: CliOptions): number {
     openDispatches: () =>
       existsSync(file) ? openDispatchesIn(readFileSync(file, "utf8")) : [],
     resolveAgent: (agentId) => resolveLink(links, agentId),
+    hasTerminal: (dispatch) =>
+      existsSync(file) ? terminalsIn(readFileSync(file, "utf8")).has(dispatch) : false,
   };
+
+  // Two events decide what to write by reading what is already written, and
+  // both must do it under the lock. Session end seals every dispatch with no
+  // terminal; a subagent's stop writes a terminal unless one is already there.
+  // Deciding either outside the lock leaves a window: the seal writes a SECOND
+  // terminal for a dispatch that just came back, which validates as
+  // DUPLICATE-TERMINAL and counts a subagent that reported under "never
+  // reported" — the one error this journal exists to prevent, committed by its
+  // own recorder.
+  if (event === "SessionEnd" || event === "SubagentStop") {
+    let decided: RecordPlan | undefined;
+    const outcome = appendRecords(
+      file,
+      () => {
+        decided = planRecords(payload, context);
+        return decided.records;
+      },
+      { version: SCHEMA_VERSION, origin: options.origin, session, source: null },
+      { createEmpty: false },
+    );
+    if (decided?.note != null) note(decided.note);
+    if (outcome.refused !== null) note(outcome.refused);
+    return 0;
+  }
 
   const plan = planRecords(payload, context);
   if (plan.note !== null) note(plan.note);
 
   // The link is bookkeeping, so it is written whether or not there is a record
   // to go with it — losing it means losing the only join between a subagent's
-  // stop and the dispatch that started it.
+  // stop and the dispatch that started it. Written before the append, and under
+  // its own lock rather than nested inside the journal's, so the two locks are
+  // never held at once.
   if (plan.link !== null) {
     const linked = recordLink(links, plan.link.agentId, plan.link.dispatch);
     if (linked.refused !== null) {

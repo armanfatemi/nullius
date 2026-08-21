@@ -176,7 +176,7 @@ made invalid, and the only way to say nothing is to say it.
 
 ## Fixtures
 
-Four journals live next to this spec:
+Five journals live next to this spec:
 
 | Fixture | What it is for |
 | --- | --- |

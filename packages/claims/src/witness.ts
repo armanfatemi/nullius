@@ -98,6 +98,7 @@ export interface JournalFinding {
 
 export interface JournalReport {
   findings: JournalFinding[];
+  /** Records the validator could read. Rejected lines appear in `findings`. */
   records: number;
   dispatches: number;
   /** Terminal outcomes, counted apart — the point of invariant 1 is that
@@ -193,13 +194,16 @@ interface HeaderScan {
   version: string;
 }
 
-const HEADERLESS: HeaderScan = {
-  header: null,
-  line: null,
-  findings: [],
-  stop: false,
-  version: IMPLIED_VERSION,
-};
+/**
+ * A fresh scan each time, never a shared constant. The `findings` array is
+ * mutable, and one module-level instance would be handed to every headerless
+ * journal in the process — so the first finding pushed here would start
+ * appearing in unrelated reports, in a validator whose whole job is not
+ * confusing one document's problems for another's.
+ */
+function headerless(): HeaderScan {
+  return { header: null, line: null, findings: [], stop: false, version: IMPLIED_VERSION };
+}
 
 /**
  * Read the first record, if it is a header. Everything about how the rest of
@@ -215,9 +219,9 @@ function scanHeader(lines: string[]): HeaderScan {
       parsed = JSON.parse(raw);
     } catch {
       // Unparseable first line: not a header, and pass 1 will report it.
-      return HEADERLESS;
+      return headerless();
     }
-    if (!isObject(parsed) || parsed["kind"] !== "journal") return HEADERLESS;
+    if (!isObject(parsed) || parsed["kind"] !== "journal") return headerless();
 
     const line = index + 1;
     const declared = parsed["version"];
@@ -273,7 +277,7 @@ function scanHeader(lines: string[]): HeaderScan {
     };
   }
 
-  return HEADERLESS;
+  return headerless();
 }
 
 export function validateJournal(content: string): JournalReport {
@@ -608,8 +612,11 @@ export function validateJournal(content: string): JournalReport {
 
   return {
     findings,
-    // The header is a record, and counting it keeps the printed total equal to
-    // the number of lines a reader will find in the file.
+    // Records the validator could READ: the header plus everything that got
+    // past pass 1. Lines rejected as malformed or duplicate-id are reported as
+    // findings and deliberately not counted here — but they are also lines in
+    // the file, so this number is not the file's line count and must not be
+    // described as one.
     records: records.length + (scan.line === null ? 0 : 1),
     dispatches,
     outcomes,

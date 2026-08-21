@@ -331,7 +331,7 @@ function runWitness(args: ParsedArgs): number {
 
   console.log("");
   console.log(
-    `${report.records} record(s): ${report.dispatches} dispatch(es), ${report.verifications} verification(s), ${report.mutations} mutation(s).`,
+    `${report.records} record(s) read: ${report.dispatches} dispatch(es), ${report.verifications} verification(s), ${report.mutations} mutation(s).`,
   );
   // Three numbers, never two. A run that dropped agents on the floor and one
   // where every agent reported nothing summarise identically the moment these

@@ -10,6 +10,8 @@ export {
   journalPathFor,
   linksPathFor,
   openDispatchesIn,
+  releaseLock,
+  terminalsIn,
   recordLink,
   resolveLink,
   LOCK_SUFFIX,

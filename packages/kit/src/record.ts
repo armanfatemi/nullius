@@ -34,8 +34,6 @@
 
 import { createHash } from "node:crypto";
 
-import type { JournalOrigin } from "@nullius-inverba/claims";
-
 /** A record on its way to the journal. Shapes are the schema's, not ours. */
 export type JournalDraft = Record<string, unknown>;
 
@@ -46,8 +44,6 @@ export interface OpenDispatch {
 }
 
 export interface RecordContext {
-  /** Stamped into the header by the writer; `hooks` unless a skill is driving. */
-  origin: JournalOrigin;
   now: () => string;
   /**
    * Turn a path out of a tool payload into a journal target: the path as the
@@ -73,6 +69,11 @@ export interface RecordContext {
    * correlation stays testable without a filesystem.
    */
   resolveAgent: (agentId: string) => string | null;
+  /**
+   * Whether a dispatch already has a terminal record. Only session end and a
+   * subagent's stop ask, and both ask under the append lock.
+   */
+  hasTerminal: (dispatchId: string) => boolean;
 }
 
 export interface RecordPlan {
@@ -98,7 +99,7 @@ export interface RecordPlan {
  *
  * Two names for one tool, because the harness uses both: hook matchers accept
  * `Task`, and the payload of the very same call reports `tool_name: "Agent"`
- * (Claude Code 2.1.238 — see spec/fixtures/probes/claude-code/PreToolUse.json,
+ * (Claude Code 2.1.238 — see spec/fixtures/probes/claude-code/PreToolUse-Agent.json,
  * which is a recording, not a reading of the documentation). Matching only the
  * documented name cost this recorder every dispatch in its first real run: the
  * hooks fired, the extraction found nothing it recognised, and the journal
@@ -169,15 +170,24 @@ export function planRecords(payload: unknown, context: RecordContext): RecordPla
       if (tool !== null && DISPATCH_TOOLS.has(tool)) {
         const launched = launchAcknowledgement(payload["tool_response"]);
         if (launched !== null) {
-          // Not a terminal — the subagent has been started, not finished. What
-          // this event is good for is the key: it is the only place the
+          if (launched.agentId === null) {
+            // Still not a terminal — an acknowledgement never is — but there
+            // is nothing to link it by. Recording the ambiguity beats
+            // inventing an id that no SubagentStop can match and that a second
+            // unnamed launch would silently overwrite.
+            return plan(
+              [],
+              "a subagent was launched asynchronously but the payload carried no agent id, so its report cannot be joined to this dispatch; the dispatch stays open and will be sealed no-report at session end",
+            );
+          }
+          // The launch is not a terminal, but it is the only place the
           // harness's agent id and the dispatch's tool_use_id appear together,
           // and SubagentStop knows only the former.
           const { key } = joinKey(payload);
           return plan(
             [],
-            `the subagent was launched asynchronously as ${launched}; this event acknowledges a launch rather than terminating a dispatch, so the dispatch stays open until its SubagentStop`,
-            { agentId: launched, dispatch: `d:${key}` },
+            `the subagent was launched asynchronously as ${launched.agentId}; this event acknowledges a launch rather than terminating a dispatch, so the dispatch stays open until its SubagentStop`,
+            { agentId: launched.agentId, dispatch: `d:${key}` },
           );
         }
         return plan([reportFor(payload, context)]);
@@ -244,6 +254,31 @@ function terminalForStop(
 
   const message = readResponse(payload["last_assistant_message"]);
   const text = message.text.trim();
+
+  // The dispatch was already terminated — almost always by session end sealing
+  // it `no-report` while this subagent was still running. It then came back,
+  // which makes the seal wrong and this report late. A second terminal would
+  // be DUPLICATE-TERMINAL: the journal failing validation over a pair of facts
+  // it recorded correctly. So the ledger gets a correction instead, which is
+  // what `append` is for — invariant 3 exists so that a correction has to say
+  // what it corrected.
+  if (context.hasTerminal(dispatch)) {
+    return plan(
+      [
+        {
+          kind: "append",
+          id: `a:${agentId}`,
+          corrections_since_last_append:
+            text.length === 0
+              ? `${dispatch} was terminated before subagent ${agentId} stopped; it returned with no final message, so the existing terminal stands`
+              : `${dispatch} was terminated before subagent ${agentId} stopped — most likely sealed no-report at session end — but it did report: ${clip(text, ERROR_EXCERPT_LIMIT)}`,
+          at: context.now(),
+          late: true,
+        },
+      ],
+      `subagent ${agentId} reported after ${dispatch} was already terminated; recorded as a correction rather than a second terminal`,
+    );
+  }
   const head: JournalDraft = {
     kind: "report",
     id: `r:${agentId}`,
@@ -389,13 +424,16 @@ function joinKey(payload: JsonObject): { key: string; ambiguous: boolean } {
  * and reading one as a terminal would mark every dispatch `found` and make
  * `no-report` unreachable.
  *
- * Returns the agent id when the response is an acknowledgement, else null.
+ * Returns null when this is not an acknowledgement at all. When it is, returns
+ * the agent id it names — or a null id, which is a different thing and must
+ * stay different: "not a terminal, and not linkable" is still not a terminal.
+ * Collapsing the two by inventing a placeholder id was the bug here.
  */
-function launchAcknowledgement(response: unknown): string | null {
+function launchAcknowledgement(response: unknown): { agentId: string | null } | null {
   if (!isObject(response)) return null;
   const launched = response["isAsync"] === true || response["status"] === "async_launched";
   if (!launched) return null;
-  return str(response["agentId"]) ?? str(response["agent_id"]) ?? "an unnamed agent";
+  return { agentId: str(response["agentId"]) ?? str(response["agent_id"]) };
 }
 
 interface ResponseRead {

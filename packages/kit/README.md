@@ -116,6 +116,16 @@ guarantees:
 - **A subagent that stops with no final message is recorded `empty`**, not
   `no-report`. The stop event is proof it came back; what it did not do is say
   anything, and the statement says exactly that.
+- **A subagent that reports after session end corrects the ledger rather than
+  re-terminating.** Session end seals open dispatches `no-report`; if one then
+  comes back, a second terminal would be `DUPLICATE-TERMINAL` — the journal
+  failing validation over two facts it recorded correctly. Instead an `append`
+  records what it corrected, which is what invariant 3 is for. The outcome
+  counts still read as they stood at session end, and the append says why.
+- **A refused append is announced, and so is a recorder that cannot run.** If
+  the hook's runner is missing or unresolvable, the shim says so on stderr
+  rather than exiting quietly — an empty `.nullius/runs` would otherwise be
+  indistinguishable from a session that dispatched nobody.
 - **`reliance` across journals is out of scope in v0.2** and stays
   `DANGLING-REFERENCE`.
 - **A refused append is a missing record, not a mangled one.** If another
