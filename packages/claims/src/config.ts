@@ -36,6 +36,16 @@ export interface ClaimsConfig {
   relaxedControl?: boolean;
   /** Wall-clock budget for a single absence search, in milliseconds. Default 10000. */
   searchTimeoutMs?: number;
+  /**
+   * Reserved. Accepted and ignored by every current build, so that a future
+   * schema change has one key to hinge on instead of a flag day.
+   *
+   * The reservation has to land BEFORE anything writes it. Unknown keys are a
+   * hard error here — deliberately — which means a repo initialised by a newer
+   * kit would break every older kernel pinned in CI the first time this key
+   * appeared. Accepting it now is what buys that compatibility later.
+   */
+  configVersion?: number;
 }
 
 const KNOWN_KEYS = new Set([
@@ -47,6 +57,7 @@ const KNOWN_KEYS = new Set([
   "minAnchorChars",
   "relaxedControl",
   "searchTimeoutMs",
+  "configVersion",
 ]);
 
 function isStringArray(value: unknown): value is string[] {
