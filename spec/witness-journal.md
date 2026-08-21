@@ -120,7 +120,7 @@ and its absence is not.
 
 The three states are a closed list in the validator, not a convention:
 
-**Evidence:** `packages/claims/src/witness.ts:80@7412847` — `const OUTCOMES = ["found", "empty", "no-report"] as const;`
+**Evidence:** `packages/claims/src/witness.ts:122@ad10de2` — `const OUTCOMES = ["found", "empty", "no-report"] as const;`
 
 `witness validate` prints the three counts separately for the same reason.
 Added together they are the bug.
@@ -148,7 +148,7 @@ downstream. Both records are honest; the defect lives in the gap between them.
 The check is a hash comparison against the latest recorded state of that path,
 so it costs nothing and cannot be argued with:
 
-**Evidence:** `packages/claims/src/witness.ts:342@7412847` — `if (latest !== undefined && latest.hash !== source.hash) {`
+**Evidence:** `packages/claims/src/witness.ts:542@ad10de2` — `if (latest !== undefined && latest.hash !== source.hash) {`
 
 ## Invariant 3 — omission is invalid
 
