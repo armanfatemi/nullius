@@ -89,6 +89,13 @@ jobs:
           # two parallel subagents. The synthetic fixtures are what the schema
           # says; this one is what the harness does.
           node packages/claims/dist/cli.js witness validate spec/fixtures/hooks-run.jsonl
+          # v0.3, the run ledger. The valid one exercises all five kinds, both
+          # merge outcomes, and a looks-good discharging a dispatch; the broken
+          # one trips both new verdicts plus every new malformed and
+          # dangling-reference path, including a blocker whose only
+          # resolutions are themselves malformed — which must not discharge it.
+          node packages/claims/dist/cli.js witness validate spec/fixtures/v0.3-run.jsonl
+          ! node packages/claims/dist/cli.js witness validate spec/fixtures/v0.3-broken-run.jsonl
       # The producer, end to end and under contention. Hook payloads in,
       # journal out, validator's verdict on it — and the parallel case is the
       # one that matters: several subagent hooks append to one file at once,
@@ -131,4 +138,12 @@ jobs:
       # source. If the code drifts out from under the README's claims, this
       # step says so — the tool checking the docs of the tool.
       - name: nullius check (self)
-        run: node packages/claims/dist/cli.js check 'README.md' 'spec/**/*.md' --require-markers
+        run: |
+          node packages/claims/dist/cli.js check 'README.md' 'spec/**/*.md' --require-markers
+          # Change proposals cite code they are ABOUT TO MODIFY, so they rot in
+          # a way the spec does not: a design doc that quotes a line as the
+          # reason to delete it is FABRICATED the moment the change lands. That
+          # is what rev-stamps are for, and this is what makes anyone use them.
+          # No --require-markers: a tasks.md asserts nothing about the code and
+          # should not be forced to carry an anchor.
+          node packages/claims/dist/cli.js check 'openspec/**/*.md'

@@ -175,6 +175,59 @@ The plugin's `ExitPlanMode` hook checks every plan's anchors automatically
 write anchors in the first place, and `/ground` checks any file on demand.
 Details: [plugin/](plugin/).
 
+## If you run multi-agent sessions
+
+**You get:** a journal of what the harness actually did — which agents were
+dispatched, which came back, what changed on disk — validated against
+invariants a summary cannot fake. A run that dropped agents on the floor stops
+summarising identically to one that finished.
+
+```
+/plugin marketplace add armanfatemi/nullius
+/plugin install nullius@nullius
+mkdir .nullius
+```
+
+Both lines are needed: `install` resolves `nullius@nullius` as
+*plugin@marketplace*, so the marketplace has to be registered first.
+
+**The `.nullius` directory is the opt-in, not a config file.** Recording writes
+a journal into your project, so it happens only where a human asked for it —
+the hooks check for the directory and exit silently otherwise:
+
+**Evidence:** `plugin/hooks/witness-record.sh:28@da88cff` — `    if [ ! -d "$root/.nullius" ]; then`
+
+Set `NULLIUS_WITNESS=1` instead if you would rather not commit the directory.
+The agent still cannot decline to be recorded — that is the point — but a
+person decides which repos keep journals.
+
+Then read what it produced:
+
+```sh
+npx @nullius-inverba/claims witness validate .nullius/runs/<session>.jsonl
+```
+
+By default the hooks fetch the published recorder. To pin a local build —
+which is what this repo does, so it dogfoods its own kit rather than a copy
+from npm — set `NULLIUS_KIT_BIN` in `.claude/settings.json`:
+
+**Evidence:** `plugin/hooks/witness-record.sh:37@da88cff` — `runner="${NULLIUS_KIT_BIN:-npx -y @nullius-inverba/kit}"`
+
+```json
+{ "env": { "NULLIUS_KIT_BIN": "node packages/kit/dist/cli.js" } }
+```
+
+**Do not copy hook entries into `.claude/settings.json`.** The plugin delivers
+them keyed on `${CLAUDE_PLUGIN_ROOT}`, and a second copy is a path nothing can
+tell apart from the first:
+
+**Evidence:** `plugin/hooks/hooks.json:34@da88cff` — `    "SubagentStop": [`
+
+Recording is the hooks tier — what the harness attests and the agent had no
+opportunity to decline. The self-reported tier, where an agent states what it
+raised and whether anyone answered it, is
+[schema v0.3](spec/witness-journal.md) and has no producer yet.
+
 ## If your agents write PR descriptions, or you run agent reviews
 
 **You get:** "safe — nothing else reads this field" in a PR body becomes a

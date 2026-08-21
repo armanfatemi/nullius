@@ -126,14 +126,31 @@ quantities.
 - Natural fit with OpenSpec: proposal.md → design.md → tasks.md is already a
   declared artifact chain with predictable paths.
 
-### Dissent conservation
+### Dissent conservation — **the checker half shipped in schema v0.3**
 Multi-reviewer synthesis is where findings die: the orchestrator merges N
-reports and inconvenient findings just don't appear. Convention: every
-finding in a reviewer artifact must appear in the synthesis as **accepted**,
-**rejected-with-reason**, or **escalated** — anything else is
-`SUPPRESSED-FINDING`. Consensus manufactured by omission becomes mechanically
-visible. Deterministic by finding-ID matching between reviewer artifacts and
-the merged report.
+reports and inconvenient findings just don't appear. Consensus manufactured by
+omission becomes mechanically visible.
+
+`SUPPRESSED-FINDING` now exists: a `finding` of severity `blocker` that no
+`resolution` record answers, in a journal declaring schema `0.3`. See
+[spec/witness-journal.md](spec/witness-journal.md).
+
+Two things this entry guessed wrong, corrected by deriving the vocabulary from
+a 91-file corpus of hand-written evidence files rather than reasoning about it
+(`openspec/changes/add-run-ledger/corpus-derivation.md`):
+
+- **The outcome vocabulary is not accepted / rejected-with-reason / escalated.**
+  Those were three guesses; `escalated` turned out to be among the *rarest*
+  terms the corpus actually uses (12 occurrences). The shipped enum is
+  `resolved`, `fixed`, `dropped`, `duplicate`, `deferred`, `folded-in`,
+  `accepted`, `rejected`, `out-of-scope`, `deviation-accepted` — and
+  `duplicate`/`folded-in` must name the finding they merge into, or a merge is
+  indistinguishable from a disappearance.
+- **It cannot apply to every finding.** In the corpus, 59 of 97 identified
+  findings (60.8%) are never mentioned again — so an ungated verdict fires on
+  three findings in five and gets learned as noise. It is gated to `blocker`.
+
+Still open: the producer that emits these records, below.
 
 ## 2. Provenance and tense — claims know where they came from and when they were true
 
@@ -209,11 +226,47 @@ deliberately kill a subagent, withhold a report, corrupt a delivery, and
 verify recovery matches the declared protocol. Recovery paths are code that
 never runs until the worst day; drills make them run on a cheap day.
 
+## The run ledger's second half — deferred, and why
+
+Schema v0.3 (`add-run-ledger`) shipped the **kinds and the verdicts** and
+deliberately stopped there. Two named pieces were split out rather than
+dropped:
+
+- **The self-reported producer** — a skill instructing pipeline agents to emit
+  `stage` / `finding` / `resolution` / `check` / `decision`, plus a
+  `witness record` mode accepting a structured record rather than a hook
+  payload. Hooks cannot do this: no tool call states that something was
+  *checked*, *relied upon*, or *corrected*.
+- **`witness harvest`** — renders `review-evidence.md` and
+  `implementation-log.md` into the change folder deterministically, no model in
+  the path. Success is when those files are generated output nobody hand-edits.
+
+The split was decided *by* the corpus, not before it. The schema turned out to
+be the tractable half: five kinds, three severities, one derived enum. The
+projections are the hard half — 91 files produced roughly 40 heading variants
+for the same handful of concepts, only 19% carry identified findings, and only
+11% have a decision section. There is no house style to render back to, so
+"reads no worse than a hand-written one" has no fixed target yet. Rendering is
+far easier to design against real v0.3 records than against 91 files that
+disagree with each other.
+
+**The standing risk of stopping here:** v0.2 added `verification` and
+`reliance` and they still have no producer. A schema nobody emits is a schema
+nobody has stress-tested, and v0.3 is now the second unproduced tier. The
+producer is what turns that from a pattern into a plan.
+
+Also deferred with it: whether `check` subsumes `verification` and `finding`
+subsumes `reliance`. Neither pair can be compared until one of them has a
+producer.
+
 ## Priority picks (after the silence release)
 
-1. **Wiring check** — smallest effort, prevents the most embarrassing
+1. **The run-ledger producer** — v0.3's kinds exist and nothing emits them.
+   Highest-value next step, and the only way the two tiers become the
+   cross-check they were designed to be.
+2. **Wiring check** — smallest effort, prevents the most embarrassing
    failure class, pure filesystem determinism.
-2. **Open-question conservation** — extends the existing spec family most
+3. **Open-question conservation** — extends the existing spec family most
    naturally: anchors keep claims *true*, conservation keeps them *alive*.
 
 ## Fit classification

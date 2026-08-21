@@ -1,0 +1,28 @@
+{"kind":"journal","version":"0.3","origin":"self-reported","session":"0b3f7a12-88c5-4d60-9e2b-4417ca90de35","source":"startup"}
+{"kind":"stage","id":"s1","phase":"","iteration":1}
+{"kind":"stage","id":"s2","phase":"verify","iteration":0}
+{"kind":"stage","id":"s3","phase":"post-review","change":""}
+{"kind":"dispatch","id":"d1","task":"review the diff"}
+{"kind":"report","id":"r1","dispatch":"d1","outcome":"found","findings":["something worth saying"]}
+{"kind":"finding","id":"f1","severity":"critical","author":"rule-auditor","text":"severity is not one of the three"}
+{"kind":"finding","id":"f2","severity":"blocker","author":"","text":"author is blank"}
+{"kind":"finding","id":"f3","severity":"blocker","author":"rule-auditor","text":""}
+{"kind":"finding","id":"f4","severity":"blocker","author":"rule-auditor","convergence":"architecture-reviewer","text":"convergence is not a list"}
+{"kind":"finding","id":"f5","stage":"s9","severity":"concern","author":"test-engineer","text":"stage reference goes nowhere"}
+{"kind":"finding","id":"f6","severity":"blocker","author":"security-reviewer","text":"a real blocker that nobody ever answers"}
+{"kind":"resolution","id":"res1","finding":"f6","outcome":"escalated","text":"escalated is not in the derived vocabulary"}
+{"kind":"resolution","id":"res2","finding":"f6","outcome":"duplicate","text":"a merge that names no survivor"}
+{"kind":"resolution","id":"res3","finding":"f9","outcome":"fixed","text":"answers a finding that is not here"}
+{"kind":"check","id":"c1","command":"pnpm test","outcome":"green","text":"outcome is not pass or fail"}
+{"kind":"check","id":"c2","command":"pnpm test","outcome":"fail","counts":{"failed":-1},"text":"counts must be non-negative"}
+{"kind":"decision","id":"dec1","choice":"do the thing"}
+{"kind":"resolution","id":"res4","outcome":"fixed","text":"names no finding at all"}
+{"kind":"resolution","id":"res5","finding":"f6","outcome":"fixed","text":""}
+{"kind":"resolution","id":"res6","finding":"f6","outcome":"folded-in","merges_into":"f99","text":"merges into nothing"}
+{"kind":"check","id":"c3","outcome":"pass","text":"names no command"}
+{"kind":"check","id":"c4","command":"pnpm test","outcome":"pass","text":""}
+{"kind":"decision","id":"dec2","rationale":"a reason with no choice"}
+{"kind":"finding","id":"f7","dispatch":"d99","severity":"concern","author":"a","text":"dispatch reference goes nowhere"}
+{"kind":"stage","id":"s4","phase":"verify","pr":{"nonsense":true}}
+{"kind":"finding","id":"f8","severity":"concern","author":"a","convergence":[],"text":"corroborated by nobody"}
+{"kind":"decision","id":"dec3","choice":"a choice","rationale":"a reason","departed_from":""}

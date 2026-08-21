@@ -66,6 +66,10 @@ export type JournalVerdict =
   | "omitted-corrections"
   /** Two records claiming the same id. */
   | "duplicate-id"
+  /** A blocker no resolution ever answered. v0.3 and later. */
+  | "suppressed-finding"
+  /** A dispatch that returned with something to say, and filed no finding. v0.3 and later. */
+  | "silent-reviewer"
   /** The journal declares a schema this build cannot read. Terminal, and alone. */
   | "unsupported-version";
 
@@ -131,14 +135,87 @@ type Outcome = (typeof OUTCOMES)[number];
  */
 const KINDS_V01 = ["dispatch", "report", "verification", "reliance", "append"] as const;
 const KINDS_V02 = [...KINDS_V01, "mutation"] as const;
-type Kind = (typeof KINDS_V02)[number];
+/**
+ * v0.3 — the run ledger. Five kinds for what an agent contributes to a run,
+ * derived from a 91-file corpus of hand-written evidence files rather than
+ * invented; see openspec/changes/add-run-ledger/corpus-derivation.md.
+ */
+const KINDS_V03 = [...KINDS_V02, "stage", "finding", "resolution", "check", "decision"] as const;
+type Kind = (typeof KINDS_V03)[number];
 
 /** Schemas this build can read. Anything else is UNSUPPORTED-VERSION. */
-const VERSIONS = ["0.1", "0.2"] as const;
+const VERSIONS = ["0.1", "0.2", "0.3"] as const;
+
+/**
+ * Which vocabulary each declared version gets. A map rather than the ternary
+ * this replaced: that shape stopped scaling at the third version, and the
+ * whole point of a closed-list-per-version is that adding one stays cheap.
+ */
+const VOCABULARY: ReadonlyMap<string, readonly Kind[]> = new Map([
+  ["0.1", KINDS_V01 as readonly Kind[]],
+  ["0.2", KINDS_V02 as readonly Kind[]],
+  ["0.3", KINDS_V03 as readonly Kind[]],
+]);
+
+/**
+ * The schema each kind arrived in, so a record from the future can say which
+ * version would accept it instead of naming one hardcoded guess.
+ */
+const KIND_INTRODUCED: ReadonlyMap<string, string> = (() => {
+  // Derived from VOCABULARY rather than re-listed. A hand-written copy drifts
+  // the moment a kind is added and nothing notices: the new kind loses its
+  // "arrived in schema X" message and degrades to "unknown kind", which is the
+  // diagnosis the version header exists to prevent.
+  const introduced = new Map<string, string>();
+  for (const [version, kinds] of VOCABULARY) {
+    for (const kind of kinds) if (!introduced.has(kind)) introduced.set(kind, version);
+  }
+  return introduced;
+})();
 const ORIGINS = ["hooks", "self-reported"] as const;
 
 /** The version applied to a journal that carries no header. */
 const IMPLIED_VERSION = "0.1";
+
+/**
+ * Exactly three, because the corpus uses exactly three. `looks-good` is the
+ * load-bearing one: an explicit nothing-found is how a reviewer proves it was
+ * not silent, so a schema that only accepted problems would make
+ * SILENT-REVIEWER unanswerable.
+ */
+const SEVERITIES = ["blocker", "concern", "looks-good"] as const;
+type Severity = (typeof SEVERITIES)[number];
+
+/**
+ * A finding's fate. Derived from the corpus, where the five most common
+ * outcomes were ones a guessed vocabulary had missed.
+ */
+const RESOLUTION_OUTCOMES = [
+  "resolved",
+  "fixed",
+  "dropped",
+  "duplicate",
+  "deferred",
+  "folded-in",
+  "accepted",
+  "rejected",
+  "out-of-scope",
+  "deviation-accepted",
+] as const;
+type ResolutionOutcome = (typeof RESOLUTION_OUTCOMES)[number];
+
+/**
+ * These two do not close a finding on its merits — they redirect it into
+ * another one. Without naming the survivor they are indistinguishable from
+ * `dropped`, which is the disappearance this schema exists to catch.
+ */
+const MERGE_OUTCOMES: ReadonlySet<ResolutionOutcome> = new Set<ResolutionOutcome>([
+  "duplicate",
+  "folded-in",
+]);
+
+/** A command either passed or it did not. */
+const CHECK_OUTCOMES = ["pass", "fail"] as const;
 
 interface JournalRecord {
   line: number;
@@ -152,6 +229,26 @@ interface JournalRecord {
     target: unknown;
     relies_on: unknown;
     corrections_since_last_append: unknown;
+    // v0.3 — the run ledger
+    phase: unknown;
+    iteration: unknown;
+    pr: unknown;
+    change: unknown;
+    severity: unknown;
+    author: unknown;
+    text: unknown;
+    stage: unknown;
+    subject: unknown;
+    ref: unknown;
+    convergence: unknown;
+    finding: unknown;
+    merges_into: unknown;
+    command: unknown;
+    counts: unknown;
+    choice: unknown;
+    rationale: unknown;
+    departed_from: unknown;
+    resolves: unknown;
   }>>;
 }
 
@@ -177,6 +274,36 @@ function asTarget(value: unknown): { path: string; hash: string } | null {
 
 function nonEmptyString(value: unknown): boolean {
   return typeof value === "string" && value.trim().length > 0;
+}
+
+function asSeverity(value: unknown): Severity | null {
+  return SEVERITIES.find((severity) => severity === value) ?? null;
+}
+
+function asResolutionOutcome(value: unknown): ResolutionOutcome | null {
+  return RESOLUTION_OUTCOMES.find((outcome) => outcome === value) ?? null;
+}
+
+/** A positive integer, or null. Iteration 0 is not an iteration. */
+function asIteration(value: unknown): number | null {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : null;
+}
+
+/** An array of non-empty strings, or null when present and malformed. */
+function asStringList(value: unknown): string[] | null {
+  if (!Array.isArray(value)) return null;
+  if (!value.every((item) => nonEmptyString(item))) return null;
+  return value as string[];
+}
+
+/** An object whose every value is a non-negative integer. */
+function isCounts(value: unknown): boolean {
+  return (
+    isObject(value) &&
+    Object.values(value).every(
+      (count) => typeof count === "number" && Number.isInteger(count) && count >= 0,
+    )
+  );
 }
 
 function optionalString(value: unknown): string | null {
@@ -304,7 +431,7 @@ export function validateJournal(content: string): JournalReport {
     };
   }
   const findings: JournalFinding[] = [...scan.findings];
-  const vocabulary: readonly Kind[] = scan.version === IMPLIED_VERSION ? KINDS_V01 : KINDS_V02;
+  const vocabulary: readonly Kind[] = VOCABULARY.get(scan.version) ?? KINDS_V01;
 
   // --- Pass 1: shape. A record that does not parse cannot be reasoned about,
   // and is reported rather than skipped: a journal the validator silently
@@ -354,7 +481,8 @@ export function validateJournal(content: string): JournalReport {
 
     const kind = asKind(parsed["kind"], vocabulary);
     if (kind === null) {
-      const laterSchema = KINDS_V02.find((known) => known === parsed["kind"]);
+      const laterSchema =
+        typeof parsed["kind"] === "string" ? KIND_INTRODUCED.get(parsed["kind"]) : undefined;
       findings.push({
         line,
         verdict: "malformed",
@@ -362,7 +490,7 @@ export function validateJournal(content: string): JournalReport {
         detail:
           laterSchema === undefined
             ? `unknown kind ${JSON.stringify(parsed["kind"])} — expected one of: ${vocabulary.join(", ")}`
-            : `kind ${JSON.stringify(parsed["kind"])} arrived in schema 0.2, and this journal is read as ${scan.version} — declare it with a {"kind":"journal","version":"0.2",…} first record`,
+            : `kind ${JSON.stringify(parsed["kind"])} arrived in schema ${laterSchema}, and this journal is read as ${scan.version} — declare it with a {"kind":"journal","version":"${laterSchema}",…} first record`,
       });
       continue;
     }
@@ -404,6 +532,16 @@ export function validateJournal(content: string): JournalReport {
   let dispatches = 0;
   let verifications = 0;
   let mutations = 0;
+  /** v0.3 findings that parsed, by id — the population SUPPRESSED-FINDING walks. */
+  const ledger = new Map<string, { record: JournalRecord; severity: Severity }>();
+  /** Finding ids a NON-merge resolution answered on their merits. */
+  const answered = new Set<string>();
+  /** finding id -> the finding it was merged into. A transferred obligation. */
+  const merged = new Map<string, string>();
+  /** Dispatch ids whose terminal already drew COLLAPSED-STATE. */
+  const collapsed = new Set<string>();
+  /** Dispatch ids some finding spoke for. */
+  const spokenFor = new Set<string>();
 
   for (const record of records) {
     switch (record.kind) {
@@ -468,6 +606,11 @@ export function validateJournal(content: string): JournalReport {
               subject: record.id,
               detail: 'outcome "found" with no findings — report "empty" instead, and say so explicitly',
             });
+            // SILENT-REVIEWER rests on `found` meaning "I have something to
+            // say". That is only true once this check passes, so a collapsed
+            // report must not also be accused of silence: the two remedies
+            // contradict each other.
+            collapsed.add(dispatch.id);
           }
           break;
         }
@@ -574,6 +717,311 @@ export function validateJournal(content: string): JournalReport {
         break;
       }
 
+      case "stage": {
+        // The grouping record. `phase` stays an open string on purpose: a
+        // closed enum would have rejected about 5% of the corpus it was
+        // derived from, which is a tidiness nobody practised.
+        if (!nonEmptyString(record.raw.phase)) {
+          findings.push({
+            line: record.line,
+            verdict: "malformed",
+            subject: record.id,
+            detail:
+              'a stage needs a non-empty "phase" — conventionally pre-review, verify, post-review, address, or refine, but any phase a run actually had is valid',
+          });
+          break;
+        }
+        if (record.raw.iteration !== undefined && asIteration(record.raw.iteration) === null) {
+          findings.push({
+            line: record.line,
+            verdict: "malformed",
+            subject: record.id,
+            detail: `"iteration" is ${JSON.stringify(record.raw.iteration)} — it must be a positive integer when present`,
+          });
+          break;
+        }
+        if (
+          record.raw.pr !== undefined &&
+          !nonEmptyString(record.raw.pr) &&
+          typeof record.raw.pr !== "number"
+        ) {
+          findings.push({
+            line: record.line,
+            verdict: "malformed",
+            subject: record.id,
+            detail: `"pr" is ${JSON.stringify(record.raw.pr)} — it must be a non-empty string or a number when present`,
+          });
+          break;
+        }
+        if (record.raw.change !== undefined && !nonEmptyString(record.raw.change)) {
+          findings.push({
+            line: record.line,
+            verdict: "malformed",
+            subject: record.id,
+            detail:
+              '"change" is present but blank — a stage either names the change it belongs to or omits the field',
+          });
+        }
+        break;
+      }
+
+      case "finding": {
+        const severity = asSeverity(record.raw.severity);
+        if (severity === null) {
+          findings.push({
+            line: record.line,
+            verdict: "malformed",
+            subject: record.id,
+            detail: `severity ${JSON.stringify(record.raw.severity)} is not one of ${SEVERITIES.join(", ")}`,
+          });
+          break;
+        }
+        // Free string by design: enumerating agent names would hard-code one
+        // project's org chart into a schema meant to outlive it.
+        if (!nonEmptyString(record.raw.author)) {
+          findings.push({
+            line: record.line,
+            verdict: "malformed",
+            subject: record.id,
+            detail: 'a finding needs a non-empty "author" — the agent or person who raised it',
+          });
+          break;
+        }
+        if (!nonEmptyString(record.raw.text)) {
+          findings.push({
+            line: record.line,
+            verdict: "malformed",
+            subject: record.id,
+            detail:
+              'a finding needs non-empty "text" — structure goes around the prose, never instead of it',
+          });
+          break;
+        }
+        const convergence = record.raw.convergence;
+        if (convergence !== undefined && (asStringList(convergence) === null || (convergence as unknown[]).length === 0)) {
+          findings.push({
+            line: record.line,
+            verdict: "malformed",
+            subject: record.id,
+            detail:
+              Array.isArray(convergence) && convergence.length === 0
+                ? '"convergence" is empty — corroboration by nobody is not corroboration; omit the field instead'
+                : '"convergence" must be an array of non-empty strings naming who independently corroborated this',
+          });
+          break;
+        }
+
+        // Registered BEFORE the optional reference checks, and those checks
+        // do not `break`. A typo in an unrelated optional field must not make
+        // a blocker vanish from SUPPRESSED-FINDING, nor make the reviewer that
+        // filed it look silent — the record is a finding either way, and the
+        // dangling reference is reported on its own merits.
+        ledger.set(record.id, { record, severity });
+
+        const stageRef = record.raw.stage;
+        if (stageRef !== undefined) {
+          const stage = byId.get(String(stageRef));
+          // Order is load-bearing here, not incidental: `byId` is fully
+          // populated in pass 1, so without the line comparison a forward
+          // reference resolves and the message below would be a lie.
+          if (stage === undefined || stage.kind !== "stage" || stage.line > record.line) {
+            findings.push({
+              line: record.line,
+              verdict: "dangling-reference",
+              subject: record.id,
+              detail:
+                stage !== undefined && stage.kind === "stage"
+                  ? `stage '${String(stageRef)}' is declared later, on line ${stage.line} — a finding cannot belong to a stage the run had not reached`
+                  : `no stage with id '${String(stageRef)}' appears earlier in this journal`,
+            });
+          }
+        }
+
+        const dispatchRef = record.raw.dispatch;
+        if (dispatchRef !== undefined) {
+          const dispatch = byId.get(String(dispatchRef));
+          if (dispatch === undefined || dispatch.kind !== "dispatch" || dispatch.line > record.line) {
+            findings.push({
+              line: record.line,
+              verdict: "dangling-reference",
+              subject: record.id,
+              detail:
+                dispatch !== undefined && dispatch.kind === "dispatch"
+                  ? `dispatch '${String(dispatchRef)}' is made later, on line ${dispatch.line} — a finding cannot answer a dispatch that had not happened`
+                  : `no dispatch with id '${String(dispatchRef)}' appears earlier in this journal`,
+            });
+          } else {
+            spokenFor.add(dispatch.id);
+          }
+        }
+        break;
+      }
+
+      case "resolution": {
+        const outcome = asResolutionOutcome(record.raw.outcome);
+        if (outcome === null) {
+          findings.push({
+            line: record.line,
+            verdict: "malformed",
+            subject: record.id,
+            detail: `outcome ${JSON.stringify(record.raw.outcome)} is not one of ${RESOLUTION_OUTCOMES.join(", ")}`,
+          });
+          break;
+        }
+        if (!nonEmptyString(record.raw.text)) {
+          findings.push({
+            line: record.line,
+            verdict: "malformed",
+            subject: record.id,
+            detail: 'a resolution needs non-empty "text" — the reason, not just the verdict',
+          });
+          break;
+        }
+
+        const findingRef = record.raw.finding;
+        if (!nonEmptyString(findingRef)) {
+          findings.push({
+            line: record.line,
+            verdict: "malformed",
+            subject: record.id,
+            detail: 'a resolution needs "finding": the id of the finding it answers',
+          });
+          break;
+        }
+        const target = byId.get(findingRef as string);
+        if (target === undefined || target.kind !== "finding" || target.line > record.line) {
+          findings.push({
+            line: record.line,
+            verdict: "dangling-reference",
+            subject: record.id,
+            detail:
+              target === undefined
+                ? `no finding with id '${String(findingRef)}' appears in this journal`
+                : target.kind !== "finding"
+                  ? `'${String(findingRef)}' is a ${target.kind} on line ${target.line}, not a finding — a resolution answers a finding`
+                  : `finding '${String(findingRef)}' is raised later, on line ${target.line} — a finding cannot be answered before it is raised`,
+          });
+          break;
+        }
+
+        // A merge that names no survivor is a disappearance wearing a label.
+        if (MERGE_OUTCOMES.has(outcome)) {
+          const into = record.raw.merges_into;
+          if (!nonEmptyString(into)) {
+            findings.push({
+              line: record.line,
+              verdict: "malformed",
+              subject: record.id,
+              detail: `outcome "${outcome}" needs "merges_into": the finding this one folds into — without it, a merge is indistinguishable from dropping it`,
+            });
+            break;
+          }
+          const survivor = byId.get(into as string);
+          if (survivor === undefined || survivor.kind !== "finding") {
+            findings.push({
+              line: record.line,
+              verdict: "dangling-reference",
+              subject: record.id,
+              detail: `merges into '${String(into)}', which is not a finding in this journal`,
+            });
+            break;
+          }
+          if (survivor.id === target.id) {
+            findings.push({
+              line: record.line,
+              verdict: "malformed",
+              subject: record.id,
+              detail: `merges '${target.id}' into itself — a finding cannot be a duplicate of itself, and treating it as one would discharge it while answering nothing`,
+            });
+            break;
+          }
+          // A merge transfers the obligation, it does not end it. Recorded as
+          // an edge so SUPPRESSED-FINDING can follow the chain to whoever
+          // actually answers — folding a blocker into an unpoliced concern is
+          // otherwise a silent discharge.
+          merged.set(target.id, survivor.id);
+          break;
+        }
+
+        answered.add(target.id);
+        break;
+      }
+
+      case "check": {
+        // Not a verification: it makes no claim about a file's hash, so it
+        // never touches the hash map and nothing can go stale against it.
+        if (!nonEmptyString(record.raw.command)) {
+          findings.push({
+            line: record.line,
+            verdict: "malformed",
+            subject: record.id,
+            detail: 'a check needs a non-empty "command" — what ran',
+          });
+          break;
+        }
+        if (!CHECK_OUTCOMES.some((outcome) => outcome === record.raw.outcome)) {
+          findings.push({
+            line: record.line,
+            verdict: "malformed",
+            subject: record.id,
+            detail: `outcome ${JSON.stringify(record.raw.outcome)} is not one of ${CHECK_OUTCOMES.join(", ")}`,
+          });
+          break;
+        }
+        if (!nonEmptyString(record.raw.text)) {
+          findings.push({
+            line: record.line,
+            verdict: "malformed",
+            subject: record.id,
+            detail: 'a check needs non-empty "text" — what the run showed, in words',
+          });
+          break;
+        }
+        if (record.raw.counts !== undefined && !isCounts(record.raw.counts)) {
+          findings.push({
+            line: record.line,
+            verdict: "malformed",
+            subject: record.id,
+            detail: '"counts" must be an object of non-negative integers',
+          });
+        }
+        break;
+      }
+
+      case "decision": {
+        if (!nonEmptyString(record.raw.choice)) {
+          findings.push({
+            line: record.line,
+            verdict: "malformed",
+            subject: record.id,
+            detail: 'a decision needs a non-empty "choice" — the approach taken',
+          });
+          break;
+        }
+        if (!nonEmptyString(record.raw.rationale)) {
+          findings.push({
+            line: record.line,
+            verdict: "malformed",
+            subject: record.id,
+            detail:
+              'a decision needs a non-empty "rationale" — a choice without its reason is not a decision anyone can audit',
+          });
+          break;
+        }
+        for (const field of ["departed_from", "resolves"] as const) {
+          if (record.raw[field] !== undefined && !nonEmptyString(record.raw[field])) {
+            findings.push({
+              line: record.line,
+              verdict: "malformed",
+              subject: record.id,
+              detail: `"${field}" is present but blank — say what it was, or omit the field`,
+            });
+            break;
+          }
+        }
+        break;
+      }
+
       case "append": {
         // Invariant 3. Absence is not "nothing to report" — it is nothing
         // reported, and the two are told apart by requiring the field.
@@ -606,6 +1054,78 @@ export function validateJournal(content: string): JournalReport {
       detail:
         "dispatched and never terminated — an agent that never reported is not an agent that found nothing",
     });
+  }
+
+  // --- The ledger verdicts. Gated on the journal declaring 0.3: without the
+  // gate every v0.2 journal in existence would acquire SILENT-REVIEWER on its
+  // next validation, since none of them can carry a finding to discharge it.
+  if (scan.version === "0.3") {
+    // Dissent conservation. Gated to blockers on purpose — measured on the
+    // corpus this was derived from, 60.8% of identified findings are never
+    // mentioned again, and a verdict that fires on three findings in five is
+    // one people learn to scroll past. Blocker is where demanding a close-out
+    // is defensible.
+    for (const [id, entry] of ledger) {
+      if (entry.severity !== "blocker") continue;
+
+      // Follow the merge chain. A merge moves the obligation to the surviving
+      // finding rather than discharging it, so a blocker is only answered when
+      // the chain ends at something a non-merge resolution actually answered.
+      // Without this, folding a blocker into an unpoliced `concern` closes it
+      // while answering nothing — and a cycle would close two at once.
+      let current = id;
+      const seen = new Set<string>([id]);
+      let discharged = false;
+      let trail = "";
+      for (;;) {
+        if (answered.has(current)) {
+          discharged = true;
+          break;
+        }
+        const next = merged.get(current);
+        if (next === undefined) break;
+        if (seen.has(next)) {
+          trail = ` — the merge chain ${[...seen, next].join(" → ")} closes on itself, so nothing in it is ever answered`;
+          break;
+        }
+        seen.add(next);
+        current = next;
+      }
+      if (discharged) continue;
+
+      if (trail === "" && current !== id) {
+        trail = ` — merged into '${current}', which nothing answers`;
+      }
+      findings.push({
+        line: entry.record.line,
+        verdict: "suppressed-finding",
+        subject: id,
+        detail:
+          "a blocker no resolution answers — the synthesis that would have dropped it is written by the same agent, so an unanswered blocker is the one thing the account cannot be trusted on" +
+          trail,
+      });
+    }
+
+    // A reviewer the harness saw return, which filed nothing. `found` already
+    // means "I have something to say"; a `found` with no finding is content
+    // that went nowhere. `empty` and `no-report` are invariant 1's business.
+    for (const record of records) {
+      if (record.kind !== "dispatch") continue;
+      if (spokenFor.has(record.id)) continue;
+      if (collapsed.has(record.id)) continue; // already COLLAPSED-STATE, whose remedy contradicts this one
+      const terminal = terminals.get(record.id);
+      if (terminal === undefined) continue; // already NO-TERMINAL
+      if (asOutcome(terminal.raw.outcome) !== "found") continue;
+      findings.push({
+        line: record.line,
+        verdict: "silent-reviewer",
+        subject: record.id,
+        detail:
+          'reported "found" on line ' +
+          String(terminal.line) +
+          " and filed no finding — file one, or a looks-good finding if there was nothing to raise",
+      });
+    }
   }
 
   findings.sort((left, right) => left.line - right.line);
