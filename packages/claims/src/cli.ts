@@ -24,7 +24,7 @@ import { DEMO_DOC_PATH, demoResults, writeDemoFixture } from "./demo";
 import { buildEagerPrompt } from "./eagerPrompt";
 import { parseClaims } from "./parseClaims";
 import { fileLinesReader, revFileReader, searchRunner } from "./runners";
-import { isJournalFailure, validateJournal } from "./witness";
+import { isJournalFailure, validateJournal, type JournalReport } from "./witness";
 
 const SPEC_URL =
   "https://github.com/armanfatemi/nullius/blob/main/spec/evidence-anchors.md";
@@ -317,9 +317,21 @@ function runWitness(args: ParsedArgs): number {
     }
   }
 
+  // A schema this build cannot read means the records below the header were
+  // never looked at. Printing counts for them would be the exact move the
+  // journal exists to catch: a summary standing in for work not done.
+  const unreadable = report.findings.some((finding) => finding.verdict === "unsupported-version");
+  if (unreadable) {
+    console.error("");
+    console.error(
+      "Validation stopped at the header: this build does not read that schema, so it has no opinion on anything below it. Upgrade the validator rather than reading this as a verdict.",
+    );
+    return 1;
+  }
+
   console.log("");
   console.log(
-    `${report.records} record(s): ${report.dispatches} dispatch(es), ${report.verifications} verification(s).`,
+    `${report.records} record(s): ${report.dispatches} dispatch(es), ${report.verifications} verification(s), ${report.mutations} mutation(s).`,
   );
   // Three numbers, never two. A run that dropped agents on the floor and one
   // where every agent reported nothing summarise identically the moment these
@@ -327,6 +339,7 @@ function runWitness(args: ParsedArgs): number {
   console.log(
     `Outcomes: ${report.outcomes.found} found, ${report.outcomes.empty} explicitly empty, ${report.outcomes.noReport} never reported.`,
   );
+  console.log(provenance(report));
 
   if (failures > 0) {
     console.error("");
@@ -336,6 +349,28 @@ function runWitness(args: ParsedArgs): number {
 
   console.log("Journal valid.");
   return 0;
+}
+
+/**
+ * Whose account this is — printed on every run, next to the verdict it
+ * qualifies. "Journal valid" means something different depending on who wrote
+ * the journal, and a summary that omits the difference invites the flattering
+ * reading: a self-reported journal is internally consistent, which is a claim
+ * about the text and not about the run.
+ */
+function provenance(report: JournalReport): string {
+  const header = report.header;
+  if (header === null) {
+    return "Schema 0.1 (no header): this journal does not record who wrote it, so nothing here claims a harness did.";
+  }
+  switch (header.origin) {
+    case "hooks":
+      return `Schema ${header.version}, origin: hooks — records emitted by the harness runtime, which the agent had no opportunity to decline.`;
+    case "self-reported":
+      return `Schema ${header.version}, origin: self-reported — written by the agent it describes. Valid means internally consistent; it is not evidence that the run went this way.`;
+    default:
+      return `Schema ${header.version}, origin: unrecorded — see the MALFORMED finding on the header.`;
+  }
 }
 
 function runCheck(args: ParsedArgs): number {

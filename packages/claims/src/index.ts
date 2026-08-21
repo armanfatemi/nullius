@@ -30,6 +30,8 @@ export {
   isJournalFailure,
   validateJournal,
   type JournalFinding,
+  type JournalHeader,
+  type JournalOrigin,
   type JournalReport,
   type JournalVerdict,
 } from "./witness";

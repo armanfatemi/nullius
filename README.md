@@ -289,8 +289,9 @@ format is shaped this way; the linter is what you install.
 | [Binding Moments spec](spec/binding-moments.md)   | The companion for compatibility risks: name _when_ the risk binds, from a closed per-project vocabulary              |
 | [`@nullius-inverba/claims`](packages/claims/)     | The CLI (`check` / `audit` / `witness` / `demo`) + library. `check` and `witness` open files and never ask a model |
 | [GitHub Action](action/)                          | Advisory PR comments, `pr-body` mode, a hard gate when you opt in                                                    |
-| [Claude Code plugin](plugin/)                     | Authoring skill, plan-approval hook, `/ground`, `/audit`, and the `[false-premise]` reviewer block                   |
+| [Claude Code plugin](plugin/)                     | Authoring skill, plan-approval hook, witness recording hooks, `/ground`, `/audit`, and the `[false-premise]` reviewer block |
 | `witness validate`                                | The run-journal validator — three invariants, no model ([the schema](spec/witness-journal.md))                       |
+| [`@nullius-inverba/kit`](packages/kit/)           | The producer: `witness record` writes the journal from harness hooks, so the record is not the agent's account of itself |
 
 ## Design principles
 

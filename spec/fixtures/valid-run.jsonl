@@ -1,3 +1,4 @@
+{"kind":"journal","version":"0.2","origin":"hooks","session":"2f9c1a4e-7b30-4d51-9a6c-1e08b3d5f472","source":"startup"}
 {"kind":"dispatch","id":"d1","task":"find consumers of legacy.published"}
 {"kind":"report","id":"r1","dispatch":"d1","outcome":"empty","statement":"None."}
 {"kind":"dispatch","id":"d2","task":"find the retry helper"}
@@ -6,4 +7,5 @@
 {"kind":"report","id":"r3","dispatch":"d3","outcome":"no-report","statement":"agent exited before answering; re-dispatched as d4"}
 {"kind":"verification","id":"v1","target":{"path":"src/retry.ts","hash":"9f2c4a1b8e7d"},"verdict":"safe"}
 {"kind":"reliance","id":"x1","relies_on":"v1"}
+{"kind":"mutation","id":"m1","target":{"path":"src/migrate.ts","hash":"1d4e7b02cc91"},"tool":"Edit"}
 {"kind":"append","id":"a1","corrections_since_last_append":"None."}

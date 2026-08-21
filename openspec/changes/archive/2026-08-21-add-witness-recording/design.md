@@ -7,20 +7,58 @@ verification quoted after its subject changed, and omission read as "nothing to
 report". The producer must not reintroduce any of them through its own
 mechanics.
 
-## Decision 1 — correlate at `PostToolUse:Task`, never at `SubagentStop`
+## Decision 1 — correlate by explicit key, across three events
 
-`SubagentStop` carries session-level fields, not the Task `tool_use_id` or
-dispatch prompt, so under N parallel subagents there are N stop events with no
-join key; any pairing invented from order or timing breaks exactly in the
-parallel case — the case the journal exists for. `PostToolUse:Task` carries
-both `tool_input` and `tool_response` in one payload: dispatch and terminal,
-unambiguous even in parallel.
+**Revised during implementation, on evidence.** The original decision put the
+terminal at `PostToolUse:Task` and ruled `SubagentStop` out for carrying "no
+join key". A probe of the installed harness refuted both halves:
 
-Where the installed harness omits `tool_use_id`, `witness record` falls back to
-a content hash of `tool_input` and — rather than silently guessing — writes the
-ambiguity into the journal as data (an `ambiguous: true` field on the report).
-A journal that admits what it could not correlate beats one that correlates
-confidently and wrongly.
+**Evidence:** `spec/fixtures/probes/claude-code/PostToolUse-Agent.json:16` — `    "status": "async_launched",`
+
+**Evidence:** `spec/fixtures/probes/claude-code/SubagentStop.json:7` — `  "agent_id": "ab210a2c41e64ee5f",`
+
+On Claude Code 2.1.238, `PostToolUse` on a subagent fires when it is *launched*
+and answers with an acknowledgement, not a result; the result arrives on
+`SubagentStop`, which carries `agent_id` — equal to the acknowledgement's
+`agentId` — and `last_assistant_message`. So the chain is three events, joined
+at each step by a key the harness supplied:
+
+```
+PreToolUse:Agent    tool_use_id ─────────────────► dispatch
+PostToolUse:Agent   tool_use_id ↔ agentId ───────► launch link (sidecar, not a record)
+SubagentStop        agent_id ────────────────────► terminal report
+```
+
+The principle the original decision was defending is unchanged and is the
+reason this survives the parallel case: **correlate only by a key the harness
+supplied, never by order or timing.** What was wrong was a premise about which
+events carry such a key — the kind of thing that cannot be settled by reasoning
+about a system you do not own, which is why the probe fixtures exist.
+
+Reading the acknowledgement as a terminal is the failure mode to avoid, and it
+is not a small one: it marks every dispatch `found` with the acknowledgement as
+its finding, and makes `no-report` unreachable. The producer would commit,
+mechanically, the exact laundering the journal exists to catch. `witness record`
+therefore refuses to read a launch acknowledgement as a report under any
+topology.
+
+The link is producer state, not journal content: `agentId → dispatch` lives in
+`.nullius/runs/<session>.links.json`, so the schema stays as specified and a
+journal remains readable without it.
+
+Two degradations, both deliberate:
+
+- **Where the harness omits `tool_use_id`**, the dispatch/report join falls back
+  to a content hash of `tool_input`, and the record carries `ambiguous: true`.
+  Two identical parallel dispatches then collide onto one id, which the
+  validator reports as `DUPLICATE-ID`. A journal that admits what it could not
+  correlate beats one that correlates confidently and wrongly.
+- **Where a `SubagentStop` resolves to no link**, nothing is recorded and the
+  reason is printed. That state means either the subagent was synchronous — in
+  which case `PostToolUse` already carried the real response and wrote the
+  terminal — or the dispatch predates the hooks. Writing a report against an
+  invented dispatch id would manufacture a `DANGLING-REFERENCE` out of the
+  common case.
 
 ## Decision 2 — `mutation` is a new kind, not a reuse of `verification`
 

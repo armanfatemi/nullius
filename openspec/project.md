@@ -27,6 +27,44 @@ the kernel's, or a second harness adapter lands. Until then the package
 boundary provides the separation (bins, READMEs, versions) without doubling
 maintenance.
 
+## Where the witness journal is going (stated 2026-08)
+
+The journal is not an end in itself. It is the capture layer for a **run
+ledger**: a machine-readable account of what happened during an agentic
+session — which agents were dispatched, what each raised, what became of it,
+what was checked, and what was decided — from which human-readable artifacts
+are *rendered* rather than hand-written.
+
+The target artifact already exists in the wild, maintained by hand: files like
+`openspec/changes/<change>/review-evidence.md`, which record staged reviewer
+rounds, findings with severities, dedup across reviewers, conflicts resolved
+against code, verification runs, and accepted deviations. Over a hundred of
+them exist across projects. **The success test for this line of work is that
+such a file becomes generated output.** Rendering must stay deterministic and
+model-free, like every other verdict path here.
+
+That destination sets the priorities, and they are not obvious from the
+invariants alone:
+
+- The ledger is for **any** agent in a run, not only reviewers — implementers,
+  devil's advocates, synthesizers, verifiers. A run may render several
+  projections (review evidence, implementation log) from one journal.
+- Findings need identity, severity, an author, and a recorded fate, or a
+  synthesis can drop one and nothing says so. That is IDEAS.md's *dissent
+  conservation*, and it is the invariant this domain most needs.
+- Structure earns its keep only if it survives contact with real ledgers. The
+  vocabulary comes from the existing corpus, not from first principles — the
+  same discipline the hook payload probes enforce.
+- Harness hooks can only ever emit `dispatch`, `report`, and `mutation`: no
+  tool call states that something was checked, relied upon, or corrected. The
+  ledger layer is therefore self-reported by construction, and the attested
+  skeleton is what audits it — a reviewer the harness saw dispatched, which
+  filed neither findings nor an explicit "None.", is a silent reviewer.
+
+Projections land beside the change they describe so that `learn` can read
+across them later, turning per-agent findings into rates rather than
+anecdotes.
+
 ## Conventions for proposals in this directory
 
 - Proposals dogfood the tool: load-bearing claims about existing code carry

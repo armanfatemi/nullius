@@ -35,13 +35,12 @@ third-party journals exist.
 
   **Evidence:** `plugin/hooks/check-plan.sh:42@3f40733` — `runner="${NULLIUS_BIN:-npx -y @nullius-inverba/claims}"`
 
-- **Claude Code hook pack** (kit + plugin): `PreToolUse:Task` → `dispatch`;
-  `PostToolUse:Task` → `report` (this single event carries both the dispatch
-  input and the subagent's response, making it the only unambiguous join point
-  under parallel subagents); `PostToolUse` on `Edit`/`Write` → `mutation`;
-  session end → synthesized `no-report` terminals for open dispatches. The
-  crash case needs no new machinery — a dispatch with no terminal is already a
-  failing finding:
+- **Claude Code hook pack** (kit + plugin): `PreToolUse` on the subagent tool →
+  `dispatch`; `SubagentStop` → `report`, joined by the agent id that
+  `PostToolUse` links to the dispatch; `PostToolUse` on `Edit`/`Write` →
+  `mutation`; session end → synthesized `no-report` terminals for open
+  dispatches. The crash case needs no new machinery — a dispatch with no
+  terminal is already a failing finding:
 
   **Evidence:** `packages/claims/src/witness.ts:38@3f40733` — `| "no-terminal"`
 
@@ -66,3 +65,14 @@ third-party journals exist.
   `PreToolUse`/`PostToolUse` payloads; `SubagentStop` payload fields;
   `SessionStart` `source` values. `doctor` (see `add-init-doctor`) probes the
   installed harness rather than trusting documentation.
+
+  **Settled during implementation, by probing 2.1.238** — and the correlation
+  above is the revised version. Three assumptions in the original proposal were
+  wrong: the subagent tool reports `tool_name: "Agent"` though matchers accept
+  `Task`; `PostToolUse` on it fires at *launch* and returns an acknowledgement,
+  not a result; and `SubagentStop` does carry a join key (`agent_id`) plus the
+  subagent's final message, which is what makes it the terminal. Recordings are
+  committed under `spec/fixtures/probes/claude-code/`, and the reasoning that
+  had to change is in `design.md` Decision 1. This is the item that most
+  justified probing over reading: had the launch acknowledgement been recorded
+  as a report, every dispatch in every journal would have read `found`.

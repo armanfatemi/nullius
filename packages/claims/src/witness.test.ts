@@ -247,3 +247,161 @@ describe("journal shape", () => {
     expect(isJournalFailure("stale-verification")).toBe(true);
   });
 });
+
+describe("schema version header", () => {
+  const HEADER = {
+    kind: "journal",
+    version: "0.2",
+    origin: "hooks",
+    session: "sess-abc",
+    source: "startup",
+  };
+  const TERMINAL = {
+    kind: "report",
+    id: "r1",
+    dispatch: "d1",
+    outcome: "empty",
+    statement: "None.",
+  };
+
+  it("reads a headerless journal as v0.1", () => {
+    const report = validateJournal(journal(DISPATCH, TERMINAL));
+
+    expect(report.findings).toEqual([]);
+    expect(report.version).toBe("0.1");
+    expect(report.header).toBeNull();
+  });
+
+  it("accepts a v0.2 header and carries its provenance", () => {
+    const report = validateJournal(journal(HEADER, DISPATCH, TERMINAL));
+
+    expect(report.findings).toEqual([]);
+    expect(report.version).toBe("0.2");
+    expect(report.header).toEqual({
+      version: "0.2",
+      origin: "hooks",
+      session: "sess-abc",
+      source: "startup",
+    });
+  });
+
+  it("counts the header as a record, because it is one", () => {
+    expect(validateJournal(journal(HEADER, DISPATCH, TERMINAL)).records).toBe(3);
+  });
+
+  it("reads a self-reported origin as itself", () => {
+    const report = validateJournal(
+      journal({ kind: "journal", version: "0.2", origin: "self-reported" }, DISPATCH, TERMINAL),
+    );
+
+    expect(report.findings).toEqual([]);
+    expect(report.header?.origin).toBe("self-reported");
+  });
+
+  it("fails an unknown version once, without a cascade of malformed records", () => {
+    const report = validateJournal(
+      journal(
+        { kind: "journal", version: "9.0", origin: "hooks" },
+        { kind: "nonsense-from-the-future", id: "n1" },
+        { kind: "also-nonsense", id: "n2" },
+      ),
+    );
+
+    expect(report.findings.map((finding) => finding.verdict)).toEqual(["unsupported-version"]);
+    expect(report.findings[0]?.line).toBe(1);
+  });
+
+  it("fails a header that omits its version — the schema is then unknowable", () => {
+    expect(verdicts(journal({ kind: "journal", origin: "hooks" }, DISPATCH))).toEqual([
+      "unsupported-version",
+    ]);
+  });
+
+  it("refuses a header that is not the first record", () => {
+    const report = validateJournal(journal(DISPATCH, TERMINAL, HEADER));
+
+    expect(report.findings.map((finding) => finding.verdict)).toEqual(["malformed"]);
+    expect(report.findings[0]?.detail).toContain("first record");
+  });
+
+  it("refuses an unknown origin, and keeps validating the rest", () => {
+    const report = validateJournal(
+      journal({ kind: "journal", version: "0.2", origin: "vibes" }, DISPATCH),
+    );
+
+    expect(report.findings.map((finding) => finding.verdict)).toEqual([
+      "malformed",
+      "no-terminal",
+    ]);
+    expect(report.header?.origin).toBeNull();
+  });
+
+  it("refuses a header with no origin — provenance is the point", () => {
+    expect(
+      verdicts(journal({ kind: "journal", version: "0.2" }, DISPATCH, TERMINAL)),
+    ).toEqual(["malformed"]);
+  });
+});
+
+describe("mutation records (v0.2)", () => {
+  const HEADER = { kind: "journal", version: "0.2", origin: "hooks" };
+  const VERIFICATION = {
+    kind: "verification",
+    id: "v1",
+    target: { path: "src/a.ts", hash: "aaaa1111" },
+    verdict: "safe",
+  };
+
+  it("advances the hash map, so an edit invalidates an earlier verification", () => {
+    const report = validateJournal(
+      journal(
+        HEADER,
+        VERIFICATION,
+        { kind: "mutation", id: "m1", target: { path: "src/a.ts", hash: "bbbb2222" } },
+        { kind: "reliance", id: "x1", relies_on: "v1" },
+      ),
+    );
+
+    expect(report.findings.map((finding) => finding.verdict)).toEqual(["stale-verification"]);
+    expect(report.mutations).toBe(1);
+  });
+
+  it("leaves an untouched path's verification usable", () => {
+    expect(
+      verdicts(
+        journal(
+          HEADER,
+          VERIFICATION,
+          { kind: "mutation", id: "m1", target: { path: "src/b.ts", hash: "bbbb2222" } },
+          { kind: "reliance", id: "x1", relies_on: "v1" },
+        ),
+      ),
+    ).toEqual([]);
+  });
+
+  it("refuses reliance on a mutation — a change is not a check", () => {
+    const report = validateJournal(
+      journal(
+        HEADER,
+        { kind: "mutation", id: "m1", target: { path: "src/a.ts", hash: "bbbb2222" } },
+        { kind: "reliance", id: "x1", relies_on: "m1" },
+      ),
+    );
+
+    expect(report.findings.map((finding) => finding.verdict)).toEqual(["dangling-reference"]);
+    expect(report.findings[0]?.detail).toContain("mutation");
+  });
+
+  it("refuses a mutation that does not name what it changed", () => {
+    expect(verdicts(journal(HEADER, { kind: "mutation", id: "m1" }))).toEqual(["malformed"]);
+  });
+
+  it("is not a kind a v0.1 journal may use", () => {
+    const report = validateJournal(
+      journal({ kind: "mutation", id: "m1", target: { path: "src/a.ts", hash: "bbbb2222" } }),
+    );
+
+    expect(report.findings.map((finding) => finding.verdict)).toEqual(["malformed"]);
+    expect(report.findings[0]?.detail).toContain("0.2");
+  });
+});

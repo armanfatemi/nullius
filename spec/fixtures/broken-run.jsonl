@@ -1,7 +1,12 @@
+{"kind":"journal","version":"0.2","origin":"hooks","session":"b7e14a90-5c26-42df-8311-6ad0c9e7f183","source":"startup"}
 {"kind":"dispatch","id":"d1","task":"find consumers of legacy.published"}
 {"kind":"dispatch","id":"d2","task":"find the retry helper"}
 {"kind":"report","id":"r1","dispatch":"d1","outcome":"empty"}
 {"kind":"verification","id":"v1","target":{"path":"src/retry.ts","hash":"9f2c4a1b8e7d"},"verdict":"safe"}
 {"kind":"verification","id":"v2","target":{"path":"src/retry.ts","hash":"0011deadbeef"},"verdict":"safe"}
 {"kind":"reliance","id":"x1","relies_on":"v1"}
+{"kind":"verification","id":"v3","target":{"path":"src/probe.ts","hash":"5c3a90e1f742"},"verdict":"safe"}
+{"kind":"mutation","id":"m1","target":{"path":"src/probe.ts","hash":"7ab2c40de915"},"tool":"Write"}
+{"kind":"reliance","id":"x2","relies_on":"v3"}
+{"kind":"reliance","id":"x3","relies_on":"m1"}
 {"kind":"append","id":"a1"}

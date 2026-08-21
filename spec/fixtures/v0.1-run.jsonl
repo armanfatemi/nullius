@@ -1,0 +1,5 @@
+{"kind":"dispatch","id":"d1","task":"find consumers of legacy.published"}
+{"kind":"report","id":"r1","dispatch":"d1","outcome":"empty","statement":"None."}
+{"kind":"verification","id":"v1","target":{"path":"src/retry.ts","hash":"9f2c4a1b8e7d"},"verdict":"safe"}
+{"kind":"reliance","id":"x1","relies_on":"v1"}
+{"kind":"append","id":"a1","corrections_since_last_append":"None."}

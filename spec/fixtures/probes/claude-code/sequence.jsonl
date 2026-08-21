@@ -1,0 +1,11 @@
+{"hook_event_name": "SessionStart"}
+{"hook_event_name": "PreToolUse", "tool_name": "Agent", "tool_use_id": "toolu_016zBxm3MUUD4KMxjmGr9BFj"}
+{"hook_event_name": "PostToolUse", "tool_name": "Agent", "tool_use_id": "toolu_016zBxm3MUUD4KMxjmGr9BFj", "status": "async_launched", "agentId": "ab210a2c41e64ee5f"}
+{"hook_event_name": "PreToolUse", "tool_name": "Agent", "tool_use_id": "toolu_0125LKc2zoTuY97evBKyqqVX"}
+{"hook_event_name": "PostToolUse", "tool_name": "Agent", "tool_use_id": "toolu_0125LKc2zoTuY97evBKyqqVX", "status": "async_launched", "agentId": "aadea4f3d57e80663"}
+{"hook_event_name": "Stop"}
+{"hook_event_name": "SubagentStop", "agent_id": "ab210a2c41e64ee5f"}
+{"hook_event_name": "Stop"}
+{"hook_event_name": "SubagentStop", "agent_id": "aadea4f3d57e80663"}
+{"hook_event_name": "Stop"}
+{"hook_event_name": "SessionEnd"}
