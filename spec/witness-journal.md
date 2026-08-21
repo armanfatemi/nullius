@@ -37,7 +37,7 @@ load-bearing — invariant 2 is a question about what happened *between* two
 records — so a reordered journal is a different journal.
 
 Every record carries `kind`, and every record but the header carries a unique
-`id`. Six kinds:
+`id`. Six record kinds, plus the header:
 
 | Kind | Purpose | Required fields |
 | --- | --- | --- |
@@ -58,6 +58,55 @@ Every record carries `kind`, and every record but the header carries a unique
 {"kind":"mutation","id":"m1","target":{"path":"src/probe.ts","hash":"7ab2…"},"tool":"Edit"}
 {"kind":"append","id":"a1","corrections_since_last_append":"None."}
 ```
+
+### The run ledger — five more kinds, v0.3
+
+The kinds above record *that* work happened. They cannot record what an agent
+raised, whether anyone answered it, or why an approach was chosen — so a
+journal can say `rule-auditor` reported without saying what it said.
+
+Schema `0.3` adds five kinds for that account. Their vocabulary is derived from
+a 91-file corpus of hand-written evidence files rather than invented; the
+derivation, including four claims it overturned, is in
+[`openspec/changes/add-run-ledger/corpus-derivation.md`](../openspec/changes/add-run-ledger/corpus-derivation.md).
+
+| Kind | Purpose | Required fields |
+| --- | --- | --- |
+| `stage` | A pipeline phase and iteration, so a journal groups the way the run ran | `phase` |
+| `finding` | Something an agent raised | `severity`, `author`, `text` |
+| `resolution` | A finding's fate | `finding`, `outcome`, `text` |
+| `check` | A command ran, and what it showed | `command`, `outcome`, `text` |
+| `decision` | An approach was chosen, and why | `choice`, `rationale` |
+
+```jsonl
+{"kind":"journal","version":"0.3","origin":"self-reported","session":"2f9c1a4e","source":"startup"}
+{"kind":"stage","id":"s1","phase":"pre-review","iteration":1,"change":"add-run-ledger"}
+{"kind":"finding","id":"f1","stage":"s1","dispatch":"d1","ref":"B1","severity":"blocker","author":"rule-auditor","convergence":["architecture-reviewer"],"text":"the precheck uses exit 1, which does not block"}
+{"kind":"resolution","id":"res1","finding":"f1","outcome":"fixed","text":"flipped both exit paths to exit 2"}
+{"kind":"check","id":"c1","command":"pnpm test","outcome":"pass","counts":{"passed":334},"text":"suite green"}
+{"kind":"decision","id":"dec1","choice":"gate the verdict to blockers","rationale":"ungated it fires on 60.8% of findings","resolves":"Decision 6"}
+```
+
+Three fields carry closed vocabularies, and one deliberately does not:
+
+- `severity` is exactly `blocker`, `concern`, `looks-good`. `looks-good` is not
+  decoration — an explicit nothing-found is how a reviewer proves it was not
+  silent, which is what discharges `SILENT-REVIEWER`.
+- `resolution.outcome` is `resolved`, `fixed`, `dropped`, `duplicate`,
+  `deferred`, `folded-in`, `accepted`, `rejected`, `out-of-scope`,
+  `deviation-accepted`. `duplicate` and `folded-in` also require `merges_into`:
+  they redirect a finding rather than closing it, and without the survivor's id
+  a merge is indistinguishable from dropping it.
+- `check.outcome` is `pass` or `fail`. A `check` is **not** a `verification` —
+  it makes no claim about a file's hash, so nothing goes stale against it.
+- `stage.phase` is an **open string**. `pre-review`, `verify`, `post-review`,
+  `address`, and `refine` are conventional, but a closed enum would have
+  rejected about 5% of the corpus this was derived from, and a schema that
+  discards real records to enforce a tidiness nobody practised is worse than an
+  untidy one.
+
+`change` binds to `stage` rather than to the header, because one session
+touches several changes and one change spans several sessions.
 
 ## The header — which schema, and whose account
 
@@ -173,10 +222,25 @@ made invalid, and the only way to say nothing is to say it.
 | `DUPLICATE-ID` | Two records claiming one id — references become ambiguous | ❌ |
 | `MALFORMED` | Not JSON, unknown kind, or a required field missing | ❌ |
 | `UNSUPPORTED-VERSION` | The header declares a schema this build cannot read | ❌ |
+| `SUPPRESSED-FINDING` | A `blocker` no resolution answers (v0.3) | ❌ |
+| `SILENT-REVIEWER` | A dispatch that reported `found` and filed no finding (v0.3) | ❌ |
+
+The last two apply only to journals declaring `0.3`. Gating them on the version
+is what keeps every existing journal's output identical: none of them can carry
+a `finding`, so ungated, all of them would acquire `SILENT-REVIEWER` at once.
+
+`SUPPRESSED-FINDING` is gated to `blocker` for a measured reason. In the corpus
+it was derived from, 59 of 97 identified findings (60.8%) are never mentioned
+again — so an ungated verdict would fire on three findings in five and be
+learned as noise. `concern` and `looks-good` go unpoliced. The honest limit:
+"never mentioned again in the same file" is a proxy for "never resolved", since
+a finding may be answered in a commit or a PR thread. It justifies the
+verdict's existence; it does not predict its rate under a producer that knows
+the rule.
 
 ## Fixtures
 
-Five journals live next to this spec:
+Seven journals live next to this spec:
 
 | Fixture | What it is for |
 | --- | --- |
@@ -185,6 +249,8 @@ Five journals live next to this spec:
 | [`v0.1-run.jsonl`](./fixtures/v0.1-run.jsonl) | Headerless, to keep v0.1 compatibility a thing CI checks rather than a thing README claims |
 | [`future-run.jsonl`](./fixtures/future-run.jsonl) | Declares version `9.0`, so the one-finding stop stays one finding |
 | [`hooks-run.jsonl`](./fixtures/hooks-run.jsonl) | Not written by hand: what the Claude Code hook pack actually produced from a real two-subagent session. Exercises correlation, not the invariants — see below |
+| [`v0.3-run.jsonl`](./fixtures/v0.3-run.jsonl) | A v0.3 run exercising all five ledger kinds, both merge outcomes, and a `looks-good` finding discharging a dispatch |
+| [`v0.3-broken-run.jsonl`](./fixtures/v0.3-broken-run.jsonl) | Trips both ledger verdicts and every new `MALFORMED` and `DANGLING-REFERENCE` path — including a blocker whose only resolutions are themselves malformed, which must not discharge it |
 
 ```sh
 nullius witness validate spec/fixtures/valid-run.jsonl   # exit 0
@@ -192,6 +258,8 @@ nullius witness validate spec/fixtures/v0.1-run.jsonl    # exit 0, read as 0.1
 nullius witness validate spec/fixtures/broken-run.jsonl  # exit 1, six findings
 nullius witness validate spec/fixtures/future-run.jsonl  # exit 1, one finding
 nullius witness validate spec/fixtures/hooks-run.jsonl   # exit 0, and nobody typed it
+nullius witness validate spec/fixtures/v0.3-run.jsonl    # exit 0, all five ledger kinds
+nullius witness validate spec/fixtures/v0.3-broken-run.jsonl  # exit 1, 26 findings
 ```
 
 `hooks-run.jsonl` is the only one nobody typed, and it is worth being exact
