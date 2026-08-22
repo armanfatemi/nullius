@@ -25,10 +25,11 @@ rather than reviewer territory.
 
 **Evidence:** `packages/claims/src/witness.ts:48@7846833` — `export type JournalVerdict =`
 
-- **A strict flat frontmatter parser** (kernel), closed-key in the style of
-  the config module, hand-rolled rather than a YAML dependency:
-
-**Evidence:** `packages/claims/src/config.ts:4@7846833` — `* Validation is strict (unknown keys are rejected) because a typo'd key —`
+- **A permissive-subset flat frontmatter parser** (kernel): scalars, inline
+  flow lists, and block lists — no nesting, no anchors, no multi-line
+  scalars — hand-rolled rather than a YAML dependency. It is not a
+  closed-key validator: a key it does not recognize is simply not read,
+  since the harness fields it scans are not a schema this tool owns.
 
 ## Impact
 

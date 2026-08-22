@@ -5,14 +5,27 @@
 ### Requirement: Declared references resolve
 
 The checker SHALL report a hard verdict for every declared reference — an
-agent name, a skill name, a read path, an `applies_to` glob, or a hook
-command — that does not resolve against the working tree.
+agent name, a skill name, a read path, or an `applies_to` glob — that does
+not resolve against the working tree, and SHALL do the same for every hook
+command it can resolve, unambiguously, to exactly one repo-relative script.
+
+A hook command line the checker cannot resolve to exactly one repo-relative
+script — two candidate tokens, any backslash, or whitespace in a candidate —
+is declined rather than checked, and is not counted among the declared
+references a clean run reports.
 
 #### Scenario: A skill dispatches an agent with no definition
 
 - **WHEN** a skill declares `dispatches: [ghost-reviewer]` and no
   `.claude/agents/ghost-reviewer.md` exists
 - **THEN** the checker reports `DANGLING-AGENT` and exits non-zero
+
+#### Scenario: A hook command is ambiguous
+
+- **WHEN** a hook's `command` value contains two tokens that each look like
+  a repo-relative script
+- **THEN** the checker declines to check that command, reporting no finding
+  and no reference for it
 
 ### Requirement: Prose references are advisory
 

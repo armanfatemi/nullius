@@ -223,6 +223,24 @@ export function checkWiring(
   for (const item of artifacts) {
     for (const ref of item.dispatches) {
       references += 1;
+      // Checked before the path is constructed and before the filesystem is
+      // touched: `agentPath` interpolates the raw value into a template
+      // string, so an unchecked `../../README` resolves (via `join`'s
+      // normalisation in `fsWiringDeps`) to a real file outside
+      // `.claude/agents/`, producing a false "resolves" instead of the
+      // dangling reference this checker exists to catch. Same containment
+      // rule as `reads` below.
+      const dispatchSafety = isSafeRepoPath(ref.value);
+      if (!dispatchSafety.safe) {
+        findings.push({
+          artifact: item.path,
+          line: ref.line,
+          verdict: "dangling-agent",
+          subject: ref.value,
+          detail: dispatchSafety.reason,
+        });
+        continue;
+      }
       const target = agentPath(ref.value);
       if (deps.exists(target)) continue;
       findings.push({
@@ -236,6 +254,19 @@ export function checkWiring(
 
     for (const ref of item.skills) {
       references += 1;
+      // Same containment guard, same reason: `skillPath` interpolates the raw
+      // value too, and an unsafe name must not reach `deps.exists` at all.
+      const skillSafety = isSafeRepoPath(ref.value);
+      if (!skillSafety.safe) {
+        findings.push({
+          artifact: item.path,
+          line: ref.line,
+          verdict: "dangling-skill",
+          subject: ref.value,
+          detail: skillSafety.reason,
+        });
+        continue;
+      }
       const target = skillPath(ref.value);
       if (deps.exists(target)) continue;
       findings.push({

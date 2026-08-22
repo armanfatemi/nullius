@@ -361,12 +361,18 @@ function runWiring(args: WiringArgs): number {
     `${report.artifacts} artifact(s) scanned, ${report.references} declared reference(s) checked.`,
   );
 
-  // Three summary states, each its own sentence: a clean run, an
-  // advisory-only run, and a failing run must not read alike. Every finding
-  // above is either a hard failure or a `loose-reference` advisory — the
-  // checker never emits an `ok` finding — so `failures` and `advisories`
-  // together account for every line printed, and a run that stayed silent
-  // about a dozen advisories would look identical to one that found nothing.
+  // Four summary states, each its own sentence: a clean run, an
+  // advisory-only run, a failing run, and a run that checked nothing must not
+  // read alike. Every finding above is either a hard failure or a
+  // `loose-reference` advisory — the checker never emits an `ok` finding — so
+  // `failures` and `advisories` together account for every line printed, and
+  // a run that stayed silent about a dozen advisories would look identical to
+  // one that found nothing. Separately, `references === 0` means no
+  // `dispatches`, `skills`, `reads`, `applies_to`, or hook `command` was ever
+  // examined — "every declared reference resolves" is technically true of an
+  // empty set, but it is the sentence a human skims and CI reads only the
+  // exit code, so a scan that checked nothing must not say the word
+  // "resolves" at all.
   if (failures > 0) {
     console.error("");
     console.error(
@@ -378,6 +384,18 @@ function runWiring(args: WiringArgs): number {
       );
     }
     return 1;
+  }
+
+  if (report.references === 0) {
+    console.log(
+      "No declared references were found to check — this is not the same as everything resolving.",
+    );
+    if (advisories > 0) {
+      console.log(
+        `${advisories} advisory loose-reference finding(s) above — unresolvable prose paths, not declared references.`,
+      );
+    }
+    return 0;
   }
 
   if (advisories > 0) {

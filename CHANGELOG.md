@@ -14,7 +14,11 @@ a package name are that package's own release; the kit versions independently.
   silence is a filesystem fact, so it now has a checker. `wiring` scans agent,
   skill, rule, hook, settings, and command artifacts under the harness root
   and confirms every reference their frontmatter *declares* — `dispatches:`,
-  `skills:`, a hook `command`, a `{{TOKEN}}` placeholder — actually resolves.
+  `skills:`, a `{{TOKEN}}` placeholder — actually resolves, and does the same
+  for every hook `command` it can unambiguously resolve to a repo-relative
+  script; a command line it cannot read that unambiguously (two candidate
+  tokens, any backslash, whitespace in a candidate) is declined rather than
+  checked, by design.
 
   Seven verdicts: `dangling-agent` and `dangling-skill` (a declared name with
   no definition file), `missing-path` and `empty-glob` (a declared path or

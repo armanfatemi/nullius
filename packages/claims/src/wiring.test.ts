@@ -56,6 +56,20 @@ describe("dangling-agent", () => {
     expect(report.findings).toEqual([]);
     expect(report.references).toBe(1);
   });
+
+  it("fails a traversing dispatch without touching the filesystem", () => {
+    // `deps.exists` claims the traversed path IS there — via `join`'s
+    // normalisation, `agentPath("../../README")` would land on a real file —
+    // so this can only pass if containment is checked before `deps.exists`
+    // is ever called.
+    const report = checkWiring(
+      [artifact({ dispatches: [{ value: "../../README", line: 4 }] })],
+      deps([".claude/agents/../../README.md"]),
+    );
+
+    expect(report.findings[0]?.verdict).toBe("dangling-agent");
+    expect(report.findings[0]?.detail).toContain("traversal");
+  });
 });
 
 describe("dangling-skill", () => {
@@ -75,6 +89,19 @@ describe("dangling-skill", () => {
     );
 
     expect(report.findings).toEqual([]);
+  });
+
+  it("fails a traversing skill reference without touching the filesystem", () => {
+    // Same technique as the traversing-dispatch case above: `deps.exists`
+    // claims the traversed path IS there, so this can only pass if
+    // containment is checked before `deps.exists` is ever called.
+    const report = checkWiring(
+      [artifact({ skills: [{ value: "../../README", line: 7 }] })],
+      deps([".claude/skills/../../README/SKILL.md"]),
+    );
+
+    expect(report.findings[0]?.verdict).toBe("dangling-skill");
+    expect(report.findings[0]?.detail).toContain("traversal");
   });
 });
 
@@ -176,7 +203,7 @@ describe("hookTarget", () => {
     );
   });
 
-  it("takes the first path-shaped token of a command line", () => {
+  it("resolves an interpreter plus one script to that script", () => {
     expect(hookTarget("node packages/kit/dist/cli.js witness record", "plugin")).toBe(
       "packages/kit/dist/cli.js",
     );
