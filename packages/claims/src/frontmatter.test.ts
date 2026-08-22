@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseFrontmatter } from "./frontmatter";
+import { declaredList, parseFrontmatter } from "./frontmatter";
 
 describe("parseFrontmatter", () => {
   it("returns null when the file has no fence on line 1", () => {
@@ -42,5 +42,41 @@ describe("parseFrontmatter", () => {
 
   it("returns null when the fence is never closed", () => {
     expect(parseFrontmatter("---\nname: x\nno closing fence\n")).toBeNull();
+  });
+});
+
+describe("declaredList", () => {
+  it("reads a block list through declaredList", () => {
+    const front = parseFrontmatter(
+      "---\ndispatches:\n  - rule-auditor\n  - retro-writer\n---\n",
+    );
+    expect(declaredList(front, "dispatches")).toEqual([
+      { value: "rule-auditor", line: 3 },
+      { value: "retro-writer", line: 4 },
+    ]);
+  });
+
+  it("reads an inline flow list through declaredList", () => {
+    const front = parseFrontmatter("---\ndispatches: [a-agent, b-agent]\n---\n");
+    expect(declaredList(front, "dispatches")).toEqual([
+      { value: "a-agent", line: 2 },
+      { value: "b-agent", line: 2 },
+    ]);
+  });
+
+  it("reads a bare scalar as a single-item list through declaredList", () => {
+    const front = parseFrontmatter("---\ndispatches: rule-auditor\n---\n");
+    expect(declaredList(front, "dispatches")).toEqual([
+      { value: "rule-auditor", line: 2 },
+    ]);
+  });
+
+  it("returns an empty array for an absent key", () => {
+    const front = parseFrontmatter("---\nname: x\n---\n");
+    expect(declaredList(front, "dispatches")).toEqual([]);
+  });
+
+  it("returns an empty array for null frontmatter", () => {
+    expect(declaredList(null, "dispatches")).toEqual([]);
   });
 });

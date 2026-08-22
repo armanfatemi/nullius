@@ -16,7 +16,19 @@ export interface Located {
 }
 
 export interface Frontmatter {
+  /**
+   * Fields declared as scalar values. These maps reflect the syntax layer: a
+   * field which may legitimately be written either as a scalar or a list should
+   * be read through `declaredList`, which unifies the two representations into
+   * a schema-layer answer.
+   */
   scalars: Map<string, Located>;
+  /**
+   * Fields declared as lists. These maps reflect the syntax layer: a field which
+   * may legitimately be written either as a scalar or a list should be read
+   * through `declaredList`, which unifies the two representations into a
+   * schema-layer answer.
+   */
   lists: Map<string, Located[]>;
   /** 1-based line where the body begins, after the closing fence. */
   bodyLine: number;
@@ -93,4 +105,23 @@ export function parseFrontmatter(content: string): Frontmatter | null {
   }
 
   return { scalars, lists, bodyLine: close + 2 };
+}
+
+/**
+ * A declared field read as a list, whichever way the author wrote it.
+ *
+ * `dispatches: rule-auditor` and `dispatches:\n  - rule-auditor` mean the same
+ * thing to whoever typed them, but the parser files the first under `scalars`
+ * and the second under `lists` — correctly, because that is what the syntax
+ * says. Choosing which of the two maps to consult is a schema question, not a
+ * parsing one, and a consumer that reaches for `lists` alone silently reads a
+ * declared field as absent. That is the failure this package exists to catch,
+ * so the answer lives here once rather than in each caller.
+ */
+export function declaredList(front: Frontmatter | null, key: string): Located[] {
+  if (front === null) return [];
+  const list = front.lists.get(key);
+  if (list !== undefined) return list;
+  const scalar = front.scalars.get(key);
+  return scalar === undefined ? [] : [scalar];
 }
