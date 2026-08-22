@@ -134,16 +134,14 @@ Synthesize the two inputs (architectural feasibility note + devil's advocate) in
 
 ### Step 0 — Triviality off-ramp (is a proposal even warranted?)
 
-**Skip this entire off-ramp if you were invoked by `implement-task` with an "already-triaged as proposal-worthy" signal** — that skill is the single triage brain and has already decided this warrants a proposal. Re-triaging here would just bounce the work back. Proceed straight to the size estimate.
-
-Otherwise (a direct invocation), check whether the change is too small to deserve the OpenSpec ceremony. If the survey shows it is trivial — roughly **≤2 files, no new aggregate/event/command/GraphQL-schema, and already fully specified** (e.g. a task description that reads like a finished spec) — a proposal directory is overhead the user may not want.
+Check whether the change is too small to deserve the OpenSpec ceremony. If the survey shows it is trivial — roughly **≤2 files, no new aggregate/event/command/GraphQL-schema, and already fully specified** (e.g. a task description that reads like a finished spec) — a proposal directory is overhead the user may not want.
 
 In that case, **ask via `AskUserQuestion`** whether to:
 
 - **Generate an OpenSpec proposal anyway** (they want the paper trail / hard review), or
-- **Skip OpenSpec and hand to `implement-task`** — the triage front-door that owns small-task implementation (direct-implement / bug-fix / trivial lanes). Pass it a "`intent-to-proposal` already determined this is NOT proposal-worthy" note so it does not escalate the work back here.
+- **Skip OpenSpec and just make the change directly** — no proposal directory, no hand-off to another skill.
 
-If they choose to skip, STOP this skill cleanly: state that you're following their choice (user instruction overrides the proposal path) and hand off to `implement-task`. Do NOT generate empty artifacts. (Real example: a ~2-line CSP fix where the user chose to fix directly → shipped as a PR with no proposal.)
+If they choose to skip, STOP this skill cleanly: state that you're following their choice (user instruction overrides the proposal path) and make the change directly. Do NOT generate empty artifacts. (Real example: a ~2-line CSP fix where the user chose to fix directly → shipped as a PR with no proposal.)
 
 If the change is non-trivial, skip this step and continue.
 
@@ -163,6 +161,8 @@ Based on the survey, estimate:
 | Estimated tasks > 60 OR services touched > 4                               | Split into multiple proposals                 |
 | Change has phases where each phase is independently valuable and shippable | Split by phase                                |
 | Change has hard prerequisites that don't exist yet                         | Separate the prerequisite as its own proposal |
+
+**Keep the split acyclic.** If two proposals seem to depend on each other, the split itself is wrong — merge them back into one proposal, or move the shared prerequisite out into its own proposal that both of the others land after.
 
 ### Autonomous decision — announce, do not gate
 
@@ -312,7 +312,10 @@ TBD — to be resolved in Stage 3 pre-review.
 <!-- ONLY include this section if the change can break across versions (schema/enum/event-payload
      shape, projection shape, stored-value vocabulary, API contract).
 
-     Name the mechanism. `Binds at:` must be one of exactly:
+     FIRST ask: does the type-checker catch it? If `pnpm type-check` fails on it, CI catches
+     it and nothing ships — DELETE the risk.
+
+     If it survives, name the mechanism. `Binds at:` must be one of exactly:
      build-time | rollout-window | inter-service-skew | event-consumption | replay-migration | data-at-rest
 
      **Risk:** <one line>
