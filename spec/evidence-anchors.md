@@ -64,6 +64,13 @@ and the **actual text**. The quoted text is what makes the citation checkable:
 a path and a line alone can be fabricated plausibly; a quoted line cannot
 survive re-reading the file.
 
+**The line field is a single integer — never a range, never a comma-list.**
+`file.ts:88` is the only shape accepted; `file.ts:12-13` or `file.ts:12,14` is
+`MALFORMED`, even when every line named is real and the quote is accurate. A
+claim that legitimately spans several lines belongs in the fenced-block form
+below, anchored to its **first** line — the block match, not the line field,
+is what carries the range.
+
 ```markdown
 **Evidence:** `k8s/base/settings/deployment.yaml:12` — `  replicas: 2`
 ```

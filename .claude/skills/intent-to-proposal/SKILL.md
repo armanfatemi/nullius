@@ -1,0 +1,528 @@
+---
+name: intent-to-proposal
+description: Transform a raw idea into one or more well-defined OpenSpec proposals through guided dialogue, codebase survey, feasibility review, and decomposition. Use when the user has an idea they want to develop into a proposal — or when given a problem to solve, and its shape is not yet decided. The output is a complete, implementation-ready change directory with enriched proposal.md, design.md skeleton, and tasks.md skeleton.
+---
+
+# Idea → OpenSpec Proposal
+
+This skill turns a rough idea into a well-scoped, implementation-ready OpenSpec proposal (or set of proposals). Proposals generated without a codebase survey produce under-specified artifacts that cost a full refinement iteration in Stage 2 — closing that gap is why this skill exists.
+
+## Boundary with `openspec-propose`
+
+This repo also has `.claude/skills/openspec-propose/SKILL.md` — a real, separate tool, not a duplicate of this one. **Do not chain into it from here.** It takes a change name or a short description, runs `openspec new change`, and walks the openspec CLI's own schema-driven loop (`openspec status`, `openspec instructions`) to fill in the generic template for `proposal.md` / `design.md` / `tasks.md`. That is the right tool when the shape of the change is already decided and what's needed is the paperwork; this skill writes richer artifacts directly, using this repo's enriched templates below, precisely for the case where the shape is not yet decided.
+
+`intent-to-proposal` owns the opposite case: the idea is still raw. Its phases — the Phase 1 dialogue, the Phase 2 codebase survey, the Phase 3 devil's-advocate refutation, the Phase 4 decomposition call — are the actual work; Phase 5's artifacts are the output of that work, not a template fill-in. If a request already reads like a settled, scoped change, use `openspec-propose`. If it is a rough problem statement, a symptom, or "figure out what to build," use this skill — the survey-then-refute loop is what `openspec-propose`'s straight-line template loop does not do.
+
+---
+
+## Entry conditions — adapt when you're not starting cold
+
+The phases below assume a cold start from a raw idea. In practice the skill is often invoked mid-session, after work that already did some of Phase 1–2. Adapt rather than redo:
+
+- **Continuation (already mid-investigation/debug).** If the current session already root-caused a bug or surveyed the touched code, that work _is_ your Phase 1 understanding and part of your Phase 2 survey — don't re-dispatch a redundant Explore over ground you've already covered. But still (a) run the Phase 2 active-changes cross-check (`openspec/changes/`) and the per-change-type red-flag check — both are easy to drop when reusing prior work — and (b) run the Phase 3 devil's advocate as a **fresh** agent. The prior investigation carries the most context bias, so the independent critic matters more, not less.
+- **Idea sourced from a detailed task description.** Phase 1 may legitimately produce **zero** `AskUserQuestion` questions — if the task already answers them, confirm understanding in prose and proceed. Zero questions is correct here, not a skipped phase.
+- **Second idea in the same session.** Each new idea gets its own full Phase 1–5. You MAY reuse a prior devil's advocate ONLY when the new idea is in the same architectural class as one already critiqued this session — and only if you say so and why. Otherwise dispatch a fresh one. Do not silently abbreviate the phases.
+
+---
+
+## Phase 1 — Guided dialogue
+
+**Goal:** understand the problem being solved, not just the solution.
+
+First, confirm what you already understand from the user's message. State it in 2-3 sentences. Then ask only the questions the message did NOT answer. Use `AskUserQuestion` with up to 4 questions — but skip any question whose answer is already clear.
+
+Questions to draw from (ask at most 4, and only unresolved ones):
+
+1. **The problem:** What symptom, failure, or limitation is this solving? Be specific — if users are affected, what do they experience? If it's internal, what breaks or slows down?
+2. **Why now:** Is there urgency, a deadline, a dependency that's now unblocked, or a threshold of pain that's been crossed?
+3. **Who is affected:** Is this user-facing, internal tooling, infrastructure, or a combination?
+4. **Rough shape:** Do you have a preferred approach in mind, or is the shape open? (This is NOT asking for a design — just whether the user has a strong prior.)
+5. **Known constraints:** Any changes in flight that this must coordinate with, or any that this might conflict with?
+
+After collecting answers, synthesize understanding in one paragraph before proceeding to Phase 2. Do not generate any proposal content yet.
+
+---
+
+## Phase 2 — Codebase survey
+
+**Goal:** understand what already exists before proposing anything. This is the step that prevents proposing a change against an imagined version of the codebase that a real survey would have shown to be wrong.
+
+Dispatch a **single Explore agent** with scope "thorough". Brief it with:
+
+- The idea (2-3 sentence summary from Phase 1)
+- The touched areas (derived from the user's answers — e.g., `packages/claims/src/`, `packages/kit/`, `plugin/commands/`, `spec/`)
+- Specific questions to answer:
+  1. What files/patterns already exist in the touched areas that this change will need to integrate with, modify, or replace? List them with brief descriptions.
+  2. Are there active OpenSpec changes (in `openspec/changes/`, not `openspec/changes/archive/`) whose scope overlaps or conflicts with this idea? Name them.
+  3. Are there any active changes that this idea depends on — i.e., infrastructure or data that must exist before this makes sense? Name them and note whether the dependency is a hard prerequisite (must land first) or a soft one (assumed but degrades gracefully if absent).
+  4. What architectural patterns are already in use for the closest analogous feature? (e.g., if the idea involves a new checker verdict, find the most similar existing one)
+  5. **Red-flag check — pick the row matching the change type.** Every change type has a characteristic show-stopper the survey must detect early:
+     - **Checker change (`packages/claims`):** does it add a member to `Verdict` (`packages/claims/src/checkClaims.ts`) or to any other exported union? Growing an exported union is a breaking change to public API — name every existing switch/exhaustiveness check that now needs a new case, not just the call site that produces the new member.
+     - **Change that adds a verdict:** does the survey confirm there will be both a fixture that trips the new verdict AND a unit test that asserts on it, not just one of the two? CI only checks a fixture's exit code — a verdict that silently stops firing can leave a fixture failing for an unrelated reason and nobody notices.
+     - **Document change (`spec/`, `openspec/changes/**`, or any prose doc):** does it assert something about existing code without a `**Evidence:**` anchor? An anchored claim and an unanchored one sitting in the same paragraph read as equally authoritative, but only the anchored one is ever re-verified — bare prose next to a citation inherits none of the citation's checking.
+     - **Harness-artifact change (anything touching `.claude/`):** does it place a file somewhere the harness will discover and register as live configuration — a skill, agent, or command — rather than keep it as inert test data? A `SKILL.md` fixture committed under `spec/fixtures/` once had structurally valid frontmatter and got auto-registered as a real, invocable skill for every contributor.
+
+While the Explore agent runs, read `openspec/changes/` directory listing yourself to cross-check active changes.
+
+After the agent returns: synthesize the survey findings in a brief internal summary (not shown to user yet). Specifically flag:
+
+- Integration points the proposal must respect
+- Existing patterns to follow
+- Active changes that are hard dependencies or soft dependencies
+- Whether the Phase 2 red-flag check (question 5) turned up a show-stopper
+
+### The survey discovers; the coordinator verifies
+
+`Explore` is a **discovery** instrument, not a verification one — its own contract says it "reads
+excerpts rather than whole files… it locates code; it doesn't review or audit it." Between the code
+and your `design.md` prose sit three lossy steps: Explore's excerpting, your internal summary, then
+writing from memory of that summary. Nothing rounds back to the source.
+
+So: **any survey finding that will become a load-bearing claim in an artifact must be re-read at
+the source by you, with the file open, before you assert it.** Capture the anchor as you read it —
+`path:line` plus the actual text, or the search command plus its result count. Those anchors go
+straight into the `**Evidence:**` lines in Phase 5, so this costs one read now and nothing later.
+
+If you cannot get an anchor, the finding is not a fact yet — it belongs in `## Open questions`, not
+in a `Rationale`. See `plugin/skills/evidence-anchors/SKILL.md` — this is the authoring convention
+the `**Evidence:**` lines in Phase 5 follow, and the deterministic checker in Phase 5's "Verify the
+grounding" step re-verifies exactly what it describes.
+
+---
+
+## Phase 3 — Feasibility + devil's advocate
+
+**Goal:** challenge the idea before any artifacts are generated, using an independent agent whose context is NOT contaminated by the dialogue and survey work done so far.
+
+The coordinator has spent Phases 1–2 reading the user's pitch, building enthusiasm for the codebase connections, and surveying what makes the idea feasible. That context biases any inline critique — the coordinator will unconsciously steelman the idea while pretending to challenge it. The devil's advocate must run in a fresh agent with minimal context.
+
+### Step 1 — Architectural feasibility (coordinator, inline)
+
+Do this yourself before dispatching anything, because it requires the survey results the coordinator already holds:
+
+- Does the survey reveal any pattern that makes this idea significantly harder than it appears?
+- Does this conflict with the kernel/kit split (kit produces and integrates, kernel judges), the public-API export boundary (`packages/claims/src/index.ts`), or the one-delivery-mechanism-per-artifact rule?
+- Does the survey reveal any in-flight change that this MUST land after? Or that landing this before X would break X?
+
+Write a 2-3 sentence architectural feasibility note. This feeds into Step 3 synthesis but does NOT go into the devil's advocate brief.
+
+### Step 2 — Devil's advocate (fresh agent, always)
+
+Dispatch a **fresh general-purpose agent** with only a stripped-down brief. Do NOT give it the survey findings, the dialogue transcript, the architectural feasibility note, or any framing that signals "we are heading toward building this."
+
+The brief must contain only:
+
+1. The idea in 2-3 sentences (neutral framing — no enthusiasm, no "we decided to", no survey context)
+2. The problem it claims to solve (one sentence)
+3. The task: **"Your job is to find the strongest reasons NOT to do this, or to do it a fundamentally different way. Argue like a skeptical senior engineer who has seen similar ideas fail. Do not try to be balanced — be a critic. Under 200 words."**
+
+After the agent returns, the coordinator synthesizes its output into a structured finding:
+
+> **Devil's advocate (independent):** [Strongest objection, verbatim or paraphrased from the agent]. [Why this matters.] [The counter-argument / how this should shape the design — this part is the coordinator's own assessment.]
+
+If the devil's advocate raised something the coordinator hadn't considered from the survey, that is a signal worth surfacing to the user before proceeding.
+
+### Step 3 — Feasibility summary (coordinator, after the agent returns)
+
+Synthesize the two inputs (architectural feasibility note + devil's advocate) into a paragraph:
+
+- Is the idea sound? (yes / yes with caveats / no — and why)
+- What are the load-bearing constraints the design must respect?
+- Any open questions that must be resolved before or during proposal generation?
+
+**Surface this to the user.** If the devil's advocate raised a genuine show-stopper, discuss before continuing — a pivot here is cheaper than mid-proposal-generation. If everything looks clear, proceed directly to Phase 4.
+
+---
+
+## Phase 4 — Decomposition decision
+
+**Goal:** decide whether this is one proposal or several, and if several, in what order.
+
+### Step 0 — Triviality off-ramp (is a proposal even warranted?)
+
+Check whether the change is too small to deserve the OpenSpec ceremony. If the survey shows it is trivial — roughly **≤2 files, no new checker verdict or CLI command, and already fully specified** (e.g. a task description that reads like a finished spec) — a proposal directory is overhead the user may not want.
+
+In that case, **ask via `AskUserQuestion`** whether to:
+
+- **Generate an OpenSpec proposal anyway** (they want the paper trail / hard review), or
+- **Skip OpenSpec and just make the change directly** — no proposal directory, no hand-off to another skill.
+
+If they choose to skip, STOP this skill cleanly: state that you're following their choice (user instruction overrides the proposal path) and make the change directly. Do NOT generate empty artifacts.
+
+If the change is non-trivial, skip this step and continue.
+
+### Size estimate
+
+Based on the survey, estimate:
+
+- Rough task count (each distinct file-level change is roughly one task; each test file is one task)
+- Packages or surfaces touched (count distinct package directories, plugin surfaces, or spec-family docs that need changes)
+- Risk level (see template below for the definition)
+
+### Decision rule
+
+| Condition                                                                  | Decision                                      |
+| -------------------------------------------------------------------------- | --------------------------------------------- |
+| Estimated tasks ≤ 60 AND packages or surfaces touched ≤ 4                  | Single proposal                               |
+| Estimated tasks > 60 OR packages or surfaces touched > 4                  | Split into multiple proposals                 |
+| Change has phases where each phase is independently valuable and shippable | Split by phase                                |
+| Change has hard prerequisites that don't exist yet                         | Separate the prerequisite as its own proposal |
+
+**Keep the split acyclic.** If two proposals seem to depend on each other, the split itself is wrong — merge them back into one proposal, or move the shared prerequisite out into its own proposal that both of the others land after.
+
+### Autonomous decision — announce, do not gate
+
+**This skill no longer stops to ask the user how many proposals to create or what to name them.** Make the decomposition call yourself from the size estimate and the decision rule above, then **announce the decision and proceed directly to Phase 5 in the same turn.** Whatever the survey + rules produce is accepted — the point is to let agents prepare proposals without a human gate here.
+
+Announce (do NOT wait for a reply):
+
+- **Single proposal:** state the kebab-case name and a one-line scope.
+- **Splitting:** state the ordered set of change names, each with a one-sentence scope and which change(s) it should land after. Present it as a short ordered list so the sequencing is legible.
+
+The one thing still worth surfacing before you spend generation effort is a genuine **Phase 3 feasibility show-stopper** (a devil's-advocate objection that a pivot would be cheaper to make now). A clean feasibility pass flows straight into Phase 5 with no confirmation turn. Naming, count, and order are the skill's call now — not the user's.
+
+---
+
+## Phase 5 — Proposal generation
+
+**Goal:** generate well-structured proposal artifacts for each change (one generation loop per proposal if multiple).
+
+### Directory scaffolding
+
+**Run this FIRST, before writing any artifact file:**
+
+```bash
+openspec new change "<name>"
+```
+
+This registers the change in the openspec system. **Do NOT hand-write `.openspec.yaml` or skip this step** — an unregistered change won't validate and won't flow into `/proposal-to-pr`, and nothing surfaces that until `openspec validate` is actually run against it.
+
+Note that `openspec new change` scaffolds **only** `.openspec.yaml` — it does NOT create `proposal.md` / `design.md` / `tasks.md` / `specs/`. Before writing those, read a recent sibling change already in `openspec/changes/` (the most recently modified one, excluding whatever you are currently scaffolding — do not hard-code a specific change name here, since any change folder named as an example will eventually be archived or deleted, and the example rots into a dangling reference instead of aging out gracefully) to match the exact on-disk format, then write the artifacts using the templates below.
+
+### For each proposal:
+
+> **Skeleton vs. filled — let survey confidence decide.** The templates below show _minimum_ structure, not a ceiling. When the Phase 2 survey gave you high confidence in the approach, fill in design decisions (with alternatives + rationale) and concrete tasks now rather than leaving `TBD` — every good real run did this, and it makes Stage 2 review sharper. Reserve skeletons / `TBD` for questions the survey genuinely did not resolve. The one firm rule: never invent a decision the survey didn't support just to avoid a placeholder.
+>
+> ⚠️ **Confidence licenses detail, not assertion.** "High survey confidence" is a feeling about a
+> lossy summary, and filling in more prose is exactly when fabricated premises get written. A
+> filled-in decision must carry its `**Evidence:**` anchors (below); a confident-sounding claim with
+> no anchor is worse than a `TBD`, because `TBD` is honest and reviewers can see it.
+
+#### Write `proposal.md`
+
+Use this exact template. Fill every section — do not leave section headers empty. "None" is an acceptable value only for Dependencies and Open questions.
+
+```markdown
+# Proposal — <name>
+
+> **Depends on:** `change-name-a`, `change-name-b` — write "None" if there are no hard prerequisites.
+>
+> <!-- Names the HARD prerequisite proposals by their `openspec/changes/<name>/` directory name —
+>      this repo has no id or model metadata file to mirror; the directory name is a proposal's only
+>      identifier. Mirror the same names in "## Dependencies > Hard" below, each with its one-line
+>      reason. `/proposal-to-pr` will not start implementation until every dependency listed here is
+>      merged. -->
+
+## Problem
+
+<!-- Concrete description of what is broken, missing, or suboptimal. Describe the symptom, not the fix.
+     One paragraph. If there are multiple symptoms, list them as bullets. -->
+
+## Why now
+
+<!-- What makes this the right time? Urgency, a dependency that just unblocked, a product milestone,
+     or a technical debt ceiling being hit. One or two sentences. -->
+
+## What changes
+
+<!-- High-level description of what this change does. Not implementation details — those belong in
+     design.md and tasks.md. Aim for 3-7 bullets covering the key capabilities added or changed. -->
+
+## Non-goals
+
+<!-- Explicitly list what this change does NOT do. This prevents scope creep and sets reviewer
+     expectations. If truly nothing is excluded, write "None — full scope is captured above." -->
+
+## Dependencies
+
+### Hard (must be merged before this starts)
+
+<!-- Format: `change-name` — one-line reason why it's required -->
+<!-- List the same change names in the header's "Depends on" line above. -->
+<!-- Write "None" if there are no hard dependencies -->
+
+### Soft (design assumes these exist; graceful degradation if absent)
+
+<!-- Format: `change-name` — what breaks or degrades if this hasn't landed yet -->
+<!-- Write "None" if there are no soft dependencies -->
+
+### Enables (future changes that will depend on this)
+
+<!-- Format: `change-name` — what becomes possible -->
+<!-- This is forward-looking — it's OK to be tentative ("probably enables X") -->
+<!-- Write "None known" if unclear -->
+
+## Size estimate
+
+|                                |                                        |
+| ------------------------------ | -------------------------------------- |
+| Estimated tasks                | ~N                                     |
+| Packages or surfaces touched   | N (list: package-a, plugin-surface) |
+| Risk                           | LOW / MEDIUM / HIGH                    |
+| Expected sessions to implement | 1 / 2                                  |
+
+<!-- LOW: pure addition, no existing behavior changed, single package or surface.
+     MEDIUM: modifies existing behavior, 2-3 packages or surfaces, or spans multiple packages.
+     HIGH: cross-cutting, 4+ packages or surfaces, a breaking change to an exported type or
+     verdict union, or security-sensitive. -->
+
+## Open questions
+
+<!-- Questions that must be resolved before or during implementation. If resolved during this skill
+     session, answer them here and note they were resolved. If none remain, write "None." -->
+```
+
+#### Write `design.md` skeleton
+
+```markdown
+# Design — <name>
+
+## Context
+
+<!-- Summary of codebase survey findings relevant to this change. What patterns exist that this
+     must follow? What integration points must be respected? Keep this as a reference for the
+     implementer — not a repeat of the proposal. -->
+
+## Decisions
+
+<!-- Each significant design choice gets a numbered entry. Fill these in during Stage 3 (Refine)
+     or before implementation if the approach is already clear. Leave as placeholders if unknown.
+
+     Format per decision:
+     ### N. [Decision title]
+     **Chosen:** ...
+     **Alternatives considered:**
+     - Option A: ... — rejected because ...
+     - Option B: ... — rejected because ...
+     **Rationale:** ...
+     **Evidence:** `path/to/file.ext:LINE` — `exact text on that line`
+     **Evidence:** `grep -rn --include='*.ext' 'pattern' src/` → N results
+
+     Every claim about what the EXISTING code does — in a Rationale, in a
+     "rejected because", in a constraint — needs an **Evidence:** line. Judgment
+     ("Option B is simpler") does not. If you cannot cite it, move it to Open
+     questions. Rule: `plugin/skills/evidence-anchors/SKILL.md`.
+
+     A `path:line` mention inside a sentence, not in the **Evidence:**/**Binds
+     at:** marker form, is never checked by `check` or `/audit` — only the
+     marker form is parsed. A load-bearing claim must use the marker, not an
+     in-prose citation that only looks grounded.
+-->
+
+### 1. [First key decision — e.g., data shape, storage, synchrony, error handling]
+
+TBD — to be resolved in Stage 3 pre-review.
+
+## Compatibility risks
+
+<!-- ONLY include this section if the change can break across versions (schema/enum/event-payload
+     shape, projection shape, stored-value vocabulary, API contract).
+
+     FIRST ask: does the type-checker catch it? If `pnpm type-check` fails on it, CI catches
+     it and nothing ships — DELETE the risk.
+
+     If it survives, name the mechanism. `Binds at:` must be one of exactly:
+     build-time | rollout-window | inter-service-skew | event-consumption | replay-migration | data-at-rest
+
+     **Risk:** <one line>
+     **Binds at:** `rollout-window`
+     **Skew path:** <producer @ver> → <medium> → <consumer @ver>
+     **Symptom:** <what observably fails, and where you would see it>
+     **Mitigation closes it because:** <ties explicitly to the named moment>
+     **Evidence:** <the citation that makes the moment real — e.g. the replicas/strategy config>
+
+     A wrong moment produces a mitigation that does not work, so this is not paperwork.
+     See `plugin/skills/evidence-anchors/SKILL.md` § Compatibility risks — name the binding moment
+     for the closed list and a worked example.
+
+     If the change cannot break across versions: remove this section. -->
+
+## Open questions
+
+<!-- Mirror the open questions from proposal.md. Delete as they are resolved during implementation. -->
+```
+
+#### Write `tasks.md` skeleton
+
+Derive the section headings from the survey findings and proposal scope. Use the appropriate set for the change type:
+
+**Kernel checker change (`packages/claims`) sections:**
+
+```
+## 0. Prerequisites / setup
+## 1. Verdict type + predicate
+## 2. Unit tests (one assertion per verdict)
+## 3. Spec delta (`spec/<name>.md`, or an update to an existing spec-family doc)
+## 4. Fixtures — valid and broken — and the CI gate
+## 5. Public exports, changelog, and full verification
+```
+
+The spec delta comes after the implementation and its tests, not before — this repo has built every checker change in that order. `add-wiring-check` (`openspec/changes/archive/2026-08-22-add-wiring-check/tasks.md`) writes the spec at step 8 of 10, after the parser, both verdict batches, the scanner, and the command; the commit history matches, with `841a17c` ("docs: spec for the wiring check") landing after `21d660f` and `3cc0290` (the checker code). `add-run-ledger` (`openspec/changes/archive/2026-08-21-add-run-ledger/tasks.md`) shows the same shape: version plumbing, record parsers, and the two verdicts (sections 1-3) before "Spec and fixtures" (section 4), with verification last.
+
+**Kit or CLI change (`packages/kit` or `plugin/`) sections:**
+
+```
+## 0. Prerequisites / setup
+## 1. Command + arg parsing
+## 2. Hook wiring (if the command is invoked from a harness hook, not just the CLI)
+## 3. Fail-open behaviour + local checks
+## 4. Tests
+## 5. Documentation
+```
+
+**Spec-family or convention change (`spec/`) sections:**
+
+```
+## 0. Prerequisites / setup
+## 1. The document (`spec/<name>.md`)
+## 2. What enforces it — a checker verdict, a CI step, or a documented review convention
+## 3. Tests / fixtures for the enforcement mechanism
+## 4. Cross-links — point existing docs at the new spec so it isn't an orphan
+```
+
+`spec/**/*.md` is checked with `--require-markers` (see the "Verify the grounding" step below), so step 1's document needs an `**Evidence:**` anchor on every claim it makes about existing code — an unanchored claim fails the gate, not just review.
+
+Mix and match as needed. Each section starts empty with a note: `<!-- Tasks to be filled during Stage 2 refinement or before Stage 4 implementation -->`.
+
+#### Create `specs/` directory — ALWAYS at least one delta
+
+⚠️ **`openspec validate` (this project's `spec-driven` schema) HARD-FAILS with "Change must have at least one delta" if `specs/` is empty.** Do NOT skip `specs/` — every change needs at least one delta file. (In practice every skill-generated change ended up with a delta anyway, after a wasted validate→diagnose→fix→re-validate cycle. Create it up front.)
+
+Create `specs/<capability>/spec.md` with at least one `## ADDED Requirements` block. If the proposal spans more than one conceptually distinct sub-area (e.g. `wiring` and `witness`), stub one file per area; otherwise one file is enough.
+
+Two parser rules cause a **second** validation failure if missed:
+
+1. **Each requirement's first line MUST contain SHALL or MUST** — the parser checks the opening line of the requirement, not just anywhere inside it.
+2. **Each requirement MUST include at least one `#### Scenario:` block.**
+
+Known-good minimal template:
+
+```markdown
+# <capability> spec delta
+
+## ADDED Requirements
+
+### Requirement: <short title>
+
+The system SHALL <the behavior this change introduces>.
+
+#### Scenario: <happy-path scenario name>
+
+- **WHEN** <trigger / precondition>
+- **THEN** <expected outcome>
+```
+
+#### Validate before completing
+
+After writing all artifacts, run:
+
+```bash
+openspec validate "<name>" --strict
+```
+
+Fix any errors (the two parser rules above are the usual culprits) and re-run until it passes. A change that doesn't validate is not done.
+
+#### Verify the grounding — REQUIRED
+
+`openspec validate` checks structure, not truth. Then run:
+
+```bash
+node packages/claims/dist/cli.js check "openspec/changes/<name>/**/*.md"
+```
+
+It re-reads every `**Evidence:**` anchor against the actual file (or, for a rev-stamped `path:line@rev`
+anchor, against the commit it names), re-runs every absence search, and rejects any `**Binds at:**`
+value outside the closed list. Verdicts (full table: `spec/evidence-anchors.md`):
+
+| Verdict                                                              | Passes? | What to do                                                                                                                                       |
+| --------------------------------------------------------------------- | :-----: | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `OK` / `SEARCH-CLEAN` / `ADVISORY`                                    |   ✅    | Nothing required. `SEARCH-CLEAN` means an absence search re-ran clean — it certifies the search, not the absence. `ADVISORY` is worth a human glance at the printed reason. |
+| `DRIFT` / `WRONG-LINE` / `STALE` / `UNVERIFIABLE-REV`                  |   ✅    | The claim is honest; only the line number (or, for a rev-stamped anchor, this clone's history) has moved. Fix the citation when convenient — this does not block.        |
+| `WEAK-ANCHOR`                                                          |   ✅    | True, but the quote is too short or too repeated to pin down the line. Requote something a real change would contradict.                          |
+| `FABRICATED` / `MISSING-FILE` / `MISSING-FILE-AT-REV` / `COUNT-MISMATCH` | ❌    | **The claim is false.** Open the file, fix the claim, **and re-examine the decision it was supporting** — a false premise may have been load-bearing. |
+| `UNPINNED`                                                             |   ❌    | The quote is neither distinctive nor on its cited line — it pins nothing down. Requote something that identifies the line.                        |
+| `UNSAFE-PATH` / `UNSAFE` / `COMMAND-ERROR`                             |   ❌    | The citation or search violates the checker's sandbox (path left the repo, an unlisted flag, or the command failed). Rewrite it in the documented form. |
+| `UNKNOWN-MOMENT`                                                       |   ❌    | The named `**Binds at:**` mechanism isn't in the project's closed list. Pick from the list.                                                        |
+| `MALFORMED`                                                            |   ❌    | The `**Evidence:**` line matches none of the citation shapes. Rewrite it.                                                                          |
+
+**A non-zero exit is a hard gate — do not present the proposal as complete.** The checker only sees
+claims written in the structured form; a load-bearing claim asserted in bare prose with no
+`**Evidence:**` line passes silently here and is caught later by the reviewers' `[false-premise]`
+severity. Green is a floor, not a ceiling.
+
+---
+
+## Completing the skill
+
+### Audit the generated proposal — a different question from the grounding check
+
+Before presenting the completion summary, dispatch the `nullius:audit` command
+(`plugin/commands/audit.md`) against the freshly generated `proposal.md` (each
+proposal in turn, if the decomposition split into more than one).
+
+**This is not the same check Phase 5 already ran, and dropping one on the
+assumption it's redundant with the other lets a different class of false claim
+through.** `check` (Phase 5's "Verify the grounding") proves each
+`**Evidence:**` anchor's quoted text is really on the line it cites — it
+verifies the citation is real. `/audit` does not re-read citations at all:
+it hands each claim, stripped of the surrounding document, to its own fresh
+subagent and tells that agent to refute it. A refutation comes back as new
+anchors, which then go through `check` like anyone else's. `check` asks "is
+this citation real"; `/audit` asks "does this citation actually support the
+sentence built on top of it."
+
+**A known limitation of the extractor itself.** `statementAbove`
+(`packages/claims/src/audit.ts`) takes only the single physical line
+immediately above an `**Evidence:**` marker as "the claim's statement" — a
+sentence hard-wrapped across two source lines has its subject clause silently
+dropped, and because the function tracks no "inside a fence" state, two
+`**Evidence:**` blocks stacked back to back can pair a code excerpt from the
+first block as the statement for the second block's anchor. Read a REFUTED
+verdict against the full sentence in the actual document before acting on it
+— do not assume the brief handed to the refuting agent already reflects it.
+
+Follow the command's own protocol for collecting verdicts: **REFUTED** claims
+get their counter-evidence verified with `check` and the decision they
+supported re-examined; **SUPPORTED** claims get reported with where the agent
+looked for a counter-example; **UNVERIFIABLE-BY-SEARCH** claims move to
+`## Open questions` rather than being treated as a failure.
+
+**This is also not Phase 3's devil's advocate**, even though both are a fresh,
+uncontaminated agent told to refute rather than confirm. Phase 3 critiques the
+*idea*, before any artifact exists — a stripped brief, no document at all.
+This pass critiques the *artifact*, after `proposal.md`/`design.md` exist to
+be attacked — one fresh agent per claim, each starved down to that claim's own
+brief. Same doctrine, different input, different moment; run both.
+
+After generating all artifacts, present the user with:
+
+1. **Summary:** Change name(s), what was generated, where to find them.
+2. **Survey findings that shaped this:** 2-3 key things the survey found that influenced the proposal shape (integration points, dependencies discovered, pattern to follow).
+3. **Load-bearing constraints:** The 1-3 things the implementer must NOT violate (e.g., "must not grow the `Verdict` union without a fixture + unit test", "must land after X").
+4. **Next step:** "Run `/proposal-to-pr <name>` to start the review + implementation pipeline."
+
+If multiple proposals were generated, also show the ordered list of change names — the same order announced in Phase 4 — so the pickup order is unambiguous:
+
+- The order they should be implemented in
+- Which one to start with
+
+**Before handing off — branch hygiene.** The artifacts are uncommitted files, and `/proposal-to-pr` expects a clean feature branch. If the working tree is on `main` (or another shared branch), create/switch to an `openspec/<name>` branch and commit the artifacts before pointing the user at the pipeline — uncommitted artifacts left on a shared branch are one stray commit away from landing there with nothing to mark them as not-yet-reviewed. If the session is already long and full of deliberation, recommend running `/proposal-to-pr` in a **fresh session** to avoid context bloat.
+
+---
+
+## What this skill does NOT do
+
+- It does not implement. The implementation pipeline is `proposal-to-pr`.
+- It does not replace human judgment on whether to build something. Phase 3 surfaces the question; the user decides.
+- It does not _require_ complete `tasks.md` content — when the design is still open, skeleton headings are enough to prime Stage 4 and tasks get refined collaboratively in Stage 2/3. But when the survey makes the task list concrete and mechanical (a fixture pair, a CHANGELOG entry, a rename), populating real tasks now is encouraged (see "Skeleton vs. filled" in Phase 5).
+- It does not guarantee zero blockers in Stage 2 — but a good survey + feasibility pass significantly reduces the probability.
