@@ -1,0 +1,27 @@
+{
+  "session_id": "7d135a54-bf73-51e7-b57f-5df49230101f",
+  "transcript_path": "/home/user/.claude/projects/-home-user-nullius/7d135a54-bf73-51e7-b57f-5df49230101f.jsonl",
+  "cwd": "/home/user/nullius",
+  "prompt_id": "4a01f363-88c5-4452-ac5b-8e5920ace6be",
+  "permission_mode": "auto",
+  "effort": {
+    "level": "high"
+  },
+  "hook_event_name": "PostToolUse",
+  "tool_name": "Workflow",
+  "tool_input": {
+    "script": "export const meta = {\n  name: 'witness-probe-2',\n  description: 'Second harness probe: is the Workflow tool call itself visible to hooks?',\n  phases: [\n    { title: 'Probe2', detail: 'one trivial agent, no tools' },\n  ],\n}\n\nphase('Probe2')\n\nconst one = await agent('This is a harness instrumentation probe, not a real task. Do not read files, run commands, or use any tools. Reply with exactly the single word: CHARLIE', { label: 'probe-charlie', phase: 'Probe2' })\n\nlog(`probe2 returned: ${one}`)\nreturn { one }\n"
+  },
+  "tool_response": {
+    "status": "async_launched",
+    "taskId": "w57v0s7wa",
+    "taskType": "local_workflow",
+    "workflowName": "witness-probe-2",
+    "runId": "wf_6bf916e2-f80",
+    "summary": "Second harness probe: is the Workflow tool call itself visible to hooks?",
+    "transcriptDir": "/home/user/.claude/projects/-home-user-nullius/7d135a54-bf73-51e7-b57f-5df49230101f/subagents/workflows/wf_6bf916e2-f80",
+    "scriptPath": "/home/user/.claude/projects/-home-user-nullius/7d135a54-bf73-51e7-b57f-5df49230101f/workflows/scripts/witness-probe-2-wf_6bf916e2-f80.js"
+  },
+  "tool_use_id": "toolu_01WyGKwahrMRhCdrs59oMicm",
+  "duration_ms": 4
+}

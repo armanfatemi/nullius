@@ -1,0 +1,19 @@
+{
+  "session_id": "7d135a54-bf73-51e7-b57f-5df49230101f",
+  "transcript_path": "/home/user/.claude/projects/-home-user-nullius/7d135a54-bf73-51e7-b57f-5df49230101f.jsonl",
+  "cwd": "/home/user/nullius",
+  "prompt_id": "4a01f363-88c5-4452-ac5b-8e5920ace6be",
+  "permission_mode": "auto",
+  "effort": {
+    "level": "high"
+  },
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Agent",
+  "tool_input": {
+    "description": "Probe control dispatch",
+    "prompt": "This is a harness instrumentation probe, not a real task. Do not read any files, run any commands, or use any tools. Reply with exactly the single word: OK",
+    "subagent_type": "claude",
+    "run_in_background": false
+  },
+  "tool_use_id": "toolu_01THdLC5YDfW8YoG6gLboGoy"
+}
