@@ -171,16 +171,32 @@ that re-verifies what comes back:
 
 **Evidence:** `plugin/commands/audit.md:2@7785686` — `description: Audit the premises of a document — refute-first, one claim per agent, refutations returned as checkable anchors`
 
-So Phase 3 dispatches `/audit` instead of carrying its own refutation brief.
-This is the D2 overlap rule applied to the one place it pays best: the export
-approximates in prompt-ware exactly what this repo built deterministically.
+It does **not** replace the devil's advocate, and an earlier draft of this
+section said it did. They take different inputs at different moments: Phase 3
+critiques the *idea*, before any artifact exists, while `/audit` takes a
+*document* and refutes its premises one claim per agent. Same doctrine — a
+starved fresh agent told to refute — applied to two different things.
 
-**The codebase survey should emit anchors, not prose.** Phase 2 surveys the
-code and its findings become the proposal's premises — which is precisely the
-class of claim that rots silently. A survey finding written as an Evidence
-Anchor is re-verified by `check` on every run, and CI already gates
-`openspec/**/*.md`. This is the schema-first rule from D3 applied to the
-front of the pipeline rather than the back.
+So the devil's advocate stays as written, and `/audit` is added after
+generation, against the proposal it produced. Two refutation passes at the two
+moments each has the right input for, which is cheaper here than anywhere
+because the second one already exists.
+
+**The codebase survey already emits anchors — it needs wiring, not
+converting.** An earlier draft of this section proposed making survey findings
+anchored, as though that were new. It is not: Phase 2 already carries a
+section titled "The survey discovers; the coordinator verifies," which
+requires any survey finding destined to become a load-bearing claim to be
+re-read at the source and captured as `path:line` plus text, or a search
+command plus its result count — and says those go straight into the
+`**Evidence:**` lines the generation phase writes. Phase 5 then runs a claims
+checker over the result.
+
+What the port changes is where those point. The skill cites a
+`proposal-grounding` rule file and a `{{CLAIMS_CHECKER_CMD}}` token, both
+belonging to the export's own fork of this convention. Here they become the
+plugin's `evidence-anchors` skill and the real kernel CLI, which is the D2
+overlap rule doing exactly what it was written for.
 
 **The proposal-metadata machinery does not port as-is.** The export assigns
 each proposal a stable `prop-<hex>` id, a model, and a `depends_on` list in an
