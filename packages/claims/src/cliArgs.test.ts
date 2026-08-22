@@ -132,3 +132,20 @@ describe("parseCli — witness", () => {
     );
   });
 });
+
+describe("wiring", () => {
+  it("defaults the root to the working directory", () => {
+    expect(parseCli(["wiring"])).toEqual({ kind: "wiring", root: "." });
+  });
+
+  it("accepts one root operand", () => {
+    expect(parseCli(["wiring", "spec/fixtures/wiring-valid"])).toEqual({
+      kind: "wiring",
+      root: "spec/fixtures/wiring-valid",
+    });
+  });
+
+  it("rejects a flag belonging to another command by naming its owner", () => {
+    expect(() => parseCli(["wiring", "--require-markers"])).toThrow(/option of `check`/);
+  });
+});

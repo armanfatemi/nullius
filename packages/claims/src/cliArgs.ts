@@ -39,13 +39,20 @@ export interface WitnessArgs {
   operands: string[];
 }
 
+export interface WiringArgs {
+  kind: "wiring";
+  /** Root to scan. Defaults to the working directory. */
+  root: string;
+}
+
 export type Command =
   | { kind: "help"; requested: boolean }
   | { kind: "version" }
   | { kind: "demo" }
   | CheckArgs
   | AuditArgs
-  | WitnessArgs;
+  | WitnessArgs
+  | WiringArgs;
 
 /** Which command owns which flag, so a misplaced one can name its home. */
 const FLAG_OWNERS: ReadonlyMap<string, string> = new Map([
@@ -59,6 +66,7 @@ const COMMANDS: ReadonlySet<string> = new Set([
   "check",
   "audit",
   "witness",
+  "wiring",
   "demo",
   "eager-prompt",
 ]);
@@ -141,6 +149,7 @@ export function parseCli(argv: readonly string[]): Command {
   }
   if (first === "check") return parseCheck(rest);
   if (first === "witness") return parseWitness(rest);
+  if (first === "wiring") return parseWiring(rest);
   return parseAudit(rest, first === "eager-prompt");
 }
 
@@ -228,4 +237,23 @@ function parseWitness(rawArgv: readonly string[]): WitnessArgs {
     if (arg.startsWith("-")) rejectMisplaced(arg, "witness");
   }
   return { kind: "witness", operands: [...argv, ...literal] };
+}
+
+/**
+ * `wiring` takes an optional root and no flags. One operand only: two roots
+ * would silently scan the first and ignore the second.
+ */
+function parseWiring(rawArgv: readonly string[]): WiringArgs {
+  const { flags: argv, literal } = splitOperands(rawArgv);
+  const operands: string[] = [...literal];
+
+  for (const arg of argv) {
+    if (arg.startsWith("-")) rejectMisplaced(arg, "wiring");
+    operands.push(arg);
+  }
+
+  if (operands.length > 1) {
+    throw new CliError(`\`wiring\` takes at most one root, got: ${operands.join(" ")}`);
+  }
+  return { kind: "wiring", root: operands[0] ?? "." };
 }
