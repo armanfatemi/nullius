@@ -70,21 +70,76 @@ function tokensIn(content: string): Located[] {
   return found;
 }
 
-/** Every `"command": "..."` string in a hooks or settings JSON file, with its line. */
+/**
+ * Every `command` key's string value in a hooks or settings JSON structure,
+ * at any depth. Hook commands nest — `hooks.PreToolUse[].hooks[].command` —
+ * so this walks arrays and objects rather than assuming a shape.
+ */
+function collectCommands(node: unknown, found: string[]): void {
+  if (Array.isArray(node)) {
+    for (const item of node) collectCommands(item, found);
+    return;
+  }
+  if (node === null || typeof node !== "object") return;
+  for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+    if (key === "command" && typeof value === "string") found.push(value);
+    collectCommands(value, found);
+  }
+}
+
+/**
+ * The line a command string appears on, found by searching the raw text for
+ * its JSON-escaped rendering — `JSON.parse` hands back the unescaped value,
+ * but the source text still carries whatever escaping put it there (`\"`,
+ * `\\`, ...), so a plain substring search against the parsed value would
+ * miss it. `JSON.stringify` re-escapes it the same way `JSON.parse` would
+ * have read it back, which is the inverse operation we need.
+ *
+ * Best-effort only: collapsed formatting can put a command on a line with
+ * other content that still contains it (fine, found), or — for a form of
+ * escaping `JSON.stringify` would not itself produce, e.g. `"` for a
+ * quote — the search can miss entirely. When it does, this falls back to
+ * line 1 rather than fail the scan; a wrong-but-plausible line number is a
+ * worse bug than an honest "couldn't tell".
+ */
+function locateLine(lines: string[], command: string): number {
+  const escaped = JSON.stringify(command).slice(1, -1);
+  const index = lines.findIndex((line) => line.includes(escaped));
+  return index === -1 ? 1 : index + 1;
+}
+
+/**
+ * Every hook command in a hooks or settings JSON file, resolved through
+ * `hookTarget`, with a best-effort line number (see `locateLine`).
+ */
 function hookCommands(content: string, pluginRoot: string): Located[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    // A hooks/settings file that fails to parse yields no hooks and no
+    // finding, rather than throwing out of the scan. Reporting the parse
+    // failure itself would need verdict vocabulary this command does not
+    // have — it only speaks about references resolving, not document
+    // validity — so this is a deliberate scope boundary, not an oversight.
+    return [];
+  }
+
+  const commands: string[] = [];
+  collectCommands(parsed, commands);
+
+  const lines = content.split("\n");
   const found: Located[] = [];
-  content.split("\n").forEach((line, index) => {
-    const match = /"command"\s*:\s*"(.*)"\s*,?\s*$/.exec(line);
-    if (match === null) return;
-    const raw = (match[1] ?? "").replaceAll('\\"', '"');
+  for (const raw of commands) {
     const target = hookTarget(raw, pluginRoot);
     // hookTarget returning null means this command line names no checkable
     // script (a shell one-liner, an ambiguous command, ...) — not that the
     // script is missing. Pushing a null entry here would both inflate the
     // reference count and hand checkWiring a meaningless finding, so it is
     // dropped rather than recorded.
-    if (target !== null) found.push({ value: target, line: index + 1 });
-  });
+    if (target === null) continue;
+    found.push({ value: target, line: locateLine(lines, raw) });
+  }
   return found;
 }
 

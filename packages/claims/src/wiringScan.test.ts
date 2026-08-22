@@ -5,6 +5,26 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { looseCandidates, scanHarnessRoot } from "./wiringScan";
+import type { Located } from "./frontmatter";
+
+/**
+ * Writes `content` as `plugin/hooks/hooks.json` under a fresh temp root,
+ * scans it, and returns the resolved `hooks` array for that artifact —
+ * cleaning up the temp root whether the scan throws or not.
+ */
+function scanHooksFile(content: string): Located[] {
+  const root = mkdtempSync(join(tmpdir(), "wiring-scan-"));
+  try {
+    mkdirSync(join(root, "plugin", "hooks"), { recursive: true });
+    writeFileSync(join(root, "plugin", "hooks", "hooks.json"), content);
+
+    const artifacts = scanHarnessRoot(root);
+    const hooksArtifact = artifacts.find((artifact) => artifact.kind === "hooks");
+    return hooksArtifact?.hooks ?? [];
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
 
 describe("looseCandidates", () => {
   it("finds a backticked repo-relative path", () => {
@@ -70,5 +90,83 @@ describe("scanHarnessRoot hook resolution", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+
+  it("resolves the same hooks whether the file is minified or pretty-printed", () => {
+    const hooksObj = {
+      hooks: {
+        Stop: [{ hooks: [{ type: "command", command: "node ${CLAUDE_PLUGIN_ROOT}/hooks/check.sh" }] }],
+      },
+    };
+
+    const pretty = scanHooksFile(JSON.stringify(hooksObj, null, 2));
+    const minified = scanHooksFile(JSON.stringify(hooksObj));
+
+    expect(minified.map((hook) => hook.value)).toEqual(["plugin/hooks/check.sh"]);
+    expect(minified.map((hook) => hook.value)).toEqual(pretty.map((hook) => hook.value));
+  });
+
+  it("resolves two command entries condensed onto a single line", () => {
+    const content = [
+      "{",
+      '  "hooks": {',
+      '    "Stop": [',
+      "      {",
+      '        "hooks": [',
+      '          { "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/check.sh" }, { "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/other.sh" }',
+      "        ]",
+      "      }",
+      "    ]",
+      "  }",
+      "}",
+    ].join("\n");
+
+    const hooks = scanHooksFile(content);
+
+    expect(hooks.map((hook) => hook.value).sort()).toEqual([
+      "plugin/hooks/check.sh",
+      "plugin/hooks/other.sh",
+    ]);
+  });
+
+  it("finds a command nested at hooks.PreToolUse[].hooks[].command depth", () => {
+    const content = JSON.stringify(
+      {
+        hooks: {
+          PreToolUse: [
+            {
+              matcher: "ExitPlanMode",
+              hooks: [{ type: "command", command: '"${CLAUDE_PLUGIN_ROOT}/hooks/check-plan.sh"' }],
+            },
+          ],
+        },
+      },
+      null,
+      2,
+    );
+
+    const hooks = scanHooksFile(content);
+
+    expect(hooks.map((hook) => hook.value)).toEqual(["plugin/hooks/check-plan.sh"]);
+  });
+
+  it("attributes a sensible line number for the normal pretty-printed case", () => {
+    const content = JSON.stringify(
+      { hooks: { Stop: [{ hooks: [{ type: "command", command: "node ${CLAUDE_PLUGIN_ROOT}/hooks/check.sh" }] }] } },
+      null,
+      2,
+    );
+    const lines = content.split("\n");
+    const expectedLine = lines.findIndex((line) => line.includes("check.sh")) + 1;
+
+    const hooks = scanHooksFile(content);
+
+    expect(expectedLine).toBeGreaterThan(1);
+    expect(hooks).toEqual([{ value: "plugin/hooks/check.sh", line: expectedLine }]);
+  });
+
+  it("returns no hooks for a file that fails to parse, instead of throwing", () => {
+    expect(() => scanHooksFile("{ this is not json")).not.toThrow();
+    expect(scanHooksFile("{ this is not json")).toEqual([]);
   });
 });
