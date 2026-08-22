@@ -179,6 +179,34 @@ describe("hookTarget", () => {
   it("returns null for an absolute path, which is not ours to judge", () => {
     expect(hookTarget("/usr/local/bin/thing", "plugin")).toBeNull();
   });
+
+  it("resolves a quoted path containing a space whole", () => {
+    expect(hookTarget('"plugin/hooks/my hook.sh"', "plugin")).toBe(
+      "plugin/hooks/my hook.sh",
+    );
+  });
+
+  it("does not mistake a loader flag argument for the script", () => {
+    expect(hookTarget("node --require dotenv/config packages/kit/dist/cli.js", "plugin")).toBe(
+      "packages/kit/dist/cli.js",
+    );
+  });
+
+  it("does not mistake a scoped package name for the script", () => {
+    expect(hookTarget("npx --yes @myorg/mytool packages/kit/dist/cli.js", "plugin")).toBe(
+      "packages/kit/dist/cli.js",
+    );
+  });
+
+  it("skips an absolute interpreter and continues the search", () => {
+    expect(hookTarget("/usr/bin/env node hooks/run.js", "plugin")).toBe(
+      "hooks/run.js",
+    );
+  });
+
+  it("returns null for an extensionless script — a deliberate coverage gap", () => {
+    expect(hookTarget("plugin/hooks/checkplan", "plugin")).toBeNull();
+  });
 });
 
 describe("dead-hook", () => {

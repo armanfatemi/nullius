@@ -96,25 +96,71 @@ export function skillPath(name: string): string {
   return `.claude/skills/${name}/SKILL.md`;
 }
 
+/** Extensions a hook script plausibly ends in. Nothing else is claimed as a target. */
+const SCRIPT_EXTENSIONS: ReadonlySet<string> = new Set([
+  ".sh", ".bash", ".zsh", ".js", ".mjs", ".cjs", ".ts", ".py", ".rb", ".pl", ".cmd", ".ps1", ".bat",
+]);
+
+/** Split a command line into words, treating a quoted run — spaces and all — as one word. */
+function shellWords(command: string): string[] {
+  const words: string[] = [];
+  let current = "";
+  let quote: string | null = null;
+
+  for (const char of command) {
+    if (quote !== null) {
+      if (char === quote) quote = null;
+      else current += char;
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      quote = char;
+      continue;
+    }
+    if (/\s/.test(char)) {
+      if (current.length > 0) words.push(current);
+      current = "";
+      continue;
+    }
+    current += char;
+  }
+  if (current.length > 0) words.push(current);
+  return words;
+}
+
+function hasScriptExtension(token: string): boolean {
+  const dot = token.lastIndexOf(".");
+  return dot !== -1 && SCRIPT_EXTENSIONS.has(token.slice(dot).toLowerCase());
+}
+
 /**
  * The repo-relative script a hook command runs, or null when there is nothing
  * to check.
  *
- * Conservative on purpose. A hook command is a shell line, not a path: it may
- * be a bare binary on `$PATH`, an absolute path outside the repo, or an
- * interpreter followed by a script. Guessing wrong here produces a failing
- * build over a hook that works, which is how a check earns its way into
- * someone's ignore list.
+ * Conservative on purpose, and deliberately more conservative than "the first
+ * token with a slash in it". A command line is not a path: `--require
+ * dotenv/config`, a scoped package like `@acme/tool`, and a quoted path with a
+ * space in it all look path-shaped, and each one claimed as a target produces a
+ * failing build over a hook that works. That is how a check earns its way into
+ * someone's ignore list, so the rule requires a recognised script extension
+ * before claiming anything.
+ *
+ * The trade is real and chosen: a hook script with no extension is not checked
+ * at all. For an artifact whose harness already fails open, a missed check is
+ * the better direction to be wrong in than a false failure.
+ *
+ * An absolute path is skipped rather than ending the search, so
+ * `/usr/bin/env node hooks/run.js` still finds the script.
  */
 export function hookTarget(command: string, pluginRoot: string): string | null {
   const expanded = command
     .replaceAll("${CLAUDE_PLUGIN_ROOT}", pluginRoot)
     .replaceAll("$CLAUDE_PLUGIN_ROOT", pluginRoot);
 
-  for (const rawToken of expanded.split(/\s+/)) {
-    const token = rawToken.replaceAll('"', "").replaceAll("'", "");
+  for (const token of shellWords(expanded)) {
     if (!token.includes("/")) continue;
-    if (token.startsWith("/") || token.startsWith("~")) return null;
+    if (token.startsWith("/") || token.startsWith("~")) continue;
+    if (!hasScriptExtension(token)) continue;
     return token;
   }
   return null;
