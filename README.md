@@ -60,9 +60,20 @@ which is where the insistence on making absence loud comes from.
 
 ## Set it up in one command
 
+> **`@nullius-inverba/kit` is not published yet** — `npx @nullius-inverba/kit`
+> returns a 404. The kernel (`@nullius-inverba/claims`) *is* published, so
+> every `check` / `audit` / `witness validate` command below works today. Until
+> the kit ships, run it from a clone:
+>
+> ```sh
+> git clone https://github.com/armanfatemi/nullius && cd nullius
+> pnpm install && pnpm build
+> node packages/kit/dist/cli.js init --dry-run --root /path/to/your/repo
+> ```
+
 ```sh
-npx @nullius-inverba/kit init            # detects your repo, prints every file it writes
-npx @nullius-inverba/kit init --dry-run  # or see the plan first, and write nothing
+nullius-kit init            # detects your repo, prints every file it writes
+nullius-kit init --dry-run  # or see the plan first, and write nothing
 ```
 
 It picks a profile from what is actually on disk — `openspec/` means the specs
@@ -82,7 +93,7 @@ Two things `init` deliberately will not do, and prints instead of doing:
 Then, whenever something stops working:
 
 ```sh
-npx @nullius-inverba/kit doctor          # and `--fix` to re-render what it manages
+nullius-kit doctor          # and `--fix` to re-render what it manages
 ```
 
 Every mechanism here fails open — a hook that cannot run must never break your
@@ -240,15 +251,20 @@ Then read what it produced:
 npx @nullius-inverba/claims witness validate .nullius/runs/<session>.jsonl
 ```
 
-By default the hooks fetch the published recorder. To pin a local build —
-which is what this repo does, so it dogfoods its own kit rather than a copy
-from npm — set `NULLIUS_KIT_BIN` in `.claude/settings.json`:
+The hooks fall back to `npx -y @nullius-inverba/kit`, **which is not published
+yet** — so until it ships, `NULLIUS_KIT_BIN` is required rather than optional,
+and must point at a local build. Set it in `.claude/settings.json`:
 
 **Evidence:** `plugin/hooks/witness-record.sh:37@6f2428f` — `runner="${NULLIUS_KIT_BIN:-npx -y @nullius-inverba/kit}"`
 
 ```json
-{ "env": { "NULLIUS_KIT_BIN": "node packages/kit/dist/cli.js" } }
+{ "env": { "NULLIUS_KIT_BIN": "node /path/to/nullius/packages/kit/dist/cli.js" } }
 ```
+
+Without it the recorder cannot start. It fails **loudly** on stderr rather than
+recording nothing quietly — an empty `runs/` must never be indistinguishable
+from a session in which nothing happened — but stderr from a hook is easy to
+miss, so set the variable before relying on the journal.
 
 **Do not copy hook entries into `.claude/settings.json`.** The plugin delivers
 them keyed on `${CLAUDE_PLUGIN_ROOT}`, and a second copy is a path nothing can
@@ -385,7 +401,7 @@ format is shaped this way; the linter is what you install.
 | [GitHub Action](action/)                          | Advisory PR comments, `pr-body` mode, a hard gate when you opt in                                                    |
 | [Claude Code plugin](plugin/)                     | Authoring skill, plan-approval hook, witness recording hooks, `/ground`, `/audit`, and the `[false-premise]` reviewer block |
 | `witness validate`                                | The run-journal validator — three invariants, no model ([the schema](spec/witness-journal.md))                       |
-| [`@nullius-inverba/kit`](packages/kit/)           | The producer: `witness record` writes the journal from harness hooks, so the record is not the agent's account of itself |
+| [`@nullius-inverba/kit`](packages/kit/) **(unpublished)** | `init` / `doctor`, and the producer: `witness record` writes the journal from harness hooks, so the record is not the agent's account of itself. Run from a clone until it ships |
 
 ## Design principles
 
