@@ -197,7 +197,7 @@ openspec new change "<name>"
 
 This registers the change in the openspec system. **Do NOT hand-write `.openspec.yaml` or skip this step** — an unregistered change won't validate and won't flow into `/proposal-to-pr`. (Two real runs skipped it and hand-wrote `.openspec.yaml`; both only caught the risk because they validated afterward.)
 
-Note that `openspec new change` scaffolds **only** `.openspec.yaml` — it does NOT create `proposal.md` / `design.md` / `tasks.md` / `specs/`. Before writing those, read a recent sibling change in `openspec/changes/` (e.g. `canonicalize-production-host/`) to match the exact on-disk format, then write the artifacts using the templates below.
+Note that `openspec new change` scaffolds **only** `.openspec.yaml` — it does NOT create `proposal.md` / `design.md` / `tasks.md` / `specs/`. Before writing those, read a recent sibling change already in `openspec/changes/` (the most recently modified one, excluding whatever you are currently scaffolding — do not hard-code a specific change name here, since any change folder named as an example will eventually be archived or deleted, and the example rots into a dangling reference instead of aging out gracefully) to match the exact on-disk format, then write the artifacts using the templates below.
 
 ### For each proposal:
 
