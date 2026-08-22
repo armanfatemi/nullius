@@ -947,7 +947,7 @@ git commit -m "feat(claims): dead-hook and unsubstituted-token verdicts"
 
 - [ ] **Step 1: Write the failing tests**
 
-```ts
+````ts
 import { describe, expect, it } from "vitest";
 
 import { looseCandidates } from "./wiringScan";
@@ -978,7 +978,7 @@ describe("looseCandidates", () => {
     expect(looseCandidates("```\n`src/wiring.ts`\n```\n", 1)).toEqual([]);
   });
 });
-```
+````
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
