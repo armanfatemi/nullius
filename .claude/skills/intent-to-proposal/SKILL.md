@@ -1,13 +1,17 @@
 ---
 name: intent-to-proposal
-description: Transform a raw idea into one or more well-defined OpenSpec proposals through guided dialogue, codebase survey, feasibility review, and decomposition. Use when the user has an idea they want to develop into a proposal — or when given a problem to solve. Replaces /opsx:propose for this project. The output is a complete, implementation-ready change directory with enriched proposal.md, design.md skeleton, and tasks.md skeleton.
+description: Transform a raw idea into one or more well-defined OpenSpec proposals through guided dialogue, codebase survey, feasibility review, and decomposition. Use when the user has an idea they want to develop into a proposal — or when given a problem to solve, and its shape is not yet decided. The output is a complete, implementation-ready change directory with enriched proposal.md, design.md skeleton, and tasks.md skeleton.
 ---
 
 # Idea → OpenSpec Proposal
 
 This skill turns a rough idea into a well-scoped, implementation-ready OpenSpec proposal (or set of proposals). It addresses the primary quality gap identified in the process audit: proposals generated without codebase survey produce under-specified artifacts that cost a full refinement iteration in Stage 2.
 
-**Do NOT chain into `/opsx:propose`.** That skill calls the generic openspec CLI template generator. This skill writes richer artifacts directly, using the project's enriched template.
+## Boundary with `openspec-propose`
+
+This repo also has `.claude/skills/openspec-propose/SKILL.md` — a real, separate tool, not a duplicate of this one. **Do not chain into it from here.** It takes a change name or a short description, runs `openspec new change`, and walks the openspec CLI's own schema-driven loop (`openspec status`, `openspec instructions`) to fill in the generic template for `proposal.md` / `design.md` / `tasks.md`. That is the right tool when the shape of the change is already decided and what's needed is the paperwork; this skill writes richer artifacts directly, using this repo's enriched templates below, precisely for the case where the shape is not yet decided.
+
+`intent-to-proposal` owns the opposite case: the idea is still raw. Its phases — the Phase 1 dialogue, the Phase 2 codebase survey, the Phase 3 devil's-advocate refutation, the Phase 4 decomposition call — are the actual work; Phase 5's artifacts are the output of that work, not a template fill-in. If a request already reads like a settled, scoped change, use `openspec-propose`. If it is a rough problem statement, a symptom, or "figure out what to build," use this skill — the survey-then-refute loop is what `openspec-propose`'s straight-line template loop does not do.
 
 ---
 
@@ -46,7 +50,7 @@ After collecting answers, synthesize understanding in one paragraph before proce
 Dispatch a **single Explore agent** with scope "thorough". Brief it with:
 
 - The idea (2-3 sentence summary from Phase 1)
-- The touched areas (derived from the user's answers — e.g., `src/domain/order/`, `src/read/`, `src/api/`)
+- The touched areas (derived from the user's answers — e.g., `packages/claims/src/`, `packages/kit/`, `plugin/commands/`, `spec/`)
 - Specific questions to answer:
   1. What files/patterns already exist in the touched areas that this change will need to integrate with, modify, or replace? List them with brief descriptions.
   2. Are there active OpenSpec changes (in `openspec/changes/`, not `openspec/changes/archive/`) whose scope overlaps or conflicts with this idea? Name them.
@@ -350,12 +354,14 @@ Derive the section headings from the survey findings and proposal scope. Use the
 
 ```
 ## 0. Prerequisites / setup
-## 1. Spec delta (`spec/<name>.md`, or an update to an existing spec-family doc)
-## 2. Verdict type + predicate
-## 3. Unit tests (one assertion per verdict)
+## 1. Verdict type + predicate
+## 2. Unit tests (one assertion per verdict)
+## 3. Spec delta (`spec/<name>.md`, or an update to an existing spec-family doc)
 ## 4. Fixtures — valid and broken — and the CI gate
 ## 5. Public exports, changelog, and full verification
 ```
+
+The spec delta comes after the implementation and its tests, not before — this repo has built every checker change in that order. `add-wiring-check` (`openspec/changes/archive/2026-08-22-add-wiring-check/tasks.md`) writes the spec at step 8 of 10, after the parser, both verdict batches, the scanner, and the command; the commit history matches, with `841a17c` ("docs: spec for the wiring check") landing after `21d660f` and `3cc0290` (the checker code). `add-run-ledger` (`openspec/changes/archive/2026-08-21-add-run-ledger/tasks.md`) shows the same shape: version plumbing, record parsers, and the two verdicts (sections 1-3) before "Spec and fixtures" (section 4), with verification last.
 
 **Kit or CLI change (`packages/kit` or `plugin/`) sections:**
 
@@ -451,6 +457,36 @@ severity. Green is a floor, not a ceiling.
 ---
 
 ## Completing the skill
+
+### Audit the generated proposal — a different question from the grounding check
+
+Before presenting the completion summary, dispatch the `nullius:audit` command
+(`plugin/commands/audit.md`) against the freshly generated `proposal.md` (each
+proposal in turn, if the decomposition split into more than one).
+
+**This is not the same check Phase 5 already ran, and dropping one on the
+assumption it's redundant with the other lets a different class of false claim
+through.** `check` (Phase 5's "Verify the grounding") proves each
+`**Evidence:**` anchor's quoted text is really on the line it cites — it
+verifies the citation is real. `/audit` does not re-read citations at all:
+it hands each claim, stripped of the surrounding document, to its own fresh
+subagent and tells that agent to refute it. A refutation comes back as new
+anchors, which then go through `check` like anyone else's. `check` asks "is
+this citation real"; `/audit` asks "does this citation actually support the
+sentence built on top of it."
+
+Follow the command's own protocol for collecting verdicts: **REFUTED** claims
+get their counter-evidence verified with `check` and the decision they
+supported re-examined; **SUPPORTED** claims get reported with where the agent
+looked for a counter-example; **UNVERIFIABLE-BY-SEARCH** claims move to
+`## Open questions` rather than being treated as a failure.
+
+**This is also not Phase 3's devil's advocate**, even though both are a fresh,
+uncontaminated agent told to refute rather than confirm. Phase 3 critiques the
+*idea*, before any artifact exists — a stripped brief, no document at all.
+This pass critiques the *artifact*, after `proposal.md`/`design.md` exist to
+be attacked — one fresh agent per claim, each starved down to that claim's own
+brief. Same doctrine, different input, different moment; run both.
 
 After generating all artifacts, present the user with:
 
