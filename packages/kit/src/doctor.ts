@@ -254,16 +254,28 @@ function checkConfigs(root: string): Check[] {
     }
   }
 
-  const kitPath = join(root, ".nullius", "kit.json");
+  // A leftover from kit 0.1.0, which put this under `.nullius/` — the same
+  // directory that enables recording. Reported so an upgraded repo is not
+  // silently running on config nothing reads any more.
+  if (existsSync(join(root, ".nullius", "kit.json"))) {
+    checks.push({
+      name: "legacy .nullius/kit.json",
+      status: "fail",
+      detail:
+        "kit config moved to nullius.kit.json — `.nullius/` is the recording opt-in and init no longer creates it. Re-run `init`, then delete .nullius/kit.json",
+    });
+  }
+
+  const kitPath = join(root, "nullius.kit.json");
   if (!existsSync(kitPath)) {
-    checks.push({ name: ".nullius/kit.json", status: "fact", detail: "absent — run `init`" });
+    checks.push({ name: "nullius.kit.json", status: "fact", detail: "absent — run `init`" });
   } else {
     try {
       JSON.parse(readFileSync(kitPath, "utf8"));
-      checks.push({ name: ".nullius/kit.json", status: "pass", detail: "parses" });
+      checks.push({ name: "nullius.kit.json", status: "pass", detail: "parses" });
     } catch (error) {
       checks.push({
-        name: ".nullius/kit.json",
+        name: "nullius.kit.json",
         status: "fail",
         detail: error instanceof Error ? error.message : String(error),
       });

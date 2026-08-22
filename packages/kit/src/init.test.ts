@@ -110,7 +110,7 @@ describe("the plan is the unit — dry run and apply share it", () => {
     const result = applyPlan(plan(root));
 
     expect(result.written).toContain("nullius.config.json");
-    expect(result.written).toContain(".nullius/kit.json");
+    expect(result.written).toContain("nullius.kit.json");
     expect(result.written).toContain(".github/workflows/claims.yml");
   });
 });
@@ -273,7 +273,7 @@ describe("profiles", () => {
       const profile = findProfile(name);
       const paths = profile?.artifacts.map((artifact) => artifact.path) ?? [];
       expect(paths).toContain("nullius.config.json");
-      expect(paths).toContain(".nullius/kit.json");
+      expect(paths).toContain("nullius.kit.json");
     }
   });
 

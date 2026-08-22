@@ -314,7 +314,7 @@ function runDoctor(argv: readonly string[]): number {
     if (kit.kind === "unreadable") {
       // Refuse rather than fall back to detection. Guessing here rewrites the
       // repo's CI gating semantics on the strength of a directory listing.
-      console.error(`cannot re-render: .nullius/kit.json is unreadable — ${kit.reason}`);
+      console.error(`cannot re-render: nullius.kit.json is unreadable — ${kit.reason}`);
       console.error(
         "Refusing to guess the profile from repo shape: that would silently change which documents are checked, and whether CI can fail.",
       );
@@ -325,11 +325,11 @@ function runDoctor(argv: readonly string[]): number {
     const name = kit.kind === "found" ? kit.profile : detection.suggestedProfile;
     const profile = findProfile(name);
     if (profile === null) {
-      console.error(`cannot re-render: unknown profile \`${name}\` in .nullius/kit.json`);
+      console.error(`cannot re-render: unknown profile \`${name}\` in nullius.kit.json`);
       return 2;
     }
     if (kit.kind === "absent") {
-      console.log(`No .nullius/kit.json — using the detected profile \`${profile.name}\` (${detection.reason}).`);
+      console.log(`No nullius.kit.json — using the detected profile \`${profile.name}\` (${detection.reason}).`);
     }
 
     console.log(`Re-rendering managed artifacts for profile \`${profile.name}\`.`);
@@ -379,8 +379,20 @@ type KitProfile =
   | { kind: "unreadable"; reason: string };
 
 function readKitProfile(root: string): KitProfile {
-  const path = join(root, ".nullius", "kit.json");
-  if (!existsSync(path)) return { kind: "absent" };
+  const path = join(root, "nullius.kit.json");
+  if (!existsSync(path)) {
+    // kit 0.1.0 wrote this under `.nullius/`, which is the recording opt-in.
+    // Say so rather than treating an upgraded repo as never initialised.
+    const legacy = join(root, ".nullius", "kit.json");
+    if (existsSync(legacy)) {
+      return {
+        kind: "unreadable",
+        reason:
+          "found .nullius/kit.json from kit 0.1.0 — kit config moved to nullius.kit.json, because .nullius/ is the recording opt-in and init must not create it. Re-run `init` to migrate, then delete the old file",
+      };
+    }
+    return { kind: "absent" };
+  }
   let raw: string;
   try {
     raw = readFileSync(path, "utf8");
@@ -390,7 +402,7 @@ function readKitProfile(root: string): KitProfile {
   try {
     const parsed = JSON.parse(raw) as { profile?: unknown };
     if (typeof parsed.profile === "string") return { kind: "found", profile: parsed.profile };
-    return { kind: "unreadable", reason: "no `profile` string in .nullius/kit.json" };
+    return { kind: "unreadable", reason: "no `profile` string in nullius.kit.json" };
   } catch (error) {
     return { kind: "unreadable", reason: error instanceof Error ? error.message : String(error) };
   }

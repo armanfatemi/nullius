@@ -175,7 +175,7 @@ Add one line to your agent instructions — CLAUDE.md, AGENTS.md, or Cursor
 rules — and nothing here needs merging when this file changes:
 
 > Load-bearing claims about existing code carry an Evidence Anchor. See
-> \`.nullius/authoring.md\`.
+> \`nullius.authoring.md\`.
 
 ## The rule
 
@@ -218,7 +218,7 @@ https://github.com/armanfatemi/nullius/blob/main/spec/evidence-anchors.md
  * the pointed-at file is regenerated freely, and removal is deleting one line.
  */
 export const POINTER_LINE =
-  "Load-bearing claims about existing code carry an Evidence Anchor — see `.nullius/authoring.md`.";
+  "Load-bearing claims about existing code carry an Evidence Anchor — see `nullius.authoring.md`.";
 
 /** Where a pointer would go, in preference order. Never created if absent. */
 const POINTER_HOSTS = ["CLAUDE.md", "AGENTS.md"] as const;
@@ -257,7 +257,7 @@ function planPointer(root: string): PlannedFile | null {
         path: host,
         disposition: "unchanged",
         contents: existing,
-        reason: "already points at .nullius/authoring.md",
+        reason: "already points at nullius.authoring.md",
       };
     }
 
@@ -312,7 +312,7 @@ export function buildPlan(options: PlanOptions): Plan {
       files.push(
         planFile(root, artifact.path, renderConfig(profile, existing), artifact.reason),
       );
-    } else if (artifact.path === ".nullius/kit.json") {
+    } else if (artifact.path === "nullius.kit.json") {
       files.push(
         planFile(root, artifact.path, renderKitConfig(profile, kitVersion), artifact.reason),
       );
@@ -320,7 +320,7 @@ export function buildPlan(options: PlanOptions): Plan {
       files.push(
         planFile(root, artifact.path, renderWorkflow(profile, actionRef), artifact.reason),
       );
-    } else if (artifact.path === ".nullius/authoring.md") {
+    } else if (artifact.path === "nullius.authoring.md") {
       files.push(planFile(root, artifact.path, renderAuthoring(profile), artifact.reason));
       if (!touchUserFiles) {
         // doctor --fix: user-owned files come out byte-identical, so the
