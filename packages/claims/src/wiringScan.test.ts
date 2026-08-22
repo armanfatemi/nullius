@@ -1,10 +1,12 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { looseCandidates, scanHarnessRoot } from "./wiringScan";
+import { checkWiring, type WiringVerdict } from "./wiring";
+import { fsWiringDeps, looseCandidates, scanHarnessRoot } from "./wiringScan";
 import type { Located } from "./frontmatter";
 
 /**
@@ -168,5 +170,35 @@ describe("scanHarnessRoot hook resolution", () => {
   it("returns no hooks for a file that fails to parse, instead of throwing", () => {
     expect(() => scanHooksFile("{ this is not json")).not.toThrow();
     expect(scanHooksFile("{ this is not json")).toEqual([]);
+  });
+});
+
+// fileURLToPath, not URL.pathname: the latter is a URL component, and on a
+// path containing a space or a drive letter it is not a filesystem path.
+const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
+
+describe("fixtures", () => {
+  it("the valid fixture has no findings at all", () => {
+    const root = `${REPO_ROOT}spec/fixtures/wiring-valid`;
+    const report = checkWiring(scanHarnessRoot(root), fsWiringDeps(root));
+    expect(report.findings).toEqual([]);
+  });
+
+  it("the broken fixture trips every hard verdict", () => {
+    const root = `${REPO_ROOT}spec/fixtures/wiring-broken`;
+    const report = checkWiring(scanHarnessRoot(root), fsWiringDeps(root));
+    const seen = new Set<WiringVerdict>(report.findings.map((finding) => finding.verdict));
+
+    expect(seen).toEqual(
+      new Set<WiringVerdict>([
+        "dangling-agent",
+        "dangling-skill",
+        "missing-path",
+        "empty-glob",
+        "dead-hook",
+        "unsubstituted-token",
+        "loose-reference",
+      ]),
+    );
   });
 });
