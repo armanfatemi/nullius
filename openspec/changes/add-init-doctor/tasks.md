@@ -5,12 +5,14 @@
 - [x] 1.1 Restructure the CLI to per-command parsers (hand-rolled is fine;
       the shared flag namespace is what must go)
 - [x] 1.2 Reserve `configVersion` in kernel config (accept and ignore)
-- [ ] 1.3 Tag the Action `v1`; update README to pin it — **left for the repo
-      owner.** Creating `v1` publishes a ref other people pin their CI to, so
-      it is not an agent's call. The README change is deliberately held with
-      it: pinning `@v1` before the tag exists would document a ref that 404s.
-      After tagging, `README.md:175` moves from `@main` to `@v1`, and `init`'s
-      workflow renderer (task 2.3) should emit `@v1` from the start.
+- [x] 1.3 Tag the Action `v1`; update README to pin it. Done as `v1.0.0`
+      (immutable) plus `v1` (moving major tag), both at `eb1511b`. The action
+      now pins the checker too — `claims-version`, default `0.7.0` — because
+      tagging the YAML while `npx` fetched npm's `latest` would have left `@v1`
+      floating, and a breaking CLI change reaching every caller on publish day.
+      `README.md` and `action/README.md` moved from `@main` to `@v1` in the
+      same commit that created the pin, and the tag was cut after that merged,
+      so neither ever documented a ref that did not exist.
 
 ## 2. init
 
