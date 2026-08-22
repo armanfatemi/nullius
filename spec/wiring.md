@@ -179,18 +179,46 @@ considered a script:
   a class.
 - Contains no `/` → refused; a bare word is not a path.
 - Fails `isSafeRepoPath` → refused; the same containment guard applied to
-  `reads` above (no absolute path, no `~`, no `..`, nothing inside `.git`).
+  `reads` above (no absolute path, no `~`, no `..`, nothing inside `.git`) —
+  but not the same outcome, as the paragraph below states plainly.
 - Does not end in a recognised script extension (`.sh`, `.bash`, `.zsh`,
   `.js`, `.mjs`, `.cjs`, `.ts`, `.mts`, `.cts`, `.py`, `.rb`, `.pl`, `.cmd`,
   `.ps1`, `.bat`) → refused.
 
-**The accepted consequence:** an extensionless hook script, a real path that
-contains a space, and a command line with two-or-more qualifying tokens are
-all **unchecked** — `hookTarget` returns `null` for each, exactly as it would
-for a one-liner with no path in it at all, and `wiringScan` drops a `null`
-result rather than recording a finding for it. `null` is the intended *only*
-failure mode: `hookTarget` must never hand back a token that is not the
-script that runs.
+**The accepted consequence:** several shapes of command line go unchecked.
+An extensionless hook script, a real path that contains a space, and a
+command line with two-or-more qualifying tokens each make `hookTarget`
+return `null`, exactly as it would for a one-liner with no path in it at
+all, and `wiringScan` drops a `null` result rather than recording a finding
+for it. `null` is the intended *only* failure mode: `hookTarget` must never
+hand back a token that is not the script that runs.
+
+A fourth case reaches `null` the same way, through a different door: a
+candidate that fails `isSafeRepoPath` — `/absolute/path/hook.sh`, or
+`../../outside/hook.sh` — is dropped from the candidate set before the count
+is taken, so a command whose only word is such a path also lands on zero
+candidates. The outcome this produces is **not** the outcome the bullet
+above's "same containment guard" might suggest: a `reads` or `applies_to`
+value that fails `isSafeRepoPath` is reported, with the guard's own reason
+string, as `MISSING-PATH` or `EMPTY-GLOB`. A hook command that fails the
+identical check produces **no finding at all** — no verdict, no line, not
+even a count toward "declared references checked." It goes silent the same
+way the first three cases do, despite failing a guard that, everywhere else
+in this checker, speaks.
+
+That silence is easiest to defend for the absolute-path half of it: a hook
+that runs `/usr/bin/some-tool` is naming a system binary, and whether that
+exists on the machine running the check is not a fact about this
+repository's wiring, so the guard catching it is closer to a side effect
+than a decision this checker made on purpose. It is harder to defend for the
+traversal half: a hook command reading `../../outside/hook.sh` points *out
+of* the repo, which looks like exactly the kind of thing this checker exists
+to catch — but `isSafeRepoPath` returns the same `safe: false` for both, and
+`isHookScript` discards the reason string along with the token, so an
+absolute path and an escaping one are indistinguishable by the time either
+goes quiet. Whether that pair deserves to be split — a verdict for one, the
+current silence for the other — is a real design question this document is
+not the place to settle.
 
 A command that does resolve is then checked the same way a `reads` path is:
 missing → `DEAD-HOOK` ("if this is a build output, run `pnpm build` first");
