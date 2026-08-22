@@ -180,10 +180,8 @@ describe("hookTarget", () => {
     expect(hookTarget("/usr/local/bin/thing", "plugin")).toBeNull();
   });
 
-  it("resolves a quoted path containing a space whole", () => {
-    expect(hookTarget('"plugin/hooks/my hook.sh"', "plugin")).toBe(
-      "plugin/hooks/my hook.sh",
-    );
+  it("refuses a quoted path with spaces — indistinguishable from a wrapped command", () => {
+    expect(hookTarget('"plugin/hooks/my hook.sh"', "plugin")).toBeNull();
   });
 
   it("does not mistake a loader flag argument for the script", () => {
@@ -228,6 +226,22 @@ describe("hookTarget", () => {
 
   it("refuses path traversal, which isSafeRepoPath rejects", () => {
     expect(hookTarget("../../etc/passwd.js", "plugin")).toBeNull();
+  });
+
+  it("refuses a sh -c wrapped command line", () => {
+    expect(hookTarget('sh -c "node packages/kit/hooks/run.js"', "plugin")).toBeNull();
+  });
+
+  it("refuses a bash -c wrapped command line with operators", () => {
+    expect(hookTarget('bash -c "cd packages/kit && node hooks/run.js"', "plugin")).toBeNull();
+  });
+
+  it("refuses opaque URI schemes like mailto:", () => {
+    expect(hookTarget("node mailto:foo/bar.js", "plugin")).toBeNull();
+  });
+
+  it("does not split on spaces injected by plugin root expansion", () => {
+    expect(hookTarget("node ${CLAUDE_PLUGIN_ROOT}/hooks/check-plan.js", "my plugin")).toBeNull();
   });
 });
 

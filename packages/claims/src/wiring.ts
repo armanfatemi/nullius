@@ -133,6 +133,9 @@ function hasScriptExtension(token: string): boolean {
   return dot !== -1 && SCRIPT_EXTENSIONS.has(token.slice(dot).toLowerCase());
 }
 
+/** A `word:` prefix — mailto:, data:, urn:, https:. Refused as a class, not case by case. */
+const SCHEME = /^[a-z][a-z0-9+.-]*:/i;
+
 /**
  * Does this token name a repo-relative script we are willing to check?
  *
@@ -144,8 +147,14 @@ function hasScriptExtension(token: string): boolean {
  */
 function isHookScript(token: string): boolean {
   if (token.startsWith("-")) return false;
+  // A candidate containing whitespace is a command line that survived quoting
+  // — `sh -c "node hooks/run.js"` fuses into one word — not a path. This does
+  // refuse a real path with a space in it, deliberately: the two are not
+  // distinguishable here, and returning the fused command line as though it
+  // were a script is the failure this function must not have.
+  if (/\s/.test(token)) return false;
+  if (SCHEME.test(token)) return false;
   if (!token.includes("/")) return false;
-  if (token.includes("://")) return false;
   if (!isSafeRepoPath(token).safe) return false;
   return hasScriptExtension(token);
 }
@@ -168,11 +177,14 @@ function isHookScript(token: string): boolean {
  * should be wrong in.
  */
 export function hookTarget(command: string, pluginRoot: string): string | null {
-  const expanded = command
-    .replaceAll("${CLAUDE_PLUGIN_ROOT}", pluginRoot)
-    .replaceAll("$CLAUDE_PLUGIN_ROOT", pluginRoot);
+  const words = shellWords(command);
+  const expanded = words.map((word) =>
+    word
+      .replaceAll("${CLAUDE_PLUGIN_ROOT}", pluginRoot)
+      .replaceAll("$CLAUDE_PLUGIN_ROOT", pluginRoot),
+  );
 
-  const candidates = shellWords(expanded).filter(isHookScript);
+  const candidates = expanded.filter(isHookScript);
   return candidates.length === 1 ? (candidates[0] ?? null) : null;
 }
 
