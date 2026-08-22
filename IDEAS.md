@@ -10,19 +10,64 @@ extensions beyond the article._
 
 # Track 1 — article-derived proposals
 
-## Gap map: essay themes vs. repo coverage (as of 0.4.0)
+## Gap map: essay themes vs. repo coverage
+
+_Claims 0.7.0, kit 0.2.0 — restated 2026-08. The previous version of this table
+said `witness` was unreleased and silence-made-loud was missing; both had
+shipped. A gap map is a table of load-bearing claims about existing code, which
+is the one kind of table this repo does not let rot by hand — so the rows that
+can change now carry anchors. The rule for which: **anchor a row whose status
+is expected to move.** The three that have been ✅ since the first release are
+left bare; every 🟡 and ❌ carries an absence anchor, so the row goes loud on
+its own the moment somebody builds the thing._
 
 | Essay theme | In nullius? |
 | --- | --- |
 | False premises (citations forced at authoring) | ✅ shipped (Evidence Anchors) |
 | False mechanisms (binding moments) | ✅ shipped |
 | Coverage (anchor density, `[false-premise]` reviewer) | ✅ shipped |
-| Bad witness / retros from evidence, not self-report | 🟡 `witness` designed, unreleased |
-| Silence made loud ("dispatches: 5, delivered: 0"; "None. is valid; nothing is not") | ❌ |
+| Bad witness — a run's record judged, not its summary | ✅ shipped (`witness validate`) |
+| Retros rendered from evidence rather than self-report | 🟡 `witness harvest` unbuilt |
+| Silence made loud ("dispatches: 5, delivered: 0"; "None. is valid; nothing is not") | ✅ shipped |
 | Is the objection machinery alive? (no-op vs. real-audit probe) | ❌ |
-| Starved devil's advocate (the critic must know *less*) | ❌ |
-| Rules audited at plan time, not edit time | ❌ |
+| Starved devil's advocate (the critic must know *less*) | 🟡 shipped for claims; no `/advocate` for ideas |
+| Rules audited at plan time, not edit time | ❌ proposed as `add-rules-compliance` |
 | Refuted premises reproducing later in the same run | ❌ |
+
+### The rows that can move, anchored
+
+`witness validate` ships as a kernel command:
+
+**Evidence:** `packages/claims/src/cli.ts:236@80e16ae` — `    console.error("usage: nullius witness validate <journal.jsonl>");`
+
+Its three terminal outcomes are printed as three numbers, which is
+silence-made-loud in the only form that survives being skimmed:
+
+**Evidence:** `packages/claims/src/cli.ts:279@80e16ae`
+
+```
+    `Outcomes: ${report.outcomes.found} found, ${report.outcomes.empty} explicitly empty, ${report.outcomes.noReport} never reported.`,
+```
+
+The starved brief ships, one claim per dispatch, refute-first — that is the
+devil's advocate for a *claim*:
+
+**Evidence:** `packages/claims/src/audit.ts:127@80e16ae` — `export function buildAuditBrief(`
+
+What has not shipped, stated so the checker says when that stops being true:
+
+**Evidence:** `grep -rn 'harvest' packages/claims/src/ packages/kit/src/` → 0 results
+
+**Evidence:** `grep -rn 'canary' packages/claims/src/ packages/kit/src/` → 0 results
+
+**Evidence:** `grep -rn 'advocate' plugin/commands/ plugin/skills/` → 0 results
+
+**Evidence:** `grep -rni 'rules select' packages/claims/src/` → 0 results
+
+**Evidence:** `grep -rn 'REVENANT' packages/claims/src/` → 0 results
+
+Each of those is a `COUNT-MISMATCH` the day someone lands the feature, which is
+the correction this table failed to make on its own last time.
 
 ## P1 — Attestation Ledger: make absence a checkable fact
 
@@ -34,6 +79,14 @@ failing verdict (`SILENT-REVIEWER`, `MISSING-ATTESTATION`). An explicit
 Plug-and-play half: Claude Code hooks on subagent dispatch/stop write the
 ledger automatically, so any dev running subagents gets
 "dispatched 5, delivered 0" visibility out of the box.
+
+**Mostly shipped.** The hooks half landed as `add-witness-recording`, and
+`SILENT-REVIEWER` landed with schema v0.3. What did not land is
+`MISSING-ATTESTATION`, and the reason is that it needs something this entry did
+not have: a *declared* list of expected dispatches to count against. `witness`
+can only see dispatches that were recorded, so it catches one that never
+returned and is blind to one that was never made. Track 3's P7 finally proposes
+a source for that denominator.
 
 ## P2 — Canary: mutation testing for review machinery
 
@@ -89,9 +142,9 @@ as conventions + agent definitions like `reviewers/`, not checker territory.
 
 ## Recommended sequence
 
-1. **P1 + P2 as one "silence" release** — the essay's central untapped
-   claim, fully deterministic, genuinely novel. (Being drafted as an
-   OpenSpec change proposal: `openspec/changes/`.)
+1. ~~**P1 + P2 as one "silence" release**~~ — split in the end. P1's
+   attested half shipped (`add-witness-recording`, archived); P2 has not been
+   started, and is the ❌ row in the gap map most worth closing next.
 2. **OpenSpec preset** in parallel — mostly config and docs, large adoption
    leverage.
 3. **P4** next plugin release; **P3** folds into the checker anytime;
