@@ -11,24 +11,12 @@ This skill turns a rough idea into a well-scoped, implementation-ready OpenSpec 
 
 ---
 
-## Proposal metadata — every proposal carries an ID, a model, and its dependencies
-
-This skill exists to prepare proposals that **autonomous agents pick up and execute** with minimal human steering. Three pieces of machine-actionable metadata make that safe. They live in the change's `.openspec.yaml` (the machine source of truth) and are mirrored human-readably in `proposal.md`:
-
-- **`id` — a stable, unique proposal ID.** Format `prop-<6 hex>` (e.g. `prop-a3f2c1`), generated once at scaffold time and **never changed**. It is the anchor that dependency references point at, so it must survive a directory rename or a Jira-key change. The kebab change-name stays the operational handle you pass to `/proposal-to-pr`; the `id` is the immutable reference key that `depends_on` edges resolve against.
-- **`model` — the single Claude model an agent should use to implement this proposal.** One of `fable`, `opus`, `sonnet` (rubric in Phase 4). **One model per proposal — NOT per-agent** (deliberately kept simple). Lean high: prefer `fable`/`opus`; reserve `sonnet` for genuinely mechanical, fully-specified, low-risk work.
-- **`depends_on` — the list of prerequisite proposal `id`s that MUST be merged before this one starts.** These are the HARD, gating dependencies. `/proposal-to-pr` reads this list and **refuses to start implementation until every listed prerequisite is merged/archived**. Soft "assumes X exists but degrades gracefully" relationships stay in the Dependencies prose; only hard prerequisites go in `depends_on`.
-
-Producing these three fields correctly is now a core output of the skill, not a side note.
-
----
-
 ## Entry conditions — adapt when you're not starting cold
 
 The phases below assume a cold start from a raw idea. In practice the skill is often invoked mid-session, after work that already did some of Phase 1–2. Adapt rather than redo:
 
 - **Continuation (already mid-investigation/debug).** If the current session already root-caused a bug or surveyed the touched code, that work _is_ your Phase 1 understanding and part of your Phase 2 survey — don't re-dispatch a redundant Explore over ground you've already covered. But still (a) run the Phase 2 active-changes cross-check (`openspec/changes/`) and the per-change-type red-flag check — both are easy to drop when reusing prior work — and (b) run the Phase 3 devil's advocate as a **fresh** agent. The prior investigation carries the most context bias, so the independent critic matters more, not less.
-- **Idea sourced from a detailed Jira task.** Phase 1 may legitimately produce **zero** `AskUserQuestion` questions — if the task already answers them, confirm understanding in prose and proceed. Zero questions is correct here, not a skipped phase.
+- **Idea sourced from a detailed task description.** Phase 1 may legitimately produce **zero** `AskUserQuestion` questions — if the task already answers them, confirm understanding in prose and proceed. Zero questions is correct here, not a skipped phase.
 - **Second idea in the same session.** Each new idea gets its own full Phase 1–5. You MAY reuse a prior devil's advocate ONLY when the new idea is in the same architectural class as one already critiqued this session — and only if you say so and why. Otherwise dispatch a fresh one. Do not silently abbreviate the phases.
 
 ---
@@ -62,7 +50,7 @@ Dispatch a **single Explore agent** with scope "thorough". Brief it with:
 - Specific questions to answer:
   1. What files/patterns already exist in the touched areas that this change will need to integrate with, modify, or replace? List them with brief descriptions.
   2. Are there active OpenSpec changes (in `openspec/changes/`, not `openspec/changes/archive/`) whose scope overlaps or conflicts with this idea? Name them.
-  3. Are there any active changes that this idea depends on — i.e., infrastructure or data that must exist before this makes sense? For each hard prerequisite, capture its stable `id` from its `.openspec.yaml` (`grep '^id:' openspec/changes/<dep-name>/.openspec.yaml`) — that id is what goes into this proposal's `depends_on`. If a prerequisite change predates the id system and has none, note it so Phase 5 can backfill one.
+  3. Are there any active changes that this idea depends on — i.e., infrastructure or data that must exist before this makes sense? Name them and note whether the dependency is a hard prerequisite (must land first) or a soft one (assumed but degrades gracefully if absent).
   4. What architectural patterns are already in use for the closest analogous feature? (e.g., if the idea involves a new aggregate, find the most similar existing one)
   5. **Red-flag check — pick the row matching the change type.** Every change type has a characteristic show-stopper the survey must detect early:
      - **Backend / domain:** does the idea require data another service owns at query/mutation time? If so, name the owning service + the events it emits → the design must use a **local event-sourced projection**, NOT federation `@requires` or a cross-subgraph read. (This is the original "federation red flag".)
@@ -98,7 +86,7 @@ in a `Rationale`. See `.claude/rules/proposal-grounding.md`.
 
 ## Phase 3 — Feasibility + devil's advocate
 
-**Goal:** challenge the idea before any artifacts are generated, using independent agents whose context is NOT contaminated by the dialogue and survey work done so far.
+**Goal:** challenge the idea before any artifacts are generated, using an independent agent whose context is NOT contaminated by the dialogue and survey work done so far.
 
 The coordinator has spent Phases 1–2 reading the user's pitch, building enthusiasm for the codebase connections, and surveying what makes the idea feasible. That context biases any inline critique — the coordinator will unconsciously steelman the idea while pretending to challenge it. The devil's advocate must run in a fresh agent with minimal context.
 
@@ -128,21 +116,15 @@ After the agent returns, the coordinator synthesizes its output into a structure
 
 If the devil's advocate raised something the coordinator hadn't considered from the survey, that is a signal worth surfacing to the user before proceeding.
 
-### Step 3 — Product skeptic (dispatch `pragmatist-pm` in parallel with devil's advocate, conditionally)
+### Step 3 — Feasibility summary (coordinator, after the agent returns)
 
-The bar: there is a real choice between approaches where one serves near-term execution and another serves long-term product positioning, AND the user hasn't already decided. Concrete bug fixes and clear features don't need this. When in doubt, skip.
-
-If dispatching: run it in parallel with the devil's advocate agent (both in a single `Agent` call message). Brief `pragmatist-pm` with the problem statement only — not the survey, not the solution. Ask: "Is this the right problem to solve right now? Is this scope appropriate? Under 150 words."
-
-### Step 4 — Feasibility summary (coordinator, after agents return)
-
-Synthesize all three inputs (architectural feasibility note + devil's advocate + optional pragmatist-pm) into a paragraph:
+Synthesize the two inputs (architectural feasibility note + devil's advocate) into a paragraph:
 
 - Is the idea sound? (yes / yes with caveats / no — and why)
 - What are the load-bearing constraints the design must respect?
 - Any open questions that must be resolved before or during proposal generation?
 
-**Surface this to the user.** If the devil's advocate raised a genuine show-stopper or the pragmatist-pm pushed back hard, discuss before continuing — a pivot here is cheaper than mid-proposal-generation. If everything looks clear, proceed directly to Phase 4.
+**Surface this to the user.** If the devil's advocate raised a genuine show-stopper, discuss before continuing — a pivot here is cheaper than mid-proposal-generation. If everything looks clear, proceed directly to Phase 4.
 
 ---
 
@@ -154,7 +136,7 @@ Synthesize all three inputs (architectural feasibility note + devil's advocate +
 
 **Skip this entire off-ramp if you were invoked by `implement-task` with an "already-triaged as proposal-worthy" signal** — that skill is the single triage brain and has already decided this warrants a proposal. Re-triaging here would just bounce the work back. Proceed straight to the size estimate.
 
-Otherwise (a direct invocation), check whether the change is too small to deserve the OpenSpec ceremony. If the survey shows it is trivial — roughly **≤2 files, no new aggregate/event/command/GraphQL-schema, and already fully specified** (e.g. a Jira task that reads like a finished spec) — a proposal directory is overhead the user may not want.
+Otherwise (a direct invocation), check whether the change is too small to deserve the OpenSpec ceremony. If the survey shows it is trivial — roughly **≤2 files, no new aggregate/event/command/GraphQL-schema, and already fully specified** (e.g. a task description that reads like a finished spec) — a proposal directory is overhead the user may not want.
 
 In that case, **ask via `AskUserQuestion`** whether to:
 
@@ -182,34 +164,16 @@ Based on the survey, estimate:
 | Change has phases where each phase is independently valuable and shippable | Split by phase                                |
 | Change has hard prerequisites that don't exist yet                         | Separate the prerequisite as its own proposal |
 
-### Model assignment (one per proposal)
-
-Assign exactly one implementation model to each proposal, based on its complexity and risk. **Lean high** — when a proposal sits between two tiers, pick the higher one. The goal is reliable autonomous execution, so under-powering a proposal is the expensive mistake.
-
-| Model    | Assign when…                                                                                                                                                                                                                                                  |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `fable`  | HIGH risk or high-judgment: novel architecture, event-schema changes, security-sensitive paths, cross-cutting (4+ services), CQRS / event-sourcing design calls, anything where a subtle wrong decision is costly. The hardest tier — the most capable model. |
-| `opus`   | **Default.** MEDIUM risk: modifies existing behavior, 2–3 services, a standard aggregate / projection / GraphQL feature following established patterns. Most proposals land here.                                                                             |
-| `sonnet` | LOW risk only: pure-mechanical, single-file or parity / rename / config, fully specified with zero design judgment (e.g. an infra-parity task list, a doc update, a codemod). If you can't call it trivial without hedging, it's `opus`.                      |
-
-Do NOT assign `haiku` to an implementation proposal. Do NOT split the model per-agent — the whole proposal runs at one tier, and `/proposal-to-pr` passes it to every specialist subagent it dispatches for that change. Record the chosen tier in the announcement and write it to `.openspec.yaml` in Phase 5.
-
-### Dependency graph (decides `depends_on`)
-
-Decide the hard-prerequisite edges now: for each proposal, which _other proposals in this decomposition_ — and which _already-existing active or archived changes_ — must be merged before it can start. Express the graph by human name for now (e.g. "`ne-refactor-2` depends on `ne-refactor-1`"); Phase 5 generates the stable `id`s and rewrites these edges into each proposal's `depends_on` id-list.
-
-Only HARD, gating prerequisites become `depends_on` edges. A soft "assumes X exists but degrades gracefully" relationship stays in the Dependencies prose, not in `depends_on`. Keep the graph acyclic — if two proposals seem to depend on each other, the split is wrong; merge them or move the shared prerequisite into its own proposal.
-
 ### Autonomous decision — announce, do not gate
 
-**This skill no longer stops to ask the user how many proposals to create or what to name them.** Make the decomposition call yourself from the size estimate and the decision rule above, assign each proposal its model and its dependency edges, then **announce the decision and proceed directly to Phase 5 in the same turn.** Whatever the survey + rules produce is accepted — the point is to let agents prepare proposals without a human gate here.
+**This skill no longer stops to ask the user how many proposals to create or what to name them.** Make the decomposition call yourself from the size estimate and the decision rule above, then **announce the decision and proceed directly to Phase 5 in the same turn.** Whatever the survey + rules produce is accepted — the point is to let agents prepare proposals without a human gate here.
 
 Announce (do NOT wait for a reply):
 
-- **Single proposal:** state the kebab-case name, a one-line scope, and the assigned model tier.
-- **Splitting:** state the ordered set of change names, each with a one-sentence scope, its model tier, and which change(s) it depends on. Present it as a short ordered list so the sequencing is legible.
+- **Single proposal:** state the kebab-case name and a one-line scope.
+- **Splitting:** state the ordered set of change names, each with a one-sentence scope and which change(s) it should land after. Present it as a short ordered list so the sequencing is legible.
 
-The one thing still worth surfacing before you spend generation effort is a genuine **Phase 3 feasibility show-stopper** (a devil's-advocate objection that a pivot would be cheaper to make now). A clean feasibility pass flows straight into Phase 5 with no confirmation turn. Naming, count, model, and dependency order are the skill's call now — not the user's.
+The one thing still worth surfacing before you spend generation effort is a genuine **Phase 3 feasibility show-stopper** (a devil's-advocate objection that a pivot would be cheaper to make now). A clean feasibility pass flows straight into Phase 5 with no confirmation turn. Naming, count, and order are the skill's call now — not the user's.
 
 ---
 
@@ -228,32 +192,6 @@ openspec new change "<name>"
 This registers the change in the openspec system. **Do NOT hand-write `.openspec.yaml` or skip this step** — an unregistered change won't validate and won't flow into `/proposal-to-pr`. (Two real runs skipped it and hand-wrote `.openspec.yaml`; both only caught the risk because they validated afterward.)
 
 Note that `openspec new change` scaffolds **only** `.openspec.yaml` — it does NOT create `proposal.md` / `design.md` / `tasks.md` / `specs/`. Before writing those, read a recent sibling change in `openspec/changes/` (e.g. `canonicalize-production-host/`) to match the exact on-disk format, then write the artifacts using the templates below.
-
-### Assign the stable ID, model, and dependencies (immediately after scaffold)
-
-`openspec new change` writes only `schema:` and `created:` into `.openspec.yaml`. Immediately append the stable `id`, the `model` tier from Phase 4, and the `depends_on` list:
-
-```bash
-# Generate a stable, unique proposal id — never changes after this.
-# `openssl rand -hex 3` draws from a 16^6 space, so a collision is unlikely but
-# not impossible; regenerate until the id is unused across active AND archived
-# changes, because a duplicate id would break depends_on resolution and gating.
-PROP_ID="prop-$(openssl rand -hex 3)"
-while grep -Rqs "^id: ${PROP_ID}$" openspec/changes/*/.openspec.yaml openspec/changes/archive/*/.openspec.yaml; do
-  PROP_ID="prop-$(openssl rand -hex 3)"
-done
-{
-  echo "id: ${PROP_ID}"
-  echo "model: <fable|opus|sonnet from Phase 4>"
-  echo "depends_on: [<space-separated prerequisite ids — leave the brackets empty for none: []>]"
-} >> "openspec/changes/<name>/.openspec.yaml"
-```
-
-- `depends_on` is an inline YAML flow list: `depends_on: [prop-a3f2c1, prop-9b0e77]`, or **exactly** `depends_on: []` when there are no hard prerequisites (never omit the key). Keep it single-line — this matches the "one more scalar line is safe" precedent that `jira_issue_key` established, and stays safe for the openspec CLI's parser.
-- **For a decomposition, scaffold ALL proposals and generate ALL their ids FIRST**, building a `name → id` map, before writing any `proposal.md`. Otherwise proposal B can't reference proposal A's id in its `depends_on` or its Dependencies section. Resolve every hard-prerequisite edge from the Phase 4 dependency graph into ids using that map.
-- To depend on an **already-existing** active or archived change, read its id: `grep '^id:' openspec/changes/<dep-name>/.openspec.yaml` (also check `openspec/changes/archive/<dep-name>/`). If a legacy change predates this system and has no `id:`, backfill one the same way (a stable id is safe to add) and reference that.
-
-Re-run `openspec validate "<name>" --strict` after editing `.openspec.yaml` and confirm it still exits 0 — the live test that these extra keys don't break the openspec CLI's parsing.
 
 ### For each proposal:
 
@@ -374,10 +312,7 @@ TBD — to be resolved in Stage 3 pre-review.
 <!-- ONLY include this section if the change can break across versions (schema/enum/event-payload
      shape, projection shape, stored-value vocabulary, API contract).
 
-     FIRST ask: is this caught at build time? If `{{CODEGEN_CMD}}`, `tsc`, or
-     `rover supergraph compose` fails on it, CI catches it and nothing ships — DELETE the risk.
-
-     If it survives, name the mechanism. `Binds at:` must be one of exactly:
+     Name the mechanism. `Binds at:` must be one of exactly:
      build-time | rollout-window | inter-service-skew | event-consumption | replay-migration | data-at-rest
 
      **Risk:** <one line>
@@ -486,29 +421,6 @@ openspec validate "<name>" --strict
 
 Fix any errors (the two parser rules above are the usual culprits) and re-run until it passes. A change that doesn't validate is not done.
 
-#### Verify the grounding — REQUIRED
-
-`openspec validate` checks structure, not truth. Then run:
-
-```bash
-{{CLAIMS_CHECKER_CMD}} "<name>"
-```
-
-It re-reads every `**Evidence:**` anchor against the actual file and re-runs every absence command,
-and rejects any `**Binds at:**` value outside the closed list. Verdicts:
-
-| Verdict                                          | What to do                                                                                                                                       |
-| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `FABRICATED` / `COUNT-MISMATCH` / `MISSING-FILE` | The claim is false. Open the file, fix the claim **and re-examine the decision it was supporting** — a false premise may have been load-bearing. |
-| `WRONG-LINE` / `DRIFT`                           | Citation points at the wrong line; the corrected line is in the output.                                                                          |
-| `UNKNOWN-MOMENT`                                 | The named mechanism isn't real in this stack. Pick from the closed list.                                                                         |
-| `MALFORMED` / `UNSAFE`                           | Rewrite the citation in the documented form.                                                                                                     |
-
-**A non-zero exit is a hard gate — do not present the proposal as complete.** The checker only sees
-claims written in the structured form; a load-bearing claim asserted in bare prose with no
-`**Evidence:**` line passes silently here and is caught later by the reviewers' `[false-premise]`
-severity. Green is a floor, not a ceiling.
-
 ---
 
 ## Completing the skill
@@ -518,61 +430,14 @@ After generating all artifacts, present the user with:
 1. **Summary:** Change name(s), what was generated, where to find them.
 2. **Survey findings that shaped this:** 2-3 key things the survey found that influenced the proposal shape (integration points, dependencies discovered, pattern to follow).
 3. **Load-bearing constraints:** The 1-3 things the implementer must NOT violate (e.g., "must use local projection, not federation @requires", "must land after X").
-4. **Metadata:** the proposal's `id`, assigned `model` tier, and `depends_on` ids (or "no hard dependencies").
-5. **Next step:** "Run `/proposal-to-pr <name>` to start the review + implementation pipeline. It runs at the proposal's `model` tier and will block until every `depends_on` prerequisite is merged."
+4. **Next step:** "Run `/proposal-to-pr <name>` to start the review + implementation pipeline."
 
-**6. Create or reuse the Jira tracking issue.** For each proposal generated:
+If multiple proposals were generated, also show the ordered list of change names — the same order announced in Phase 4 — so the pickup order is unambiguous:
 
-- **If this skill was invoked by `implement-task`'s escalate lane** (i.e. you were handed an originating Jira issue key), REUSE that key for the **first / primary** proposal rather than creating a duplicate: following `jira-task-management`'s Cross-cutting mechanics (dynamic transition-ID lookup + idempotency guard), transition the originating issue to **Proposal Ready**, and use that key below. This keeps one ticket per work item — the task the user escalated becomes the proposal's tracker, instead of being orphaned while a brand-new ticket appears.
-- **Otherwise** (direct invocation from a raw idea), or for the **2nd..Nth** proposal in a decomposition, create a net-new issue: first check via JQL (`project = {{TRACKER_PROJECT_KEY}} AND labels = "openspec:<name>"`) that one doesn't already exist (so a re-run doesn't duplicate); if none, call `createJiraIssue` (see `jira-task-management/SKILL.md` for the tool shape): `projectKey: "{{TRACKER_PROJECT_KEY}}"`, `issueTypeName: "Task"`, `summary` = a de-slugified change name, `description` = the proposal's problem/why section plus a pointer to `openspec/changes/<name>/proposal.md`, `additional_fields.labels` = `["openspec:<name>"]` (the traceability + dedup key), and `transition: { id: "{{TRACKER_TRANSITION_PROPOSAL_READY}}" }` (Proposal Ready — a creation-time param; if the target status doesn't stick, fall back to create-then-dynamic-`transitionJiraIssue` via `jira-task-management`, same as the Phase 1 migration plan's Task 1 Step 4 mechanic).
-
-Then write the resulting key (reused or new) into `openspec/changes/<name>/.openspec.yaml` as a new line: `jira_issue_key: PROJ-<N>` (that file today holds just `schema:` and `created:` — freeform YAML, one more scalar line is safe). Re-run `openspec validate "<name>" --strict` after the edit and confirm it still exits 0 — this is the live test that an extra key doesn't break the openspec CLI's parsing, not just an assumption.
-
-If multiple proposals were generated, also show a table so the pickup order is unambiguous:
-
-| id            | change-name         | model | depends on (ids) |
-| ------------- | ------------------- | ----- | ---------------- |
-| `prop-a3f2c1` | `ne-refactor-1-...` | opus  | none             |
-| `prop-9b0e77` | `ne-refactor-2-...` | fable | `prop-a3f2c1`    |
-
-- The dependency order they must be implemented in (topologically sorted by `depends_on`)
-- Which one to start with (the proposal whose `depends_on` is empty or already satisfied)
+- The order they should be implemented in
+- Which one to start with
 
 **Before handing off — branch hygiene.** The artifacts are uncommitted files, and `/proposal-to-pr` expects a clean feature branch. If the working tree is on `main` (or another shared branch), create/switch to an `openspec/<name>` branch and commit the artifacts before pointing the user at the pipeline — one real run had the proposal accidentally swept into `main`. If the session is already long and full of deliberation, recommend running `/proposal-to-pr` in a **fresh session** to avoid context bloat.
-
----
-
-## Final step — Retro
-
-After the artifacts are committed and the handoff is printed, dispatch the **`retro-writer`**
-agent. It writes one file to `.claude/retrospectives/` and nothing else.
-
-```
-Dispatch retro-writer with:
-  skill:    intent-to-proposal
-  subject:  <primary change name>
-  branch:   <the openspec/<name> branch, if one was created>
-  outcome:  handed-off
-  pointers: openspec/changes/<name>/proposal.md
-            openspec/changes/<name>/.openspec.yaml
-            Jira <key>, if one was created or reused
-```
-
-The findings worth capturing here are **proposal-shaped**, not implementation-shaped, and
-they are the ones that cost the most downstream:
-
-- The survey missed an integration point that Stage 2 pre-review later caught.
-- The decomposition was wrong — proposals that should have been one, or one that should
-  have been three.
-- A `depends_on` edge discovered late, after the ordering was already presented.
-- A feasibility call that turned out wrong.
-- The user redirected the scope during dialogue — record what shape of question triggered it.
-
-A proposal defect is the most expensive kind in this pipeline, because `proposal-to-pr`
-inherits it and pays for it across every downstream stage. **This is the highest-leverage
-retro of the five.**
-
-Do not summarize the dialogue for the agent — hand it the pointers and let it read.
 
 ---
 
