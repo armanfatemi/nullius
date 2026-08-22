@@ -4,6 +4,38 @@ Bare version headings are the kernel — `@nullius-inverba/claims` and its
 unscoped alias `evidence-anchors`, which ship together. Headings prefixed with
 a package name are that package's own release; the kit versions independently.
 
+## Unreleased
+
+### Added
+
+- **`nullius wiring [root]` — references that must resolve.** A skill naming
+  an agent that has no definition file does not error today: the dispatch
+  no-ops and the run reports a completed review having reviewed nothing. That
+  silence is a filesystem fact, so it now has a checker. `wiring` scans agent,
+  skill, rule, hook, settings, and command artifacts under the harness root
+  and confirms every reference their frontmatter *declares* — `dispatches:`,
+  `skills:`, a hook `command`, a `{{TOKEN}}` placeholder — actually resolves.
+
+  Seven verdicts: `dangling-agent` and `dangling-skill` (a declared name with
+  no definition file), `missing-path` and `empty-glob` (a declared path or
+  glob matching nothing), `dead-hook` (a hook command that does not resolve,
+  or is not executable), `unsubstituted-token` (a `{{TOKEN}}` that survived a
+  port), and the advisory `loose-reference` (a backticked path in prose, which
+  might be a live pointer or an illustrative example, and nothing here can
+  tell the two apart). Only declared fields fail; prose is always advisory.
+
+  **`WiringVerdict` is its own union, separate from the kernel's exported
+  `Verdict`.** `Verdict` — the enum `check` and `audit` report against — is
+  unchanged. This release is additive, not breaking: growing `Verdict` itself
+  to cover wiring would have made every existing switch over it non-exhaustive,
+  so wiring gets a verdict space of its own instead.
+
+  Library API: `checkWiring`, `isWiringFailure`, `hookTarget`,
+  `scanHarnessRoot`, `fsWiringDeps`, `looseCandidates`, `parseFrontmatter`, and
+  `declaredList` are now exported from the package root, alongside their
+  `ArtifactKind` / `HarnessArtifact` / `WiringDeps` / `WiringFinding` /
+  `WiringReport` / `WiringVerdict` / `Frontmatter` / `Located` types.
+
 ## kit 0.2.0
 
 One fix, and it is a consent bug rather than a bug in the checker.
