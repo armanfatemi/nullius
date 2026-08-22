@@ -84,15 +84,18 @@ Delete `## Final step — Retro` in full.
 
 `{{CODEGEN_CMD}}` — this repo has no codegen step. Delete the surrounding instruction rather than substituting an empty string.
 
-`{{CLAIMS_CHECKER_CMD}}` — leave it for now. Task 2 replaces it deliberately, with the surrounding verdict table, and doing it here would split one edit across two tasks.
+`{{CLAIMS_CHECKER_CMD}}` — **delete the whole claims-check block it sits in**, including the sentence introducing it and the verdict table beneath it. Task 2 writes that block fresh against the real checker.
+
+Do not leave the token in place for Task 2 to substitute. This file becomes a scanned harness artifact the moment it lands, and a surviving `{{TOKEN}}` is a hard `UNSUBSTITUTED-TOKEN` failure — so leaving it would mean committing a state where this repo's own gate is red. Verified: `nullius wiring` exits 1 on exactly that shape.
 
 - [ ] **Step 6: Verify no token survives except the one Task 2 owns**
 
 ```bash
 grep -n '{{' .claude/skills/intent-to-proposal/SKILL.md
+pnpm build && node packages/claims/dist/cli.js wiring
 ```
 
-Expected: exactly one line, the `{{CLAIMS_CHECKER_CMD}}` invocation. Anything else is a missed cut.
+Expected: **no output from the grep**, and `wiring` exits 0. Every token must be gone by the end of this task, because the gate runs on the committed state and a surviving placeholder fails it.
 
 - [ ] **Step 7: Confirm no dangling agent survives**
 
@@ -127,7 +130,7 @@ grep -nE '\.claude/rules/|CLAIMS_CHECKER|proposal-grounding|backend-graphql' \
   .claude/skills/intent-to-proposal/SKILL.md
 ```
 
-You should find three kinds: citations of `.claude/rules/proposal-grounding.md`, one citation of `.claude/rules/backend-graphql.md`, and the `{{CLAIMS_CHECKER_CMD}}` block.
+You should find two kinds: citations of `.claude/rules/proposal-grounding.md` and one citation of `.claude/rules/backend-graphql.md`. The claims-check block is gone — Task 1 deleted it rather than leaving a token behind, so Step 4 below writes it fresh rather than substituting into it.
 
 - [ ] **Step 2: Repoint the grounding rule**
 
@@ -141,9 +144,9 @@ Phase 3 Step 1 cites `.claude/rules/backend-graphql.md §Cross-Service Data Acce
 
 Phase 2's red-flag table has the same problem — see Task 3, which owns it.
 
-- [ ] **Step 4: Replace the claims-checker block**
+- [ ] **Step 4: Write the claims-checker block**
 
-Substitute the real command. From the repo root the checker runs from `dist/`, and the glob for one change is its folder:
+Task 1 deleted the export's version along with its token. Write this one against the real command. From the repo root the checker runs from `dist/`, and the glob for one change is its folder:
 
 ```bash
 node packages/claims/dist/cli.js check "openspec/changes/<name>/**/*.md"
