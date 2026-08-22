@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   checkWiring,
+  hookTarget,
   isWiringFailure,
   type HarnessArtifact,
   type WiringDeps,
@@ -155,5 +156,74 @@ describe("loose-reference", () => {
     );
 
     expect(report.references).toBe(0);
+  });
+});
+
+describe("hookTarget", () => {
+  it("expands the plugin root and strips quotes", () => {
+    expect(hookTarget('"${CLAUDE_PLUGIN_ROOT}/hooks/check-plan.sh"', "plugin")).toBe(
+      "plugin/hooks/check-plan.sh",
+    );
+  });
+
+  it("takes the first path-shaped token of a command line", () => {
+    expect(hookTarget("node packages/kit/dist/cli.js witness record", "plugin")).toBe(
+      "packages/kit/dist/cli.js",
+    );
+  });
+
+  it("returns null for a bare command with no path", () => {
+    expect(hookTarget("echo hello", "plugin")).toBeNull();
+  });
+
+  it("returns null for an absolute path, which is not ours to judge", () => {
+    expect(hookTarget("/usr/local/bin/thing", "plugin")).toBeNull();
+  });
+});
+
+describe("dead-hook", () => {
+  it("fails a hook whose script is missing", () => {
+    const report = checkWiring(
+      [artifact({ kind: "hooks", path: "plugin/hooks/hooks.json", hooks: [{ value: "plugin/hooks/gone.sh", line: 9 }] })],
+      deps(),
+    );
+
+    expect(report.findings[0]?.verdict).toBe("dead-hook");
+  });
+
+  it("fails a hook whose script exists but is not executable", () => {
+    const present = new Set(["plugin/hooks/check-plan.sh"]);
+    const report = checkWiring(
+      [artifact({ kind: "hooks", path: "plugin/hooks/hooks.json", hooks: [{ value: "plugin/hooks/check-plan.sh", line: 9 }] })],
+      {
+        exists: (path) => present.has(path),
+        isExecutable: () => false,
+        glob: () => [],
+      },
+    );
+
+    expect(report.findings[0]?.verdict).toBe("dead-hook");
+    expect(report.findings[0]?.detail).toContain("not executable");
+  });
+
+  it("passes a hook that exists and is executable", () => {
+    const report = checkWiring(
+      [artifact({ kind: "hooks", path: "plugin/hooks/hooks.json", hooks: [{ value: "plugin/hooks/check-plan.sh", line: 9 }] })],
+      deps(["plugin/hooks/check-plan.sh"]),
+    );
+
+    expect(report.findings).toEqual([]);
+  });
+});
+
+describe("unsubstituted-token", () => {
+  it("fails a placeholder that survived a port", () => {
+    const report = checkWiring(
+      [artifact({ tokens: [{ value: "{{VERIFY_TEST}}", line: 22 }] })],
+      deps(),
+    );
+
+    expect(report.findings[0]?.verdict).toBe("unsubstituted-token");
+    expect(report.findings[0]?.subject).toBe("{{VERIFY_TEST}}");
   });
 });

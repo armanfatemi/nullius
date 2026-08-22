@@ -96,6 +96,30 @@ export function skillPath(name: string): string {
   return `.claude/skills/${name}/SKILL.md`;
 }
 
+/**
+ * The repo-relative script a hook command runs, or null when there is nothing
+ * to check.
+ *
+ * Conservative on purpose. A hook command is a shell line, not a path: it may
+ * be a bare binary on `$PATH`, an absolute path outside the repo, or an
+ * interpreter followed by a script. Guessing wrong here produces a failing
+ * build over a hook that works, which is how a check earns its way into
+ * someone's ignore list.
+ */
+export function hookTarget(command: string, pluginRoot: string): string | null {
+  const expanded = command
+    .replaceAll("${CLAUDE_PLUGIN_ROOT}", pluginRoot)
+    .replaceAll("$CLAUDE_PLUGIN_ROOT", pluginRoot);
+
+  for (const rawToken of expanded.split(/\s+/)) {
+    const token = rawToken.replaceAll('"', "").replaceAll("'", "");
+    if (!token.includes("/")) continue;
+    if (token.startsWith("/") || token.startsWith("~")) return null;
+    return token;
+  }
+  return null;
+}
+
 export function checkWiring(
   artifacts: HarnessArtifact[],
   deps: WiringDeps,
@@ -178,6 +202,39 @@ export function checkWiring(
         verdict: "loose-reference",
         subject: ref.value,
         detail: "looks like a repo path but does not resolve — an example, or a pointer that moved",
+      });
+    }
+
+    for (const ref of item.hooks) {
+      references += 1;
+      if (!deps.exists(ref.value)) {
+        findings.push({
+          artifact: item.path,
+          line: ref.line,
+          verdict: "dead-hook",
+          subject: ref.value,
+          detail: "hook command does not resolve — if this is a build output, run `pnpm build` first",
+        });
+        continue;
+      }
+      if (deps.isExecutable(ref.value)) continue;
+      findings.push({
+        artifact: item.path,
+        line: ref.line,
+        verdict: "dead-hook",
+        subject: ref.value,
+        detail: "exists but is not executable — the harness fails this open, so it would never run and never say so",
+      });
+    }
+
+    for (const ref of item.tokens) {
+      references += 1;
+      findings.push({
+        artifact: item.path,
+        line: ref.line,
+        verdict: "unsubstituted-token",
+        subject: ref.value,
+        detail: "placeholder survived a port — the instruction containing it is not addressed to this repo",
       });
     }
   }
