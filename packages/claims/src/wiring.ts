@@ -275,6 +275,21 @@ export function checkWiring(
 
     for (const ref of item.globs) {
       references += 1;
+      // Checked before the filesystem is touched: a rule file is
+      // repo-controlled content a pull request can add, and the same
+      // containment rule applies as to a citation — an escaping glob is a
+      // defect regardless of what it would have matched.
+      const globSafety = isSafeRepoPath(ref.value);
+      if (!globSafety.safe) {
+        findings.push({
+          artifact: item.path,
+          line: ref.line,
+          verdict: "empty-glob",
+          subject: ref.value,
+          detail: globSafety.reason,
+        });
+        continue;
+      }
       if (deps.glob(ref.value).length > 0) continue;
       findings.push({
         artifact: item.path,

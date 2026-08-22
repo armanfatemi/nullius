@@ -136,6 +136,16 @@ describe("empty-glob", () => {
 
     expect(report.findings).toEqual([]);
   });
+
+  it("fails an unsafe declared glob without touching the filesystem", () => {
+    const report = checkWiring(
+      [artifact({ kind: "rule", globs: [{ value: "../../../../etc/**", line: 3 }] })],
+      deps([], { "../../../../etc/**": ["etc/passwd"] }),
+    );
+
+    expect(report.findings[0]?.verdict).toBe("empty-glob");
+    expect(report.findings[0]?.detail).toContain("traversal");
+  });
 });
 
 describe("loose-reference", () => {
