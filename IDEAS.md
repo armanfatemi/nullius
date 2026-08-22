@@ -470,6 +470,79 @@ already groups them — but nothing checks they are a **pair**, and
 `--require-markers` sets a floor of one anchor per *document*. "Which of 1,448
 ported files carry a correspondence anchor?" is unanswerable.
 
+## P14 — Oracle conservation *(now an OpenSpec change)*
+
+Scoped as
+[`openspec/changes/add-oracle-conservation/`](openspec/changes/add-oracle-conservation/proposal.md).
+
+The work is graded by an artifact the work can edit. When a change makes a test
+fail there are two routes back to green — fix the code, or fix the test — and
+they produce identical output. Sometimes editing the test is right, which is
+why the blunt form (P10's "count must stay zero") is a port-time invariant
+rather than a development rule.
+
+The tractable question is not whether the oracle changed but whether the change
+was **accounted for**. Three findings shaped the proposal:
+
+- **The journal cannot source it.** The mutation record comes from tool hooks,
+  and nothing in the pack watches `Bash` — so `rm`, `git rm`, and any
+  script-driven deletion leave no trace, and deletion is the highest-risk edit.
+  For this one question the hooks tier, normally the *stronger* attestation, is
+  the weaker one. Git is the witness.
+- **The justification belongs on `decision`**, joined by a derived
+  `(path, change)` pair rather than a record id — precisely because the changes
+  worth catching emit no record to point at.
+- **A rationale is a claim**, so the convention is that it carries an Evidence
+  Anchor into the implementation that made the edit necessary. Then a later
+  revert turns the anchor `STALE` and resurfaces a test edit that has quietly
+  lost its reason.
+
+## P15 — The local report
+
+A read-only view over accumulated runs. Worth building, and **not yet** — for a
+statable reason rather than a feeling: *the value of the view is a function of
+how many record kinds have producers.* Today `verification` and `reliance` have
+none, the five v0.3 ledger kinds have none, and workflow dispatches do not reach
+the recorder at all. A view over what exists would be a bar chart of dispatch
+counts.
+
+**Gate:** build it when two or more producers are emitting, and after
+`add-journal-identity` lands — "navigate past runs" is a query over the ref that
+change creates.
+
+**The trap, named first.** A dashboard *is* a summary, and this project's thesis
+is that a summary and a record are different objects. A wall of green that
+people trust instead of the verdicts would be the tool manufacturing the
+confidence it exists to destroy. A panel with no data looks exactly like a panel
+with nothing wrong — `SILENT-EMPTY`, rendered in CSS.
+
+Three constraints, above any feature:
+
+- **Absence renders louder than presence.** "No journal for this run" as text,
+  never an empty chart.
+- **Every number links to the raw record.** If you cannot click through to the
+  JSONL line, it does not belong on screen.
+- **The view computes nothing the CLI cannot.** A number no command reproduces
+  is a bug, not a feature.
+
+**Read-only, and say so.** Not a control plane: the moment it can re-run,
+approve, or dispatch it becomes a much larger trust surface and starts making
+decisions that currently leave a record in a PR.
+
+**A static file before a server.** `nullius report --out report.html`, one
+self-contained page: no port, no process, works over SSH and in remote
+containers, and the output is an artifact — committable, attachable to a PR,
+diffable. It also forces the discipline of a view over a fixed record. A server
+earns its place only when live-during-run matters, and renders the same view.
+
+**Kit, not kernel** — the boundary already decides it. The kernel is no network,
+no model, minimal dependencies; an HTTP server is network I/O.
+
+**The panel that justifies the surface** is the Geiger counter: objections per
+gate as a base rate, with a whole-run zero flagged. Not "here is what we found"
+but "here is whether the detectors are still clicking." Rates are the thing a
+CLI answers badly and `project.md` already says the projections are for.
+
 ## Ranked, with what blocks what
 
 | # | Item | Effort | Blocked on |
@@ -480,11 +553,13 @@ ported files carry a correspondence anchor?" is unanswerable.
 | 2 | `add-journal-identity` | scoped | — |
 | 3 | The v0.3 self-reported producer (Track 2) | large | — |
 | 4 | P10 port invariants | docs only | — |
+| 4= | P14 oracle conservation | scoped | — |
 | 5 | Wiring check (Track 2) | small | — |
 | 6 | `add-rules-compliance` | in flight | recording |
 | 7 | P7 declared denominator (`MISSING-ATTESTATION`) | medium | a producer |
 | 8 | P12 `audit --diff` | medium | — |
 | 9 | P13 correspondence anchors | medium | — |
+| 10 | P15 the local report | large | two producers + the ref |
 
 Items 3 and 5 are already Track 2's own priority picks. This track does not
 reorder them; it adds evidence that they are the right two.
