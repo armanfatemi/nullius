@@ -101,37 +101,15 @@ const SCRIPT_EXTENSIONS: ReadonlySet<string> = new Set([
   ".sh", ".bash", ".zsh", ".js", ".mjs", ".cjs", ".ts", ".mts", ".cts", ".py", ".rb", ".pl", ".cmd", ".ps1", ".bat",
 ]);
 
-/**
- * Split a command line into words, treating a quoted run — spaces and all —
- * as one word. Backslash-escapes outside single quotes, as POSIX does: a
- * backslash escapes the very next character and is itself dropped, in both
- * double-quoted and unquoted context. Inside single quotes a backslash is
- * literal — nothing is special there except the closing quote — so it
- * survives into the token unchanged, escaping nothing.
- */
+/** Split a command line into words, treating a quoted run — spaces and all — as one word. */
 function shellWords(command: string): string[] {
   const words: string[] = [];
   let current = "";
   let quote: string | null = null;
-  let escapeNext = false;
 
   for (const char of command) {
-    if (escapeNext) {
-      current += char;
-      escapeNext = false;
-      continue;
-    }
-    if (quote === "'") {
-      if (char === "'") quote = null;
-      else current += char;
-      continue;
-    }
-    if (char === "\\") {
-      escapeNext = true;
-      continue;
-    }
-    if (quote === '"') {
-      if (char === '"') quote = null;
+    if (quote !== null) {
+      if (char === quote) quote = null;
       else current += char;
       continue;
     }
@@ -159,11 +137,12 @@ function hasScriptExtension(token: string): boolean {
 const SCHEME = /^[a-z][a-z0-9+.-]*:/i;
 
 /**
- * Ordinary whitespace, plus the zero-width class: U+200B–U+200D (zero-width
- * space/non-joiner/joiner) and U+FEFF (zero-width no-break space / BOM). JS
- * `\s` does not match any of these, so a token fused by one — two path
- * segments glued together by an invisible character instead of a real space —
- * would otherwise slip past the guard below unsplit and unrefused.
+ * Ordinary whitespace, plus U+200B–U+200D (zero-width space, ZWNJ, ZWJ) —
+ * three code points JS `\s` does not match, so a token fused by one of them
+ * (two path segments glued together by an invisible character instead of a
+ * real space) would otherwise slip past the guard below unsplit and
+ * unrefused. U+FEFF (zero-width no-break space / BOM) is included too for
+ * clarity, but it is redundant: `\s` already matches it.
  */
 const WHITESPACE_LIKE = /[\s\u200B-\u200D\uFEFF]/;
 
@@ -216,6 +195,13 @@ function isHookScript(token: string): boolean {
  * inside it.
  */
 export function hookTarget(command: string, pluginRoot: string): string | null {
+  // Backslash quoting is where four attempts at reading these command lines
+  // went wrong, each returning a confident wrong path rather than declining.
+  // A partial shell parser's real failure mode is not the cases it rejects,
+  // it is the cases it thinks it understood. So this does not parse backslash
+  // quoting — it refuses to read a command line that uses it.
+  if (command.includes("\\")) return null;
+
   const words = shellWords(command);
   const expanded = words.map((word) =>
     word

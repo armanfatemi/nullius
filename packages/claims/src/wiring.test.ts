@@ -276,6 +276,40 @@ describe("hookTarget", () => {
       "packages/kit/hooks/don't-skip.sh",
     );
   });
+
+  it("refuses a doubled backslash — the shape a hooks.json author's escaping of a single backslash accidentally produces", () => {
+    // hooks.json is JSON: writing a literal backslash into a command string
+    // means doubling it. An author trying to escape a space the way earlier
+    // rounds assumed reaches this by accident. The raw shell line
+    // `node packages/kit/hooks/foo\\ bar/run.js` (two backslashes, one
+    // space) parses to three argv entries: node, `packages/kit/hooks/foo\`
+    // (the first backslash escapes the second, leaving the space as a real
+    // delimiter), and `bar/run.js` — an unrelated argument, not the script.
+    // Structurally the same wrong-path shape round 4 fixed for a single
+    // backslash, refused the same way here: the command contains a
+    // backslash, so hookTarget declines before it ever tokenizes.
+    expect(hookTarget("node packages/kit/hooks/foo\\\\ bar/run.js", "plugin")).toBeNull();
+  });
+
+  it("declines rather than strip a backslash POSIX leaves literal inside double quotes before an ordinary character", () => {
+    // Inside double quotes POSIX treats backslash as special only before $,
+    // `, ", \, and newline — not before an ordinary character like `.`. So
+    // the correct token from `"packages/kit/hooks/run\.js"` is
+    // `packages/kit/hooks/run\.js`, backslash and all, not `run.js`. Round
+    // 4's escape handling stripped the backslash unconditionally regardless
+    // of context, which would have returned the wrong, nonexistent path
+    // `run.js`. This declines instead: the command contains a backslash, so
+    // hookTarget refuses to read it rather than risk returning a token that
+    // was never the real script.
+    expect(hookTarget('node "packages/kit/hooks/run\\.js"', "plugin")).toBeNull();
+  });
+
+  it("declines a Windows-style backslash path via the new guard, not incidentally for lacking a forward slash", () => {
+    // No `/` anywhere in this token, so the pre-existing `!token.includes("/")`
+    // guard in isHookScript would have refused it too — but the backslash
+    // guard at the top of hookTarget fires first, on principle, not by luck.
+    expect(hookTarget("node packages\\\\kit\\\\hooks\\\\run.js", "plugin")).toBeNull();
+  });
 });
 
 describe("dead-hook", () => {
