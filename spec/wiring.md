@@ -203,8 +203,13 @@ value that fails `isSafeRepoPath` is reported, with the guard's own reason
 string, as `MISSING-PATH` or `EMPTY-GLOB`. A hook command that fails the
 identical check produces **no finding at all** — no verdict, no line, not
 even a count toward "declared references checked." It goes silent the same
-way the first three cases do, despite failing a guard that, everywhere else
-in this checker, speaks.
+way the first three cases do, despite failing the same guard that, on
+`reads` and `applies_to`, speaks. That guard is not loud everywhere else in
+the checker, either: `looseCandidates` — the scan behind the advisory
+`LOOSE-REFERENCE` verdict for backticked paths in prose — filters out any
+candidate that fails `isSafeRepoPath` the same way, so a prose path like
+`/etc/passwd` or `../../secret` is dropped before it is ever considered and
+produces no advisory either, a third site with the identical silence.
 
 That silence is easiest to defend for the absolute-path half of it: a hook
 that runs `/usr/bin/some-tool` is naming a system binary, and whether that
