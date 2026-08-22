@@ -26,11 +26,15 @@ as advisory `LOOSE-REFERENCE`, and SHALL NOT fail the run for it.
 
 ### Requirement: Unsubstituted template tokens are reported
 
-The checker SHALL report a hard verdict when a declared frontmatter field
-contains an unsubstituted template token — a `{{...}}` placeholder left over
-from scaffolding rather than a name or path that failed to resolve.
+The checker SHALL report a hard verdict when a scanned artifact's text
+contains an unsubstituted template token anywhere in that text, not only
+inside a declared frontmatter field. A `{{...}}` placeholder is scaffolding
+left behind by a port, not a name or path that failed to resolve, and it is
+reported the same way whether it appears in frontmatter, in prose
+instructions, or in a hook's JSON value.
 
 #### Scenario: A scaffolded hook command was never adapted
 
-- **WHEN** a hook's `command` field contains `{{SCRIPT_PATH}}`
+- **WHEN** a hook's `command` value — not a frontmatter field — contains
+  `{{SCRIPT_PATH}}`
 - **THEN** the checker reports `UNSUBSTITUTED-TOKEN` and exits non-zero
