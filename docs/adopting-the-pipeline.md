@@ -224,7 +224,6 @@ existing skill stays for the case it is good at — scaffolding a change whose
 shape is already decided. `intent-to-proposal` owns the case where the idea is
 still raw and the survey, the refutation and the decomposition are the point.
 
-
 ## Phase 2 — the schema-first half
 
 **Retrospectives become a journal plus prose.** `retro-writer` keeps its

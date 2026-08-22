@@ -5,7 +5,7 @@ description: Transform a raw idea into one or more well-defined OpenSpec proposa
 
 # Idea → OpenSpec Proposal
 
-This skill turns a rough idea into a well-scoped, implementation-ready OpenSpec proposal (or set of proposals). It addresses the primary quality gap identified in the process audit: proposals generated without codebase survey produce under-specified artifacts that cost a full refinement iteration in Stage 2.
+This skill turns a rough idea into a well-scoped, implementation-ready OpenSpec proposal (or set of proposals). Proposals generated without a codebase survey produce under-specified artifacts that cost a full refinement iteration in Stage 2 — closing that gap is why this skill exists.
 
 ## Boundary with `openspec-propose`
 
@@ -45,7 +45,7 @@ After collecting answers, synthesize understanding in one paragraph before proce
 
 ## Phase 2 — Codebase survey
 
-**Goal:** understand what already exists before proposing anything. This is the step that prevents the "assumed only AdminLayout existed" class of failure.
+**Goal:** understand what already exists before proposing anything. This is the step that prevents proposing a change against an imagined version of the codebase that a real survey would have shown to be wrong.
 
 Dispatch a **single Explore agent** with scope "thorough". Brief it with:
 
@@ -101,7 +101,7 @@ The coordinator has spent Phases 1–2 reading the user's pitch, building enthus
 Do this yourself before dispatching anything, because it requires the survey results the coordinator already holds:
 
 - Does the survey reveal any pattern that makes this idea significantly harder than it appears?
-- Does this conflict with any CQRS boundary, projection isolation rule, or event-sourcing constraint?
+- Does this conflict with the kernel/kit split (kit produces and integrates, kernel judges), the public-API export boundary (`packages/claims/src/index.ts`), or the one-delivery-mechanism-per-artifact rule?
 - Does the survey reveal any in-flight change that this MUST land after? Or that landing this before X would break X?
 
 Write a 2-3 sentence architectural feasibility note. This feeds into Step 3 synthesis but does NOT go into the devil's advocate brief.
@@ -147,7 +147,7 @@ In that case, **ask via `AskUserQuestion`** whether to:
 - **Generate an OpenSpec proposal anyway** (they want the paper trail / hard review), or
 - **Skip OpenSpec and just make the change directly** — no proposal directory, no hand-off to another skill.
 
-If they choose to skip, STOP this skill cleanly: state that you're following their choice (user instruction overrides the proposal path) and make the change directly. Do NOT generate empty artifacts. (Real example: a ~2-line CSP fix where the user chose to fix directly → shipped as a PR with no proposal.)
+If they choose to skip, STOP this skill cleanly: state that you're following their choice (user instruction overrides the proposal path) and make the change directly. Do NOT generate empty artifacts.
 
 If the change is non-trivial, skip this step and continue.
 
@@ -156,15 +156,15 @@ If the change is non-trivial, skip this step and continue.
 Based on the survey, estimate:
 
 - Rough task count (each distinct file-level change is roughly one task; each test file is one task)
-- Services touched (count distinct service directories + lib directories that need changes)
+- Packages or surfaces touched (count distinct package directories, plugin surfaces, or spec-family docs that need changes)
 - Risk level (see template below for the definition)
 
 ### Decision rule
 
 | Condition                                                                  | Decision                                      |
 | -------------------------------------------------------------------------- | --------------------------------------------- |
-| Estimated tasks ≤ 60 AND services touched ≤ 4                              | Single proposal                               |
-| Estimated tasks > 60 OR services touched > 4                               | Split into multiple proposals                 |
+| Estimated tasks ≤ 60 AND packages or surfaces touched ≤ 4                  | Single proposal                               |
+| Estimated tasks > 60 OR packages or surfaces touched > 4                  | Split into multiple proposals                 |
 | Change has phases where each phase is independently valuable and shippable | Split by phase                                |
 | Change has hard prerequisites that don't exist yet                         | Separate the prerequisite as its own proposal |
 
@@ -195,7 +195,7 @@ The one thing still worth surfacing before you spend generation effort is a genu
 openspec new change "<name>"
 ```
 
-This registers the change in the openspec system. **Do NOT hand-write `.openspec.yaml` or skip this step** — an unregistered change won't validate and won't flow into `/proposal-to-pr`. (Two real runs skipped it and hand-wrote `.openspec.yaml`; both only caught the risk because they validated afterward.)
+This registers the change in the openspec system. **Do NOT hand-write `.openspec.yaml` or skip this step** — an unregistered change won't validate and won't flow into `/proposal-to-pr`, and nothing surfaces that until `openspec validate` is actually run against it.
 
 Note that `openspec new change` scaffolds **only** `.openspec.yaml` — it does NOT create `proposal.md` / `design.md` / `tasks.md` / `specs/`. Before writing those, read a recent sibling change already in `openspec/changes/` (the most recently modified one, excluding whatever you are currently scaffolding — do not hard-code a specific change name here, since any change folder named as an example will eventually be archived or deleted, and the example rots into a dangling reference instead of aging out gracefully) to match the exact on-disk format, then write the artifacts using the templates below.
 
@@ -267,13 +267,14 @@ Use this exact template. Fill every section — do not leave section headers emp
 |                                |                                        |
 | ------------------------------ | -------------------------------------- |
 | Estimated tasks                | ~N                                     |
-| Services touched               | N (list: service-a, service-b) |
+| Packages or surfaces touched   | N (list: package-a, plugin-surface) |
 | Risk                           | LOW / MEDIUM / HIGH                    |
 | Expected sessions to implement | 1 / 2                                  |
 
-<!-- LOW: pure addition, no existing behavior changed, single service.
-     MEDIUM: modifies existing behavior, 2-3 services, or spans multiple packages.
-     HIGH: cross-cutting, 4+ services, event schema changes, or security-sensitive. -->
+<!-- LOW: pure addition, no existing behavior changed, single package or surface.
+     MEDIUM: modifies existing behavior, 2-3 packages or surfaces, or spans multiple packages.
+     HIGH: cross-cutting, 4+ packages or surfaces, a breaking change to an exported type or
+     verdict union, or security-sensitive. -->
 
 ## Open questions
 
@@ -311,6 +312,11 @@ Use this exact template. Fill every section — do not leave section headers emp
      "rejected because", in a constraint — needs an **Evidence:** line. Judgment
      ("Option B is simpler") does not. If you cannot cite it, move it to Open
      questions. Rule: `plugin/skills/evidence-anchors/SKILL.md`.
+
+     A `path:line` mention inside a sentence, not in the **Evidence:**/**Binds
+     at:** marker form, is never checked by `check` or `/audit` — only the
+     marker form is parsed. A load-bearing claim must use the marker, not an
+     in-prose citation that only looks grounded.
 -->
 
 ### 1. [First key decision — e.g., data shape, storage, synchrony, error handling]
@@ -392,7 +398,7 @@ Mix and match as needed. Each section starts empty with a note: `<!-- Tasks to b
 
 ⚠️ **`openspec validate` (this project's `spec-driven` schema) HARD-FAILS with "Change must have at least one delta" if `specs/` is empty.** Do NOT skip `specs/` — every change needs at least one delta file. (In practice every skill-generated change ended up with a delta anyway, after a wasted validate→diagnose→fix→re-validate cycle. Create it up front.)
 
-Create `specs/<capability>/spec.md` with at least one `## ADDED Requirements` block. If the proposal spans more than one conceptually distinct sub-area (e.g. "domain model" and "frontend"), stub one file per area; otherwise one file is enough.
+Create `specs/<capability>/spec.md` with at least one `## ADDED Requirements` block. If the proposal spans more than one conceptually distinct sub-area (e.g. `wiring` and `witness`), stub one file per area; otherwise one file is enough.
 
 Two parser rules cause a **second** validation failure if missed:
 
@@ -475,6 +481,16 @@ anchors, which then go through `check` like anyone else's. `check` asks "is
 this citation real"; `/audit` asks "does this citation actually support the
 sentence built on top of it."
 
+**A known limitation of the extractor itself.** `statementAbove`
+(`packages/claims/src/audit.ts`) takes only the single physical line
+immediately above an `**Evidence:**` marker as "the claim's statement" — a
+sentence hard-wrapped across two source lines has its subject clause silently
+dropped, and because the function tracks no "inside a fence" state, two
+`**Evidence:**` blocks stacked back to back can pair a code excerpt from the
+first block as the statement for the second block's anchor. Read a REFUTED
+verdict against the full sentence in the actual document before acting on it
+— do not assume the brief handed to the refuting agent already reflects it.
+
 Follow the command's own protocol for collecting verdicts: **REFUTED** claims
 get their counter-evidence verified with `check` and the decision they
 supported re-examined; **SUPPORTED** claims get reported with where the agent
@@ -500,7 +516,7 @@ If multiple proposals were generated, also show the ordered list of change names
 - The order they should be implemented in
 - Which one to start with
 
-**Before handing off — branch hygiene.** The artifacts are uncommitted files, and `/proposal-to-pr` expects a clean feature branch. If the working tree is on `main` (or another shared branch), create/switch to an `openspec/<name>` branch and commit the artifacts before pointing the user at the pipeline — one real run had the proposal accidentally swept into `main`. If the session is already long and full of deliberation, recommend running `/proposal-to-pr` in a **fresh session** to avoid context bloat.
+**Before handing off — branch hygiene.** The artifacts are uncommitted files, and `/proposal-to-pr` expects a clean feature branch. If the working tree is on `main` (or another shared branch), create/switch to an `openspec/<name>` branch and commit the artifacts before pointing the user at the pipeline — uncommitted artifacts left on a shared branch are one stray commit away from landing there with nothing to mark them as not-yet-reviewed. If the session is already long and full of deliberation, recommend running `/proposal-to-pr` in a **fresh session** to avoid context bloat.
 
 ---
 
@@ -508,5 +524,5 @@ If multiple proposals were generated, also show the ordered list of change names
 
 - It does not implement. The implementation pipeline is `proposal-to-pr`.
 - It does not replace human judgment on whether to build something. Phase 3 surfaces the question; the user decides.
-- It does not _require_ complete `tasks.md` content — when the design is still open, skeleton headings are enough to prime Stage 4 and tasks get refined collaboratively in Stage 2/3. But when the survey makes the task list concrete and mechanical (infra parity, a runbook, a rename), populating real tasks now is encouraged (see "Skeleton vs. filled" in Phase 5).
+- It does not _require_ complete `tasks.md` content — when the design is still open, skeleton headings are enough to prime Stage 4 and tasks get refined collaboratively in Stage 2/3. But when the survey makes the task list concrete and mechanical (a fixture pair, a CHANGELOG entry, a rename), populating real tasks now is encouraged (see "Skeleton vs. filled" in Phase 5).
 - It does not guarantee zero blockers in Stage 2 — but a good survey + feasibility pass significantly reduces the probability.

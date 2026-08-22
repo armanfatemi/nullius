@@ -137,7 +137,7 @@ and the hook-source loop, `packages/claims/src/wiringScan.ts:175-197@8c6ea59`).
 a fake `dispatches` entry to carry the parse error. Rejected: it would
 misreport a document-validity problem as a dangling-reference problem, the
 same category error Decision 1 avoids, and it would corrupt the
-`references` count `checkWiring` returns (`packages/claims/src/wiring.ts:76`)
+`references` count `checkWiring` returns (`packages/claims/src/wiring.ts:78`)
 with an entry that names nothing real.
 (b) A top-level `WiringReport.parseErrors: WiringFinding[]` separate from
 `findings`. Rejected: it creates two places a caller has to check for a
@@ -215,13 +215,11 @@ export function parseFrontmatter(content: string): Frontmatter | null {
 **Chosen:** No verdict, field, or report change for `hookTarget` returning
 `null`. This gap stays exactly as documented today.
 
-**Rationale:** The fresh devil's-advocate review of this idea (dispatched
-with only the three-gap framing, no survey context) argued that treating all
-three silences as one bug list conflates a genuine oversight with a tested,
-intentional design decision, and that forcing a verdict onto the third
-would misrepresent an abstention as a defect. That argument holds up against
-the actual code and its own design record, not just as an outside opinion:
-`hookTarget`'s decline behavior carries 29 unit tests
+**Rationale:** Treating all three silences as one bug list would conflate a
+genuine oversight with a tested, intentional design decision, and forcing a
+verdict onto the third would misrepresent an abstention as a defect. That
+holds up against the actual code and its own design record, not just as an
+assertion: `hookTarget`'s decline behavior carries 29 unit tests
 (`describe("hookTarget", ...)`, `packages/claims/src/wiring.test.ts:199`),
 and `spec/wiring.md` devotes lines 123–226 to why declining beats guessing,
 including a concrete account of an earlier version of this exact function

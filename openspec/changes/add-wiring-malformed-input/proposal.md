@@ -158,11 +158,22 @@ does.
   this package. Widening `Frontmatter | null` into a richer discriminated
   result to carry the fence-unclosed distinction would be a breaking change
   to every existing caller for a distinction only the wiring checker needs.
-- **No change to the kernel's exported `Verdict` union** (`checkClaims.ts`).
-  `WiringVerdict` is already its own type for exactly this reason
-  (`packages/claims/src/wiring.ts:12-13@8c6ea59` — "Its own verdict union on
-  purpose: the kernel's exported `Verdict` is public API, and growing it is a
-  breaking change.") and this proposal does not disturb that boundary.
+- **No change to the kernel's exported `Verdict` union** (`checkClaims.ts`) —
+  that type is untouched by this proposal. `WiringVerdict` is its own type
+  precisely so that growing it does not force a change onto every consumer of
+  `Verdict` (`packages/claims/src/wiring.ts:13-14@8c6ea59` — "Its own verdict
+  union on purpose: the kernel's exported `Verdict` is public API, and growing
+  it is a breaking change."). That does not make growing `WiringVerdict` itself
+  free: it is exported from `packages/claims/src/index.ts:73` and is public
+  API of `@nullius-inverba/claims` in the same sense `Verdict` is — an external
+  consumer with an exhaustive switch over it would break the same way it would
+  for `Verdict`. The blast radius inside this repo is small, not zero: no
+  exhaustive switch over `WiringVerdict` exists anywhere in
+  `packages/claims/src` today, and `PASSING` (`packages/claims/src/wiring.ts:85`)
+  is a `ReadonlySet`, so a new member defaults to failing rather than passing —
+  an internal caller that forgets to special-case it fails safe. That is a
+  reason the risk is manageable here, not a reason to claim the boundary isn't
+  crossed.
 - **No new CLI flag or command.** Both new verdicts surface through the
   existing `nullius wiring` report and its existing exit-code contract.
 
@@ -185,5 +196,5 @@ None known
 |                   |                                                                     |
 | ----------------- | ------------------------------------------------------------------- |
 | Estimated tasks    | ~14                                                                  |
-| Services touched  | 1 (`packages/claims` — plus doc-only edits to `spec/`, `CHANGELOG.md`, and this change's own `openspec/specs/wiring/` delta) |
-| Risk              | LOW — internal, non-exported type; package-local; no schema, wire format, or cross-repo consumer touched |
+| Packages or surfaces touched | 1 (`packages/claims` — plus doc-only edits to `spec/`, `CHANGELOG.md`, and this change's own `openspec/specs/wiring/` delta) |
+| Risk              | LOW — `WiringVerdict` is exported and growing it is technically a breaking change for an exhaustive-switch consumer, but no such switch exists in this package today and `PASSING` is a `ReadonlySet` a new member defaults to failing against; package-local otherwise, no schema, wire format, or cross-repo consumer touched |
