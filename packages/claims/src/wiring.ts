@@ -98,7 +98,7 @@ export function skillPath(name: string): string {
 
 /** Extensions a hook script plausibly ends in. Nothing else is claimed as a target. */
 const SCRIPT_EXTENSIONS: ReadonlySet<string> = new Set([
-  ".sh", ".bash", ".zsh", ".js", ".mjs", ".cjs", ".ts", ".py", ".rb", ".pl", ".cmd", ".ps1", ".bat",
+  ".sh", ".bash", ".zsh", ".js", ".mjs", ".cjs", ".ts", ".mts", ".cts", ".py", ".rb", ".pl", ".cmd", ".ps1", ".bat",
 ]);
 
 /** Split a command line into words, treating a quoted run — spaces and all — as one word. */
@@ -134,36 +134,46 @@ function hasScriptExtension(token: string): boolean {
 }
 
 /**
- * The repo-relative script a hook command runs, or null when there is nothing
- * to check.
+ * Does this token name a repo-relative script we are willing to check?
  *
- * Conservative on purpose, and deliberately more conservative than "the first
- * token with a slash in it". A command line is not a path: `--require
- * dotenv/config`, a scoped package like `@acme/tool`, and a quoted path with a
- * space in it all look path-shaped, and each one claimed as a target produces a
- * failing build over a hook that works. That is how a check earns its way into
- * someone's ignore list, so the rule requires a recognised script extension
- * before claiming anything.
+ * Every clause is a refusal, not a match. A leading `-` means a flag, and
+ * `--loader=./x.mjs` is a flag whether or not it ends in an extension. A URL is
+ * not a path. `isSafeRepoPath` refuses absolute paths, `~`, `..` traversal and
+ * anything inside `.git`, which is the same containment the `reads` loop
+ * applies — a hook target had been escaping it.
+ */
+function isHookScript(token: string): boolean {
+  if (token.startsWith("-")) return false;
+  if (!token.includes("/")) return false;
+  if (token.includes("://")) return false;
+  if (!isSafeRepoPath(token).safe) return false;
+  return hasScriptExtension(token);
+}
+
+/**
+ * The repo-relative script a hook command runs, or null when the command line
+ * does not unambiguously name exactly one.
  *
- * The trade is real and chosen: a hook script with no extension is not checked
- * at all. For an artifact whose harness already fails open, a missed check is
- * the better direction to be wrong in than a false failure.
+ * The previous rule took the first plausible token, and every refinement of
+ * "plausible" lost to an ordinary command form: a flag's argument, a scoped
+ * package name, a loader flag carrying a real extension, an interpreter
+ * followed by both a preload and a script. Each miss returned a WRONG path,
+ * which fails a hook that works — and that is how a check earns its way into
+ * someone's ignore list.
  *
- * An absolute path is skipped rather than ending the search, so
- * `/usr/bin/env node hooks/run.js` still finds the script.
+ * So this does not pick. It collects every token that qualifies and answers
+ * only when there is exactly one. Two candidates is a command line this
+ * function cannot read, and saying so is the honest answer; the cost is that
+ * such a hook goes unchecked, which is the direction a fail-open artifact
+ * should be wrong in.
  */
 export function hookTarget(command: string, pluginRoot: string): string | null {
   const expanded = command
     .replaceAll("${CLAUDE_PLUGIN_ROOT}", pluginRoot)
     .replaceAll("$CLAUDE_PLUGIN_ROOT", pluginRoot);
 
-  for (const token of shellWords(expanded)) {
-    if (!token.includes("/")) continue;
-    if (token.startsWith("/") || token.startsWith("~")) continue;
-    if (!hasScriptExtension(token)) continue;
-    return token;
-  }
-  return null;
+  const candidates = shellWords(expanded).filter(isHookScript);
+  return candidates.length === 1 ? (candidates[0] ?? null) : null;
 }
 
 export function checkWiring(

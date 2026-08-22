@@ -207,6 +207,28 @@ describe("hookTarget", () => {
   it("returns null for an extensionless script — a deliberate coverage gap", () => {
     expect(hookTarget("plugin/hooks/checkplan", "plugin")).toBeNull();
   });
+
+  it("refuses a flag=value argument even if it ends in an extension", () => {
+    expect(hookTarget("node --loader=./loader.mjs packages/kit/dist/cli.js", "plugin")).toBe(
+      "packages/kit/dist/cli.js",
+    );
+  });
+
+  it("declines when two candidates are found — ambiguous command, not a bug", () => {
+    expect(hookTarget("node --experimental-loader ./register.mjs packages/kit/dist/cli.js", "plugin")).toBeNull();
+  });
+
+  it("does not search past multiple candidates to find the real script", () => {
+    expect(hookTarget("/usr/bin/env node --require packages/kit/dist/setup.js packages/kit/hooks/run.js", "plugin")).toBeNull();
+  });
+
+  it("refuses a URL token, which is not a repo path", () => {
+    expect(hookTarget("curl -o data.json https://example.com/hooks/evil.sh", "plugin")).toBeNull();
+  });
+
+  it("refuses path traversal, which isSafeRepoPath rejects", () => {
+    expect(hookTarget("../../etc/passwd.js", "plugin")).toBeNull();
+  });
 });
 
 describe("dead-hook", () => {
