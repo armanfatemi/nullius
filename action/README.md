@@ -28,7 +28,7 @@ jobs:
           # advisory UNVERIFIABLE-REV, and the permanent gate goes quiet.
           # Omit this line if your documents carry no stamped anchors.
           fetch-depth: 0
-      - uses: armanfatemi/nullius/action@main
+      - uses: armanfatemi/nullius/action@v1
         with:
           globs: "docs/rfcs/**/*.md"
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -45,6 +45,12 @@ jobs:
 | `require-markers` | `false` | Fail when the docs check finds no grounding markers at all                                                    |
 | `comment`         | `true`  | Upsert a single PR comment (updated in place on every run)                                                    |
 | `github-token`    | `''`    | Token for the comment; omit to skip commenting                                                                |
+| `claims-version`  | `0.7.0` | Checker version to run. Pinned, so `@v1` means one thing; set `latest` to float                              |
+
+Pinning this action without pinning its checker would not be a pin: every run
+would fetch npm's `latest`, and a breaking CLI change would reach every caller
+the day it published. So `claims-version` has a default, and `@v1` is
+reproducible. Bump it deliberately, or set `latest` to opt out.
 
 No design-doc culture needed: with `pr-body` alone (no globs, no config), the
 action checks only the PR description. An agent-written PR body saying "safe —

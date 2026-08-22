@@ -38,6 +38,13 @@ inputs:
   github-token:
     description: Token for the PR comment (needs pull-requests write permission).
     default: ''
+  claims-version:
+    description: >-
+      Version of @nullius-inverba/claims to run. Pinned by default, because
+      pinning this action without pinning its checker is not a pin: every run
+      would fetch npm's `latest`, and a breaking CLI change would reach every
+      caller the day it published. Set to `latest` to opt into that instead.
+    default: '0.7.0'
 
 runs:
   using: composite
@@ -46,6 +53,7 @@ runs:
       id: check
       shell: bash
       env:
+        CLAIMS_VERSION: ${{ inputs.claims-version }}
         GLOBS: ${{ inputs.globs }}
         CONFIG: ${{ inputs.config }}
         REQUIRE_MARKERS: ${{ inputs.require-markers }}
@@ -75,7 +83,7 @@ runs:
           # Globs are word-split deliberately so multiple patterns work; the
           # CLI does its own globbing, so patterns must reach it unexpanded.
           # shellcheck disable=SC2086
-          docs_output=$(npx -y @nullius-inverba/claims check $GLOBS "${args[@]}" 2>&1)
+          docs_output=$(npx -y "@nullius-inverba/claims@${CLAIMS_VERSION}" check $GLOBS "${args[@]}" 2>&1)
           docs_status=$?
           if [ $docs_status -ne 0 ]; then status=$docs_status; fi
           combined="=== docs ===
@@ -87,7 +95,7 @@ runs:
           # interpolation — the description is PR-controlled content.
           jq -r '.pull_request.body // ""' "$GITHUB_EVENT_PATH" > .nullius-pr-description.md
           if [ -s .nullius-pr-description.md ]; then
-            body_output=$(npx -y @nullius-inverba/claims check .nullius-pr-description.md 2>&1)
+            body_output=$(npx -y "@nullius-inverba/claims@${CLAIMS_VERSION}" check .nullius-pr-description.md 2>&1)
             body_status=$?
             if [ $body_status -ne 0 ]; then status=$body_status; fi
           else

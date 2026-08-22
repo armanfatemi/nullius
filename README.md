@@ -279,7 +279,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0 # `git show <rev>:<path>` needs the commit an anchor names
-      - uses: armanfatemi/nullius/action@main
+      - uses: armanfatemi/nullius/action@v1
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 ```
