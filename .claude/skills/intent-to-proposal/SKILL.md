@@ -80,7 +80,9 @@ the source by you, with the file open, before you assert it.** Capture the ancho
 straight into the `**Evidence:**` lines in Phase 5, so this costs one read now and nothing later.
 
 If you cannot get an anchor, the finding is not a fact yet — it belongs in `## Open questions`, not
-in a `Rationale`. See `.claude/rules/proposal-grounding.md`.
+in a `Rationale`. See `plugin/skills/evidence-anchors/SKILL.md` — this is the authoring convention
+the `**Evidence:**` lines in Phase 5 follow, and the deterministic checker in Phase 5's "Verify the
+grounding" step re-verifies exactly what it describes.
 
 ---
 
@@ -94,7 +96,7 @@ The coordinator has spent Phases 1–2 reading the user's pitch, building enthus
 
 Do this yourself before dispatching anything, because it requires the survey results the coordinator already holds:
 
-- Does the survey reveal any pattern that makes this idea significantly harder than it appears? (e.g., the "data from another service" situation — if raised, explicitly state: "The design cannot use federation `@requires` or cross-subgraph reads; it will need a local event-sourced projection. See `.claude/rules/backend-graphql.md §Cross-Service Data Access`.")
+- Does the survey reveal any pattern that makes this idea significantly harder than it appears?
 - Does this conflict with any CQRS boundary, projection isolation rule, or event-sourcing constraint?
 - Does the survey reveal any in-flight change that this MUST land after? Or that landing this before X would break X?
 
@@ -300,7 +302,7 @@ Use this exact template. Fill every section — do not leave section headers emp
      Every claim about what the EXISTING code does — in a Rationale, in a
      "rejected because", in a constraint — needs an **Evidence:** line. Judgment
      ("Option B is simpler") does not. If you cannot cite it, move it to Open
-     questions. Rule: `.claude/rules/proposal-grounding.md`.
+     questions. Rule: `plugin/skills/evidence-anchors/SKILL.md`.
 -->
 
 ### 1. [First key decision — e.g., data shape, storage, synchrony, error handling]
@@ -326,7 +328,8 @@ TBD — to be resolved in Stage 3 pre-review.
      **Evidence:** <the citation that makes the moment real — e.g. the replicas/strategy config>
 
      A wrong moment produces a mitigation that does not work, so this is not paperwork.
-     See `.claude/rules/proposal-grounding.md` § Class 2 for the table and a worked example.
+     See `plugin/skills/evidence-anchors/SKILL.md` § Compatibility risks — name the binding moment
+     for the closed list and a worked example.
 
      If the change cannot break across versions: remove this section. -->
 
@@ -423,6 +426,34 @@ openspec validate "<name>" --strict
 ```
 
 Fix any errors (the two parser rules above are the usual culprits) and re-run until it passes. A change that doesn't validate is not done.
+
+#### Verify the grounding — REQUIRED
+
+`openspec validate` checks structure, not truth. Then run:
+
+```bash
+node packages/claims/dist/cli.js check "openspec/changes/<name>/**/*.md"
+```
+
+It re-reads every `**Evidence:**` anchor against the actual file (or, for a rev-stamped `path:line@rev`
+anchor, against the commit it names), re-runs every absence search, and rejects any `**Binds at:**`
+value outside the closed list. Verdicts (full table: `spec/evidence-anchors.md`):
+
+| Verdict                                                              | Passes? | What to do                                                                                                                                       |
+| --------------------------------------------------------------------- | :-----: | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `OK` / `SEARCH-CLEAN` / `ADVISORY`                                    |   ✅    | Nothing required. `SEARCH-CLEAN` means an absence search re-ran clean — it certifies the search, not the absence. `ADVISORY` is worth a human glance at the printed reason. |
+| `DRIFT` / `WRONG-LINE` / `STALE` / `UNVERIFIABLE-REV`                  |   ✅    | The claim is honest; only the line number (or, for a rev-stamped anchor, this clone's history) has moved. Fix the citation when convenient — this does not block.        |
+| `WEAK-ANCHOR`                                                          |   ✅    | True, but the quote is too short or too repeated to pin down the line. Requote something a real change would contradict.                          |
+| `FABRICATED` / `MISSING-FILE` / `MISSING-FILE-AT-REV` / `COUNT-MISMATCH` | ❌    | **The claim is false.** Open the file, fix the claim, **and re-examine the decision it was supporting** — a false premise may have been load-bearing. |
+| `UNPINNED`                                                             |   ❌    | The quote is neither distinctive nor on its cited line — it pins nothing down. Requote something that identifies the line.                        |
+| `UNSAFE-PATH` / `UNSAFE` / `COMMAND-ERROR`                             |   ❌    | The citation or search violates the checker's sandbox (path left the repo, an unlisted flag, or the command failed). Rewrite it in the documented form. |
+| `UNKNOWN-MOMENT`                                                       |   ❌    | The named `**Binds at:**` mechanism isn't in the project's closed list. Pick from the list.                                                        |
+| `MALFORMED`                                                            |   ❌    | The `**Evidence:**` line matches none of the citation shapes. Rewrite it.                                                                          |
+
+**A non-zero exit is a hard gate — do not present the proposal as complete.** The checker only sees
+claims written in the structured form; a load-bearing claim asserted in bare prose with no
+`**Evidence:**` line passes silently here and is caught later by the reviewers' `[false-premise]`
+severity. Green is a floor, not a ceiling.
 
 ---
 
