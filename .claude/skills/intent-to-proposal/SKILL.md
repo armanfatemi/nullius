@@ -51,12 +51,12 @@ Dispatch a **single Explore agent** with scope "thorough". Brief it with:
   1. What files/patterns already exist in the touched areas that this change will need to integrate with, modify, or replace? List them with brief descriptions.
   2. Are there active OpenSpec changes (in `openspec/changes/`, not `openspec/changes/archive/`) whose scope overlaps or conflicts with this idea? Name them.
   3. Are there any active changes that this idea depends on — i.e., infrastructure or data that must exist before this makes sense? Name them and note whether the dependency is a hard prerequisite (must land first) or a soft one (assumed but degrades gracefully if absent).
-  4. What architectural patterns are already in use for the closest analogous feature? (e.g., if the idea involves a new aggregate, find the most similar existing one)
+  4. What architectural patterns are already in use for the closest analogous feature? (e.g., if the idea involves a new checker verdict, find the most similar existing one)
   5. **Red-flag check — pick the row matching the change type.** Every change type has a characteristic show-stopper the survey must detect early:
-     - **Backend / domain:** does the idea require data another service owns at query/mutation time? If so, name the owning service + the events it emits → the design must use a **local event-sourced projection**, NOT federation `@requires` or a cross-subgraph read. (This is the original "federation red flag".)
-     - **Infra / DevOps:** does the change recreate or migrate infrastructure in a way that could break external-dependency continuity? Enumerate what must survive: NAT egress IPs, datastore IP-allowlists, managed-service endpoints, out-of-band bootstrap steps.
-     - **Infra Terraform specifically:** enumerate **every** required (no-default) variable AND every placeholder-default variable in the touched config, and state how CI supplies each. Placeholder defaults (`192.0.2.0/24`, `""`, `CHANGE_ME`) silently plan **destructive** against live state.
-     - **Frontend:** does it cross the server/client boundary or touch the Apollo cache in a way that risks an SSR/suspense break or a stale-merge? Name the query and cache shape.
+     - **Checker change (`packages/claims`):** does it add a member to `Verdict` (`packages/claims/src/checkClaims.ts`) or to any other exported union? Growing an exported union is a breaking change to public API — name every existing switch/exhaustiveness check that now needs a new case, not just the call site that produces the new member.
+     - **Change that adds a verdict:** does the survey confirm there will be both a fixture that trips the new verdict AND a unit test that asserts on it, not just one of the two? CI only checks a fixture's exit code — a verdict that silently stops firing can leave a fixture failing for an unrelated reason and nobody notices.
+     - **Document change (`spec/`, `openspec/changes/**`, or any prose doc):** does it assert something about existing code without a `**Evidence:**` anchor? An anchored claim and an unanchored one sitting in the same paragraph read as equally authoritative, but only the anchored one is ever re-verified — bare prose next to a citation inherits none of the citation's checking.
+     - **Harness-artifact change (anything touching `.claude/`):** does it place a file somewhere the harness will discover and register as live configuration — a skill, agent, or command — rather than keep it as inert test data? A `SKILL.md` fixture committed under `spec/fixtures/` once had structurally valid frontmatter and got auto-registered as a real, invocable skill for every contributor.
 
 While the Explore agent runs, read `openspec/changes/` directory listing yourself to cross-check active changes.
 
@@ -65,7 +65,7 @@ After the agent returns: synthesize the survey findings in a brief internal summ
 - Integration points the proposal must respect
 - Existing patterns to follow
 - Active changes that are hard dependencies or soft dependencies
-- Whether the federation red flag was raised
+- Whether the Phase 2 red-flag check (question 5) turned up a show-stopper
 
 ### The survey discovers; the coordinator verifies
 
@@ -136,7 +136,7 @@ Synthesize the two inputs (architectural feasibility note + devil's advocate) in
 
 ### Step 0 — Triviality off-ramp (is a proposal even warranted?)
 
-Check whether the change is too small to deserve the OpenSpec ceremony. If the survey shows it is trivial — roughly **≤2 files, no new aggregate/event/command/GraphQL-schema, and already fully specified** (e.g. a task description that reads like a finished spec) — a proposal directory is overhead the user may not want.
+Check whether the change is too small to deserve the OpenSpec ceremony. If the survey shows it is trivial — roughly **≤2 files, no new checker verdict or CLI command, and already fully specified** (e.g. a task description that reads like a finished spec) — a proposal directory is overhead the user may not want.
 
 In that case, **ask via `AskUserQuestion`** whether to:
 
@@ -211,9 +211,13 @@ Use this exact template. Fill every section — do not leave section headers emp
 ```markdown
 # Proposal — <name>
 
-> **ID:** `prop-a3f2c1` · **Model:** `opus` · **Depends on:** `prop-9b0e77` (change-name-a), `prop-1c4d90` (change-name-b)
+> **Depends on:** `change-name-a`, `change-name-b` — write "None" if there are no hard prerequisites.
 >
-> <!-- ID and Model mirror `.openspec.yaml` (the machine source of truth). "Depends on" lists the HARD prerequisite proposals by id + human name; write "none" if there are no hard prerequisites. Every id here MUST also appear in `.openspec.yaml`'s `depends_on`. `/proposal-to-pr` will not start implementation until every dependency listed here is merged. -->
+> <!-- Names the HARD prerequisite proposals by their `openspec/changes/<name>/` directory name —
+>      this repo has no id or model metadata file to mirror; the directory name is a proposal's only
+>      identifier. Mirror the same names in "## Dependencies > Hard" below, each with its one-line
+>      reason. `/proposal-to-pr` will not start implementation until every dependency listed here is
+>      merged. -->
 
 ## Problem
 
@@ -237,10 +241,10 @@ Use this exact template. Fill every section — do not leave section headers emp
 
 ## Dependencies
 
-### Hard (must be merged before this starts) — these become `.openspec.yaml` `depends_on`
+### Hard (must be merged before this starts)
 
-<!-- Format: `prop-<id>` (`change-name`) — one-line reason why it's required -->
-<!-- Every id listed here MUST also appear in `.openspec.yaml`'s `depends_on` list — that list is what /proposal-to-pr gates on. -->
+<!-- Format: `change-name` — one-line reason why it's required -->
+<!-- List the same change names in the header's "Depends on" line above. -->
 <!-- Write "None" if there are no hard dependencies -->
 
 ### Soft (design assumes these exist; graceful degradation if absent)
@@ -264,7 +268,7 @@ Use this exact template. Fill every section — do not leave section headers emp
 | Expected sessions to implement | 1 / 2                                  |
 
 <!-- LOW: pure addition, no existing behavior changed, single service.
-     MEDIUM: modifies existing behavior, 2-3 services, or a complex aggregate.
+     MEDIUM: modifies existing behavior, 2-3 services, or spans multiple packages.
      HIGH: cross-cutting, 4+ services, event schema changes, or security-sensitive. -->
 
 ## Open questions
@@ -333,15 +337,6 @@ TBD — to be resolved in Stage 3 pre-review.
 
      If the change cannot break across versions: remove this section. -->
 
-## Cross-service data access
-
-<!-- ONLY include this section if the survey raised the federation red flag.
-     If it did: -->
-
-> ⚠️ **Federation constraint:** This change involves data from `<other-service>`. The correct pattern is a **local event-sourced projection** that subscribes to `<OtherServiceEvent>` events — NOT federation `@requires`, NOT a cross-subgraph read at resolver time. See `.claude/rules/backend-graphql.md §Cross-Service Data Access`. All task reviewers should verify this constraint is respected before marking Stage 4 complete.
-
-<!-- If no cross-service data access: remove this section. -->
-
 ## Open questions
 
 <!-- Mirror the open questions from proposal.md. Delete as they are resolved during implementation. -->
@@ -351,41 +346,39 @@ TBD — to be resolved in Stage 3 pre-review.
 
 Derive the section headings from the survey findings and proposal scope. Use the appropriate set for the change type:
 
-**Backend change sections:**
+**Kernel checker change (`packages/claims`) sections:**
 
 ```
 ## 0. Prerequisites / setup
-## 1. Domain model (aggregate, commands, events)
-## 2. Command handlers
-## 3. Projections
-## 4. GraphQL schema
-## 5. GraphQL resolvers + mappers
-## 6. Tests
-## 7. Documentation
+## 1. Spec delta (`spec/<name>.md`, or an update to an existing spec-family doc)
+## 2. Verdict type + predicate
+## 3. Unit tests (one assertion per verdict)
+## 4. Fixtures — valid and broken — and the CI gate
+## 5. Public exports, changelog, and full verification
 ```
 
-**Frontend change sections:**
+**Kit or CLI change (`packages/kit` or `plugin/`) sections:**
 
 ```
 ## 0. Prerequisites / setup
-## 1. Backend additions (if any)
-## 2. GraphQL queries / mutations
-## 3. Component implementation
-## 4. Integration + data fetching
-## 5. Tests
-## 6. Documentation
+## 1. Command + arg parsing
+## 2. Hook wiring (if the command is invoked from a harness hook, not just the CLI)
+## 3. Fail-open behaviour + local checks
+## 4. Tests
+## 5. Documentation
 ```
 
-**Infrastructure / DevOps sections:**
+**Spec-family or convention change (`spec/`) sections:**
 
 ```
-## 0. Prerequisites
-## 1. Terraform / k8s changes
-## 2. CI / CD workflow
-## 3. Secrets / config
-## 4. Verification / smoke test
-## 5. Documentation / runbook
+## 0. Prerequisites / setup
+## 1. The document (`spec/<name>.md`)
+## 2. What enforces it — a checker verdict, a CI step, or a documented review convention
+## 3. Tests / fixtures for the enforcement mechanism
+## 4. Cross-links — point existing docs at the new spec so it isn't an orphan
 ```
+
+`spec/**/*.md` is checked with `--require-markers` (see the "Verify the grounding" step below), so step 1's document needs an `**Evidence:**` anchor on every claim it makes about existing code — an unanchored claim fails the gate, not just review.
 
 Mix and match as needed. Each section starts empty with a note: `<!-- Tasks to be filled during Stage 2 refinement or before Stage 4 implementation -->`.
 
@@ -463,7 +456,7 @@ After generating all artifacts, present the user with:
 
 1. **Summary:** Change name(s), what was generated, where to find them.
 2. **Survey findings that shaped this:** 2-3 key things the survey found that influenced the proposal shape (integration points, dependencies discovered, pattern to follow).
-3. **Load-bearing constraints:** The 1-3 things the implementer must NOT violate (e.g., "must use local projection, not federation @requires", "must land after X").
+3. **Load-bearing constraints:** The 1-3 things the implementer must NOT violate (e.g., "must not grow the `Verdict` union without a fixture + unit test", "must land after X").
 4. **Next step:** "Run `/proposal-to-pr <name>` to start the review + implementation pipeline."
 
 If multiple proposals were generated, also show the ordered list of change names — the same order announced in Phase 4 — so the pickup order is unambiguous:
