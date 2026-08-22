@@ -85,9 +85,15 @@ record), `outcome`, and non-empty `text`.
 `deviation-accepted`.
 
 When `outcome` is `duplicate` or `folded-in`, the record SHALL carry
-`merges_into` referencing the surviving `finding`. These two outcomes redirect
-a finding rather than closing it on its merits, and without the target they are
-indistinguishable from `dropped`.
+`merges_into` referencing the surviving `finding`, and that finding SHALL NOT
+be the one being resolved. These two outcomes redirect a finding rather than
+closing it on its merits; without the target they are indistinguishable from
+`dropped`, and pointed at themselves they discharge a finding while answering
+nothing.
+
+A `resolution` SHALL appear after the `finding` it answers. Records are read in
+journal order, so a resolution earlier in the file would answer something not
+yet raised.
 
 #### Scenario: a merge names its survivor
 
@@ -104,6 +110,17 @@ indistinguishable from `dropped`.
 #### Scenario: a resolution answering nothing
 
 - **WHEN** a `resolution` references a `finding` id not in the journal
+- **THEN** the record is `DANGLING-REFERENCE`
+
+#### Scenario: a finding cannot be a duplicate of itself
+
+- **WHEN** a `resolution` declares `merges_into` naming the same `finding` it
+  resolves
+- **THEN** the record is `MALFORMED`
+
+#### Scenario: a resolution cannot precede its finding
+
+- **WHEN** a `resolution` references a `finding` raised later in the journal
 - **THEN** the record is `DANGLING-REFERENCE`
 
 ### Requirement: `check` records a command's outcome, distinct from verification
@@ -134,8 +151,17 @@ decision, as a free string).
 
 ### Requirement: SUPPRESSED-FINDING — a blocker nobody answered
 
-A `finding` of severity `blocker` SHALL be `SUPPRESSED-FINDING` when no
-`resolution` record references it, under schema `0.3`.
+A `finding` of severity `blocker` SHALL be `SUPPRESSED-FINDING` unless some
+`resolution` answers it on its merits, under schema `0.3`.
+
+A merge outcome (`duplicate`, `folded-in`) SHALL NOT discharge a finding. It
+transfers the obligation to the finding named by `merges_into`, so the verdict
+SHALL follow the merge chain and report the blocker unless that chain ends at a
+finding answered by a non-merge outcome. A chain that returns to a finding it
+has already visited SHALL NOT discharge anything in it.
+
+Without this, folding a blocker into an unpoliced `concern` closes it while
+answering nothing — and two blockers merged into each other close each other.
 
 The verdict SHALL be gated to `blocker`. Findings of severity `concern` and
 `looks-good` SHALL NOT produce it.
@@ -150,6 +176,22 @@ The verdict SHALL be gated to `blocker`. Findings of severity `concern` and
 
 - **WHEN** a v0.3 journal contains a `concern` finding with no resolution
 - **THEN** validation reports nothing for it
+
+#### Scenario: a blocker cannot hide inside an unpoliced concern
+
+- **WHEN** a `blocker` is merged into a `concern` that no resolution answers
+- **THEN** the blocker is still `SUPPRESSED-FINDING`
+
+#### Scenario: a merge cycle discharges neither end
+
+- **WHEN** two `blocker` findings are merged into each other
+- **THEN** both are `SUPPRESSED-FINDING`
+
+#### Scenario: a merge chain ending somewhere answered does discharge
+
+- **WHEN** a `blocker` is merged into a finding that a non-merge `resolution`
+  answers
+- **THEN** validation reports nothing for either
 
 ### Requirement: SILENT-REVIEWER — a reviewer that returned and filed nothing
 
