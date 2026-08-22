@@ -243,6 +243,39 @@ describe("hookTarget", () => {
   it("does not split on spaces injected by plugin root expansion", () => {
     expect(hookTarget("node ${CLAUDE_PLUGIN_ROOT}/hooks/check-plan.js", "my plugin")).toBeNull();
   });
+
+  it("declines an unquoted backslash-escaped space — a working hook, but not resolved to the wrong path", () => {
+    // Real POSIX shell parses `foo\ bar/run.js` as ONE argv entry containing a
+    // literal space (the backslash escapes the space and is itself dropped).
+    // Verified against bash, dash, and Python's shlex in POSIX mode. Once
+    // shellWords does the same, the fused token carries a real space, and the
+    // existing whitespace guard in isHookScript declines it — the honest
+    // answer, not the wrong path a naive split-on-space would have returned.
+    expect(hookTarget("node packages/kit/hooks/foo\\ bar/run.js", "plugin")).toBeNull();
+  });
+
+  it("keeps a backslash literal inside single quotes, per POSIX — and the token still carries a real space, so it is still declined", () => {
+    // Inside single quotes POSIX treats EVERYTHING literally except the
+    // closing quote: the backslash is not an escape character there, so it
+    // survives in the token, and neither does the quote strip the space that
+    // follows it. Confirmed against bash, dash, and shlex: the resulting
+    // argv entry is `packages/kit/hooks/foo\ bar.js` — a literal backslash
+    // followed by a literal space, not "no space" as a naive reading of
+    // "backslash is literal" might suggest. That surviving space still trips
+    // the whitespace guard, so this also declines rather than resolving.
+    expect(hookTarget("node 'packages/kit/hooks/foo\\ bar.js'", "plugin")).toBeNull();
+  });
+
+  it("refuses a token fused by an invisible zero-width space, which JS \\s does not match", () => {
+    const fused = "packages/kit/hooks/foo.js​packages/kit/hooks/bar.js";
+    expect(hookTarget(`node ${fused}`, "plugin")).toBeNull();
+  });
+
+  it("still resolves a double-quoted path containing an apostrophe — escape handling must not regress this", () => {
+    expect(hookTarget("node \"packages/kit/hooks/don't-skip.sh\"", "plugin")).toBe(
+      "packages/kit/hooks/don't-skip.sh",
+    );
+  });
 });
 
 describe("dead-hook", () => {

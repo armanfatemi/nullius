@@ -101,15 +101,37 @@ const SCRIPT_EXTENSIONS: ReadonlySet<string> = new Set([
   ".sh", ".bash", ".zsh", ".js", ".mjs", ".cjs", ".ts", ".mts", ".cts", ".py", ".rb", ".pl", ".cmd", ".ps1", ".bat",
 ]);
 
-/** Split a command line into words, treating a quoted run — spaces and all — as one word. */
+/**
+ * Split a command line into words, treating a quoted run — spaces and all —
+ * as one word. Backslash-escapes outside single quotes, as POSIX does: a
+ * backslash escapes the very next character and is itself dropped, in both
+ * double-quoted and unquoted context. Inside single quotes a backslash is
+ * literal — nothing is special there except the closing quote — so it
+ * survives into the token unchanged, escaping nothing.
+ */
 function shellWords(command: string): string[] {
   const words: string[] = [];
   let current = "";
   let quote: string | null = null;
+  let escapeNext = false;
 
   for (const char of command) {
-    if (quote !== null) {
-      if (char === quote) quote = null;
+    if (escapeNext) {
+      current += char;
+      escapeNext = false;
+      continue;
+    }
+    if (quote === "'") {
+      if (char === "'") quote = null;
+      else current += char;
+      continue;
+    }
+    if (char === "\\") {
+      escapeNext = true;
+      continue;
+    }
+    if (quote === '"') {
+      if (char === '"') quote = null;
       else current += char;
       continue;
     }
@@ -137,6 +159,15 @@ function hasScriptExtension(token: string): boolean {
 const SCHEME = /^[a-z][a-z0-9+.-]*:/i;
 
 /**
+ * Ordinary whitespace, plus the zero-width class: U+200B–U+200D (zero-width
+ * space/non-joiner/joiner) and U+FEFF (zero-width no-break space / BOM). JS
+ * `\s` does not match any of these, so a token fused by one — two path
+ * segments glued together by an invisible character instead of a real space —
+ * would otherwise slip past the guard below unsplit and unrefused.
+ */
+const WHITESPACE_LIKE = /[\s\u200B-\u200D\uFEFF]/;
+
+/**
  * Does this token name a repo-relative script we are willing to check?
  *
  * Every clause is a refusal, not a match. A leading `-` means a flag, and
@@ -152,7 +183,7 @@ function isHookScript(token: string): boolean {
   // refuse a real path with a space in it, deliberately: the two are not
   // distinguishable here, and returning the fused command line as though it
   // were a script is the failure this function must not have.
-  if (/\s/.test(token)) return false;
+  if (WHITESPACE_LIKE.test(token)) return false;
   if (SCHEME.test(token)) return false;
   if (!token.includes("/")) return false;
   if (!isSafeRepoPath(token).safe) return false;
@@ -175,6 +206,14 @@ function isHookScript(token: string): boolean {
  * function cannot read, and saying so is the honest answer; the cost is that
  * such a hook goes unchecked, which is the direction a fail-open artifact
  * should be wrong in.
+ *
+ * `pluginRoot` is taken on faith: it is expected to already be a resolved,
+ * repo-relative path, and substituted in verbatim wherever `${CLAUDE_PLUGIN_ROOT}`
+ * or `$CLAUDE_PLUGIN_ROOT` appears in a token. A caller that passes a root
+ * which itself still contains that literal placeholder, or an absolute
+ * install path, gets a result this function has no way to detect or correct
+ * — resolving the root is the caller's job, done before this call, not
+ * inside it.
  */
 export function hookTarget(command: string, pluginRoot: string): string | null {
   const words = shellWords(command);
