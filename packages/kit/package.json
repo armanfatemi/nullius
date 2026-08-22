@@ -1,6 +1,6 @@
 {
   "name": "@nullius-inverba/kit",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Witness recording for agent runs \u2014 harness hooks emit a journal the agent cannot decline to write, and `nullius witness validate` judges it.",
   "license": "MIT",
   "author": "Arman Fatemi",

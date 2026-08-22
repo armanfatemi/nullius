@@ -1,5 +1,42 @@
 # Changelog
 
+Bare version headings are the kernel — `@nullius-inverba/claims` and its
+unscoped alias `evidence-anchors`, which ship together. Headings prefixed with
+a package name are that package's own release; the kit versions independently.
+
+## kit 0.2.0
+
+One fix, and it is a consent bug rather than a bug in the checker.
+
+### Breaking
+
+- **`init` no longer creates `.nullius/`, and kit config moved out of it.**
+
+  ```
+  .nullius/kit.json      →  nullius.kit.json
+  .nullius/authoring.md  →  nullius.authoring.md
+  ```
+
+  That directory's existence is the witness recording opt-in — the hooks check
+  for it and write nothing without it. 0.1.0 put its config there, so `init`
+  created it as a side effect of needing somewhere for settings, and silently
+  switched on run recording for anyone with the plugin installed. Verified
+  against the real hook: before `init`, zero journals; after, a journal on
+  disk. Nothing in `init`'s output mentioned it — it prints "No hook entries
+  written" while having just enabled the thing hooks do.
+
+  Two decisions had collided: `.nullius/` as the kit's config directory, and
+  `.nullius/` as a consent boundary. The second wins; a boundary must not be a
+  directory another feature needs for unrelated reasons.
+
+  `init` now creates it under no profile, and leaves one you created **alone**
+  — neither creating nor removing it.
+
+  **Migration.** Re-run `init`, then delete `.nullius/kit.json`. Until you do,
+  `doctor` reports the stale file as failing and `doctor --fix` refuses rather
+  than re-rendering from config nothing reads any more. Both name the new path
+  and say why it moved.
+
 ## 0.7.0
 
 The kit's front door, a schema for what a run actually contained, and one
