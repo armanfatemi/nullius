@@ -51,9 +51,16 @@ the export never had, and `retro-writer` is the renderer witness has not built.
 
 ## Decisions
 
-- **D1 — Scope.** Port the review/retro spine and the proposal → PR machine.
-  Do not port `implement-task` triage or `bug-fix-tdd`; the installed
-  superpowers skills already cover ad-hoc work.
+- **D1 — Scope.** Port the review/retro spine, the proposal → PR machine, and
+  `intent-to-proposal`. Do not port `implement-task` triage or `bug-fix-tdd`;
+  the installed superpowers skills already cover ad-hoc work.
+  `intent-to-proposal` was added to scope after Phase 0 shipped, on the
+  operator's judgement that it is the piece they need most for daily work. An
+  earlier reading of this port mapped it onto the existing `openspec-propose`
+  skill; that was wrong, and the skill's own description says so — it declares
+  itself a replacement for `/opsx:propose` and refuses to chain into it,
+  because that command is the generic template generator and this one writes
+  richer artifacts directly.
 - **D2 — Overlap rule.** Where nullius has a CLI, wire to it. Where nullius has
   only a specification, port the prompt version and treat the friction as
   evidence for that specification.
@@ -149,6 +156,58 @@ one moment is how both get ignored. The change folder is the discriminator:
 work with an `openspec/changes/<name>/` runs `proposal-to-pr`, anything else
 runs superpowers. Stage 4 delegates to `superpowers:test-driven-development`
 rather than carrying its own testing doctrine.
+
+## Phase 1a — `intent-to-proposal`
+
+Five phases: guided dialogue, codebase survey, feasibility with a devil's
+advocate, a decomposition decision, then generation. It is the front of the
+pipeline — the piece that turns an idea into a change folder the rest of the
+machine can execute — and three parts of it need adapting rather than copying.
+
+**The devil's advocate is already built here, and better.** Phase 3 dispatches
+a fresh agent told to refute. nullius ships that as a command whose protocol
+lives in the CLI rather than in a prompt, so it cannot drift from the checker
+that re-verifies what comes back:
+
+**Evidence:** `plugin/commands/audit.md:2@7785686` — `description: Audit the premises of a document — refute-first, one claim per agent, refutations returned as checkable anchors`
+
+So Phase 3 dispatches `/audit` instead of carrying its own refutation brief.
+This is the D2 overlap rule applied to the one place it pays best: the export
+approximates in prompt-ware exactly what this repo built deterministically.
+
+**The codebase survey should emit anchors, not prose.** Phase 2 surveys the
+code and its findings become the proposal's premises — which is precisely the
+class of claim that rots silently. A survey finding written as an Evidence
+Anchor is re-verified by `check` on every run, and CI already gates
+`openspec/**/*.md`. This is the schema-first rule from D3 applied to the
+front of the pipeline rather than the back.
+
+**The proposal-metadata machinery does not port as-is.** The export assigns
+each proposal a stable `prop-<hex>` id, a model, and a `depends_on` list in an
+`.openspec.yaml`, so autonomous agents can pick work up in dependency order.
+That is a convention its repo added on top of OpenSpec, not something OpenSpec
+provides, and nothing here uses it:
+
+**Evidence:** `grep -rn --include='*.yaml' 'depends_on' openspec/` → 0 results
+
+Adopting it is a separate decision from adopting the skill, and it should be
+made on whether this repo actually runs proposals autonomously — not inherited
+because it arrived in the same file. The skill works without it; the
+dependency gate in `proposal-to-pr` is what consumes it.
+
+**Two smaller adjustments.** Its `tasks.md` templates are shaped for
+aggregates, GraphQL resolvers and Terraform, and need replacing with this
+repo's real shapes — a kernel verdict, a kit command, a spec-family document,
+a plugin hook, fixtures plus a CI gate. And it references a `pragmatist-pm`
+agent among the seven the export does not ship; either author it or cut the
+conditional step that dispatches it, because a dispatch to a missing agent is
+the exact silence `nullius wiring` now refuses to let pass.
+
+**Boundary with `openspec-propose`.** Both cannot own the same moment. The
+existing skill stays for the case it is good at — scaffolding a change whose
+shape is already decided. `intent-to-proposal` owns the case where the idea is
+still raw and the survey, the refutation and the decomposition are the point.
+
 
 ## Phase 2 — the schema-first half
 
