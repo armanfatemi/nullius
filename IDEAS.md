@@ -1,6 +1,6 @@
 # Idea backlog — epistemic accounting for agent systems
 
-_Private working notes (gitignored). Source thinking: the essay draft
+_Working notes, committed. Source thinking: the essay draft
 "Nobody Opposed the Delay" (`third-mainverb/essays-drafts/nobody-opposed-the-delay.md`),
 which nullius was extracted from. Two tracks below: the article-derived
 proposal set (headed to / tracked as GitHub issues), and the creative
@@ -280,3 +280,133 @@ producer.
 | Exit attestations | |
 | Reversal manifests | |
 | Wiring check | |
+
+
+---
+
+# Track 3 — derived from the Bun-in-Rust rewrite (2026-08)
+
+Source: Jarred Sumner, "Rewriting Bun in Rust" (2026-07-08) — 64 concurrent
+agents across 4 worktrees for 11 days, 1 implementer + 2 adversarial reviewers
++ 1 fixer per loop, 6,502 commits. Read as a field report of the run shape
+nullius is built for, at a scale nothing here has been tested at.
+
+The three things that workflow trusted, in the author's own ordering: a
+language-independent test suite; adversarial split-context review; and **11
+days of a human reading workflow output**. The third is the one that does not
+scale and the one `witness` exists to replace.
+
+Scoped as `add-journal-identity`: ref-backed journals, `witness survey`, header
+identity fields. Everything below is not.
+
+## P6 — Probe the dynamic-workflow harness *(do this first)*
+
+**Unknown, not assumed:** do `agent()` calls inside a Claude Code dynamic
+workflow emit `PreToolUse:Agent` and `SubagentStop`? The hook pack matches
+`^(Task|Agent)$`. If workflow-spawned agents do not surface as tool calls, the
+exact orchestration shape the Bun rewrite used is **invisible to the recorder**,
+and every claim that `witness` covers that workflow is false.
+
+Settle it the way this repo settles harness questions — a recording, not an
+inference. `spec/fixtures/probes/claude-code/` exists because reasoning about
+this harness was wrong three times in one sitting. Run a two-agent workflow
+script with `NULLIUS_WITNESS_PROBE=1`, commit what lands.
+
+Half a day, and it decides the shape of P7 and P8.
+
+## P7 — The declared denominator
+
+A workflow script *is* the dispatch plan, in code, before the run:
+`parallel(DIMENSIONS.map(...))` states exactly how many reviewers were
+intended.
+
+This is the thing witness has never had. Today the validator catches a dispatch
+that was **recorded and never terminated**. It cannot catch a dispatch that was
+**never made** — the second adversarial reviewer that silently was not spawned.
+There is no denominator, so `MISSING-ATTESTATION` (P1) has never had a source.
+
+A workflow script is a better source than `rules select`, because it covers
+every dispatch in a run rather than only rule audits. Blocked on P6.
+
+## P8 — Replay is a laundering hazard
+
+`resumeFromRunId` returns cached agent results without re-running them. If the
+recorder emits records for cached agents, the journal asserts work that did not
+happen in this run — the producer committing the exact laundering the journal
+exists to catch, which is verbatim the mistake the probe corpus caught in the
+`PostToolUse` path.
+
+Needs a `cached`/`replayed` marker on the record, or the recorder must decline
+and say so. Settle it in the schema **before** a producer exists; that is the
+one moment it is cheap. Blocked on P6.
+
+## P9 — Silent caps
+
+The workflow tool's own documentation says: *"if a workflow bounds coverage
+(top-N, no-retry, sampling), `log()` what was dropped — silent truncation reads
+as 'covered everything' when it didn't."* That is this repo's doctrine, written
+in another tool's manual, enforced by nothing. A record for "the plan had N,
+K ran" is the mechanical form of that advisory.
+
+## P10 — Port invariants as a documented convention *(docs only, ships now)*
+
+The Bun merge rested on **"0 tests skipped or deleted"**, and the author
+verified it by hand. The absence lane does it deterministically today — no code
+needed, only a convention page and a fixture:
+
+```markdown
+**Evidence:** `grep -rn 'test.skip' test/` → 0 results
+**Evidence:** `grep -rn 'todo!()' crates/` → 0 results
+```
+
+Generalises past ports: any migration has a small set of "this must stay zero"
+facts, and they are exactly what an agent under pressure erodes first. Cheapest
+item in this file after the wiring check.
+
+## P11 — The oracle stays an oracle
+
+The generalisation behind P10, and worth writing down as doctrine rather than a
+feature. A test suite is a **verification** about behaviour and a **proposal**
+about coverage. It stays a verification only while the agents being graded
+cannot edit it. 100% green on six platforms shipped 19 regressions — every one
+a hole in the oracle, and the green could not tell them from real green.
+
+Nothing here should imply nullius substitutes for a test suite. What it can do
+is prove the suite was not quietly narrowed by the thing it was grading.
+
+## P12 — `audit --diff`
+
+`audit`'s unit is a claim in a document; the Bun reviewers' unit was a diff,
+and their brief was *only* the diff. There is no lane that extracts claims from
+a commit range and starves a refuter on each. The `[false-premise]` reviewer
+severity is a prompt block, not a mechanism.
+
+Related and smaller: `check --commits <range>`. The Action already checks PR
+bodies, so the model is proven — but in a run where the PR is +1M lines, the
+commit is the reviewable unit and its message goes unchecked.
+
+## P13 — Correspondence anchors and per-unit coverage
+
+A port makes one claim 1,448 times: *this Rust span corresponds to that Zig
+span at rev X*. Expressible today as two anchors under one statement — `audit`
+already groups them — but nothing checks they are a **pair**, and
+`--require-markers` sets a floor of one anchor per *document*. "Which of 1,448
+ported files carry a correspondence anchor?" is unanswerable.
+
+## Ranked, with what blocks what
+
+| # | Item | Effort | Blocked on |
+| --- | --- | --- | --- |
+| 1 | P6 workflow probe | half a day | — |
+| 2 | `add-journal-identity` | scoped | — |
+| 3 | The v0.3 self-reported producer (Track 2) | large | — |
+| 4 | P10 port invariants | docs only | — |
+| 5 | Wiring check (Track 2) | small | — |
+| 6 | `add-rules-compliance` | in flight | recording |
+| 7 | P7 declared denominator | medium | P6 |
+| 8 | P8 replay marker | small | P6 |
+| 9 | P12 `audit --diff` | medium | — |
+| 10 | P13 correspondence anchors | medium | — |
+
+Items 3 and 5 are already Track 2's own priority picks. This track does not
+reorder them; it adds evidence that they are the right two.

@@ -123,3 +123,23 @@ Kept out of the current changes deliberately, with the reason:
 - **OSS-maintainer contributor requirements** — require only what a human can
   cheaply produce (anchors in PR descriptions); journals are verified when
   present and surfaced, never required.
+
+### Added by `add-journal-identity` (2026-08)
+
+- **`witness replay`** — re-run a journal's `verification` records against the
+  revs they name, with the STALE/FABRICATED split `check` already uses. This is
+  the payoff of `verification.rev` and it is a new verdict, so it takes a
+  schema version bump with it. Deferred until the field exists in a journal
+  something actually emitted.
+- **Cross-journal invariant 2** — correlating verifications and mutations
+  *between* journals. Blocked on target identity: two worktrees hold two
+  different files under one path, so the naive form reports
+  `STALE-VERIFICATION` for events that never happened. Needs tree-namespaced
+  targets before it can be asked at all.
+- **Per-append ref writes** — rejected, not deferred. The append path holds an
+  advisory lock and runs on every hook event; two git invocations inside that
+  lock trade a fast local write for a slow one under contention. Sealing is
+  once per session.
+- **Pushing `refs/nullius/runs`** — refs outside `refs/heads` are not pushed by
+  default and that is the correct default. A journal is local evidence until a
+  human decides otherwise; publishing one is a separate, consented act.
