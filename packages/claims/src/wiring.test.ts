@@ -85,3 +85,75 @@ describe("isWiringFailure", () => {
     expect(isWiringFailure("dead-hook")).toBe(true);
   });
 });
+
+describe("missing-path", () => {
+  it("fails a declared read path that does not exist", () => {
+    const report = checkWiring(
+      [artifact({ reads: [{ value: "docs/architecture/events.md", line: 5 }] })],
+      deps(),
+    );
+
+    expect(report.findings[0]?.verdict).toBe("missing-path");
+    expect(report.findings[0]?.subject).toBe("docs/architecture/events.md");
+  });
+
+  it("passes a declared read path that exists", () => {
+    const report = checkWiring(
+      [artifact({ reads: [{ value: "CLAUDE.md", line: 5 }] })],
+      deps(["CLAUDE.md"]),
+    );
+
+    expect(report.findings).toEqual([]);
+  });
+
+  it("fails an unsafe declared path without touching the filesystem", () => {
+    const report = checkWiring(
+      [artifact({ reads: [{ value: "../../etc/passwd", line: 5 }] })],
+      deps(["../../etc/passwd"]),
+    );
+
+    expect(report.findings[0]?.verdict).toBe("missing-path");
+    expect(report.findings[0]?.detail).toContain("traversal");
+  });
+});
+
+describe("empty-glob", () => {
+  it("fails a glob that matches nothing", () => {
+    const report = checkWiring(
+      [artifact({ kind: "rule", globs: [{ value: "src/legacy/**/*.ts", line: 3 }] })],
+      deps(),
+    );
+
+    expect(report.findings[0]?.verdict).toBe("empty-glob");
+  });
+
+  it("passes a glob with at least one match", () => {
+    const report = checkWiring(
+      [artifact({ kind: "rule", globs: [{ value: "src/**/*.ts", line: 3 }] })],
+      deps([], { "src/**/*.ts": ["src/wiring.ts"] }),
+    );
+
+    expect(report.findings).toEqual([]);
+  });
+});
+
+describe("loose-reference", () => {
+  it("reports an unresolvable prose path as advisory", () => {
+    const report = checkWiring(
+      [artifact({ loose: [{ value: "src/example/Thing.ts", line: 40 }] })],
+      deps(),
+    );
+
+    expect(report.findings[0]?.verdict).toBe("loose-reference");
+    expect(isWiringFailure(report.findings[0]!.verdict)).toBe(false);
+  });
+
+  it("does not count prose references as declared references", () => {
+    const report = checkWiring(
+      [artifact({ loose: [{ value: "src/example/Thing.ts", line: 40 }] })],
+      deps(),
+    );
+
+    expect(report.references).toBe(0);
+  });
+});

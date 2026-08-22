@@ -17,6 +17,7 @@
  */
 
 import type { Located } from "./frontmatter";
+import { isSafeRepoPath } from "./pathSafety";
 
 export type WiringVerdict =
   /** The reference resolves. */
@@ -126,6 +127,57 @@ export function checkWiring(
         verdict: "dangling-skill",
         subject: ref.value,
         detail: `no ${target}`,
+      });
+    }
+
+    for (const ref of item.reads) {
+      references += 1;
+      // Checked before the filesystem is touched: a declared path is
+      // repo-controlled, but the same containment rule applies as to a
+      // citation, and an escaping path is a defect regardless of what is there.
+      const safety = isSafeRepoPath(ref.value);
+      if (!safety.safe) {
+        findings.push({
+          artifact: item.path,
+          line: ref.line,
+          verdict: "missing-path",
+          subject: ref.value,
+          detail: safety.reason,
+        });
+        continue;
+      }
+      if (deps.exists(ref.value)) continue;
+      findings.push({
+        artifact: item.path,
+        line: ref.line,
+        verdict: "missing-path",
+        subject: ref.value,
+        detail: "declared as read, but no such file",
+      });
+    }
+
+    for (const ref of item.globs) {
+      references += 1;
+      if (deps.glob(ref.value).length > 0) continue;
+      findings.push({
+        artifact: item.path,
+        line: ref.line,
+        verdict: "empty-glob",
+        subject: ref.value,
+        detail: "matches no file — this artifact applies to nothing",
+      });
+    }
+
+    // Advisory, and not counted as a reference: prose is allowed to be prose,
+    // and a heuristic that fails a build is a check people delete.
+    for (const ref of item.loose) {
+      if (deps.exists(ref.value)) continue;
+      findings.push({
+        artifact: item.path,
+        line: ref.line,
+        verdict: "loose-reference",
+        subject: ref.value,
+        detail: "looks like a repo path but does not resolve — an example, or a pointer that moved",
       });
     }
   }
