@@ -46,8 +46,8 @@ suite("init — the command surface", () => {
 
     expect(result.code).toBe(0);
     expect(existsSync(join(root, "nullius.config.json"))).toBe(true);
-    expect(existsSync(join(root, ".nullius", "kit.json"))).toBe(true);
-    expect(existsSync(join(root, ".nullius", "authoring.md"))).toBe(true);
+    expect(existsSync(join(root, "nullius.kit.json"))).toBe(true);
+    expect(existsSync(join(root, "nullius.authoring.md"))).toBe(true);
   });
 
   it("is inert under --dry-run, including the directories it would create", () => {
@@ -117,30 +117,90 @@ suite("init — refusing to guess about --root", () => {
 });
 
 suite("init — a failed write is reported, never swallowed", () => {
-  it("exits non-zero and names the file when .nullius is a FILE", () => {
+  // `.github` as a FILE, because `init` must create `.github/workflows/`.
+  // This used to be tested with `.nullius` as a file — no longer possible,
+  // and that is the point: init does not touch that directory at all now.
+  it("exits non-zero and names the file it could not write", () => {
     const root = scratch();
-    writeFileSync(join(root, ".nullius"), "i am a file\n");
+    writeFileSync(join(root, ".github"), "i am a file\n");
 
-    const result = run("init", "--root", root, "--profile", "plans");
+    const result = run("init", "--root", root, "--profile", "prs");
 
     // Used to die on an unguarded mkdirSync with a raw stack trace, after
     // having already written nullius.config.json — a partial apply the user
     // had no record of.
     expect(result.code).toBe(1);
     expect(result.output).toContain("FAILED");
-    expect(result.output).toContain(".nullius/kit.json");
+    expect(result.output).toContain("claims.yml");
     expect(result.output).not.toContain("at applyPlan");
   });
 
   it("still reports what DID land, so a partial apply is legible", () => {
     const root = scratch();
-    writeFileSync(join(root, ".nullius"), "i am a file\n");
+    writeFileSync(join(root, ".github"), "i am a file\n");
 
-    const result = run("init", "--root", root, "--profile", "plans");
+    const result = run("init", "--root", root, "--profile", "prs");
 
-    expect(result.stdout).toContain("1 written");
-    expect(result.stdout).toContain("2 failed");
+    expect(result.stdout).toContain("1 failed");
     expect(existsSync(join(root, "nullius.config.json"))).toBe(true);
+    expect(existsSync(join(root, "nullius.kit.json"))).toBe(true);
+  });
+});
+
+suite("init — the recording opt-in is not ours to set", () => {
+  // `.nullius/` existing is what makes the witness hooks record. init used to
+  // create it as a side effect of needing somewhere for kit.json, which
+  // silently switched on run recording for anyone with the plugin installed.
+  for (const profile of ["plans", "prs", "specs"]) {
+    it(`does not create .nullius/ for the ${profile} profile`, () => {
+      const root = scratch();
+      run("init", "--root", root, "--profile", profile, "--yes");
+
+      expect(existsSync(join(root, ".nullius"))).toBe(false);
+    });
+  }
+
+  it("puts kit config at the root, beside the kernel's", () => {
+    const root = scratch();
+    run("init", "--root", root, "--profile", "specs", "--yes");
+
+    expect(existsSync(join(root, "nullius.kit.json"))).toBe(true);
+    expect(existsSync(join(root, "nullius.authoring.md"))).toBe(true);
+  });
+
+  it("leaves a .nullius/ the user created alone", () => {
+    const root = scratch();
+    mkdirSync(join(root, ".nullius"));
+    run("init", "--root", root, "--profile", "specs", "--yes");
+
+    // Their opt-in, their directory. init neither creates nor removes it.
+    expect(existsSync(join(root, ".nullius"))).toBe(true);
+    expect(readdirSync(join(root, ".nullius"))).toEqual([]);
+  });
+});
+
+suite("init — migrating from kit 0.1.0", () => {
+  it("doctor --fix refuses on a legacy .nullius/kit.json rather than guessing", () => {
+    const root = scratch();
+    mkdirSync(join(root, ".nullius"));
+    writeFileSync(join(root, ".nullius", "kit.json"), JSON.stringify({ profile: "prs" }));
+
+    const result = run("doctor", "--root", root, "--fix");
+
+    expect(result.code).toBe(2);
+    expect(result.output).toContain("kit 0.1.0");
+    expect(result.output).toContain("nullius.kit.json");
+  });
+
+  it("doctor reports the stale file as failing", () => {
+    const root = scratch();
+    mkdirSync(join(root, ".nullius"));
+    writeFileSync(join(root, ".nullius", "kit.json"), JSON.stringify({ profile: "prs" }));
+
+    const result = run("doctor", "--root", root);
+
+    expect(result.code).toBe(1);
+    expect(result.output).toContain("legacy .nullius/kit.json");
   });
 });
 
@@ -300,7 +360,7 @@ suite("doctor --fix — refuses to guess, and refuses to destroy", () => {
     const root = scratch();
     mkdirSync(join(root, "openspec"));
     run("init", "--root", root, "--profile", "prs");
-    writeFileSync(join(root, ".nullius", "kit.json"), '{ "profile": "prs", ');
+    writeFileSync(join(root, "nullius.kit.json"), '{ "profile": "prs", ');
 
     const result = run("doctor", "--root", root, "--fix");
 
@@ -364,7 +424,7 @@ suite("init — the pointer survives a markdown formatter", () => {
     // Exactly what `prettier --prose-wrap always` produces, or a human.
     writeFileSync(
       join(root, "CLAUDE.md"),
-      "# My project\n\nLoad-bearing claims about existing code carry an Evidence Anchor — see\n`.nullius/authoring.md`.\n",
+      "# My project\n\nLoad-bearing claims about existing code carry an Evidence Anchor — see\n`nullius.authoring.md`.\n",
     );
 
     run("init", "--root", root, "--profile", "prs");
@@ -382,6 +442,6 @@ suite("init — the pointer survives a markdown formatter", () => {
 
     run("init", "--root", root, "--profile", "prs");
 
-    expect(readFileSync(join(root, "CLAUDE.md"), "utf8")).toContain(".nullius/authoring.md");
+    expect(readFileSync(join(root, "CLAUDE.md"), "utf8")).toContain("nullius.authoring.md");
   });
 });

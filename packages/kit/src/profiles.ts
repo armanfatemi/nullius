@@ -62,8 +62,18 @@ const CONFIG: ArtifactPlan = {
   reason: "which documents to check, and how strictly",
 };
 
+/**
+ * Deliberately NOT under `.nullius/`.
+ *
+ * That directory is the witness recording opt-in — the hooks check for its
+ * existence and record nothing without it. Putting kit config there made
+ * `init` create it as a side effect of needing somewhere for settings, which
+ * silently switched on run recording for anyone with the plugin installed. A
+ * consent boundary must not be a directory another feature needs for unrelated
+ * reasons, so kit config sits beside the kernel's, at the root.
+ */
 const KIT_CONFIG: ArtifactPlan = {
-  path: ".nullius/kit.json",
+  path: "nullius.kit.json",
   ownership: "kit-owned",
   reason: "kit settings — kept out of nullius.config.json, whose unknown keys are fatal to older kernels",
 };
@@ -75,7 +85,7 @@ const KIT_CONFIG: ArtifactPlan = {
  * colliding, and blocks outliving uninstallation as cargo-culted instructions.
  */
 const AUTHORING_POINTER: ArtifactPlan = {
-  path: ".nullius/authoring.md",
+  path: "nullius.authoring.md",
   ownership: "kit-owned",
   reason: "the authoring rule, pointed at from your agent instructions",
 };
@@ -116,7 +126,7 @@ export const PROFILES: readonly Profile[] = [
     strictCi: false,
     artifacts: [CONFIG, KIT_CONFIG, WORKFLOW, AUTHORING_POINTER],
     manualSteps: [
-      "Point your agents' instructions at .nullius/authoring.md (CLAUDE.md, AGENTS.md, or Cursor rules) — one line, so nothing needs merging on upgrade.",
+      "Point your agents' instructions at nullius.authoring.md (CLAUDE.md, AGENTS.md, or Cursor rules) — one line, so nothing needs merging on upgrade.",
       ...CLAUDE_CODE_STEPS,
     ],
   },
@@ -133,7 +143,7 @@ export const PROFILES: readonly Profile[] = [
     strictCi: true,
     artifacts: [CONFIG, KIT_CONFIG, WORKFLOW, AUTHORING_POINTER],
     manualSteps: [
-      "Point your agents' instructions at .nullius/authoring.md (CLAUDE.md, AGENTS.md, or Cursor rules) — one line, so nothing needs merging on upgrade.",
+      "Point your agents' instructions at nullius.authoring.md (CLAUDE.md, AGENTS.md, or Cursor rules) — one line, so nothing needs merging on upgrade.",
       ...CLAUDE_CODE_STEPS,
     ],
   },

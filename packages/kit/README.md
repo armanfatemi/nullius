@@ -40,7 +40,7 @@ Every line of the write-log says what happened and why:
 ```
   create    nullius.config.json
             which documents to check, and how strictly
-  unchanged .nullius/kit.json
+  unchanged nullius.kit.json
             kit settings — kept out of nullius.config.json
 ```
 
@@ -81,10 +81,22 @@ entries whose command resolves to this kit. The plugin's
 `${CLAUDE_PLUGIN_ROOT}` hooks are deliberately not matched: claiming them would
 mean editing another mechanism's entries.
 
-**4. Kit settings live in `.nullius/kit.json`.** Never as new keys in
+**4. Kit settings live in `nullius.kit.json`.** Never as new keys in
 `nullius.config.json`, whose unknown keys are a hard error — the right
 behaviour for a checker, and fatal for cohabitation, since one kit key there
 would break every older kernel pinned in CI.
+
+**5. `init` never creates `.nullius/`.** That directory is the witness
+recording opt-in: the hooks check for its existence and record nothing without
+it. Kit 0.1.0 put its config there, so running `init` created it as a side
+effect and silently switched on run recording for anyone with the plugin
+installed — a consent boundary set by a command whose job is configuring a
+document checker. Kit config now sits at the root beside the kernel's, and
+`.nullius/` means one thing again: a person asked for journals.
+
+Upgrading from 0.1.0: re-run `init`, then delete `.nullius/kit.json`. Until you
+do, `doctor` reports the stale file as failing and `--fix` refuses rather than
+guessing which config is live.
 
 ### What `doctor` will and will not say
 
@@ -112,7 +124,7 @@ green configuration checks is a claim about configuration; this is the only
 check that exercises the pipeline end to end.
 
 `--fix` re-renders managed artifacts using the profile recorded in
-`.nullius/kit.json` — what was installed, not what the repo looks like today.
+`nullius.kit.json` — what was installed, not what the repo looks like today.
 If that file is unreadable it **refuses**, rather than falling back to
 detection: guessing there would rewrite which documents are checked and whether
 CI can fail, on the strength of a directory listing.
