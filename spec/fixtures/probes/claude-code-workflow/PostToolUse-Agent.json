@@ -1,0 +1,69 @@
+{
+  "session_id": "7d135a54-bf73-51e7-b57f-5df49230101f",
+  "transcript_path": "/home/user/.claude/projects/-home-user-nullius/7d135a54-bf73-51e7-b57f-5df49230101f.jsonl",
+  "cwd": "/home/user/nullius",
+  "prompt_id": "4a01f363-88c5-4452-ac5b-8e5920ace6be",
+  "permission_mode": "auto",
+  "effort": {
+    "level": "high"
+  },
+  "hook_event_name": "PostToolUse",
+  "tool_name": "Agent",
+  "tool_input": {
+    "description": "Probe control dispatch",
+    "prompt": "This is a harness instrumentation probe, not a real task. Do not read any files, run any commands, or use any tools. Reply with exactly the single word: OK",
+    "subagent_type": "claude",
+    "run_in_background": false
+  },
+  "tool_response": {
+    "status": "completed",
+    "prompt": "This is a harness instrumentation probe, not a real task. Do not read any files, run any commands, or use any tools. Reply with exactly the single word: OK",
+    "agentId": "aa610c4fccbcc8540",
+    "agentType": "claude",
+    "content": [
+      {
+        "type": "text",
+        "text": "OK"
+      }
+    ],
+    "resolvedModel": "claude-opus-5",
+    "totalDurationMs": 1890,
+    "totalTokens": 36283,
+    "totalToolUseCount": 0,
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 36277,
+      "cache_read_input_tokens": 0,
+      "output_tokens": 4,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 0,
+        "ephemeral_5m_input_tokens": 36277
+      },
+      "inference_geo": "not_available",
+      "iterations": [
+        {
+          "input_tokens": 2,
+          "output_tokens": 4,
+          "cache_read_input_tokens": 0,
+          "cache_creation_input_tokens": 36277,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 36277,
+            "ephemeral_1h_input_tokens": 0
+          },
+          "type": "message"
+        }
+      ],
+      "speed": "standard"
+    }
+  },
+  "tool_use_id": "toolu_01THdLC5YDfW8YoG6gLboGoy",
+  "duration_ms": 3405
+}

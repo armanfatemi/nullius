@@ -1,0 +1,10 @@
+{"probe": "probe-1", "event": "PreToolUse", "tool_name": "Agent", "tool_use_id": "toolu_01THdLC5YDfW8YoG6gLboGoy", "agent_id": null, "last_assistant_message": null}
+{"probe": "probe-1", "event": "SubagentStop", "tool_name": null, "tool_use_id": null, "agent_id": "aa610c4fccbcc8540", "last_assistant_message": "OK"}
+{"probe": "probe-1", "event": "PostToolUse", "tool_name": "Agent", "tool_use_id": "toolu_01THdLC5YDfW8YoG6gLboGoy", "agent_id": null, "last_assistant_message": null}
+{"probe": "probe-1", "event": "SubagentStop", "tool_name": null, "tool_use_id": null, "agent_id": "a82cd6f70e576140c", "last_assistant_message": "BRAVO"}
+{"probe": "probe-1", "event": "SubagentStop", "tool_name": null, "tool_use_id": null, "agent_id": "a12418914304d54b1", "last_assistant_message": "ALPHA"}
+{"probe": "probe-2", "event": "PreToolUse", "tool_name": "Workflow", "tool_use_id": "toolu_01WyGKwahrMRhCdrs59oMicm", "agent_id": null, "last_assistant_message": null}
+{"probe": "probe-2", "event": "PostToolUse", "tool_name": "Workflow", "tool_use_id": "toolu_01WyGKwahrMRhCdrs59oMicm", "agent_id": null, "last_assistant_message": null}
+{"probe": "probe-2", "event": "SubagentStop", "tool_name": null, "tool_use_id": null, "agent_id": "a73b5db2ecf0f8e88", "last_assistant_message": "CHARLIE"}
+{"probe": "probe-2", "event": "PreToolUse", "tool_name": "Workflow", "tool_use_id": "toolu_01GGY73vapU6gNseTembyay7", "agent_id": null, "last_assistant_message": null}
+{"probe": "probe-2", "event": "PostToolUse", "tool_name": "Workflow", "tool_use_id": "toolu_01GGY73vapU6gNseTembyay7", "agent_id": null, "last_assistant_message": null}

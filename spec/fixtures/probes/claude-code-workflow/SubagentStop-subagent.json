@@ -1,0 +1,18 @@
+{
+  "session_id": "7d135a54-bf73-51e7-b57f-5df49230101f",
+  "transcript_path": "/home/user/.claude/projects/-home-user-nullius/7d135a54-bf73-51e7-b57f-5df49230101f.jsonl",
+  "cwd": "/home/user/nullius",
+  "prompt_id": "4a01f363-88c5-4452-ac5b-8e5920ace6be",
+  "permission_mode": "auto",
+  "agent_id": "aa610c4fccbcc8540",
+  "agent_type": "claude",
+  "effort": {
+    "level": "high"
+  },
+  "hook_event_name": "SubagentStop",
+  "stop_hook_active": false,
+  "agent_transcript_path": "/home/user/.claude/projects/-home-user-nullius/7d135a54-bf73-51e7-b57f-5df49230101f/subagents/agent-aa610c4fccbcc8540.jsonl",
+  "last_assistant_message": "OK",
+  "background_tasks": [],
+  "session_crons": []
+}

@@ -352,20 +352,26 @@ scale and the one `witness` exists to replace.
 Scoped as `add-journal-identity`: ref-backed journals, `witness survey`, header
 identity fields. Everything below is not.
 
-## P6 — Probe the dynamic-workflow harness *(do this first)*
+## P6 — Probe the dynamic-workflow harness — **SETTLED 2026-08-22, and badly**
 
-**Unknown, not assumed:** do `agent()` calls inside a Claude Code dynamic
-workflow emit `PreToolUse:Agent` and `SubagentStop`? The hook pack matches
-`^(Task|Agent)$`. If workflow-spawned agents do not surface as tool calls, the
-exact orchestration shape the Bun rewrite used is **invisible to the recorder**,
-and every claim that `witness` covers that workflow is false.
+Recorded, not reasoned:
+[`spec/fixtures/probes/claude-code-workflow/`](spec/fixtures/probes/claude-code-workflow/README.md).
 
-Settle it the way this repo settles harness questions — a recording, not an
-inference. `spec/fixtures/probes/claude-code/` exists because reasoning about
-this harness was wrong three times in one sitting. Run a two-agent workflow
-script with `NULLIUS_WITNESS_PROBE=1`, commit what lands.
+**Workflow-spawned agents emit `SubagentStop` and nothing else.** No
+`PreToolUse:Agent`, so no `dispatch`, so the correlation chain has nothing to
+join a terminal to. Replaying a real capture through the shipped recorder — one
+control dispatch plus a two-agent workflow — produces a journal with **one**
+dispatch, and `witness validate` says `Journal valid.`
 
-Half a day, and it decides the shape of P7 and P8.
+Two agents ran, returned, and left no trace, and the validator certified the
+result. That is this project's own founding failure, reproduced by its own
+producer: a run that dispatched three agents summarising identically to one
+that dispatched one.
+
+**So `witness` does not cover the workflow shape today, and the README should
+not be read as claiming it does.** Fixing that is now the highest-value item
+here — it is the difference between the tool covering the orchestration
+pattern the Bun rewrite actually used and covering only the one it does not.
 
 ## P7 — The declared denominator
 
@@ -379,7 +385,18 @@ that was **recorded and never terminated**. It cannot catch a dispatch that was
 There is no denominator, so `MISSING-ATTESTATION` (P1) has never had a source.
 
 A workflow script is a better source than `rules select`, because it covers
-every dispatch in a run rather than only rule audits. Blocked on P6.
+every dispatch in a run rather than only rule audits.
+
+**Unblocked by P6, with two sources rather than one.** `PreToolUse` *does* fire
+for the `Workflow` tool, and `tool_input.script` carries the whole script — so
+the plan is visible even though the executions are not. And the harness writes
+its own per-workflow journal: `started` / `result` per agent, keyed by the same
+`agentId` that `SubagentStop` carries, which is a `dispatch`/`report` pair in
+all but name and correlates by a key the harness supplied.
+
+A workflow producer therefore does not have to guess at either half. The plan
+comes from the script; the executions come from the journal or from the
+`SubagentStop` stream keyed against it.
 
 ## P8 — Replay is a laundering hazard
 
@@ -389,9 +406,16 @@ happen in this run — the producer committing the exact laundering the journal
 exists to catch, which is verbatim the mistake the probe corpus caught in the
 `PostToolUse` path.
 
-Needs a `cached`/`replayed` marker on the record, or the recorder must decline
-and say so. Settle it in the schema **before** a producer exists; that is the
-one moment it is cheap. Blocked on P6.
+**Settled with P6, and the record layer is innocent.** A resume with an
+unchanged script returned in 7ms with zero subagent tokens, emitted no
+`SubagentStop`, and appended nothing to the workflow journal. A cached agent
+leaves no evidence of work it did not do, so no `cached` marker is needed.
+
+The summary layer is the one that launders. That run's usage block reported
+`agent_count: 1, agents_done: 1` for a run in which no agent ran — the
+mechanical record honest, the human-readable account of it not. Which is the
+distinction this whole repo turns on, arriving unprompted in the harness's own
+output. No action beyond knowing it.
 
 ## P9 — Silent caps
 
@@ -450,16 +474,17 @@ ported files carry a correspondence anchor?" is unanswerable.
 
 | # | Item | Effort | Blocked on |
 | --- | --- | --- | --- |
-| 1 | P6 workflow probe | half a day | — |
+| — | ~~P6 workflow probe~~ | done | settled 2026-08-22 |
+| — | ~~P8 replay marker~~ | dropped | not a hazard; see P8 |
+| 1 | **A workflow producer** (P7's other half) | medium | — |
 | 2 | `add-journal-identity` | scoped | — |
 | 3 | The v0.3 self-reported producer (Track 2) | large | — |
 | 4 | P10 port invariants | docs only | — |
 | 5 | Wiring check (Track 2) | small | — |
 | 6 | `add-rules-compliance` | in flight | recording |
-| 7 | P7 declared denominator | medium | P6 |
-| 8 | P8 replay marker | small | P6 |
-| 9 | P12 `audit --diff` | medium | — |
-| 10 | P13 correspondence anchors | medium | — |
+| 7 | P7 declared denominator (`MISSING-ATTESTATION`) | medium | a producer |
+| 8 | P12 `audit --diff` | medium | — |
+| 9 | P13 correspondence anchors | medium | — |
 
 Items 3 and 5 are already Track 2's own priority picks. This track does not
 reorder them; it adds evidence that they are the right two.
