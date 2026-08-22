@@ -147,3 +147,14 @@ jobs:
           # No --require-markers: a tasks.md asserts nothing about the code and
           # should not be forced to carry an anchor.
           node packages/claims/dist/cli.js check 'openspec/**/*.md'
+
+      # The wiring check, dogfooded on both fixtures and on this repo's own
+      # harness tree. A routing row naming an agent that does not exist is the
+      # one review failure that reports success, so the broken fixture must
+      # keep failing; the unit test asserts WHICH verdicts fire, because the
+      # exit code here stays 1 even when one of them goes quiet.
+      - name: nullius wiring (self)
+        run: |
+          node packages/claims/dist/cli.js wiring spec/fixtures/wiring-valid
+          ! node packages/claims/dist/cli.js wiring spec/fixtures/wiring-broken
+          node packages/claims/dist/cli.js wiring

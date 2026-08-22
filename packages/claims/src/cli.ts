@@ -19,12 +19,21 @@ import {
   extractAuditClaims,
   formatAuditPlan,
 } from "./audit";
-import { CliError, parseCli, type AuditArgs, type CheckArgs, type WitnessArgs } from "./cliArgs";
+import {
+  CliError,
+  parseCli,
+  type AuditArgs,
+  type CheckArgs,
+  type WiringArgs,
+  type WitnessArgs,
+} from "./cliArgs";
 import { parseConfig, type ClaimsConfig } from "./config";
 import { DEMO_DOC_PATH, demoResults, writeDemoFixture } from "./demo";
 import { buildEagerPrompt } from "./eagerPrompt";
 import { parseClaims } from "./parseClaims";
 import { fileLinesReader, revFileReader, searchRunner } from "./runners";
+import { checkWiring, isWiringFailure } from "./wiring";
+import { fsWiringDeps, scanHarnessRoot } from "./wiringScan";
 import { isJournalFailure, validateJournal, type JournalReport } from "./witness";
 
 const SPEC_URL =
@@ -51,6 +60,10 @@ commands:
                       verify that a run's own record holds up — every dispatch
                       terminated, no verification cited after the thing it
                       verified changed, no omitted corrections.
+  wiring [root]       verify that harness artifacts reference things that
+                      exist — agents, skills, read paths, applies_to globs,
+                      hook commands. A dispatch naming an agent with no
+                      definition file does not error at runtime; it no-ops.
   eager-prompt <doc>  deprecated alias for \`audit <doc> --propose\`.
 
 check options:
@@ -312,6 +325,90 @@ function provenance(report: JournalReport): string {
   }
 }
 
+function runWiring(args: WiringArgs): number {
+  if (!existsSync(args.root)) {
+    console.error(`no such directory: ${args.root}`);
+    return 2;
+  }
+
+  const artifacts = scanHarnessRoot(args.root);
+  if (artifacts.length === 0) {
+    console.error(
+      `no harness artifacts under ${args.root} — expected .claude/agents, .claude/skills, .claude/rules, .claude/commands, or a hooks JSON file`,
+    );
+    return 2;
+  }
+
+  const report = checkWiring(artifacts, fsWiringDeps(args.root));
+
+  let failures = 0;
+  let advisories = 0;
+  for (const finding of report.findings) {
+    const line = `${finding.verdict.toUpperCase().padEnd(20)} ${finding.artifact}:${finding.line}  ${finding.subject}`;
+    if (isWiringFailure(finding.verdict)) {
+      failures += 1;
+      console.error(line);
+      console.error(`                     ! ${finding.detail}`);
+    } else {
+      advisories += 1;
+      console.log(line);
+      console.log(`                     ~ ${finding.detail}`);
+    }
+  }
+
+  console.log("");
+  console.log(
+    `${report.artifacts} artifact(s) scanned, ${report.references} declared reference(s) checked.`,
+  );
+
+  // Four summary states, each its own sentence: a clean run, an
+  // advisory-only run, a failing run, and a run that checked nothing must not
+  // read alike. Every finding above is either a hard failure or a
+  // `loose-reference` advisory — the checker never emits an `ok` finding — so
+  // `failures` and `advisories` together account for every line printed, and
+  // a run that stayed silent about a dozen advisories would look identical to
+  // one that found nothing. Separately, `references === 0` means no
+  // `dispatches`, `skills`, `reads`, `applies_to`, or hook `command` was ever
+  // examined — "every declared reference resolves" is technically true of an
+  // empty set, but it is the sentence a human skims and CI reads only the
+  // exit code, so a scan that checked nothing must not say the word
+  // "resolves" at all.
+  if (failures > 0) {
+    console.error("");
+    console.error(
+      `${failures} unresolved reference(s) — each one is an instruction addressed to something that is not there.`,
+    );
+    if (advisories > 0) {
+      console.error(
+        `${advisories} additional advisory loose-reference finding(s) above — not counted toward this failure.`,
+      );
+    }
+    return 1;
+  }
+
+  if (report.references === 0) {
+    console.log(
+      "No declared references were found to check — this is not the same as everything resolving.",
+    );
+    if (advisories > 0) {
+      console.log(
+        `${advisories} advisory loose-reference finding(s) above — unresolvable prose paths, not declared references.`,
+      );
+    }
+    return 0;
+  }
+
+  if (advisories > 0) {
+    console.log(
+      `Every declared reference resolves. ${advisories} advisory loose-reference finding(s) above — unresolvable prose paths, not declared references, so the run still passes.`,
+    );
+    return 0;
+  }
+
+  console.log("Every declared reference resolves. No advisories.");
+  return 0;
+}
+
 function runCheck(args: CheckArgs): number {
   let config: ClaimsConfig;
   try {
@@ -475,6 +572,8 @@ function main(): number {
       return runCheck(command);
     case "witness":
       return runWitness(command);
+    case "wiring":
+      return runWiring(command);
     case "audit":
       if (command.viaAlias) {
         // Kept working so a pinned pipeline does not break; the name moved

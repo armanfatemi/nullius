@@ -61,3 +61,21 @@ export {
   type Containment,
 } from "./runners";
 export { parseConfig, type ClaimsConfig } from "./config";
+export {
+  checkWiring,
+  hookTarget,
+  isWiringFailure,
+  type ArtifactKind,
+  type HarnessArtifact,
+  type WiringDeps,
+  type WiringFinding,
+  type WiringReport,
+  type WiringVerdict,
+} from "./wiring";
+export { fsWiringDeps, looseCandidates, scanHarnessRoot } from "./wiringScan";
+export {
+  parseFrontmatter,
+  declaredList,
+  type Frontmatter,
+  type Located,
+} from "./frontmatter";
