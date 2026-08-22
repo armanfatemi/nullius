@@ -35,9 +35,11 @@ small enough to read end to end.
 The parser that shipped is a permissive subset, not a closed-key validator.
 It reads scalars, inline flow lists (`dispatches: [a, b]`), and block lists
 (`dispatches:` followed by `- a` / `- b`) — no nesting, no anchors, no
-multi-line scalars — and anything it does not recognize (a line with no
-colon, a `- item` with no key open above it, an unclosed flow bracket) is
-skipped rather than rejected. There is no error path in the module: a
-genuinely closed-key parser would have to reject `name`, `description`,
-`model`, `tools`, and every other key real agent/skill/rule frontmatter
-carries, which this checker does not own and has no business validating.
+multi-line scalars — and when it encounters shapes it does not recognize, it
+skips them (a line with no colon, a `- item` with no key open above it) or
+captures them as scalars holding the raw text (an unclosed flow bracket becomes
+`dispatches: "[a, b"` in the scalars map). There is no error path in the
+module: a genuinely closed-key parser would have to reject `name`,
+`description`, `model`, `tools`, and every other key real agent/skill/rule
+frontmatter carries, which this checker does not own and has no business
+validating.
