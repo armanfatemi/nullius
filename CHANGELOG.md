@@ -1,5 +1,79 @@
 # Changelog
 
+## 0.7.0
+
+The kit's front door, a schema for what a run actually contained, and one
+breaking change to the CLI.
+
+> **0.5.0 and 0.6.0 were written but never published.** Upgrading from 0.4.0
+> — the newest version on npm — brings all three releases at once. Their
+> entries are below, unchanged.
+
+### Breaking
+
+- **Flags belong to their command.** One parser used to scan all of argv for
+  both the verb and its options, so `nullius --require-markers check DOC`
+  worked and `nullius audit DOC --require-markers` was accepted and **silently
+  ignored**. The second is why this changed: a gate that quietly is not a gate
+  is the worst failure a checker has, because the user believes a run was
+  verified.
+
+  Each command now parses its own flags. A misplaced one names its real owner
+  rather than claiming to be unknown, and a flag before the verb is refused
+  with the corrected order:
+
+  ```
+  --extract is an option of `audit`, not `check` — it was previously
+  accepted here and silently ignored
+  the command comes first: `nullius check --require-markers …`
+  ```
+
+  **Migration:** move the flag after the command. `--help` and `--version`
+  still work anywhere, including after a verb.
+
+### Added
+
+- **`@nullius-inverba/kit` — first release.** `init` applies one of three
+  profiles (`plans` / `prs` / `specs`) chosen from what is on disk, prints
+  every file it writes, and `--dry-run` is the same code path minus the write.
+  `doctor` diagnoses an installed setup from local state only and ends by
+  running a fixture through the installed recorder and validator, because a
+  list of green configuration checks is a claim about configuration. `--fix`
+  re-renders what the kit owns, refusing to guess when `.nullius/kit.json` is
+  unreadable rather than silently switching a repo's profile.
+
+  Two things it will not do, and prints instead: it writes no hooks where a
+  plugin delivers them, and it places exactly one pointer line in your agent
+  instructions rather than a managed block.
+
+- **Witness schema v0.3 — the run ledger.** Five kinds (`stage`, `finding`,
+  `resolution`, `check`, `decision`) for what an agent contributed to a run,
+  and two verdicts that were previously unaskable: `SUPPRESSED-FINDING` (a
+  blocker no resolution answers) and `SILENT-REVIEWER` (a dispatch that
+  returned `found` and filed nothing).
+
+  The vocabulary is derived from a corpus of 91 hand-written evidence files
+  rather than invented — which overturned four assumptions, including a
+  resolution enum that had missed five of the six most common outcomes.
+  `SUPPRESSED-FINDING` is gated to `blocker` for a measured reason: 60.8% of
+  identified findings in that corpus are never mentioned again, so an ungated
+  verdict fires on three in five and gets learned as noise.
+
+  v0.2 and v0.1 journals are unaffected — the new verdicts are evaluated only
+  when a journal declares `0.3`.
+
+- **`configVersion`, reserved in `nullius.config.json`.** Accepted and ignored,
+  and deliberately not type-checked: if this version demanded a number and the
+  format later became `"2.0"`, every older pinned kernel would fail on a repo it
+  should merely not understand. Nothing writes it yet — a reservation only buys
+  compatibility once the writer waits for a release that contains it.
+
+### Fixed
+
+- `<command> --help` and `<command> --version` work again; they were briefly
+  scoped to the first argument while the usage text still advertised them.
+- `--` now separates operands, so a path beginning with a dash is nameable.
+
 ## 0.6.0
 
 Citation rot, and the two verbs the checker could not be.
