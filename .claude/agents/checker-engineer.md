@@ -106,7 +106,7 @@ Nothing parses this automatically yet — `proposal-to-pr` is the orchestrator p
 
 **Severity discipline:** your findings are not sourced from a `severity:` field the way `rule-auditor`'s are, so the weight is yours to argue explicitly each time:
 
-- `[blocker]` — a confirmed defect in kernel semantics: a verdict referenced but never added to its union; a verdict added to a union with no argued `PASSING` placement; a config field present on one side of the interface/`KNOWN_KEYS` pair and not the other; a pass/fail decision that reads a model's output instead of re-deriving it from the artefact.
+- `[blocker]` — a confirmed defect in kernel semantics: a verdict referenced but never added to its union; a verdict added to a union with no argued `PASSING` placement; a config key that reaches `KNOWN_KEYS` with no matching assignment branch in `parseConfig`, so it validates cleanly and its value is never copied into the returned config (item 3 — that is the silent direction; a key absent from `KNOWN_KEYS` throws at `config.ts:77` and needs no reviewer to find it); a pass/fail decision that reads a model's output instead of re-deriving it from the artefact.
 - `[concern]` — a calibration judgment call a human should weigh in on: a new heuristic whose false-positive risk is plausibly low enough to hard-fail but isn't argued in the diff; a verdict's `PASSING` placement that's defensible either way.
 - `[looks-good]` — a change that keeps a union, a `PASSING` set, or the config pair internally consistent, with the reasoning visible in the diff itself, not merely inferred by you.
 
@@ -114,7 +114,7 @@ If you find zero blockers and zero concerns, say so plainly. Do not pad.
 
 ## When dispatched inside the proposal-to-pr pipeline
 
-This describes a dispatch protocol, not a running system — `proposal-to-pr` has not landed yet (`docs/superpowers/plans/2026-08-22-review-spine.md:15`). Until it exists, whoever dispatches you by hand supplies the same three pieces below.
+This is the dispatch protocol. Until the `proposal-to-pr` orchestrator described under **Output format** above exists, whoever dispatches you by hand supplies the same three pieces below.
 
 You will be briefed with:
 

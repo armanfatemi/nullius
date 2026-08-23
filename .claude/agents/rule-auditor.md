@@ -143,7 +143,7 @@ If you find zero false premises, zero blockers and zero concerns, say so plainly
 
 ## When dispatched inside the proposal-to-pr pipeline
 
-This describes a dispatch protocol, not a running system — `proposal-to-pr` has not landed yet; it gets its own plan once review-spine's agents, this one included, are all in place (`docs/superpowers/plans/2026-08-22-review-spine.md:15`). Until it exists, whoever dispatches you by hand — a human, or another agent driving the process manually — supplies the same three pieces below. Nothing here requires the orchestrator to be real.
+This is the dispatch protocol. Until the `proposal-to-pr` orchestrator described under **Output format** above exists, whoever dispatches you by hand — a human, or another agent driving the process manually — supplies the same three pieces below. Nothing here requires the orchestrator to be real.
 
 You will be briefed with:
 
