@@ -136,19 +136,34 @@ re-verifies any claim they make about the codebase:
 
 **Evidence:** `.github/workflows/ci.yml:149@3333623` — `node packages/claims/dist/cli.js check 'openspec/**/*.md'`
 
-**The roster starts at five names, not twelve.** The export's seven specialists
-are event-sourcing and frontend shaped and none fit. Authored now:
-`checker-engineer` (verdict semantics, parser strictness, the `Verdict` union
-as breaking public API) and `test-engineer` (fixtures and the dogfood gates).
+**The roster starts at four names, not twelve.** The export's seven specialists
+are event-sourcing and frontend shaped and none fit. Ported: `rule-auditor` and
+`architecture-reviewer`. Authored now: `checker-engineer` (verdict semantics,
+parser strictness, the `Verdict` union as breaking public API) and
+`test-engineer` (fixtures and the dogfood gates). `retro-writer` becomes a fifth
+name only when the machine that dispatches it lands — until then a row for it is
+the aspirational half, and aspirational rows are what `wiring` fails on.
 `harness-engineer` and `spec-writer` are authored when a run first needs them.
 With wiring in place the roster cannot quietly grow past what exists.
 
-`architecture-reviewer` is regrounded on `CLAUDE.md` and `spec/*.md`, and its
-placeholder invariants are replaced by nullius's own: model proposes and code
-verifies; one delivery mechanism per artifact; anchors rev-stamped from the
-start and never repointed under an old stamp; merge commits never squash;
-hooks fail open; `Verdict` growth is breaking; a new verdict requires both a
-fixture and a unit test; build before any CLI use.
+`architecture-reviewer` is regrounded on `CLAUDE.md`, `spec/*.md` and
+`openspec/project.md`, and its placeholder invariants are replaced by five of
+nullius's own: hooks fail open; the exported `Verdict` union is public API, so
+new families get new unions and `isFailure` stays an allowlist; checker cores
+are pure and every filesystem read arrives through injected deps; a heuristic
+that can misfire on ordinary prose stays advisory; and the kit depends on the
+kernel, never the reverse.
+
+Five, not the eight this document first listed. The six that left — model
+proposes and code verifies, one delivery mechanism per artifact, anchors
+rev-stamped and never repointed under an old stamp, merge commits never
+squash, a new verdict requiring both a fixture and a unit test, and build
+before any CLI use — are all mechanical and glob-scopable, so they land in
+`.claude/rules/` and belong to `rule-auditor`. That split is the point rather
+than an accident of drafting: an invariant with a home in both places is one
+edit away from having two answers, and the three invariants above that no
+candidate list anticipated are exactly what the prose reviewer is left holding
+once the linter's share is taken out.
 
 **Boundary with superpowers.** Four of the pipeline's nine stages overlap an
 installed superpowers skill, and two process stacks with competing opinions on
