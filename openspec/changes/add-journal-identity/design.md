@@ -119,47 +119,20 @@ So the rule this change writes down explicitly:
 The moment `witness replay` makes absence of `rev` meaningful, that is a new
 verdict, and it takes the bump with it.
 
-## Decision 4 — sealing to a ref, and which ref shape
+## Decision 4 — sealing moved to `add-journal-sealing`
 
-Journals must outlive worktrees. Three shapes were considered:
+Ref-backed durability was scoped here originally. Review found the seal path as
+specified — `hash-object` → `mktree` → `commit-tree` → `update-ref` against one
+shared ref, reusing the existing tree — is a read-modify-write with no
+compare-and-swap, so two sessions sealing concurrently drop one journal from the
+ref. That is recoverable (the working file survives and a sweep re-seals it) but
+it is a silent write loss in the mechanism whose entire purpose is not losing
+the record.
 
-| Shape | Durable | Cross-worktree | Cost |
-| --- | --- | --- | --- |
-| Blob at `refs/nullius/runs/<session>` | yes | yes | one `hash-object` + `update-ref` |
-| Commit chain on `refs/nullius/runs` | yes | yes | `hash-object` + `mktree` + `commit-tree` + `update-ref` |
-| `git notes` on the session's HEAD | yes | yes | awkward: many sessions per commit, and notes merge badly |
-
-**Chosen: the commit chain on a single ref `refs/nullius/runs`**, whose tree
-accumulates `<session>.jsonl`.
-
-The blob-per-session form is less code and was the first choice, but it makes
-`survey` enumerate refs to find its inputs and gives no ordering. The commit
-chain makes the whole set one tree read, survives `git gc` as a normal root,
-gives `git log refs/nullius/runs` for free, and is the shape the prior art
-already noted in this repo uses:
-
-**Evidence:** `IDEAS.md:82@541ae94`
-
-```
-  (`refs/entire/checkpoints/...` with `metadata.json`, `full.jsonl`,
-```
-
-Refs outside `refs/heads`
-are not pushed by default, which is correct — a journal is local evidence until
-someone chooses otherwise.
-
-**When:** at `SessionEnd`, once. Not per append: the append path already holds
-an advisory lock and runs on every hook event, and adding two git invocations
-inside that lock trades a fast local write for a slow one under contention.
-
-**When the seal does not happen:** a crashed session never reaches `SessionEnd`.
-The working file is still there, so nothing is lost — it is merely unsealed.
-`witness seal` sweeps `.nullius/runs/` for journals with no corresponding entry
-in the ref and seals them. `doctor` reports the count of unsealed journals as a
-fact, not a fault, in the same register it uses for an empty runs directory
-today:
-
-**Evidence:** `packages/kit/src/doctor.ts:330@541ae94` — `      detail: "no runs/ directory yet — nothing has been recorded, which is not evidence of a fault",`
+Resolving it is a design question about ref concurrency, not about identity, and
+this change's schema half is the time-sensitive part. The full text of the
+original decision — the three ref shapes considered and why the commit chain won
+— moves with it to `add-journal-sealing/design.md`.
 
 ## Decision 5 — git failure is never a recording failure
 
@@ -178,8 +151,6 @@ the journal and loud in `doctor`:
 - Detached HEAD → `head` is written, `branch` is absent. Not "HEAD", not
   "(detached)" — a closed-vocabulary sentinel invented here would be a fact
   nobody can check.
-- Seal fails → the working file stands and the session ends normally.
-  `doctor` counts it unsealed.
 
 `doctor` is where the silence gets a voice, which is what it is for.
 
@@ -206,6 +177,11 @@ half.
 - **`survey`'s summed counts invite a merged reading.** A user who sees one
   total may believe one timeline was validated. The output must name the
   journal count in the same block as the totals, and the requirement says so.
-- **Ref growth.** One commit per sealed session. A long-running project
-  accumulates them; they are cheap, unpushed, and prunable by deleting the ref.
-  Documented, not solved.
+- **The exported type surface moves.** `JournalHeader` and `JournalReport` are
+  both public API. The addition is optional-only so no consumer breaks, but it
+  is a CHANGELOG-visible surface change rather than an internal detail.
+- **New fixtures could be asserted by exit code alone.** The v0.3 pair set that
+  precedent — neither file is opened by any TypeScript test, so the findings
+  their documentation claims are checked only by CI's exit status, which cannot
+  tell twenty-six findings from six. Task 1.6 requires the unit test for exactly
+  this reason.

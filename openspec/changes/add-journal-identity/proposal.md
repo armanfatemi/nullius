@@ -1,5 +1,7 @@
 # Add journal identity — a journal that knows where it came from, and outlives it
 
+> **Depends on:** None
+
 ## Why
 
 Two gaps, one root cause: **a journal records what happened and not where.**
@@ -40,7 +42,7 @@ roll-up problem and the durability problem are the same problem.
 
 Which leaves the roll-up itself. `witness validate` reads exactly one file:
 
-**Evidence:** `packages/claims/src/cli.ts:236@541ae94` — `    console.error("usage: nullius witness validate <journal.jsonl>");`
+**Evidence:** `packages/claims/src/cli.ts:249@a717cc4` — `    console.error("usage: nullius witness validate <journal.jsonl>");`
 
 That is the right contract for one run and the wrong one for sixty-four. The
 question at that scale is not "is journal 37 internally consistent" but "across
@@ -70,28 +72,38 @@ from aggregating verdicts, never from merging records. See Decision 1.
   per-journal pass/fail, and journals that reached no terminal record at all.
   It never merges records into one timeline, and the spec says so as a
   requirement rather than as a note.
-- **Ref-backed sealing** (kit): at session end the kit writes the journal to
-  `refs/nullius/runs` and leaves the working file in place. `witness seal`
-  sweeps journals a crashed session never sealed; `doctor` reports unsealed
-  journals as a fact rather than a fault.
 
 ## Impact
 
-- Affected specs: `witness` (modified — header, new requirements), `installer`
-  (modified — doctor surfaces unsealed journals).
+- Affected specs: `witness` (modified — header, new requirements).
 - Affected code: kernel (`witness.ts` header scan and `verification` parser,
-  `cli.ts` survey command); kit (`journalFile.ts` header draft and sealing,
-  `doctor.ts`).
+  `cli.ts` survey command); kit (`journalFile.ts` header draft).
+- **The exported type surface moves.** `JournalHeader` and `JournalReport` are
+  both public API, so adding fields to either crosses the package boundary:
+
+  **Evidence:** `packages/claims/src/index.ts:33@a717cc4` — `  type JournalHeader,`
+
+  The addition is optional-only, so no consumer breaks — but it is a public
+  surface change and belongs in the CHANGELOG rather than passing as an
+  internal detail.
+- **No union grows.** Nothing in the codebase switches over `JournalVerdict`;
+  the only place it is consumed as a set is a membership test that treats an
+  unknown member as a failure:
+
+  **Evidence:** `packages/claims/src/witness.ts:120@a717cc4` — `const PASSING: ReadonlySet<JournalVerdict> = new Set<JournalVerdict>(["ok"]);`
+
+  So the "adds no verdict" claim is structurally safe rather than merely
+  intended: a verdict added later fails safe by default.
 - **New dependency direction in the kit.** Nothing in the kit's shipping code
   spawns a process today:
 
   **Evidence:** `grep -rn --exclude='*.test.ts' 'child_process' packages/kit/src/` → 0 results
 
-  Reading `branch`/`head` and writing a ref both need git. This is a real
-  widening of the kit's surface and it is governed by one rule: **git failure is
-  never a recording failure.** No repository, no git binary, a detached HEAD —
-  the fields are absent, the seal is skipped, recording proceeds. Hooks fail
-  open; that constraint does not bend for provenance.
+  Reading `branch`/`head` needs git. This is a real widening of the kit's
+  surface and it is governed by one rule: **git failure is never a recording
+  failure.** No repository, no git binary, a detached HEAD — the fields are
+  absent, recording proceeds. Hooks fail open; that constraint does not bend
+  for provenance.
 - No existing journal changes verdict. Every field added here is optional, and
   the header scan already ignores keys it does not know.
 
@@ -110,3 +122,115 @@ from aggregating verdicts, never from merging records. See Decision 1.
 - **A producer for `verification`.** It still has none. `rev` is a field on a
   record nothing emits, which is the same bet v0.2 made on `mutation` and v0.3
   made on the ledger kinds — and the reason the field has to be right now.
+- **Ref-backed sealing.** Split out to `add-journal-sealing` after review found
+  an unresolved concurrency defect in the seal path: the specified
+  `hash-object` → `mktree` → `commit-tree` → `update-ref` sequence is a
+  read-modify-write of one shared ref with no compare-and-swap, so two sessions
+  sealing at once silently drop one journal from the ref. Durability is not
+  urgent in the way the schema field is, and holding the field hostage to an
+  unsolved concurrency design was the wrong trade. The prose moved rather than
+  being discarded.
+
+## Dependencies
+
+### Hard (must be merged before this starts)
+
+None. The producer this change describes already exists — `add-witness-recording`
+is archived and the hook pack writes journals today.
+
+### Soft (design assumes these exist; graceful degradation if absent)
+
+`add-authoring-ergonomics` — task 2.4 gives `survey` a per-command `--help`
+"matching the funnel convention" that change introduces. If it has not landed,
+`survey` defines its own help text and nothing degrades except consistency.
+
+### Enables (future changes that will depend on this)
+
+- `add-journal-sealing` — the split-out durability half; it seals the journals
+  whose headers this change defines.
+- `add-oracle-conservation` — already cites this change's design as the
+  governing rule for when a schema version bump is required:
+
+  **Evidence:** `openspec/changes/add-oracle-conservation/design.md:101@a717cc4`
+
+  ```
+  `add-journal-identity` wrote the governing rule: bump when the set of valid
+  ```
+
+- `witness replay` — unscoped, and the reason `verification.rev` is landed now
+  rather than when a producer exists.
+
+## Size estimate
+
+|                                |                                                     |
+| ------------------------------ | --------------------------------------------------- |
+| Estimated tasks                | 23                                                  |
+| Packages or surfaces touched   | 3 (packages/claims, packages/kit, spec/)            |
+| Risk                           | LOW                                                 |
+| Expected sessions to implement | 1                                                   |
+
+LOW rather than MEDIUM: every field is optional and additive, no exported union
+grows, no existing journal changes verdict, and the one public-surface change
+(fields on `JournalHeader` / `JournalReport`) cannot break a consumer that does
+not read them.
+
+## Open questions
+
+- **Does an unreachable `rev` deserve a verdict?** A `verification` can pin a
+  commit that a later rebase or squash makes unreachable. The convention already
+  documents this failure for anchors — a stamp whose commit is gone fails open
+  as advisory `UNVERIFIABLE-REV`, so the gate silently stops existing:
+
+  **Evidence:** `CLAUDE.md:50@a717cc4`
+
+  ```
+  advisory `UNVERIFIABLE-REV`: CI stays green while the hard gate silently stops
+  ```
+
+  The spec delta says absence of `rev` is not a finding, and is silent on an
+  unreachable one. Resolving this needs a producer to exist first, so it is
+  named here rather than answered.
+- **Where does the kit's bounded-git helper live?** The kernel already has one
+  under a timeout:
+
+  **Evidence:** `packages/claims/src/runners.ts:149@a717cc4` — `export function revFileReader(root?: string, timeoutMs = DEFAULT_GIT_TIMEOUT_MS) {`
+
+  Building a second in the kit would be two implementations of one discipline.
+  Since the dependency direction is already kit → kernel, reusing the kernel's
+  is available. Deferred to `add-journal-sealing`, which needs far more git than
+  this change does.
+- **Do the new fixtures get unit-test assertions?** The v0.3 precedent is a gap,
+  not a model: `spec/fixtures/v0.3-broken-run.jsonl` is referenced in no
+  TypeScript file at all, so the "26 findings" its documentation claims are
+  asserted only by CI's exit code, which stays 1 if twenty of them stop firing.
+  Task 1.6 already requires the unit test; this note records why that task is
+  not optional.
+- **How does a human find the journal they want?** Journals are named for the
+  harness session id and nothing else, in one flat directory:
+
+  **Evidence:** `packages/kit/src/journalFile.ts:94@a717cc4` — `export function journalPathFor(root: string, session: string | null): string {`
+
+  A UUID says nothing about what a session did, and the directory only grows.
+  The constraint that shapes every answer is that **the filename is chosen at
+  `SessionStart`, before anything about the session's purpose exists** — so a
+  descriptive filename would need either a mid-session rename, which breaks the
+  advisory lock and any open handle, or deferred file creation, which loses the
+  early records. Naming a journal after a change is also not one-to-one: a
+  session may touch several changes or none.
+
+  This change already carries most of a query-layer answer rather than a
+  filename-layer one. `branch` in the header is the human-readable label most of
+  the time, and `survey` is the verb that makes the id something nobody reads by
+  hand — if it prints branch and date per journal, `ls` stops being the
+  interface. What neither supplies is a label for a session that ran on no
+  feature branch. An explicit `title` header field, or a `witness label` verb
+  called once mid-session, would close that; neither is specced here.
+
+  **Any change to the on-disk layout is sequenced before `add-journal-sealing`,
+  not after.** That change fixes the sealed tree entry as `<session>.jsonl` so
+  the sweep's "does the ref already carry this journal" test has one definition,
+  and records the mismatch as a `data-at-rest` compatibility risk. Re-foldering
+  `runs/` by date once sealing has shipped breaks that test silently — journals
+  re-sealed under new names, or reported unsealed forever. Deciding the layout
+  while sealing is still unimplemented costs nothing; deciding it afterwards is
+  a migration.

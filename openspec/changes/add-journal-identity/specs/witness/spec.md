@@ -135,39 +135,14 @@ reached no terminal record at all.
 - **WHEN** one surveyed journal contains dispatches and no reports
 - **THEN** that journal is listed by name, not only counted
 
-### Requirement: Journals are sealed to a git ref
-
-The kit SHALL write each session's journal to the git ref
-`refs/nullius/runs` at session end, as a commit whose tree holds
-`<session>.jsonl`, and SHALL leave the working file in
-`.nullius/runs/` in place.
-
-Sealing SHALL happen once per session at `SessionEnd`, never per append: the
-append path holds an advisory lock and runs on every hook event.
-
-The kit SHALL provide `witness seal`, which seals journals present in
-`.nullius/runs/` that the ref does not yet carry, so a session that crashed
-before its terminal hook is recoverable.
-
-#### Scenario: a sealed journal survives its worktree
-
-- **WHEN** a session records a journal, seals it, and the worktree is deleted
-- **THEN** the journal is readable from any other worktree of the same
-  repository
-
-#### Scenario: a crashed session leaves an unsealed journal, not a lost one
-
-- **WHEN** a session ends without reaching `SessionEnd`
-- **THEN** the working file remains, and `witness seal` adds it to the ref
-
 ### Requirement: Git failure is never a recording failure
 
 Recording SHALL succeed when git is unavailable, when the project is not a git
 repository, or when a git invocation times out.
 
-In those cases the header identity fields SHALL be absent and sealing SHALL be
-skipped. No git failure SHALL produce a journal finding, block an append, or
-return a non-zero exit from a hook.
+In those cases the header identity fields SHALL be absent. No git failure SHALL
+produce a journal finding, block an append, or return a non-zero exit from a
+hook.
 
 #### Scenario: recording outside a repository
 
