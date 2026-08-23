@@ -136,10 +136,13 @@ re-verifies any claim they make about the codebase:
 
 **Evidence:** `.github/workflows/ci.yml:149@3333623` — `node packages/claims/dist/cli.js check 'openspec/**/*.md'`
 
-**The roster starts at five names, not twelve.** The export's seven specialists
-are event-sourcing and frontend shaped and none fit. Authored now:
-`checker-engineer` (verdict semantics, parser strictness, the `Verdict` union
-as breaking public API) and `test-engineer` (fixtures and the dogfood gates).
+**The roster starts at four names, not twelve.** The export's seven specialists
+are event-sourcing and frontend shaped and none fit. Ported: `rule-auditor` and
+`architecture-reviewer`. Authored now: `checker-engineer` (verdict semantics,
+parser strictness, the `Verdict` union as breaking public API) and
+`test-engineer` (fixtures and the dogfood gates). `retro-writer` becomes a fifth
+name only when the machine that dispatches it lands — until then a row for it is
+the aspirational half, and aspirational rows are what `wiring` fails on.
 `harness-engineer` and `spec-writer` are authored when a run first needs them.
 With wiring in place the roster cannot quietly grow past what exists.
 
