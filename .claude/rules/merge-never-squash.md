@@ -15,25 +15,37 @@ next check runs.
 
 ## What goes wrong
 
-A squash rewrites the branch into a single new commit and leaves the original
-unreachable from `main`. Every anchor stamped against one of those branch
-commits now names a hash the clone cannot resolve — and the checker's
+A squash rewrites the branch into a single new commit and leaves the
+originals unreachable from `main`. Every anchor stamped against one of those
+branch commits now names a hash the clone cannot resolve — and the checker's
 response is to *fail open*.
 
-That is the right behaviour and the reason this rule has to exist. A missing
+That is the right behaviour, and the reason this rule has to exist. A missing
 commit is not evidence about the author: the clone may be shallow, the PR may
 have come from a fork, the history may have been rewritten by someone else
 entirely. A checker that cannot read the history it was pointed at does not
-get to call anyone a fabricator. So the verdict softens to the advisory
-`UNVERIFIABLE-REV`, CI stays green, and the hard gate silently stops existing
-for every claim in the change — with no failure anywhere to say so.
+get to call anyone a fabricator.
 
-A squash therefore does not break the build. It disarms it, quietly, for
-exactly the documents that carried the most evidence.
+So a squash does not break the build. It disarms it, quietly, for exactly the
+change that carried the most evidence — and a disarmed gate and a satisfied
+one produce the same green check.
 
 ## The incident
 
-The fail-open branch names squash-merging first among the reasons a stamped
-commit may be absent, and softens only the failing verdicts on that axis:
+When the stamped commit cannot be read, the checker discards the failing
+verdict it computed against the working tree and returns a different one in
+its place:
 
-**Evidence:** `packages/claims/src/checkClaims.ts:388@52f64ec` — `squash-merged, because the clone is shallow, or because this is a fork`
+**Evidence:** `packages/claims/src/checkClaims.ts:401@90105d8` — `verdict: "unverifiable-rev",`
+
+That substitute is a member of the set of verdicts that pass, which is what
+turns a silenced hard gate into a green run:
+
+**Evidence:** `packages/claims/src/checkClaims.ts:172@90105d8`
+
+```ts
+  "wrong-line",
+  "stale",
+  "unverifiable-rev",
+]);
+```

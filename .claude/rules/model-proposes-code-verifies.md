@@ -31,15 +31,16 @@ theirs. It gets no privileged status for having come from an agent. What
 survives that re-check is a result; what does not is a suggestion that
 happened to be well argued.
 
-When a design makes the model's word load-bearing, the fix is not a better
+When a design makes a model's word load-bearing, the fix is not a better
 prompt or a second model. It is to find the deterministic question underneath
 and ask that instead — and if there is no such question, to say so rather
 than to launder a guess through an agent.
 
 ## The incident
 
-The audit brief tells the responding agent, in the brief itself, that its
-own output will be re-checked — the constraint travels with the dispatch
-rather than living in a design document:
+Every failure this tool reports is counted at a single branch, over a verdict
+computed by re-reading the cited file. That branch takes a `Verdict`, not a
+reply — there is no parameter through which an agent's opinion could reach
+it:
 
-**Evidence:** `packages/claims/src/audit.ts:155@52f64ec` — `Anchor grammar — every anchor you write is re-verified by a deterministic checker`
+**Evidence:** `packages/claims/src/cli.ts:147@90105d8` — `if (isFailure(result.verdict)) {`
