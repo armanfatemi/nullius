@@ -1,7 +1,9 @@
 # Tasks — add-journal-identity
 
-Three parts, each standing alone. Part 1 is the schema and can land without
-Part 2 or 3; Part 3 is the only part that adds git to the kit.
+Two parts, each standing alone: the schema (section 1) and the roll-up
+(section 2). Section 3 is the kit's share of the schema half — writing the
+identity fields it now knows how to read. Ref-backed sealing was section 3's
+other half and is now `add-journal-sealing`.
 
 ## 1. Kernel — schema
 
@@ -42,26 +44,20 @@ Part 2 or 3; Part 3 is the only part that adds git to the kit.
       verb
 - [ ] 2.6 Characterization test: `witness validate` still takes exactly one path
 
-## 3. Kit — identity and sealing
+## 3. Kit — identity
 
-- [ ] 3.1 A git helper module with one rule: every call best-effort, bounded by
-      a timeout, never throws into the append path
+- [ ] 3.1 A git helper with one rule: every call best-effort, bounded by a
+      timeout, never throws into the append path. Decide first whether to reuse
+      the kernel's bounded-git reader rather than build a second one — the
+      dependency direction is already kit → kernel, and two implementations of
+      one discipline is what the single-delivery-mechanism rule exists to stop
 - [ ] 3.2 `headerRecord` gains `branch` / `head` / `worktree`; all three omitted
       when git cannot answer. One `rev-parse` per session, at first append —
       never per event
 - [ ] 3.3 `worktree` is a short hash of the absolute worktree path, never the
       path itself
-- [ ] 3.4 Seal on `SessionEnd`: `hash-object` → `mktree` → `commit-tree` →
-      `update-ref refs/nullius/runs`, reusing the existing tree so earlier
-      sessions survive
-- [ ] 3.5 `witness seal` sweeps `.nullius/runs/` for journals the ref does not
-      carry
-- [ ] 3.6 `doctor` reports unsealed journal count as a fact; `??` when git
-      cannot answer
-- [ ] 3.7 Test: recording in a non-repository directory writes a valid
+- [ ] 3.4 Test: recording in a non-repository directory writes a valid
       headerless-of-identity journal and exits 0
-- [ ] 3.8 Document the ref in `.nullius/README.md` — including that refs outside
-      `refs/heads` are not pushed by default, which is deliberate
 
 ## 4. Close-out
 
@@ -69,4 +65,9 @@ Part 2 or 3; Part 3 is the only part that adds git to the kit.
 - [ ] 4.2 `node packages/claims/dist/cli.js check 'README.md' 'spec/**/*.md' --require-markers` clean
 - [ ] 4.3 Every fixture in `spec/witness-journal.md`'s table still exits as the
       table says, including the ones that must fail
-- [ ] 4.4 CHANGELOG entry: additive, no version bump, and why
+- [ ] 4.4 CHANGELOG entry: additive, no schema version bump, and why — and
+      note the public-surface change separately, since `JournalHeader` and
+      `JournalReport` are both exported and gaining fields
+- [ ] 4.5 Confirm `add-oracle-conservation`'s anchor into this change's
+      `design.md:115` still verifies; it cites the version-bump rule this
+      change writes down
