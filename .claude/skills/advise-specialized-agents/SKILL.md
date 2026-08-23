@@ -127,20 +127,24 @@ candidates, the pre-flight produces dispatches.
 | --- | --- | --- |
 | A kernel checker module — `checkClaims.ts`, `witness.ts`, `wiring.ts`, `config.ts` | `checker-engineer`, `rule-auditor` | `architecture-reviewer` (if a seam moves: a new core, a new filesystem touch, a union growing), `test-engineer` (if a verdict is added or a decision path changes) |
 | A new verdict in any of the three unions | `checker-engineer`, `test-engineer` | `rule-auditor` (`verdict-needs-fixture-and-test` is `severity: blocker` and matches both the source and fixture globs), `architecture-reviewer` (if it hard-fails on a match that could plausibly fire on ordinary prose) |
-| A config key added, renamed, or removed | `checker-engineer` | `test-engineer` (a declared key with no assignment branch passes validation and is silently dropped — that is a coverage question, not a semantics one) |
+| A config key added, renamed, or removed | `checker-engineer` | A key declared on one side of the interface/known-key pair and not the other passes validation and is silently dropped. That is `checker-engineer`'s own `[blocker]`, not a coverage question — do not route it elsewhere. Add `test-engineer` only if the change also touches a fixture or a gate |
 | A kit or CLI change — anything under `packages/kit/`, or `packages/claims/src/cli.ts` | `rule-auditor` | `architecture-reviewer` (the dependency direction, and whether harness coupling stayed on the kit side). Not `checker-engineer` — it declines `packages/kit/` by its own boundary, and dispatching it there is a pre-flight miss, not a thorough review |
 | A plugin or hook change — the scripts and JSON under `plugin/hooks/`, or `.claude/settings.json` | `architecture-reviewer` (can every new failure path still reach a fail-open exit?), `rule-auditor` (`one-delivery-mechanism` matches both `.claude/settings.json` and `plugin/hooks/hooks.json`) | `test-engineer` (if the change alters what a dogfooding gate runs) |
 | A spec-family document under `spec/` | `architecture-reviewer` | `rule-auditor` (`never-repoint-under-old-stamp` and `merge-never-squash` both scope `spec/**/*.md`) |
 | An OpenSpec proposal under `openspec/changes/` | `rule-auditor` in proposal mode, `architecture-reviewer` against the design document | `checker-engineer` and `test-engineer` — but only when the plan names kernel files or new verdicts. In pre-review they audit the plan, not code that does not exist yet |
 | Fixtures or the CI gates | `test-engineer` | `rule-auditor` (both globs are named by `verdict-needs-fixture-and-test`) |
-| A harness artifact under `.claude/agents/`, `.claude/rules/`, or `.claude/skills/` | `architecture-reviewer` — the question is whether the new artifact duplicates doctrine that already has a home instead of pointing at it | Nothing else, and see the note below |
+| A new agent or rule under `.claude/agents/` or `.claude/rules/` | `architecture-reviewer` — those two paths are named in its own post-review priority list, and the question is whether the new artifact duplicates doctrine that already has a home instead of pointing at it | Nothing else, and see the note below |
+| A skill definition under `.claude/skills/` | Nothing on this roster claims it. `architecture-reviewer`'s stated priorities stop at agents and rules | Dispatch it anyway only if the skill asserts something about the code, in which case the false-premise pass is the reason — say that in the brief rather than implying the path is in its remit |
 
-**A change confined to `.claude/` matches no rule glob at all.** The eight rules
-scope source, fixtures, workflows, `openspec/`, `spec/`, `docs/`, `README.md`,
-`plugin/`, and the two hook-delivery JSON files — none of them scopes an agent,
-rule, or skill definition. `rule-auditor` dispatched against a change like this
-one will correctly return that it has nothing to audit. That is not a fault in
-the agent and not a reason to widen a glob; it is a routing fact worth knowing
+**Only one path under `.claude/` is matched by any rule.** That path is
+`.claude/settings.json`, named by `one-delivery-mechanism` at `severity: blocker`
+— which is why the hook row above sends it to `rule-auditor`. No rule scopes an
+agent, a rule, or a skill *definition*: the other seven scope source, fixtures,
+workflows, `openspec/`, `spec/`, `docs/`, `README.md`, and `plugin/`. So
+`rule-auditor` dispatched against a change confined to `.claude/agents/`,
+`.claude/rules/`, or `.claude/skills/` — this file's own commit, for instance —
+will correctly return that it has nothing to audit. That is not a fault in the
+agent and not a reason to widen a glob; it is a routing fact worth knowing
 before you spend the dispatch.
 
 If you are unsure whether a candidate applies, **do not dispatch and find out** —
@@ -381,8 +385,9 @@ enough that backing out a wrong turn would be expensive.
 - **The same conflict recurs across iterations.** Escalate to the user with
   both positions stated. Do not pick a side silently because you have picked it
   before.
-- **The change touches an area no agent owns** — a release script, the GitHub
-  Action, the workspace configuration. Say so plainly rather than dispatching
+- **The change touches an area no agent owns** — the GitHub Action in
+  `action/action.yml`, the workspace configuration in `pnpm-workspace.yaml`,
+  `CHANGELOG.md`. Say so plainly rather than dispatching
   the closest two by analogy. Four agents cover four domains, and the honest
   answer when a change falls outside all of them is that this roster has
   nothing to say about it.
