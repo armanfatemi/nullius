@@ -55,17 +55,17 @@ A single file commonly matches multiple rules. Apply **all** rules that match �
 
 This repo's cross-cutting doctrine lives in `CLAUDE.md` and `spec/*.md`
 (`spec/evidence-anchors.md`, `spec/binding-moments.md`, `spec/witness-journal.md`,
-`spec/wiring.md`). None of them declares a `governed-files` glob in YAML
-frontmatter — they are narrative prose that applies globally, not scoped to a
-matching path. There is nothing here to extract with `awk`, and no `## Invariants`
-section to isolate with `sed`.
+`spec/wiring.md`). None of them scopes itself to particular files the way a
+`.claude/rules/*.md` file's `applies_to` frontmatter does — they are narrative prose
+that applies globally, not scoped to a matching path. There is nothing here to
+extract with `awk`, and no `## Invariants` section to isolate with `sed`.
 
 Checking a change against that global doctrine is not this agent's job — it is
 **`architecture-reviewer`'s**, per the boundary stated above. If a future doc in
-this family ever does add a scoped `governed-files` glob, extract it in one shell
-call rather than reading the doc, and only open the doc once a glob overlaps an
-in-scope file — the failure mode to avoid is a confident audit built on a doc
-nobody actually opened.
+this family ever does add its own `applies_to`-style scoped glob, extract it in
+one shell call rather than reading the doc, and only open the doc once a glob
+overlaps an in-scope file — the failure mode to avoid is a confident audit
+built on a doc nobody actually opened.
 
 ## Workflow
 
