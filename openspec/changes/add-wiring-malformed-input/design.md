@@ -261,7 +261,7 @@ export function hookTarget(command: string, pluginRoot: string): string | null {
 - Whether `unclosed-frontmatter` should also count toward
   `WiringReport.references` the way `unsubstituted-token` does (a token found
   in prose still increments `references`,
-  `packages/claims/src/wiring.ts:368@8c6ea59`) or should not, on the reasoning
+  `packages/claims/src/wiring.ts:370@8c6ea59`) or should not, on the reasoning
   that a parse failure examined zero declared references rather than one bad
   one. Implementation should follow whichever reading keeps
   `cli.ts`'s "references === 0 means nothing was ever examined" invariant
