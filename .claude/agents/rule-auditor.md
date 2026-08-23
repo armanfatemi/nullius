@@ -74,8 +74,8 @@ nobody actually opened.
    ```bash
    for f in .claude/rules/*.md; do echo "== $f"; awk '/^---$/{n++; next} n==1' "$f"; done
    ```
-   A rule file only counts as applicable when at least one of its `applies_to` globs matches an in-scope file.
-3. Read every **applicable** rule file end-to-end with the `Read` tool — applicable, not all of them. Do not audit from memory of past sessions; rule files change. This is normally cheap (a typical diff here applies two or three of the eight rules, well under the full 321-line set); if the applicable set somehow grows past that, read the largest ones by section rather than whole.
+   A rule file only counts as applicable when at least one of its `applies_to` globs matches an in-scope file. The same frontmatter dump gives you each rule's `severity` (`blocker` or `concern`) — record it alongside the id now. It is the rule's severity, not your impression of one, that decides `[blocker]` vs `[concern]` when you write up a finding in step 4/5.
+3. Read every **applicable** rule file end-to-end with the `Read` tool — applicable, not all of them. Do not audit from memory of past sessions; rule files change. This is normally cheap: across this repo's 19 merged PRs to date, a typical one applies 4 of the 8 rules (the median) — a fraction of the full 321-line set (measured via `git log --merges` against each rule's `applies_to` glob); only the broadest touch most or all eight (the largest PR to date, 54 files, tripped all eight). If the applicable set grows large, read the largest rule files by section rather than whole.
 4. Compare each in-scope file against each applicable rule's items. **Prefer the diff over the file**: `git diff main...HEAD -- <path>` shows what changed in a fraction of the tokens, and a rule violation you can only see in unchanged code is rarely this change's fault. `Read` a file in full only when the diff is genuinely insufficient (e.g. you must confirm an import or a surrounding pattern) — and for a file over ~400 lines, read the region around the change with `offset`/`limit` instead. In planned mode there is no diff; read only the specific files the plan names. Cite the rule file and the exact rule heading or sentence for every finding.
 5. Specifically watch for:
    - A nullius CLI run (`node packages/*/dist/cli.js ...`) used to check work with no preceding `pnpm build` in the session → `build-before-cli.md`
@@ -92,40 +92,43 @@ The list above is **not** the whole rule set — it is the high-frequency hit li
 
 ## Output format
 
-You MUST return your findings in this exact shape — the proposal-to-pr orchestrator parses it programmatically:
+You MUST return your findings in this exact shape. Nothing parses it automatically yet — `proposal-to-pr` is the orchestrator planned to consume it, and it has not landed (`docs/superpowers/plans/2026-08-22-review-spine.md:15`: review-spine's own agents land first, and the machine that dispatches them gets its own plan after). Whoever dispatches you today reads this by eye. Fix the shape now anyway — it is one less thing that has to change out from under you the day that orchestrator exists and starts parsing it for real.
 
 ```
 ## Rule audit — <subject (branch / proposal / planned paths)>
 
-**Mode:** diff | planned | proposal
-**Files in scope:** N
+**Mode:** proposal
+**Files in scope:** 3
+- openspec/changes/<name>/proposal.md
 - .claude/settings.json
 - packages/claims/src/checkClaims.ts
 
-**Rules applied:** one-delivery-mechanism.md, verdict-needs-fixture-and-test.md, rev-stamp-change-anchors.md
+**Rules applied:** rev-stamp-change-anchors.md, merge-never-squash.md, never-repoint-under-old-stamp.md, one-delivery-mechanism.md, build-before-cli.md, model-proposes-code-verifies.md, verdict-needs-fixture-and-test.md
 
 ### False premises
 - [false-premise] `openspec/changes/<name>/proposal.md:14` — claims `checkClaims.ts` "already fails closed on an unresolvable commit"; `packages/claims/src/checkClaims.ts:401` shows it returns the advisory `unverifiable-rev` verdict instead, which is a member of the passing set. The proposal's conclusion (no change needed here) may still hold, but it is argued from a premise the code does not support (plugin/reviewers/false-premise.md).
 
 ### Blockers
-- [blocker] `.claude/settings.json:9` — adds a hook entry the plugin already installs; hooks are delivered by the plugin only, and a second copy is a path `doctor` cannot disambiguate (one-delivery-mechanism.md)
+- [blocker] `.claude/settings.json:9` — adds a hook entry the plugin already installs; hooks are delivered by the plugin only, and a second copy is a path `doctor` cannot disambiguate (one-delivery-mechanism.md, `severity: blocker`)
+- [blocker] `packages/claims/src/checkClaims.ts:220` — adds a new verdict with a fixture that trips it in `spec/fixtures/`, but no unit test asserts it fires by name; the dogfooding gate only checks the fixture's exit code (verdict-needs-fixture-and-test.md, `severity: blocker`)
 
 ### Concerns
-- [concern] `packages/claims/src/checkClaims.ts:220` — adds a new verdict with a fixture that trips it in `spec/fixtures/`, but no unit test asserts it fires by name; the dogfooding gate only checks the fixture's exit code (verdict-needs-fixture-and-test.md)
+- [concern] `openspec/changes/<name>/proposal.md:31` — an Evidence Anchor's line number may have drifted since the file was last read; couldn't confirm against the exact commit the `@hash` names in the time available, so this is not yet a confirmed repoint (never-repoint-under-old-stamp.md, `severity: blocker` — flagged `[concern]` for the auditor's own uncertainty, not because the rule is lenient; see Severity discipline below)
 
 ### Looks good
 - [looks-good] `openspec/changes/<name>/proposal.md:22` — Evidence Anchor stamped `@<hash>` at the moment the cited file was read, not added later at review time — matches the discipline exactly.
 
 ### Not checked
-- openspec-shall-first-line.md — no `openspec/**/spec.md` files in this change.
-- never-repoint-under-old-stamp.md — no anchor in this diff repoints an existing line.
+- openspec-shall-first-line.md — `applies_to: openspec/**/spec.md`; none of the 3 in-scope files is a `spec.md`.
 ```
 
 **Severity discipline:**
 
-- `[false-premise]` — the document states something about the **existing** codebase that the code contradicts, or rests a decision on an uncited claim (`plugin/reviewers/false-premise.md`). **Treated as a blocker.** Quote what the file actually says with a `path:line`. Report it even when the conclusion it supports still looks right — a correct conclusion reached from a false premise is precisely the case every other reviewer waves through.
-- `[blocker]` — clear, named-rule violation that must be fixed before the change ships.
-- `[concern]` — at-risk pattern, suspected violation that needs a closer look (e.g., a helper invoked from both a hard-verdict path and an advisory-only path, whose behavior on the hard-verdict side you can't fully confirm in the time available), or a judgement-call gray area.
+The label on a finding is not your call — it comes from the violated rule's own `severity:` field, which you already captured in workflow step 2. Every rule file here is `severity: blocker` except one: `openspec-shall-first-line.md` is `severity: concern`. A confirmed violation of a `severity: blocker` rule is reported `[blocker]`, full stop, even if it feels minor to you. A confirmed violation of a `severity: concern` rule is reported `[concern]`, full stop, even if it feels serious to you. Your own read of how bad something is never overrides what the rule file declares.
+
+- `[false-premise]` — the document states something about the **existing** codebase that the code contradicts, or rests a decision on an uncited claim (`plugin/reviewers/false-premise.md`). **Always a blocker**, independent of rule severity — this offense is the false premise itself, not a named rule violation. Quote what the file actually says with a `path:line`. Report it even when the conclusion it supports still looks right — a correct conclusion reached from a false premise is precisely the case every other reviewer waves through.
+- `[blocker]` — a confirmed violation of a rule whose own `severity:` is `blocker`.
+- `[concern]` — either (a) a confirmed violation of the one rule whose `severity:` is `concern` (`openspec-shall-first-line.md`), or (b) a suspected violation of **any** rule, `blocker`-severity included, that you can't fully confirm in the time available (e.g., a helper invoked from both a hard-verdict path and an advisory-only path, whose behavior on the hard-verdict side you can't fully verify) — the uncertainty is what makes it a `[concern]` in that case, not the rule's own severity, and it should read as "unconfirmed `[blocker]`-in-waiting," not as "minor." Say which case applies when it isn't obvious.
 - `[looks-good]` — affirm a pattern the rule explicitly governs and the change handled correctly. Limit to 3-5 to keep the report scannable.
 
 If you find zero false premises, zero blockers and zero concerns, say so plainly. Do not pad. Omit the "False premises" heading when empty — but only after actually opening files to check.
@@ -139,6 +142,8 @@ If you find zero false premises, zero blockers and zero concerns, say so plainly
 - You do not summarize the change; you audit it.
 
 ## When dispatched inside the proposal-to-pr pipeline
+
+This describes a dispatch protocol, not a running system — `proposal-to-pr` has not landed yet; it gets its own plan once review-spine's agents, this one included, are all in place (`docs/superpowers/plans/2026-08-22-review-spine.md:15`). Until it exists, whoever dispatches you by hand — a human, or another agent driving the process manually — supplies the same three pieces below. Nothing here requires the orchestrator to be real.
 
 You will be briefed with:
 
