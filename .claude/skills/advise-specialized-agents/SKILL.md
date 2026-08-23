@@ -127,10 +127,12 @@ candidates, the pre-flight produces dispatches.
 | --- | --- | --- |
 | A kernel checker module — `checkClaims.ts`, `witness.ts`, `wiring.ts`, `config.ts` | `checker-engineer`, `rule-auditor` | `architecture-reviewer` (if a seam moves: a new core, a new filesystem touch, a union growing), `test-engineer` (if a verdict is added or a decision path changes) |
 | A new verdict in any of the three unions | `checker-engineer`, `test-engineer` | `rule-auditor` (`verdict-needs-fixture-and-test` is `severity: blocker` and matches both the source and fixture globs), `architecture-reviewer` (if it hard-fails on a match that could plausibly fire on ordinary prose) |
-| A config key added, renamed, or removed | `checker-engineer` | A key declared on one side of the interface/known-key pair and not the other passes validation and is silently dropped. That is `checker-engineer`'s own `[blocker]`, not a coverage question — do not route it elsewhere. Add `test-engineer` only if the change also touches a fixture or a gate |
-| A kit or CLI change — anything under `packages/kit/`, or `packages/claims/src/cli.ts` | `rule-auditor` | `architecture-reviewer` (the dependency direction, and whether harness coupling stayed on the kit side). Not `checker-engineer` — it declines `packages/kit/` by its own boundary, and dispatching it there is a pre-flight miss, not a thorough review |
+| A config key added, renamed, or removed | `checker-engineer` | The silent failure is a key that reaches `KNOWN_KEYS` with no matching assignment branch in `parseConfig` — it validates cleanly and its value is never copied into the config. A key the interface declares but `KNOWN_KEYS` omits does not slip through; it throws at `config.ts:77`. Either way that is `checker-engineer`'s own `[blocker]`, not a coverage question — do not route it elsewhere. Add `test-engineer` only if the change also touches a fixture or a gate |
+| A kit or CLI change — anything under `packages/kit/`, or `packages/claims/src/cli.ts` | `rule-auditor` | `architecture-reviewer` (the dependency direction, and whether harness coupling stayed on the kit side), `test-engineer` (the `*.test.ts` files under `packages/kit/src/` are named in its own domain, and it is the only agent that claims them). Not `checker-engineer` — it declines `packages/kit/` by its own boundary, and dispatching it there is a pre-flight miss, not a thorough review |
 | A plugin or hook change — the scripts and JSON under `plugin/hooks/`, or `.claude/settings.json` | `architecture-reviewer` (can every new failure path still reach a fail-open exit?), `rule-auditor` (`one-delivery-mechanism` matches both `.claude/settings.json` and `plugin/hooks/hooks.json`) | `test-engineer` (if the change alters what a dogfooding gate runs) |
+| A plugin skill, command, or reviewer prompt under `plugin/` | `rule-auditor` (`model-proposes-code-verifies` scopes `plugin/**/*.md`) | Nothing else claims these paths. `architecture-reviewer`'s post-review priority list names `plugin/hooks/*.sh` and nothing else under `plugin/`, so a reviewer prompt or a command body is unowned — say so rather than dispatching the hook row's agents by analogy |
 | A spec-family document under `spec/` | `architecture-reviewer` | `rule-auditor` (`never-repoint-under-old-stamp` and `merge-never-squash` both scope `spec/**/*.md`) |
+| A document under `docs/`, or `README.md` | `rule-auditor` (`never-repoint-under-old-stamp` scopes `docs/**/*.md` and `README.md`; `merge-never-squash` scopes `README.md` too) | `architecture-reviewer` only when the document makes load-bearing claims about existing code — the descriptive question is the reason to dispatch it, not any invariant, and say so in the brief. The recurring defect on this path is a spec that has drifted from what actually shipped, which every anchor in it can verify while the prose around them goes stale |
 | An OpenSpec proposal under `openspec/changes/` | `rule-auditor` in proposal mode, `architecture-reviewer` against the design document | `checker-engineer` and `test-engineer` — but only when the plan names kernel files or new verdicts. In pre-review they audit the plan, not code that does not exist yet |
 | Fixtures or the CI gates | `test-engineer` | `rule-auditor` (both globs are named by `verdict-needs-fixture-and-test`) |
 | A new agent or rule under `.claude/agents/` or `.claude/rules/` | `architecture-reviewer` — those two paths are named in its own post-review priority list, and the question is whether the new artifact duplicates doctrine that already has a home instead of pointing at it | Nothing else, and see the note below |
@@ -296,11 +298,18 @@ vocabulary, which makes a merged report straightforward:
    field, and a `[blocker]` you found minor is still a `[blocker]`. Only
    `rule-auditor` and `architecture-reviewer` emit `[false-premise]`, and it is
    always a blocker regardless of which rule or invariant it sits near.
-3. **Read a `[concern]` as an unconfirmed blocker, not as a nit.** Three of the
-   four agents use it for a finding they could not confirm in the time
-   available, which is a different thing from a finding they judged small.
-   `checker-engineer` is the exception: its `[concern]` marks a calibration
-   call it wants a human to weigh, not a finding it ran out of time on.
+3. **Read a `[concern]` as an unconfirmed blocker, not as a nit — with two
+   exceptions, both stated by the agent that owns them.** The default reading
+   is a finding the agent could not confirm in the time available, which is a
+   different thing from a finding it judged small. `checker-engineer` is one
+   exception: its `[concern]` marks a calibration call it wants a human to
+   weigh, not a finding it ran out of time on. `rule-auditor` is the other,
+   and only in one of its two documented cases — a *confirmed* violation of
+   `openspec-shall-first-line`, the single rule whose own `severity:` is
+   `concern`, is already rated exactly right and must not be escalated; its
+   other case, an unconfirmed violation of any rule, is the
+   unconfirmed-blocker reading. It says which case applies, so read the
+   finding rather than the label.
 4. **Surface disagreements; do not average them.** Name the disagreement, quote
    each position, and recommend one side with a specific reason — usually a
    rule file, an invariant, or a spec document. Refuse the anti-patterns:
