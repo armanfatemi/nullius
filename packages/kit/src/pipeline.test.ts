@@ -12,6 +12,12 @@ describe("parseDependsOn — the blockquote intent-to-proposal writes", () => {
     expect(parseDependsOn("> **Depends on:** None\n")).toEqual([]);
   });
 
+  it("does not lose a dependency whose name contains a word boundary hit", () => {
+    // Hyphens are word boundaries, so a `\bnone\b` guard applied to the whole
+    // segment swallows this dependency — failing open on a fail-closed gate.
+    expect(parseDependsOn("> **Depends on:** `add-none-checking`")).toEqual(["add-none-checking"]);
+  });
+
   it("does not mistake the template's trailing prose for a dependency", () => {
     // The template sentence contains the word None *after* the em-dash. A
     // parser that scans the whole line returns [] for a real dependency list.

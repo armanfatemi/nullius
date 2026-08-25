@@ -15,17 +15,18 @@ export type DepState = "satisfied" | "unsatisfied" | "orphaned" | "unknown";
 /**
  * Parse the `> **Depends on:**` blockquote `intent-to-proposal` writes.
  *
- * Only the text before the em-dash is read. The template's own trailing
- * sentence contains the word "None", so a parser that scans the whole line
- * reports no dependencies for a proposal that has them — failing open on the
- * one gate whose whole job is to fail closed.
+ * Only the text before the em-dash is read — the template's own trailing
+ * sentence after the em-dash contains the word "None", so reading the whole
+ * line would report no dependencies for a proposal that has them. Dependencies
+ * are the backticked names present. If the declared segment contains no
+ * backticks, there are no dependencies — whether the line reads `None`,
+ * contains only whitespace, or the blockquote is absent entirely.
  */
 export function parseDependsOn(proposal: string): string[] {
   for (const line of proposal.split("\n")) {
     const match = /^>\s*\*\*Depends on:\*\*\s*(.+)$/.exec(line);
     if (match === null) continue;
     const declared = (match[1] ?? "").split("—")[0] ?? "";
-    if (/\bnone\b/i.test(declared)) return [];
     return [...declared.matchAll(/`([^`]+)`/g)].map((hit) => hit[1] ?? "").filter((name) => name.length > 0);
   }
   return [];
