@@ -12,8 +12,13 @@
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-/** A dependency's state as the Stage 1 gate sees it. */
-export type DepState = "satisfied" | "unsatisfied" | "orphaned" | "unknown";
+/** A dependency's state as `dep-status` can prove it from the filesystem —
+ *  exactly the two values it emits. The `unsatisfied` / `orphaned` distinction
+ *  belongs to the PR half of the gate, which needs a network call the kit
+ *  deliberately does not make; `classifyCompareStatus` carries that union.
+ *  Declaring the richer vocabulary here would offer callers two states this
+ *  module can never return. */
+export type DepState = "satisfied" | "unknown";
 
 /**
  * Parse the `> **Depends on:**` blockquote `intent-to-proposal` writes.
@@ -161,11 +166,22 @@ export function routeAgents(paths: readonly string[]): AgentName[] {
  * every path.
  */
 export function routePathsFrom(input: string): AgentName[] {
-  const paths = input
+  return routeAgents(stdinPaths(input));
+}
+
+/**
+ * The non-empty, trimmed lines of a stdin payload.
+ *
+ * Split out of `routePathsFrom` because "nothing was piped in" has to be
+ * distinguishable from "these paths earned this set". `routeAgents` always
+ * returns the unconditional `rule-auditor`, so an empty payload otherwise
+ * produces a one-agent answer that reads exactly like a real routing result.
+ */
+export function stdinPaths(input: string): string[] {
+  return input
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => line.length > 0);
-  return routeAgents(paths);
 }
 
 /** One human-only command found in a change's own artefacts. */
@@ -308,10 +324,12 @@ usage:
   dep-status <change>           exit 0 only if provably archived
   classify-compare <status>     landed | orphaned | unknown; exit 0 on landed
   evidence-append <change> <h>  read a section from stdin
-  evidence-print <change>       print accumulated review evidence
+  evidence-print <change>       print accumulated review evidence; exit 1 if
+                                 there is none to print
   progress-write <change>       overwrite progress.md from stdin
 
-Exit codes: 0 ok · 1 pause or blocker · 2 usage error`;
+Exit codes: 0 ok · 1 pause, blocker, or an artefact that is not there
+            2 usage error`;
 
 function changeDir(root: string, change: string): string {
   return join(root, "openspec", "changes", change);
@@ -321,7 +339,38 @@ function readIfPresent(path: string): string {
   return existsSync(path) ? readFileSync(path, "utf8") : "";
 }
 
-export function runPipeline(argv: readonly string[]): number {
+/**
+ * How a subcommand gets its piped payload.
+ *
+ * Injectable so that "nothing arrived on stdin" is assertable as an exit code.
+ * A test that read fd 0 for real would block on a terminal — which is the
+ * precise failure the `isTTY` guards below exist to prevent, so reproducing it
+ * inside the suite that proves they work is not an option.
+ */
+export type StdinReader = () => string;
+
+const readStdin: StdinReader = () => readFileSync(0, "utf8");
+
+/**
+ * Refuse to answer a question about an artefact that is not there.
+ *
+ * Every subcommand guarded by this reports its finding as an *absence* — no
+ * prerequisites, no human-only commands, no touched paths, no accumulated
+ * evidence — and a missing file produces exactly that answer for exactly the
+ * wrong reason. `show` catches an incomplete change on the linear path, but a
+ * resume re-enters at a later stage without re-running it, so the guard has to
+ * live with each reader rather than upstream of all of them.
+ *
+ * The bar is "at least one of the files this subcommand actually reads": a
+ * command reading two artefacts has read something if either is present, and
+ * demanding both would block a change that legitimately carries one.
+ */
+function missingArtefacts(dir: string, change: string, files: readonly string[]): string | null {
+  if (files.some((file) => existsSync(join(dir, file)))) return null;
+  return `no ${files.join(" or ")} in openspec/changes/${change}/`;
+}
+
+export function runPipeline(argv: readonly string[], readInput: StdinReader = readStdin): number {
   const rootIndex = argv.indexOf("--root");
   const root = rootIndex === -1 ? process.cwd() : (argv[rootIndex + 1] ?? process.cwd());
   // Guard the -1 case explicitly. `indexOf` returns -1 when the flag is
@@ -352,7 +401,23 @@ export function runPipeline(argv: readonly string[]): number {
     // artefacts. Handled here, before the change-name guard, so a caller
     // piping `git diff --name-only` isn't rejected for missing an argument
     // this subcommand doesn't take.
-    for (const agent of routePathsFrom(readFileSync(0, "utf8"))) console.log(agent);
+    //
+    // Both guards below are the ones `evidence-append` and `progress-write`
+    // already carry. An unattended runner that blocks on a terminal read stops
+    // with no error and no exit code, indistinguishable from work still in
+    // progress; and a payload that arrived empty is not a routing question at
+    // all — `routeAgents` would answer it with the unconditional reviewer, and
+    // Stage 6 would read that as a routed set.
+    if (process.stdin.isTTY === true) {
+      console.error(`pipeline ${command} reads its paths on stdin, one per line`);
+      return 2;
+    }
+    const paths = stdinPaths(readInput());
+    if (paths.length === 0) {
+      console.error("pipeline route-paths got no paths on stdin — routing nothing is not a routing answer");
+      return 1;
+    }
+    for (const agent of routeAgents(paths)) console.log(agent);
     return 0;
   }
 
@@ -410,8 +475,9 @@ export function runPipeline(argv: readonly string[]): number {
       // proposal does. unapprovedBlocks("") is [] — an absent proposal.md
       // would otherwise read as "every box checked, proceed" for the one
       // gate that protects a human decision.
-      if (!existsSync(join(dir, "proposal.md"))) {
-        console.error(`no proposal.md in openspec/changes/${change}/`);
+      const absent = missingArtefacts(dir, change, ["proposal.md"]);
+      if (absent !== null) {
+        console.error(absent);
         return 1;
       }
       const unchecked = unapprovedBlocks(proposal);
@@ -419,15 +485,43 @@ export function runPipeline(argv: readonly string[]): number {
       return unchecked.length > 0 ? 1 : 0;
     }
     case "blocked-commands": {
+      // These two files are the whole corpus this scan reads. With neither
+      // present the answer is "this change contains no human-only commands",
+      // which is the reassurance a coordinator acts on right before running
+      // something only a human may run.
+      const absent = missingArtefacts(dir, change, ["tasks.md", "design.md"]);
+      if (absent !== null) {
+        console.error(absent);
+        return 1;
+      }
       const found = [...blockedCommands(tasks), ...blockedCommands(design)];
       for (const entry of found) console.log(`HUMAN: ${entry.text}  — ${entry.reason}`);
       return found.length > 0 ? 1 : 0;
     }
     case "touched-areas": {
+      // Silence is a legitimate answer here — a proposal may genuinely name no
+      // source file — but only once something was read. With neither artefact
+      // present the empty set is Stage 1's `touched_areas`, handed onward as
+      // fact.
+      const absent = missingArtefacts(dir, change, ["proposal.md", "tasks.md"]);
+      if (absent !== null) {
+        console.error(absent);
+        return 1;
+      }
       for (const path of touchedPaths(`${proposal}\n${tasks}`)) console.log(path);
       return 0;
     }
     case "depends-on": {
+      // parseDependsOn("") is [], which the Stage 1 gate reads as "no
+      // prerequisites" — the one answer that gate must never get wrong, since
+      // it starts a change whose prerequisite has not landed. The resume path
+      // re-runs this gate without re-running `show`, so `show`'s completeness
+      // check does not cover it.
+      const absent = missingArtefacts(dir, change, ["proposal.md"]);
+      if (absent !== null) {
+        console.error(absent);
+        return 1;
+      }
       for (const name of parseDependsOn(proposal)) console.log(name);
       return 0;
     }
@@ -447,6 +541,17 @@ export function runPipeline(argv: readonly string[]): number {
       // routing decision back in a model's hands, untested, at every future
       // call site. `route-paths` deliberately does NOT do this: it routes
       // exactly the paths it is given, which is what Stage 6 needs from a diff.
+      //
+      // That injection is also why this needs its own guard: with nothing to
+      // read, the union still prints `architecture-reviewer` and
+      // `rule-auditor`, a plausible reviewer set that has silently dropped
+      // `checker-engineer` and `test-engineer` — a review stage that reports
+      // success and did not happen.
+      const absent = missingArtefacts(dir, change, ["proposal.md", "tasks.md"]);
+      if (absent !== null) {
+        console.error(absent);
+        return 1;
+      }
       const artefacts = ["proposal.md", "design.md", "tasks.md"].map(
         (file) => `openspec/changes/${change}/${file}`,
       );
@@ -489,10 +594,20 @@ export function runPipeline(argv: readonly string[]): number {
         console.error(`pipeline ${command} reads its content on stdin`);
         return 2;
       }
-      appendEvidence(root, change, heading, readFileSync(0, "utf8"));
+      appendEvidence(root, change, heading, readInput());
       return 0;
     }
     case "evidence-print": {
+      // Stage 8 seeds the pull request body from this. A run that resumed at
+      // Stage 8, or whose `evidence-append` calls failed, would otherwise
+      // print nothing, exit 0, and open a PR whose review-evidence and probe
+      // sections are empty — the silent-success shape, this time aimed at a
+      // human reviewer rather than at a later stage.
+      const absent = missingArtefacts(dir, change, ["review-evidence.md"]);
+      if (absent !== null) {
+        console.error(absent);
+        return 1;
+      }
       process.stdout.write(readIfPresent(join(dir, "review-evidence.md")));
       return 0;
     }
@@ -503,7 +618,7 @@ export function runPipeline(argv: readonly string[]): number {
         console.error(`pipeline ${command} reads its content on stdin`);
         return 2;
       }
-      writeFileSync(join(dir, "progress.md"), readFileSync(0, "utf8"), "utf8");
+      writeFileSync(join(dir, "progress.md"), readInput(), "utf8");
       return 0;
     }
     case "dep-status": {

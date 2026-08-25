@@ -46,8 +46,19 @@ Optional flags surfaced in the invocation:
 
 - `--from-stage <stage>` — resume from a specific stage (defaults to the stored stage, or 1)
 - `--no-auto-fix` — disable the Stage 5 auto-fix loop (single attempt only)
-- `--dry-run` — run reviews and report blockers; do not edit code or open a PR
-- `--max-refine 3` — cap pre-review refinement iterations (default 3)
+- `--dry-run` — **terminal stage: the end of Stage 2.** Run Stage 1 and Stage 2
+  in full — dependency gate, grounding gate, canary, parallel pre-review,
+  synthesis, both evidence appends — then report the blockers and **stop before
+  entering Stage 3**. Stage 3 is the first stage whose purpose is to edit
+  `proposal.md`, `design.md` or `tasks.md`, and Stage 4 edits code; a dry run
+  reaches neither. (Stage 2's canary is planted into the proposal and removed
+  again by the mandatory `canary clear`, so the run still ends with every
+  artefact as it found it. `review-evidence.md` is the record of the review that
+  did happen, and is written either way.) Save `paused=true`,
+  `pause_reason=dry_run`, and leave `stage` at whatever Stage 2's Decision
+  selected, so a later invocation without the flag resumes there.
+- `--max-refine <n>` — cap Stage 3 refinement iterations. **Default 3.** Stage 3
+  reads this value; it is not a second hard-coded 3.
 
 ## The two command lines
 
@@ -89,13 +100,24 @@ route-paths                   the agents these paths earn — exactly the ones
 dep-status <change>           exit 0 only if provably archived
 classify-compare <status>     landed | orphaned | unknown; exit 0 on landed
 evidence-append <change> <h>  read a section from stdin
-evidence-print <change>       print accumulated review evidence
+evidence-print <change>       print accumulated review evidence; exit 1 if
+                              there is none to print
 progress-write <change>       overwrite progress.md from stdin
 ```
 
 **Exit codes are the contract.** `pause-check`, `blocked-commands` and
 `dep-status` return 1 when they find something. Read the code, not the prose on
 stdout.
+
+**Exit 1 also means "I could not read the artefact this answer is about."**
+Every subcommand that reports a finding as an *absence* — `pause-check`,
+`blocked-commands`, `touched-areas`, `depends-on`, `route`, `evidence-print` —
+returns 1 with a message on **stderr** rather than an empty, confident answer on
+stdout, because a missing file produces the reassuring answer for the wrong
+reason. `route-paths` does the same for a stdin payload that carried no paths.
+`show` catches an incomplete change on the way in, but a resume re-enters at a
+later stage without re-running it, so never treat a silent exit 0 from an
+earlier stage as covering these.
 
 ## Hard rules (do not violate)
 
@@ -321,10 +343,14 @@ this is a gate rather than a courtesy.
 5. `node packages/kit/dist/cli.js pipeline pause-check <change>`. Exit 1 → save
    `paused=true`, `pause_reason=human_approval_required`, surface the unchecked
    items, **stop**.
-6. `node packages/kit/dist/cli.js pipeline blocked-commands <change>`. Exit 1 →
-   save the list under `human_commands`. Do **not** stop here — these are noted
-   now so the relevant tasks can be flagged in Stage 4. The pipeline pauses only
-   when one of those commands actually needs to run.
+6. `node packages/kit/dist/cli.js pipeline blocked-commands <change>`. Exit 1
+   with one or more `HUMAN:` lines → save the list under `human_commands`. Do
+   **not** stop here — these are noted now so the relevant tasks can be flagged
+   in Stage 4. The pipeline pauses only when one of those commands actually
+   needs to run. Exit 1 with **no** `HUMAN:` lines is the other case: it means
+   neither `tasks.md` nor `design.md` was there to scan, so "this change
+   contains no human-only commands" was never established. Bail with the
+   message it printed rather than recording an empty list.
 7. Record `feature_branch` as `feat/<change>` and `pr_base_branch` as `main`
    unless the user says otherwise.
 
@@ -540,6 +566,11 @@ node packages/claims/dist/cli.js canary clear
 - exit 1 → `missed`. Record it and keep going.
 - exit 3 → `tainted`. A report named the probe machinery, so the result is void.
   **Never record a tainted run as caught.**
+- exit 2 → could not run — an unreadable registry, for instance. Record
+  `probe=not-planted` and keep going, on the same rule as a failed `plant`:
+  instrumentation never blocks shipping, and a probe that could not be scored
+  says nothing about the review layer either way. Write the Step 6 probe section
+  with `verdict: not-planted` and the error in place of the location.
 
 **`canary clear` is mandatory before Stage 3**, and it runs whatever the verdict
 was. A canary left planted fails `check` at Stage 8 with `CANARY-PRESENT` — the
@@ -597,6 +628,11 @@ State transition: `stage: pre-review` → `stage: refine` | `stage: implement`.
 
 ## Stage 3 — Refine
 
+**`--dry-run` stops here, before the first edit.** If the invocation carried it,
+report the Stage 2 synthesis and blocker list, save `paused=true` and
+`pause_reason=dry_run`, and end the run. Everything below this line mutates an
+artefact.
+
 Goal: edit the proposal, design or tasks until reviewers return zero blockers.
 
 For each blocker:
@@ -614,9 +650,12 @@ After edits, increment `iteration` and loop back to Stage 2. Note that Stage 2
 re-plants a canary each round; that is intended, and each round's probe is
 recorded under its own iteration.
 
-**Iteration cap: 3.** If hit, surface "3 refinement iterations completed; N
-blockers remain" with the list, and save `paused=true`,
-`pause_reason=refinement_cap`.
+**Iteration cap: `--max-refine`, default 3.** Read the flag from the invocation;
+absent, the cap is 3. Compare it against `iteration` in state. If hit, surface
+"<cap> refinement iterations completed; N blockers remain" with the list, and
+save `paused=true`, `pause_reason=refinement_cap`. Do not carry a second literal
+3 anywhere in this stage — a hard-coded cap makes the declared flag inert, and a
+flag that silently does nothing is worse than one that was never offered.
 
 State transition: `stage: refine` → `stage: pre-review`.
 
@@ -917,6 +956,30 @@ Seed the review evidence from the file rather than from memory:
 node packages/kit/dist/cli.js pipeline evidence-print <change>
 ```
 
+**Then read what it printed, before writing a line of the body.** Exit 1 means
+there is no `review-evidence.md` at all. Exit 0 is not sufficient on its own:
+the body below has a `## Review evidence` section and a `## Probe` section, and
+both are filled from this output, so **assert that the printed text contains a
+`## Probe — stage 2` section** — the heading Stage 2 Step 6 appends under, and
+the one `retro-writer` reads by name.
+
+If it is absent, the run has no record that the review layer was measured, and
+this is the last moment that is detectable: from here it becomes a PR that looks
+complete to a human reviewer, with two empty sections and a green pipeline. Do
+not paper over it and do not write the section from memory of the run. Instead:
+
+- The section is missing because Stage 2 never ran on this invocation (a resume
+  entered at Stage 8, or an `evidence-append` failed). **Go back and run Stage
+  2** — it is one parallel round, and it is the whole reason the PR is
+  trustworthy.
+- If Stage 2 genuinely ran unprobed, its Step 6 still appends the section with
+  `verdict: not-planted`. An absent section and an unprobed run are different
+  facts; only the second one is allowed to reach a PR, and only in writing.
+- If the user asks to proceed anyway, say so **in the PR body** under `## Probe`
+  — "no probe section in `review-evidence.md`; the review layer was not measured
+  on this run" — rather than leaving the heading empty. An empty section reads
+  as nothing to report.
+
 Template:
 
 ```
@@ -1042,6 +1105,9 @@ you what to do:
   stay paused.
 - `human_command:<task_id>` — confirm with the user that the command ran. Tick
   the task and resume Stage 4.
+- `dry_run` — the run stopped at the end of Stage 2 by request; nothing was
+  edited. Re-invoking **without** `--dry-run` clears the pause and resumes from
+  the stored `stage`. Re-invoking with it again re-runs Stage 2 and stops again.
 - `refinement_cap` — the user must have addressed the remaining blockers. Re-run
   Stage 2.
 - `verify_failed:<chunk>:<check>` — re-run that check on that chunk. Passes →

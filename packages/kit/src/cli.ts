@@ -47,7 +47,7 @@ const USAGE = `nullius-kit — witness recording for agent runs
 usage:
   nullius-kit init   [--profile <name>] [--dry-run] [--yes] [--root <dir>]
   nullius-kit doctor [--fix] [--root <dir>]
-  nullius-kit pipeline <command> <change> [--root <dir>]
+  nullius-kit pipeline <command> [<change>] [--root <dir>]
   nullius-kit witness record [--origin hooks|self-reported] [--root <dir>]
   nullius-kit witness check  [--root <dir>]
 

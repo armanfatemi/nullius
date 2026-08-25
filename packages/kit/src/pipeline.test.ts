@@ -526,3 +526,107 @@ describe("runPipeline — the directory guard proves the artefact was read", () 
     writeStateKey(root, "brand-new", "stage", "load");
     expect(runPipeline(["state-get", "brand-new", "--root", root])).toBe(0);
   });
+
+/**
+ * Set `process.stdin.isTTY` for the duration of one assertion and put it back.
+ *
+ * Two of these tests need it true (prove the subcommand refuses rather than
+ * blocks) and two need it false (prove what it does with a payload that
+ * arrived and was empty). Leaving the real value in place would make which
+ * one they measure depend on whether the suite was launched from a terminal.
+ */
+function withStdinTTY<T>(value: boolean, body: () => T): T {
+  const original = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
+  Object.defineProperty(process.stdin, "isTTY", { value, configurable: true });
+  try {
+    return body();
+  } finally {
+    if (original) Object.defineProperty(process.stdin, "isTTY", original);
+    else delete (process.stdin as { isTTY?: boolean }).isTTY;
+  }
+}
+
+describe("runPipeline — an absent artefact is not an answer about the artefact", () => {
+  it("returns 1 from evidence-print when there is no review-evidence.md", () => {
+    // Stage 8 seeds the PR body from this. Printing nothing and exiting 0
+    // opens a PR whose "## Review evidence" and "## Probe" sections are empty
+    // and reports success — the silent-success shape, aimed at a human.
+    const root = scratch();
+    expect(runPipeline(["evidence-print", "add-thing", "--root", root])).toBe(1);
+  });
+
+  it("returns 0 from evidence-print once a section has been appended", () => {
+    const root = scratch();
+    appendEvidence(root, "add-thing", "Probe — stage 2", "caught");
+    expect(runPipeline(["evidence-print", "add-thing", "--root", root])).toBe(0);
+  });
+
+  it("returns 1 from depends-on when there is no proposal.md", () => {
+    // Silence here reads as "no prerequisites" — the one answer the Stage 1
+    // dependency gate must never get wrong, because it starts a change whose
+    // prerequisite has not landed.
+    const root = scratch();
+    expect(runPipeline(["depends-on", "add-thing", "--root", root])).toBe(1);
+  });
+
+  it("returns 0 from depends-on when a proposal declares None", () => {
+    const root = scratch();
+    writeFileSync(join(root, "openspec/changes/add-thing/proposal.md"), "> **Depends on:** None\n");
+    expect(runPipeline(["depends-on", "add-thing", "--root", root])).toBe(0);
+  });
+
+  it("returns 1 from blocked-commands when neither tasks.md nor design.md exists", () => {
+    const root = scratch();
+    writeFileSync(join(root, "openspec/changes/add-thing/proposal.md"), "# P\n");
+    expect(runPipeline(["blocked-commands", "add-thing", "--root", root])).toBe(1);
+  });
+
+  it("returns 0 from blocked-commands when design.md alone is present and clean", () => {
+    // Proves the new guard did not turn every clean change into a blocker:
+    // one of the two files it reads is enough to have read something.
+    const root = scratch();
+    writeFileSync(join(root, "openspec/changes/add-thing/design.md"), "# D\n\nNothing human-only.\n");
+    expect(runPipeline(["blocked-commands", "add-thing", "--root", root])).toBe(0);
+  });
+
+  it("returns 1 from touched-areas when neither proposal.md nor tasks.md exists", () => {
+    const root = scratch();
+    expect(runPipeline(["touched-areas", "add-thing", "--root", root])).toBe(1);
+  });
+
+  it("returns 1 from route when neither proposal.md nor tasks.md exists", () => {
+    // route unions the change's own artefact paths, so with nothing to read it
+    // still prints architecture-reviewer and rule-auditor — a plausible
+    // reviewer set that silently drops checker-engineer and test-engineer.
+    const root = scratch();
+    expect(runPipeline(["route", "add-thing", "--root", root])).toBe(1);
+  });
+
+  it("still routes a change whose proposal exists", () => {
+    const root = scratch();
+    writeFileSync(join(root, "openspec/changes/add-thing/proposal.md"), "# P\n\nTouches `checkClaims.ts`.\n");
+    expect(runPipeline(["route", "add-thing", "--root", root])).toBe(0);
+    expect(runPipeline(["touched-areas", "add-thing", "--root", root])).toBe(0);
+  });
+});
+
+describe("runPipeline — route-paths neither blocks nor answers from nothing", () => {
+  it("refuses route-paths on a TTY rather than blocking on a read that will never come", () => {
+    expect(withStdinTTY(true, () => runPipeline(["route-paths"]))).toBe(2);
+  });
+
+  it("returns 1 from route-paths when stdin yields no paths at all", () => {
+    // Routing nothing is not a routing answer: an empty diff piped in
+    // produced `rule-auditor` and exit 0, which Stage 6 reads as a routed
+    // review set.
+    expect(withStdinTTY(false, () => runPipeline(["route-paths"], () => ""))).toBe(1);
+    expect(withStdinTTY(false, () => runPipeline(["route-paths"], () => "  \n\n"))).toBe(1);
+  });
+
+  it("still routes the paths it is given", () => {
+    const routed = withStdinTTY(false, () =>
+      runPipeline(["route-paths"], () => "packages/claims/src/wiring.ts\nspec/wiring.md\n"),
+    );
+    expect(routed).toBe(0);
+  });
+});
