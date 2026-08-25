@@ -9,6 +9,9 @@
  * and the run then reports a review that never happened.
  */
 
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+
 /** A dependency's state as the Stage 1 gate sees it. */
 export type DepState = "satisfied" | "unsatisfied" | "orphaned" | "unknown";
 
@@ -179,4 +182,54 @@ export function unapprovedBlocks(proposal: string): number[] {
     if (openedAt > 0 && /^\s*-\s*\[ \]/.test(line)) unchecked.push(index + 1);
   });
   return unchecked;
+}
+
+/**
+ * Where a run's resume state lives.
+ *
+ * Under `.git/`, beside the canary registry, because machine-local nullius
+ * state already has a home there — which means no `.gitignore` entry and one
+ * convention rather than two. `review-evidence.md` and `progress.md` are the
+ * opposite case: they are committed into the change folder, where CI already
+ * re-verifies any claim they make about the codebase.
+ */
+export function statePath(root: string, change: string): string {
+  if (!isSafeChangeName(change)) {
+    throw new Error(`unsafe change name: ${change}`);
+  }
+  return join(root, ".git", "nullius", "pipeline", `${change}.state.json`);
+}
+
+/** Absent or corrupt state reads as empty. A resume that crashes on its own
+ *  bookkeeping is worse than a resume that starts over. */
+export function readState(root: string, change: string): Record<string, string> {
+  const path = statePath(root, change);
+  if (!existsSync(path)) return {};
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return {};
+    return Object.fromEntries(
+      Object.entries(parsed as Record<string, unknown>).filter(
+        (entry): entry is [string, string] => typeof entry[1] === "string",
+      ),
+    );
+  } catch {
+    return {};
+  }
+}
+
+export function writeStateKey(root: string, change: string, key: string, value: string): void {
+  const path = statePath(root, change);
+  const state = readState(root, change);
+  state[key] = value;
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+}
+
+/** Append one section to the change's committed review evidence. */
+export function appendEvidence(root: string, change: string, heading: string, body: string): void {
+  if (!isSafeChangeName(change)) throw new Error(`unsafe change name: ${change}`);
+  const path = join(root, "openspec", "changes", change, "review-evidence.md");
+  const header = existsSync(path) ? "" : "# Review evidence\n";
+  appendFileSync(path, `${header}\n## ${heading}\n\n${body.trimEnd()}\n`, "utf8");
 }

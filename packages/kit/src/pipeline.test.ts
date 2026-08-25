@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
-import { blockedCommands, classifyCompareStatus, isSafeChangeName, parseDependsOn, KERNEL_MODULES, routeAgents, touchedPaths, unapprovedBlocks } from "./pipeline";
+import { appendEvidence, blockedCommands, classifyCompareStatus, isSafeChangeName, parseDependsOn, KERNEL_MODULES, readState, routeAgents, statePath, touchedPaths, unapprovedBlocks, writeStateKey } from "./pipeline";
 
 describe("parseDependsOn — the blockquote intent-to-proposal writes", () => {
   it("extracts backticked change names", () => {
@@ -232,5 +235,68 @@ describe("unapprovedBlocks — Stage 1 pauses on an unchecked box", () => {
   it("includes unchecked boxes under nested subheadings within the approval block", () => {
     const nested = "## Human Approval Required\n\n### Rotations\n\n- [ ] rotate the token";
     expect(unapprovedBlocks(nested)).toEqual([5]);
+  });
+});
+
+function scratch(): string {
+  const root = mkdtempSync(join(tmpdir(), "nullius-pipeline-"));
+  mkdirSync(join(root, ".git"), { recursive: true });
+  mkdirSync(join(root, "openspec", "changes", "add-thing"), { recursive: true });
+  return root;
+}
+
+describe("state — machine-local, beside the canary registry", () => {
+  it("lives under .git/nullius/pipeline, needing no gitignore entry", () => {
+    expect(statePath("/repo", "add-thing")).toBe("/repo/.git/nullius/pipeline/add-thing.state.json");
+  });
+
+  it("refuses a change name that would escape", () => {
+    expect(() => statePath("/repo", "../../etc")).toThrow(/change name/i);
+  });
+
+  it("round-trips a key", () => {
+    const root = scratch();
+    writeStateKey(root, "add-thing", "stage", "pre-review");
+    expect(readState(root, "add-thing")["stage"]).toBe("pre-review");
+  });
+
+  it("reads an absent state file as empty rather than throwing", () => {
+    expect(readState(scratch(), "add-thing")).toEqual({});
+  });
+
+  it("preserves keys written earlier", () => {
+    const root = scratch();
+    writeStateKey(root, "add-thing", "stage", "load");
+    writeStateKey(root, "add-thing", "pr_url", "https://example.test/1");
+    const state = readState(root, "add-thing");
+    expect(state["stage"]).toBe("load");
+    expect(state["pr_url"]).toBe("https://example.test/1");
+  });
+
+  it("treats a corrupt state file as empty rather than crashing a resume", () => {
+    const root = scratch();
+    mkdirSync(join(root, ".git", "nullius", "pipeline"), { recursive: true });
+    writeFileSync(statePath(root, "add-thing"), "{ not json");
+    expect(readState(root, "add-thing")).toEqual({});
+  });
+});
+
+describe("evidence — committed into the change folder, where CI re-verifies it", () => {
+  it("creates the file with the heading on first append", () => {
+    const root = scratch();
+    appendEvidence(root, "add-thing", "Probe — stage 2", "CAUGHT by architecture-reviewer.");
+    const written = readFileSync(join(root, "openspec/changes/add-thing/review-evidence.md"), "utf8");
+    expect(written).toContain("## Probe — stage 2");
+    expect(written).toContain("CAUGHT by architecture-reviewer.");
+  });
+
+  it("appends without destroying earlier sections", () => {
+    const root = scratch();
+    appendEvidence(root, "add-thing", "Stage 2", "first");
+    appendEvidence(root, "add-thing", "Stage 6", "second");
+    const written = readFileSync(join(root, "openspec/changes/add-thing/review-evidence.md"), "utf8");
+    expect(written).toContain("first");
+    expect(written).toContain("second");
+    expect(written.indexOf("first")).toBeLessThan(written.indexOf("second"));
   });
 });
