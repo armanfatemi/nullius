@@ -124,6 +124,20 @@ describe("routeAgents — one assertion per row, by name", () => {
   });
 });
 
+describe("routeAgents — basename matching, because this repo's proposals cite files by basename", () => {
+  it("dispatches checker-engineer for each kernel module cited by bare filename", () => {
+    for (const basename of ["checkClaims.ts", "config.ts", "wiring.ts", "witness.ts"]) {
+      expect(routeAgents([basename]), basename).toContain("checker-engineer");
+    }
+  });
+
+  it("dispatches test-engineer but not checker-engineer for a non-kernel bare filename", () => {
+    const agents = routeAgents(["cli.ts"]);
+    expect(agents).toContain("test-engineer");
+    expect(agents).not.toContain("checker-engineer");
+  });
+});
+
 describe("touchedPaths + routeAgents composed — the seam Task 5 wires", () => {
   it("dispatches architecture-reviewer for a change touching only root docs", () => {
     const doc = "This change rewrites `CLAUDE.md` and `README.md` only.";
@@ -134,6 +148,15 @@ describe("touchedPaths + routeAgents composed — the seam Task 5 wires", () => 
     const doc = "Touches `packages/claims/src/wiring.ts` and `spec/wiring.md`.";
     expect(routeAgents(touchedPaths(doc))).toEqual([
       "architecture-reviewer",
+      "checker-engineer",
+      "rule-auditor",
+      "test-engineer",
+    ]);
+  });
+
+  it("dispatches checker-engineer, rule-auditor, and test-engineer for prose citing bare filenames", () => {
+    const doc = "This change touches `checkClaims.ts` and `cli.ts`.";
+    expect(routeAgents(touchedPaths(doc))).toEqual([
       "checker-engineer",
       "rule-auditor",
       "test-engineer",

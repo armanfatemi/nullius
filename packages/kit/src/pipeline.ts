@@ -70,6 +70,24 @@ export const KERNEL_MODULES: readonly string[] = [
   "packages/claims/src/witness.ts",
 ];
 
+/**
+ * The kernel modules' bare filenames, derived from `KERNEL_MODULES` rather
+ * than hard-coded a second time — a second list is a second thing to keep in
+ * sync, and this table has already paid once for a routing row that quietly
+ * stopped matching.
+ *
+ * Measured across this repository's own live changes, proposals cite kernel
+ * source by basename (`checkClaims.ts`) more than twice as often as by full
+ * path (`packages/claims/src/checkClaims.ts`). A routing row that only
+ * matched the full path therefore missed most real citations, and did so
+ * silently: `checker-engineer` — the reviewer whose entire job is these four
+ * files — went undispatched on changes that modified them, which produces a
+ * run that reports a review that never happened.
+ */
+const KERNEL_BASENAMES: ReadonlySet<string> = new Set(
+  KERNEL_MODULES.map((path) => path.split("/").pop() ?? path),
+);
+
 const ARCHITECTURE_PATHS: readonly RegExp[] = [
   /^spec\/[^/]+\.md$/,
   /^CLAUDE\.md$/,
@@ -81,6 +99,14 @@ const TEST_PATHS: readonly RegExp[] = [
   /^packages\/(?:claims|kit)\/src\/.+\.ts$/,
   /^spec\/fixtures\//,
   /^\.github\/workflows\/.+\.ya?ml$/,
+  // A bare `*.ts` token — no directory — is, by this repo's own
+  // proposal-writing convention, a citation of package source even though it
+  // does not say which package. This deliberately over-dispatches: a bare
+  // filename that turns out not to be package source earns test-engineer
+  // anyway. That is the same trade this pipeline makes everywhere else a
+  // citation is ambiguous — a reviewer dispatched needlessly costs tokens; a
+  // reviewer silently never dispatched produces a review that never happened.
+  /^[A-Za-z0-9._-]+\.ts$/,
 ];
 
 /** Backticked repo-relative paths with a known extension. Paths may be bare
@@ -110,7 +136,7 @@ export function touchedPaths(text: string): string[] {
 export function routeAgents(paths: readonly string[]): AgentName[] {
   const agents = new Set<AgentName>(["rule-auditor"]);
   for (const path of paths) {
-    if (KERNEL_MODULES.includes(path)) agents.add("checker-engineer");
+    if (KERNEL_MODULES.includes(path) || KERNEL_BASENAMES.has(path)) agents.add("checker-engineer");
     if (ARCHITECTURE_PATHS.some((pattern) => pattern.test(path))) agents.add("architecture-reviewer");
     if (TEST_PATHS.some((pattern) => pattern.test(path))) agents.add("test-engineer");
   }
