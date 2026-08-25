@@ -119,7 +119,7 @@ state-set <change> <k> <v>
 state-reset <change>
 pause-check <change>            exit 1 on unchecked ## Human Approval Required
 blocked-commands <change>       scan tasks.md + design.md -> HUMAN: <cmd>
-touched-areas <change>          area prefixes, one per line
+touched-areas <change>          repo-relative paths the change names
 depends-on <change>             parse the > **Depends on:** blockquote
 dep-status <name>               SATISFIED | UNSATISFIED | ORPHANED | UNKNOWN
 evidence-append <change> <h>    stdin -> review-evidence.md  (committed)
@@ -141,12 +141,17 @@ where CI re-verifies any claim they make about the codebase.
 | `packages/{claims,kit}/src/**/*.ts` | test-engineer |
 | `spec/fixtures/**`, `.github/workflows/*.yml` | test-engineer |
 | `spec/*.md`, `CLAUDE.md`, `openspec/project.md` | architecture-reviewer |
-| any path matching a rule's `applies_to` | rule-auditor |
+| every change (see below) | rule-auditor |
 
-`rule-auditor` and `architecture-reviewer` are near-universal by construction —
-one reads globs covering most of the tree, the other reads prose invariants
-nothing scopes. `checker-engineer` is the discriminating row, firing only on the
-four kernel modules. A docs-only change dispatches two agents; a kernel change
+`rule-auditor` is unconditional, and that is the rule-selection boundary above
+being obeyed rather than a shortcut: deciding whether a rule applies means
+matching its `applies_to` globs, which is `rules select`'s job in the kernel. The
+pipeline does not grow a second copy — it dispatches the agent, which globs for
+itself. When `rules select` lands the pipeline can pre-filter and this row gets
+sharper. `architecture-reviewer` reads prose invariants nothing scopes, so it
+fires on the spec family and on any `openspec/` path — which at Stage 2 always
+includes the proposal under review. `checker-engineer` is the discriminating
+row, firing only on the four kernel modules. A docs-only change dispatches two agents; a kernel change
 dispatches four. That is the focused-dispatch discipline `advise-specialized-agents`
 asks for, made mechanical rather than left to the dispatcher's judgement.
 
