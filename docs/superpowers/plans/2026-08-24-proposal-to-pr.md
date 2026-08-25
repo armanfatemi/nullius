@@ -171,7 +171,7 @@ export function isSafeChangeName(name: string): boolean {
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `pnpm --filter @nullius-inverba/kit test`
-Expected: PASS — 10 tests in `pipeline.test.ts`.
+Expected: PASS — 9 tests in `pipeline.test.ts`.
 
 - [ ] **Step 5: Commit**
 
@@ -782,7 +782,13 @@ function readIfPresent(path: string): string {
 export function runPipeline(argv: readonly string[]): number {
   const rootIndex = argv.indexOf("--root");
   const root = rootIndex === -1 ? process.cwd() : (argv[rootIndex + 1] ?? process.cwd());
-  const positional = argv.filter((arg, index) => index !== rootIndex && index !== rootIndex + 1);
+  // Guard the -1 case explicitly. `indexOf` returns -1 when the flag is
+  // absent, and `rootIndex + 1` is then 0 — a filter written without this
+  // branch drops argv[0], the subcommand itself.
+  const positional =
+    rootIndex === -1
+      ? [...argv]
+      : argv.filter((_, index) => index !== rootIndex && index !== rootIndex + 1);
   const [command, change, ...rest] = positional;
 
   if (command === undefined || command === "--help" || command === "-h") {
