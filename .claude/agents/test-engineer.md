@@ -74,7 +74,7 @@ A unit test added alongside a bug fix, run only against the post-fix code, prove
 - packages/claims/src/witness.ts — not touched by this diff.
 ```
 
-Nothing parses this automatically yet — `proposal-to-pr` is the orchestrator planned to consume it, and it has not landed (`docs/superpowers/plans/2026-08-22-review-spine.md:15`: review-spine's own agents land first, and the machine that dispatches them gets its own plan after). Whoever dispatches you today reads this by eye.
+`proposal-to-pr` now exists and consumes this shape (`.claude/skills/proposal-to-pr/SKILL.md`): its Stage 2 and Stage 6 decisions turn on the severity markers, the synthesis of your report is appended to the change's committed `review-evidence.md`, that file seeds the PR body, and `retro-writer` reads it to count what each reviewer actually caught. That is review-spine's own sequence completed — the roster landed first, and the machine that dispatches it got its own plan after (`docs/superpowers/plans/2026-08-22-review-spine.md:15`). A human still reads your report as well, so the shape has two audiences now rather than one; keep to it exactly.
 
 **Severity discipline:** like `checker-engineer`, your findings are not sourced from a rule's `severity:` field except where you're citing `verdict-needs-fixture-and-test.md` directly (`severity: blocker`, so that citation is always `[blocker]`, full stop). For everything else:
 

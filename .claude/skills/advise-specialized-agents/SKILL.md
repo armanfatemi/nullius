@@ -18,11 +18,18 @@ scopes, `checker-engineer` reads the four kernel modules that decide a verdict,
 and `test-engineer` reads whether the coverage proves what it claims. This
 skill is the protocol for asking them to review or advise on work.
 
-Nothing consumes their reports automatically today. `proposal-to-pr` is the
-orchestrator planned to consume them, and it has not landed — until it does,
-the reader of
-every report these agents produce is you, and the synthesis step below is the
-only place their findings get reconciled.
+`proposal-to-pr` now consumes their reports
+(`.claude/skills/proposal-to-pr/SKILL.md`). It dispatches this roster twice — at
+Stage 2 against the proposal, at Stage 6 against the diff — routes on the
+severity markers below, appends the synthesis to the change's committed
+`review-evidence.md`, and hands that file to `retro-writer`. It borrows the
+pre-flight and synthesis doctrine from this file rather than carrying a second
+copy, so the two must not drift.
+
+That covers work with an `openspec/changes/<name>/` behind it. Everything else
+is dispatched by hand through this skill, and there nothing automatic is
+watching: you are the reader of every report these agents produce, and the
+synthesis step below is the only place their findings get reconciled.
 
 ## The roster is declared twice, and the two must agree
 
