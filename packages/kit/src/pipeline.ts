@@ -300,8 +300,10 @@ usage:
   blocked-commands <change>     exit 1 and print HUMAN: <cmd> for each
   touched-areas <change>        repo-relative paths the change names
   depends-on <change>           the > **Depends on:** blockquote, one per line
-  route <change>                the agents those paths earn, one per line
-  route-paths                   same, but for repo-relative paths on stdin
+  route <change>                the agents this change earns: the paths it
+                                 cites, unioned with its own artefacts
+  route-paths                   the agents these paths earn — exactly the ones
+                                 given on stdin, nothing injected
                                  (one per line, e.g. git diff --name-only)
   dep-status <change>           exit 0 only if provably archived
   classify-compare <status>     landed | orphaned | unknown; exit 0 on landed
@@ -430,7 +432,26 @@ export function runPipeline(argv: readonly string[]): number {
       return 0;
     }
     case "route": {
-      for (const agent of routeAgents(touchedPaths(`${proposal}\n${tasks}`))) console.log(agent);
+      // A change's own artefacts are part of what is under review at Stage 2,
+      // and they are `openspec/` paths — so they earn the reviewer whose
+      // subject is the prose invariants whether or not the proposal happens to
+      // cite one. Without them a proposal that names no `openspec/` path
+      // silently loses `architecture-reviewer`: a review stage that reports
+      // success and did not happen. Measured on this repository's own corpus,
+      // that is not hypothetical — three of seven live changes cite no source
+      // file at all, and the ones that cite only bare kernel basenames name no
+      // `openspec/` path either.
+      //
+      // Unioned here rather than composed by the caller. The alternative — two
+      // routing calls the skill's prose tells a coordinator to combine — puts a
+      // routing decision back in a model's hands, untested, at every future
+      // call site. `route-paths` deliberately does NOT do this: it routes
+      // exactly the paths it is given, which is what Stage 6 needs from a diff.
+      const artefacts = ["proposal.md", "design.md", "tasks.md"].map(
+        (file) => `openspec/changes/${change}/${file}`,
+      );
+      const paths = [...touchedPaths(`${proposal}\n${tasks}`), ...artefacts];
+      for (const agent of routeAgents(paths)) console.log(agent);
       return 0;
     }
     case "state-get": {

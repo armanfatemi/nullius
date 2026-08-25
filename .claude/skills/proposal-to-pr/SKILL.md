@@ -82,8 +82,10 @@ pause-check <change>          exit 1 on an unchecked Human Approval box
 blocked-commands <change>     exit 1 and print HUMAN: <cmd> for each
 touched-areas <change>        repo-relative paths the change names
 depends-on <change>           the > **Depends on:** blockquote, one per line
-route <change>                the agents those paths earn, one per line
-route-paths                   same, for repo-relative paths on stdin
+route <change>                the agents this change earns: cited paths
+                              unioned with its own artefacts
+route-paths                   the agents these paths earn — exactly the ones
+                              given on stdin, nothing injected
 dep-status <change>           exit 0 only if provably archived
 classify-compare <status>     landed | orphaned | unknown; exit 0 on landed
 evidence-append <change> <h>  read a section from stdin
@@ -426,18 +428,21 @@ nothing about the proposal.
 Routing is not yours to decide. Ask the router:
 
 ```bash
-{ node packages/kit/dist/cli.js pipeline route <change>
-  printf 'openspec/changes/<change>/proposal.md\nopenspec/changes/<change>/design.md\nopenspec/changes/<change>/tasks.md\n' \
-    | node packages/kit/dist/cli.js pipeline route-paths
-} | sort -u
+node packages/kit/dist/cli.js pipeline route <change>
 ```
 
-Two calls, unioned, both tested. `route` reads the paths the proposal and tasks
-*cite*; `route-paths` routes the change's own artefacts, which are `openspec/`
-paths and therefore earn `architecture-reviewer` whether or not the proposal
-happens to cite one. Without the second call a proposal that names no
-`openspec/` path silently loses the reviewer whose subject is the prose
-invariants — a review that reports success and did not happen.
+One call, and it is the whole answer. `route` unions two things: the paths the
+proposal and tasks *cite*, and the change's own three artefacts. The second half
+matters because a change's artefacts are part of what is under review at Stage 2
+and are `openspec/` paths, so they earn `architecture-reviewer` whether or not
+the proposal happens to cite one. A proposal that names no `openspec/` path
+would otherwise silently lose the reviewer whose subject is the prose invariants
+— a review that reports success and did not happen — and on this repository's
+own corpus that is not hypothetical.
+
+Do not compose that union yourself, and do not reach for `route-paths` here.
+`route-paths` routes exactly the paths it is given and injects nothing, which is
+what Stage 6 needs from a diff.
 
 `rule-auditor` is unconditional and that is deliberate, not a shortcut: deciding
 whether a rule applies means matching its `applies_to` globs, which is the

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -186,6 +186,78 @@ describe("touchedPaths + routeAgents composed — the seam Task 5 wires", () => 
       "rule-auditor",
       "test-engineer",
     ]);
+  });
+});
+
+/** Run one `runPipeline` call and return its exit code plus the lines it printed. */
+function captureRoute(argv: readonly string[]): { code: number; lines: string[] } {
+  const lines: string[] = [];
+  const spy = vi.spyOn(console, "log").mockImplementation((line: unknown) => {
+    lines.push(String(line));
+  });
+  try {
+    return { code: runPipeline(argv), lines };
+  } finally {
+    spy.mockRestore();
+  }
+}
+
+describe("route — a change routes its own artefacts, not only the paths it cites", () => {
+  it("earns architecture-reviewer for a proposal that cites no openspec path", () => {
+    // Three of this repository's seven live changes cite no source file at
+    // all. Routing only what the prose names loses the reviewer whose subject
+    // is the prose invariants — on exactly the changes that are nothing but
+    // prose. Asserted by name, not by count: a length check passes while the
+    // wrong agent is in the list.
+    const root = scratch();
+    const dir = join(root, "openspec", "changes", "add-thing");
+    writeFileSync(join(dir, "proposal.md"), "# Proposal\n\nThis change touches `checkClaims.ts`.\n");
+    writeFileSync(join(dir, "design.md"), "# Design\n\nNo other file is named.\n");
+    writeFileSync(join(dir, "tasks.md"), "- [ ] edit `checkClaims.ts`\n");
+
+    // The premise: the prose really does name no openspec path.
+    expect(touchedPaths(readFileSync(join(dir, "proposal.md"), "utf8"))).toEqual(["checkClaims.ts"]);
+
+    const { code, lines } = captureRoute(["route", "add-thing", "--root", root]);
+    expect(code).toBe(0);
+    expect(lines).toEqual([
+      "architecture-reviewer",
+      "checker-engineer",
+      "rule-auditor",
+      "test-engineer",
+    ]);
+  });
+
+  it("does not change the answer for a proposal that already cites a spec-family path", () => {
+    const root = scratch();
+    const dir = join(root, "openspec", "changes", "add-thing");
+    writeFileSync(join(dir, "proposal.md"), "# Proposal\n\nTouches `packages/claims/src/wiring.ts` and `spec/wiring.md`.\n");
+    writeFileSync(join(dir, "design.md"), "# Design\n");
+    writeFileSync(join(dir, "tasks.md"), "- [ ] edit `packages/claims/src/wiring.ts`\n");
+
+    const { code, lines } = captureRoute(["route", "add-thing", "--root", root]);
+    expect(code).toBe(0);
+    expect(lines).toEqual([
+      "architecture-reviewer",
+      "checker-engineer",
+      "rule-auditor",
+      "test-engineer",
+    ]);
+  });
+
+  it("leaves route-paths literal — no artefact path is injected into a diff's routing", () => {
+    // Stage 6 depends on this. `route-paths` routes exactly the paths it is
+    // given; if the artefact union leaked into it, every diff would earn
+    // architecture-reviewer and the discriminating rows would stop
+    // discriminating.
+    expect(routePathsFrom("packages/claims/src/checkClaims.ts\n")).toEqual([
+      "checker-engineer",
+      "rule-auditor",
+      "test-engineer",
+    ]);
+    expect(routePathsFrom("packages/claims/src/checkClaims.ts\n")).not.toContain(
+      "architecture-reviewer",
+    );
   });
 });
 
