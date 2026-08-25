@@ -448,3 +448,9 @@ describe("runPipeline — the directory guard proves the artefact was read", () 
     }
   });
 });
+
+  it("still lets state-get read against a change directory that does not exist", () => {
+    const root = mkdtempSync(join(tmpdir(), "nullius-pipeline-"));
+    writeStateKey(root, "brand-new", "stage", "load");
+    expect(runPipeline(["state-get", "brand-new", "--root", root])).toBe(0);
+  });

@@ -377,12 +377,12 @@ export function runPipeline(argv: readonly string[]): number {
   // A subcommand that reports success — or, worse, blocks forever reading
   // stdin — without ever confirming the change's directory exists hands the
   // skill a proof it never obtained. Hoisted once, above every artefact and
-  // stdin read, rather than repeated per subcommand. `state-set` and
-  // `state-reset` write resume state under `.git/`, not under this directory,
-  // and `dep-status`'s whole job is answering whether the (archived)
-  // directory exists — all three legitimately act on a change whose
-  // directory may not exist yet, so they stay exempt.
-  const needsDir = command !== "state-set" && command !== "state-reset" && command !== "dep-status";
+  // stdin read, rather than repeated per subcommand. `state-set`, `state-get`,
+  // and `state-reset` read and write resume state under `.git/`, not under this
+  // directory, and `dep-status`'s whole job is answering whether the (archived)
+  // directory exists — all four legitimately act on a change whose directory
+  // may not exist yet, so they stay exempt.
+  const needsDir = command !== "state-set" && command !== "state-get" && command !== "state-reset" && command !== "dep-status";
   if (needsDir && !existsSync(dir)) {
     console.error(`no openspec/changes/${change}/`);
     return 1;
