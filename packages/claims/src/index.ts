@@ -1,6 +1,7 @@
 export {
   parseClaims,
   type AbsenceClaim,
+  type CanaryClaim,
   type Claim,
   type MalformedClaim,
   type MomentClaim,
@@ -10,6 +11,7 @@ export {
 export {
   checkClaims,
   isFailure,
+  normalize,
   DEFAULT_BINDING_MOMENTS,
   type CheckDeps,
   type CheckOptions,
@@ -18,6 +20,16 @@ export {
   type SearchOutcome,
   type Verdict,
 } from "./checkClaims";
+export {
+  canaryGuardResult,
+  clearCanary,
+  loadActiveCanary,
+  normalizeRepoPath,
+  plantCanary,
+  verifyCanary,
+  type CanaryEntry,
+  type VerifyOutcome,
+} from "./canary";
 export { buildEagerPrompt } from "./eagerPrompt";
 export {
   buildAuditBrief,

@@ -80,6 +80,10 @@ function anchorText(claim: Claim): string | null {
       return `**Evidence:** \`${claim.command}\` → ${claim.expectedCount} results`;
     case "moment":
       return `**Binds at:** \`${claim.moment}\``;
+    // A canary claim is synthetic — it is produced by the merge guard, never
+    // parsed out of a document — so there is no anchor text to restate, and
+    // an audit must never dispatch the probe as if it were the author's.
+    case "canary":
     case "malformed":
       return null;
   }

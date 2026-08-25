@@ -8,6 +8,32 @@ a package name are that package's own release; the kit versions independently.
 
 ### Added
 
+- **`nullius canary` — measure the review layer instead of assuming it.**
+  Every other check in this repository asks whether a claim is true. This one
+  asks whether the machinery that reads claims is still running. `canary plant
+  <doc>` inserts one registered, plausibly-false statement into a document;
+  you run your review; `canary verify <report>` reports `CANARY-CAUGHT` (exit
+  0), `CANARY-MISSED` (exit 1), or `CANARY-TAINTED` (exit 3, the report named
+  the probe machinery, so the result is invalid rather than passed). A
+  pipeline that catches the plant is demonstrably alive; one that misses it
+  has been *measured* dead rather than assumed alive.
+
+  Two design points carry the whole thing. The planted claim is **bare
+  prose** — false by construction, but carrying no anchor — because a claim
+  the deterministic checker could settle would test the checker, not the
+  reviewer. And the registry lives **outside the document**, in
+  `.git/nullius/canaries.json`: a visible in-doc marker would tip off the
+  reviewer being measured and invalidate the test. That is also why there is
+  no fixture for the new verdict and cannot be one — the CI gate is the whole
+  plant/check/verify/clear round trip instead.
+
+  One new verdict, `canary-present`, fails `check` on any document holding an
+  uncleared plant, so a probe can never be merged by accident. `--probing`
+  suppresses that guard for the one run that is deliberately checking a
+  planted document, and nothing else. An unreadable registry fails closed
+  everywhere: unknown probe state is not "no active canary", because reporting
+  the second would be a fabricated attestation about the machinery itself.
+
 - **`nullius wiring [root]` — references that must resolve.** A skill naming
   an agent that has no definition file does not error today: the dispatch
   no-ops and the run reports a completed review having reviewed nothing. That

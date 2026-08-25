@@ -148,6 +148,29 @@ jobs:
           # should not be forced to carry an anchor.
           node packages/claims/dist/cli.js check 'openspec/**/*.md'
 
+      # The canary, dogfooded through its whole lifecycle. There is no static
+      # fixture for CANARY-PRESENT and there cannot be one: the registry lives
+      # outside the document on purpose, because an in-doc marker would tip off
+      # the reviewer layer the probe exists to measure. So the gate is the
+      # round trip, and it asserts the two directions that matter — the guard
+      # FIRES on a planted document, and `verify` scores a report that ignored
+      # the plant as MISSED rather than passing it.
+      - name: nullius canary (self)
+        run: |
+          set -euo pipefail
+          printf '# Probe\n\nThe retry budget is shared across workers.\n' > .canary-probe.md
+          node packages/claims/dist/cli.js canary plant .canary-probe.md
+          # The guard must fail an otherwise-clean document.
+          ! node packages/claims/dist/cli.js check '.canary-probe.md'
+          # ...and --probing must be the only thing that lets it through.
+          node packages/claims/dist/cli.js check '.canary-probe.md' --probing
+          # A review that said nothing is MISSED (exit 1), never a pass.
+          printf 'Looks fine.\n' > .canary-report.md
+          ! node packages/claims/dist/cli.js canary verify .canary-report.md
+          node packages/claims/dist/cli.js canary clear
+          node packages/claims/dist/cli.js canary status
+          rm -f .canary-probe.md .canary-report.md
+
       # The wiring check, dogfooded on both fixtures and on this repo's own
       # harness tree. A routing row naming an agent that does not exist is the
       # one review failure that reports success, so the broken fixture must

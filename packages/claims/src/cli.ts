@@ -14,6 +14,14 @@ import {
   type ClaimResult,
 } from "./checkClaims";
 import {
+  canaryGuardResult,
+  clearCanary,
+  loadActiveCanary,
+  normalizeRepoPath,
+  plantCanary,
+  verifyCanary,
+} from "./canary";
+import {
   buildAuditBrief,
   buildExtractionBrief,
   extractAuditClaims,
@@ -23,6 +31,7 @@ import {
   CliError,
   parseCli,
   type AuditArgs,
+  type CanaryArgs,
   type CheckArgs,
   type WiringArgs,
   type WitnessArgs,
@@ -64,12 +73,24 @@ commands:
                       exist — agents, skills, read paths, applies_to globs,
                       hook commands. A dispatch naming an agent with no
                       definition file does not error at runtime; it no-ops.
+  canary plant <doc>  insert a registered, plausibly-false claim, then run
+                      your review against the document. A pipeline that flags
+                      it is demonstrably alive; one that misses it has been
+                      measured dead rather than assumed alive.
+  canary verify <report>
+                      exit 0 CANARY-CAUGHT, 1 CANARY-MISSED, 3 CANARY-TAINTED
+                      (the report named the probe machinery, so the probe is
+                      invalid rather than passed), 2 when it could not run.
+  canary status       show the active canary; exit 1 when one is planted
+  canary clear        remove the planted claim, restoring the document
   eager-prompt <doc>  deprecated alias for \`audit <doc> --propose\`.
 
 check options:
   --config <path>     config file (default: ${DEFAULT_CONFIG_PATH} if present)
   --require-markers   fail when any matched document carries no grounding
                       markers (the floor is per document, not per run)
+  --probing           suppress the CANARY-PRESENT merge guard, for the one run
+                      that is deliberately checking a planted document
   --help              show this message
   --version           print the package version
 
@@ -112,6 +133,8 @@ function describe(result: ClaimResult): string {
       return `${claim.command} → ${claim.expectedCount}`;
     case "moment":
       return `binds at ${claim.moment}`;
+    case "canary":
+      return "registered canary";
     case "malformed":
       return claim.raw;
   }
@@ -463,28 +486,69 @@ function runCheck(args: CheckArgs): number {
     runSearch: searchRunner(undefined, config.searchTimeoutMs),
   };
 
+  // The canary merge guard: registry content is untrusted and read once; the
+  // guard never opens a file — it only inspects documents already matched.
+  const { entry: activeCanary, warning: canaryWarning } = loadActiveCanary(
+    process.cwd(),
+  );
+
   let failures = 0;
   let checked = 0;
   let presenceAnchors = 0;
   let absenceAnchors = 0;
+  let guardFired = false;
   const unanchored: { doc: string; lines: number }[] = [];
 
   for (const doc of docs) {
     const content = readFileSync(doc, "utf8");
     const lines = content.split("\n").length;
     const claims = parseClaims(doc, content);
-    const results = checkClaims(claims, deps, options);
+    const parsed = checkClaims(claims, deps, options);
+    const guard =
+      activeCanary !== null && !args.probing
+        ? canaryGuardResult(normalizeRepoPath(doc), content, activeCanary)
+        : null;
+    if (guard !== null) guardFired = true;
+    const results = guard === null ? parsed : [guard, ...parsed];
 
-    if (results.length === 0) {
+    // The guard is not a grounding marker: density reports what the AUTHOR
+    // anchored, so a canary must not lift a document off the no-anchors list.
+    if (parsed.length === 0) {
       unanchored.push({ doc, lines });
-      continue;
     }
+    if (results.length === 0) continue;
 
-    checked += results.length;
+    checked += parsed.length;
     presenceAnchors += claims.filter((claim) => claim.kind === "presence").length;
     absenceAnchors += claims.filter((claim) => claim.kind === "absence").length;
-    console.log(`--- ${doc} — ${results.length} anchor(s) / ${lines} lines`);
+    console.log(`--- ${doc} — ${parsed.length} anchor(s) / ${lines} lines`);
     failures += report(results);
+  }
+
+  if (canaryWarning !== undefined) {
+    // Fail closed: an unreadable registry means canary state is unknown, and
+    // a guard that silently stands down is the failure mode this tool exists
+    // to prevent. Advisory would collapse "guarded" and "unguarded" again.
+    console.error(canaryWarning);
+    console.error(
+      "canary state cannot be determined — restore or delete .git/nullius/canaries.json, then re-run",
+    );
+    return 1;
+  }
+
+  if (activeCanary !== null) {
+    const matched = docs.some(
+      (doc) => normalizeRepoPath(doc) === activeCanary.doc,
+    );
+    if (!matched) {
+      console.error(
+        `warning: the registered canary points at a document outside the matched set (${activeCanary.doc}) — not read; run \`canary status\``,
+      );
+    } else if (!guardFired && !args.probing) {
+      console.error(
+        `warning: the registered canary is no longer present in ${activeCanary.doc} — stale registry; delete .git/nullius/canaries.json after restoring the document`,
+      );
+    }
   }
 
   // Anchor density is reported, never judged: the checker cannot know how
@@ -545,6 +609,114 @@ function runCheck(args: CheckArgs): number {
   return 0;
 }
 
+/**
+ * The probe lifecycle. Every subcommand except `plant` fails closed on an
+ * unreadable registry: "no active canary" would be a fabricated attestation
+ * about the state of the machinery being probed.
+ */
+function runCanary(args: CanaryArgs): number {
+  const [sub, operand, ...extra] = args.operands;
+  const root = process.cwd();
+
+  if (sub === "plant") {
+    if (operand === undefined || extra.length > 0) {
+      console.error("usage: nullius canary plant <doc>");
+      return 2;
+    }
+    try {
+      const entry = plantCanary(root, operand);
+      console.log(`planted ${entry.doc}:${entry.line}`);
+      console.log(
+        "registry: .git/nullius/canaries.json (per-clone, never committed)",
+      );
+      console.log(
+        "run your review, then `nullius canary verify <report>`; `check` will fail CANARY-PRESENT until cleared (suppress with --probing)",
+      );
+      return 0;
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      return 1;
+    }
+  }
+
+  if (sub !== "verify" && sub !== "status" && sub !== "clear") {
+    console.error(
+      `usage: nullius canary <plant|verify|status|clear>\n\n${USAGE}`,
+    );
+    return 2;
+  }
+
+  const { entry, warning } = loadActiveCanary(root);
+  if (warning !== undefined) {
+    console.error(warning);
+    console.error(
+      "canary state cannot be determined — restore or delete .git/nullius/canaries.json, then re-run",
+    );
+    return 2;
+  }
+
+  if (sub === "verify") {
+    if (operand === undefined || extra.length > 0) {
+      console.error("usage: nullius canary verify <report-file>");
+      return 2;
+    }
+    if (entry === null) {
+      console.error("no active canary — plant one first");
+      return 2;
+    }
+    // A read failure must not exit 1 — that code means CANARY-MISSED, and a
+    // missing report file is not evidence that the review missed anything.
+    let reportText: string;
+    try {
+      reportText = readFileSync(operand, "utf8");
+    } catch (error) {
+      console.error(
+        `could not read ${operand}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return 2;
+    }
+    const outcome = verifyCanary(reportText, entry);
+    if (outcome === "tainted") {
+      console.log(
+        "CANARY-TAINTED — the review output references the probe machinery; the probe is invalid, not caught",
+      );
+      return 3;
+    }
+    if (outcome === "caught") {
+      console.log(`CANARY-CAUGHT — the review flagged ${entry.doc}:${entry.line}`);
+      return 0;
+    }
+    console.log(
+      `CANARY-MISSED — nothing in the review references ${entry.doc}:${entry.line} or the planted claim`,
+    );
+    return 1;
+  }
+
+  if (sub === "status") {
+    if (entry === null) {
+      console.log("no active canary");
+      return 0;
+    }
+    console.log(
+      `active canary: ${entry.doc}:${entry.line} (planted ${entry.plantedAt})`,
+    );
+    return 1;
+  }
+
+  if (entry === null) {
+    console.log("no active canary — nothing to clear");
+    return 0;
+  }
+  try {
+    clearCanary(root, entry);
+    console.log(`cleared ${entry.doc}:${entry.line}`);
+    return 0;
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    return 1;
+  }
+}
+
 function main(): number {
   let command;
   try {
@@ -574,6 +746,8 @@ function main(): number {
       return runWitness(command);
     case "wiring":
       return runWiring(command);
+    case "canary":
+      return runCanary(command);
     case "audit":
       if (command.viaAlias) {
         // Kept working so a pinned pipeline does not break; the name moved

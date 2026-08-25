@@ -85,7 +85,21 @@ export interface MalformedClaim {
   source: SourceLocation;
 }
 
-export type Claim = PresenceClaim | AbsenceClaim | MomentClaim | MalformedClaim;
+/**
+ * Synthetic document-level claim carried by the canary merge guard's
+ * `canary-present` result — never produced by the parser.
+ */
+export interface CanaryClaim {
+  kind: "canary";
+  source: SourceLocation;
+}
+
+export type Claim =
+  | PresenceClaim
+  | AbsenceClaim
+  | MomentClaim
+  | MalformedClaim
+  | CanaryClaim;
 
 /**
  * An optional list marker is allowed in front of every marker shape: writing
