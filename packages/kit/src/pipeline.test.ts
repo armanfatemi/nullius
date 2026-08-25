@@ -120,3 +120,20 @@ describe("routeAgents — one assertion per row, by name", () => {
     ]);
   });
 });
+
+describe("touchedPaths + routeAgents composed — the seam Task 5 wires", () => {
+  it("dispatches architecture-reviewer for a change touching only root docs", () => {
+    const doc = "This change rewrites `CLAUDE.md` and `README.md` only.";
+    expect(routeAgents(touchedPaths(doc))).toEqual(["architecture-reviewer", "rule-auditor"]);
+  });
+
+  it("dispatches all four from prose naming a kernel module and a spec", () => {
+    const doc = "Touches `packages/claims/src/wiring.ts` and `spec/wiring.md`.";
+    expect(routeAgents(touchedPaths(doc))).toEqual([
+      "architecture-reviewer",
+      "checker-engineer",
+      "rule-auditor",
+      "test-engineer",
+    ]);
+  });
+});

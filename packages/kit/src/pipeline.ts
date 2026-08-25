@@ -80,9 +80,11 @@ const TEST_PATHS: readonly RegExp[] = [
   /^\.github\/workflows\/.+\.ya?ml$/,
 ];
 
-/** Backticked repo-relative paths with a known extension. Prose in backticks
- *  — a type name, a function — carries no extension and is not a path. */
-const PATH_TOKEN = /`([A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)+\.(?:ts|md|json|jsonl|ya?ml|sh))`/g;
+/** Backticked repo-relative paths with a known extension. Paths may be bare
+ *  root filenames (CLAUDE.md, README.md) or nested (packages/claims/src/file.ts).
+ *  Prose in backticks — a type name, a function — carries no extension and is
+ *  not a path. */
+const PATH_TOKEN = /`([A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*\.(?:ts|md|json|jsonl|ya?ml|sh))`/g;
 
 export function touchedPaths(text: string): string[] {
   const found = new Set<string>();
