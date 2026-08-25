@@ -21,6 +21,12 @@ export interface CheckArgs {
   globs: string[];
   configPath: string | undefined;
   requireMarkers: boolean;
+  /**
+   * Suppress the CANARY-PRESENT merge guard. Set only by the probe run that
+   * deliberately checks a document with a planted canary in it; every other
+   * run wants the guard, which is why the default is off.
+   */
+  probing: boolean;
 }
 
 export interface AuditArgs {
@@ -39,6 +45,11 @@ export interface WitnessArgs {
   operands: string[];
 }
 
+export interface CanaryArgs {
+  kind: "canary";
+  operands: string[];
+}
+
 export interface WiringArgs {
   kind: "wiring";
   /** Root to scan. Defaults to the working directory. */
@@ -52,11 +63,13 @@ export type Command =
   | CheckArgs
   | AuditArgs
   | WitnessArgs
-  | WiringArgs;
+  | WiringArgs
+  | CanaryArgs;
 
 /** Which command owns which flag, so a misplaced one can name its home. */
 const FLAG_OWNERS: ReadonlyMap<string, string> = new Map([
   ["--require-markers", "check"],
+  ["--probing", "check"],
   ["--emit-brief", "audit"],
   ["--extract", "audit"],
   ["--propose", "audit"],
@@ -67,6 +80,7 @@ const COMMANDS: ReadonlySet<string> = new Set([
   "audit",
   "witness",
   "wiring",
+  "canary",
   "demo",
   "eager-prompt",
 ]);
@@ -150,6 +164,7 @@ export function parseCli(argv: readonly string[]): Command {
   if (first === "check") return parseCheck(rest);
   if (first === "witness") return parseWitness(rest);
   if (first === "wiring") return parseWiring(rest);
+  if (first === "canary") return parseCanary(rest);
   return parseAudit(rest, first === "eager-prompt");
 }
 
@@ -172,6 +187,7 @@ function parseCheck(rawArgv: readonly string[]): CheckArgs {
     globs: [...literal],
     configPath: undefined,
     requireMarkers: false,
+    probing: false,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -179,6 +195,8 @@ function parseCheck(rawArgv: readonly string[]): CheckArgs {
     if (arg === undefined) continue;
     if (arg === "--require-markers") {
       args.requireMarkers = true;
+    } else if (arg === "--probing") {
+      args.probing = true;
     } else if (arg === "--config") {
       index += 1;
       args.configPath = requireValue(argv, index, "--config", "a path argument");
@@ -237,6 +255,19 @@ function parseWitness(rawArgv: readonly string[]): WitnessArgs {
     if (arg.startsWith("-")) rejectMisplaced(arg, "witness");
   }
   return { kind: "witness", operands: [...argv, ...literal] };
+}
+
+/**
+ * `canary` takes a subcommand and its operands, and no flags. `--probing`
+ * belongs to `check`: it suppresses the merge guard during a probe run, and a
+ * canary subcommand has no guard to suppress.
+ */
+function parseCanary(rawArgv: readonly string[]): CanaryArgs {
+  const { flags: argv, literal } = splitOperands(rawArgv);
+  for (const arg of argv) {
+    if (arg.startsWith("-")) rejectMisplaced(arg, "canary");
+  }
+  return { kind: "canary", operands: [...argv, ...literal] };
 }
 
 /**

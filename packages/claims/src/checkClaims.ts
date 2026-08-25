@@ -70,7 +70,9 @@ export type Verdict =
   | "unsafe"
   | "command-error"
   | "unknown-moment"
-  | "malformed";
+  | "malformed"
+  /** The document still contains a registered, uncleared canary. */
+  | "canary-present";
 
 export interface ClaimResult {
   claim: Claim;
@@ -178,8 +180,12 @@ export function isFailure(verdict: Verdict): boolean {
   return !PASSING.has(verdict);
 }
 
-/** Trim and collapse whitespace runs so indentation differences don't fail a citation. */
-function normalize(value: string): string {
+/**
+ * Trim and collapse whitespace runs so indentation differences don't fail a
+ * citation. Exported because canary verify is contractually pinned to the
+ * checker's normalization (spec/canary.md) — one copy, not two.
+ */
+export function normalize(value: string): string {
   return value.trim().replace(/\s+/g, " ");
 }
 
@@ -601,6 +607,13 @@ export function checkClaims(
         return checkAbsence(claim, deps, relaxedControl);
       case "moment":
         return checkMoment(claim, moments, ciCaughtMoments);
+      case "canary":
+        // Produced by the merge guard, never parsed — reaching here is a bug.
+        return {
+          claim,
+          verdict: "malformed" as const,
+          detail: "internal: canary claims are produced, not checked",
+        };
       case "malformed":
         return {
           claim,
