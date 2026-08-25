@@ -129,11 +129,12 @@ export interface BlockedCommand {
 const HUMAN_ONLY: readonly { readonly pattern: RegExp; readonly reason: string }[] = [
   { pattern: /\bgh\s+pr\s+merge\b/, reason: "merge is the human's call" },
   { pattern: /--squash\b/, reason: "merge-never-squash.md — a squash orphans every anchor stamp" },
-  { pattern: /\bgit\s+push\b.*--force/, reason: "rewrites published history" },
-  { pattern: /\bgit\s+(?:rebase|filter-branch)\b/, reason: "rewrites published history" },
-  { pattern: /\b(?:npm|pnpm)\s+publish\b/, reason: "publishes an artefact" },
+  { pattern: /\bgit\s+push\b.+?(?:--force|-f)\b/, reason: "rewrites published history" },
+  { pattern: /\bgit\s+(?:rebase|filter-branch|filter-repo)\b/, reason: "rewrites published history" },
+  { pattern: /\b(?:npm|pnpm|yarn)(?:\s+.+?)?\s+publish\b/, reason: "publishes an artefact" },
   { pattern: /\.claude\/settings\.json\b/, reason: "one-delivery-mechanism.md" },
   { pattern: /\.git\/nullius\//, reason: "canary registry and witness journal" },
+  { pattern: /repos\/[^/]+\/[^/]+\/pulls\/\d+\/merge/, reason: "merge is the human's call" },
   { pattern: /\bopenspec\s+archive\b/, reason: "archiving would satisfy this change's own dependents" },
 ];
 
@@ -154,17 +155,28 @@ export function blockedCommands(text: string): BlockedCommand[] {
  *
  * Scoped to that block deliberately: `tasks.md` is nothing but unchecked
  * boxes, and a pause-check that counted them all would pause on every change.
+ * Nested subheadings are included in the block; only a sibling or shallower
+ * heading closes it, so authors may group approval items without losing them.
  */
 export function unapprovedBlocks(proposal: string): number[] {
   const unchecked: number[] = [];
-  let inside = false;
+  // 0 means "not inside the block". Otherwise it holds the heading depth the
+  // block opened at: only a sibling or shallower heading closes it, so an
+  // author may group approval items under subheadings without the boxes
+  // silently falling outside the scan.
+  let openedAt = 0;
   proposal.split("\n").forEach((line, index) => {
-    if (/^#{1,6}\s+Human Approval Required\b/i.test(line)) {
-      inside = true;
+    const heading = /^(#{1,6})\s+(.*)$/.exec(line);
+    if (heading !== null) {
+      const level = (heading[1] ?? "").length;
+      if (/^Human Approval Required\b/i.test(heading[2] ?? "")) {
+        openedAt = level;
+      } else if (openedAt > 0 && level <= openedAt) {
+        openedAt = 0;
+      }
       return;
     }
-    if (inside && /^#{1,6}\s/.test(line)) inside = false;
-    if (inside && /^\s*-\s*\[ \]/.test(line)) unchecked.push(index + 1);
+    if (openedAt > 0 && /^\s*-\s*\[ \]/.test(line)) unchecked.push(index + 1);
   });
   return unchecked;
 }

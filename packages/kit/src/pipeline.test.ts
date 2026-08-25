@@ -177,6 +177,34 @@ describe("blockedCommands — what autonomy may not do unattended", () => {
   it("stays quiet on ordinary commands", () => {
     expect(blockedCommands("pnpm build\npnpm test\ngit commit -m x\ngh pr create")).toEqual([]);
   });
+
+  it("catches git push with the short force flag -f", () => {
+    expect(blockedCommands("git push -f origin main"), "git push -f").toHaveLength(1);
+  });
+
+  it("allows pnpm test even with --filter and long flag sequences", () => {
+    expect(blockedCommands("pnpm --filter @nullius-inverba/kit test")).toEqual([]);
+  });
+
+  it("catches pnpm publish with --filter between manager and verb", () => {
+    expect(blockedCommands("pnpm --filter @nullius-inverba/claims publish")).toHaveLength(1);
+  });
+
+  it("catches pnpm -r publish (recursive shorthand)", () => {
+    expect(blockedCommands("pnpm -r publish")).toHaveLength(1);
+  });
+
+  it("catches git filter-repo (modern rewrite-history tool)", () => {
+    expect(blockedCommands("git filter-repo --path x")).toHaveLength(1);
+  });
+
+  it("catches merging via the REST API", () => {
+    expect(blockedCommands("gh api repos/o/r/pulls/38/merge -X PUT -f merge_method=squash")).toHaveLength(1);
+  });
+
+  it("catches yarn publish", () => {
+    expect(blockedCommands("yarn publish")).toHaveLength(1);
+  });
 });
 
 describe("unapprovedBlocks — Stage 1 pauses on an unchecked box", () => {
@@ -199,5 +227,10 @@ describe("unapprovedBlocks — Stage 1 pauses on an unchecked box", () => {
 
   it("returns empty when there is no such block", () => {
     expect(unapprovedBlocks("# Proposal\n\n- [ ] a task\n")).toEqual([]);
+  });
+
+  it("includes unchecked boxes under nested subheadings within the approval block", () => {
+    const nested = "## Human Approval Required\n\n### Rotations\n\n- [ ] rotate the token";
+    expect(unapprovedBlocks(nested)).toEqual([5]);
   });
 });
