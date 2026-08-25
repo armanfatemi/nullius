@@ -84,8 +84,8 @@ function main(): number {
     return argv.length === 0 ? 2 : 0;
   }
 
-  // `init` and `doctor` own their own flags; the witness options parser would
-  // reject them.
+  // `init`, `doctor`, and `pipeline` own their own flags; the witness options
+  // parser would reject them.
   if (argv[0] === "init") return runInit(argv.slice(1));
   if (argv[0] === "doctor") return runDoctor(argv.slice(1));
   if (argv[0] === "pipeline") return runPipeline(argv.slice(1));

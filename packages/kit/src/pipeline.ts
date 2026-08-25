@@ -92,6 +92,11 @@ const ARCHITECTURE_PATHS: readonly RegExp[] = [
   /^spec\/[^/]+\.md$/,
   /^CLAUDE\.md$/,
   /^README\.md$/,
+  // Proposals cite this repository's project doctrine bare (`project.md`), the
+  // same basename convention that motivated KERNEL_BASENAMES above — the real
+  // path is `openspec/project.md`, but `^openspec\/` below only matches a
+  // citation that carries the directory, and this one usually does not.
+  /^project\.md$/,
   /^openspec\//,
 ];
 
@@ -283,7 +288,8 @@ export function appendEvidence(root: string, change: string, heading: string, bo
 const PIPELINE_USAGE = `nullius-kit pipeline — deterministic helpers for proposal-to-pr
 
 usage:
-  nullius-kit pipeline <command> <change> [--root <dir>]
+  nullius-kit pipeline <command> [<change>] [--root <dir>]
+  (<change> is required by most commands; list-changes and route-paths take none)
 
   list-changes                  every openspec/changes/<name>/
   show <change>                 the change's artefacts; exit 1 if incomplete
@@ -295,8 +301,8 @@ usage:
   touched-areas <change>        repo-relative paths the change names
   depends-on <change>           the > **Depends on:** blockquote, one per line
   route <change>                the agents those paths earn, one per line
-  route-paths                    same, but for repo-relative paths on stdin
-                                  (one per line, e.g. git diff --name-only)
+  route-paths                   same, but for repo-relative paths on stdin
+                                 (one per line, e.g. git diff --name-only)
   dep-status <change>           exit 0 only if provably archived
   classify-compare <status>     landed | orphaned | unknown; exit 0 on landed
   evidence-append <change> <h>  read a section from stdin
@@ -349,7 +355,10 @@ export function runPipeline(argv: readonly string[]): number {
   }
 
   if (change === undefined) {
-    console.error(`pipeline ${command} needs a change name\n\n${PIPELINE_USAGE}`);
+    // `classify-compare` takes a status word, not a change name — name the
+    // argument this subcommand actually expects rather than the wrong noun.
+    const noun = command === "classify-compare" ? "a status word" : "a change name";
+    console.error(`pipeline ${command} needs ${noun}\n\n${PIPELINE_USAGE}`);
     return 2;
   }
   // `classify-compare` takes a status word, not a change name, so it is
@@ -365,16 +374,25 @@ export function runPipeline(argv: readonly string[]): number {
   }
 
   const dir = changeDir(root, change);
+  // A subcommand that reports success — or, worse, blocks forever reading
+  // stdin — without ever confirming the change's directory exists hands the
+  // skill a proof it never obtained. Hoisted once, above every artefact and
+  // stdin read, rather than repeated per subcommand. `state-set` and
+  // `state-reset` write resume state under `.git/`, not under this directory,
+  // and `dep-status`'s whole job is answering whether the (archived)
+  // directory exists — all three legitimately act on a change whose
+  // directory may not exist yet, so they stay exempt.
+  const needsDir = command !== "state-set" && command !== "state-reset" && command !== "dep-status";
+  if (needsDir && !existsSync(dir)) {
+    console.error(`no openspec/changes/${change}/`);
+    return 1;
+  }
   const proposal = readIfPresent(join(dir, "proposal.md"));
   const tasks = readIfPresent(join(dir, "tasks.md"));
   const design = readIfPresent(join(dir, "design.md"));
 
   switch (command) {
     case "show": {
-      if (!existsSync(dir)) {
-        console.error(`no openspec/changes/${change}/`);
-        return 1;
-      }
       const missing = ["proposal.md", "design.md", "tasks.md"].filter(
         (file) => !existsSync(join(dir, file)),
       );
@@ -386,6 +404,14 @@ export function runPipeline(argv: readonly string[]): number {
       return 0;
     }
     case "pause-check": {
+      // The directory guard above proves the change exists, not that its
+      // proposal does. unapprovedBlocks("") is [] — an absent proposal.md
+      // would otherwise read as "every box checked, proceed" for the one
+      // gate that protects a human decision.
+      if (!existsSync(join(dir, "proposal.md"))) {
+        console.error(`no proposal.md in openspec/changes/${change}/`);
+        return 1;
+      }
       const unchecked = unapprovedBlocks(proposal);
       for (const line of unchecked) console.error(`proposal.md:${line} unchecked approval`);
       return unchecked.length > 0 ? 1 : 0;
@@ -434,6 +460,14 @@ export function runPipeline(argv: readonly string[]): number {
         console.error("evidence-append needs a heading");
         return 2;
       }
+      // An unattended runner that blocks on a terminal read stops with no
+      // error and no exit code, which is indistinguishable from work still
+      // in progress. There is never any input coming on a TTY, so refuse
+      // before the read rather than hang waiting for it.
+      if (process.stdin.isTTY === true) {
+        console.error(`pipeline ${command} reads its content on stdin`);
+        return 2;
+      }
       appendEvidence(root, change, heading, readFileSync(0, "utf8"));
       return 0;
     }
@@ -442,6 +476,12 @@ export function runPipeline(argv: readonly string[]): number {
       return 0;
     }
     case "progress-write": {
+      // See evidence-append above: a TTY never supplies piped input, so a
+      // read here would hang rather than fail.
+      if (process.stdin.isTTY === true) {
+        console.error(`pipeline ${command} reads its content on stdin`);
+        return 2;
+      }
       writeFileSync(join(dir, "progress.md"), readFileSync(0, "utf8"), "utf8");
       return 0;
     }

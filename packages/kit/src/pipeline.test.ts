@@ -136,6 +136,10 @@ describe("routeAgents — basename matching, because this repo's proposals cite 
     expect(agents).toContain("test-engineer");
     expect(agents).not.toContain("checker-engineer");
   });
+
+  it("dispatches architecture-reviewer for the bare project.md citation, not only openspec/project.md", () => {
+    expect(routeAgents(["project.md"])).toContain("architecture-reviewer");
+  });
 });
 
 describe("routePathsFrom — Stage 6 routes the diff, not prose", () => {
@@ -402,5 +406,45 @@ describe("runPipeline — exit codes the skill branches on", () => {
     expect(runPipeline(["classify-compare", "identical"])).toBe(0);
     expect(runPipeline(["classify-compare", "diverged"])).toBe(1);
     expect(runPipeline(["classify-compare", "nonsense"])).toBe(1);
+  });
+});
+
+describe("runPipeline — the directory guard proves the artefact was read", () => {
+  it("returns 1 from pause-check on a nonexistent change, not 0", () => {
+    const root = scratch();
+    expect(runPipeline(["pause-check", "no-such-change", "--root", root])).toBe(1);
+  });
+
+  it("returns 1 from pause-check on a change directory with no proposal.md", () => {
+    // scratch() creates openspec/changes/add-thing but writes nothing into it.
+    const root = scratch();
+    expect(runPipeline(["pause-check", "add-thing", "--root", root])).toBe(1);
+  });
+
+  it("returns a code from progress-write on a nonexistent change, rather than throwing", () => {
+    const root = scratch();
+    let result: number | undefined;
+    expect(() => {
+      result = runPipeline(["progress-write", "no-such-change", "--root", root]);
+    }).not.toThrow();
+    expect(result).toBe(1);
+  });
+
+  it("still lets state-set write against a change directory that does not exist", () => {
+    const root = mkdtempSync(join(tmpdir(), "nullius-pipeline-"));
+    expect(runPipeline(["state-set", "brand-new", "stage", "load", "--root", root])).toBe(0);
+    expect(readState(root, "brand-new")["stage"]).toBe("load");
+  });
+
+  it("refuses progress-write on a TTY rather than blocking on a read that will never come", () => {
+    const root = scratch();
+    const original = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
+    Object.defineProperty(process.stdin, "isTTY", { value: true, configurable: true });
+    try {
+      expect(runPipeline(["progress-write", "add-thing", "--root", root])).toBe(2);
+    } finally {
+      if (original) Object.defineProperty(process.stdin, "isTTY", original);
+      else delete (process.stdin as { isTTY?: boolean }).isTTY;
+    }
   });
 });
