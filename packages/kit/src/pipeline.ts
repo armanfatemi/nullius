@@ -143,6 +143,26 @@ export function routeAgents(paths: readonly string[]): AgentName[] {
   return [...agents].sort();
 }
 
+/**
+ * Route a diff's changed paths directly, bypassing prose extraction.
+ *
+ * `route` reads `proposal.md` and `tasks.md` and can only route what a
+ * proposal says — and a proposal may name no source files at all (round 1's
+ * corpus re-measurement found three such changes). Stage 6 post-review
+ * routes on the diff instead, where changed files are facts from `git`, not
+ * prose. Those paths must NOT go through `touchedPaths`: that extractor
+ * only finds backticked mentions, and a real `git diff --name-only` line
+ * never carries backticks — running it through the extractor would drop
+ * every path.
+ */
+export function routePathsFrom(input: string): AgentName[] {
+  const paths = input
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  return routeAgents(paths);
+}
+
 /** One human-only command found in a change's own artefacts. */
 export interface BlockedCommand {
   readonly line: number;
@@ -275,6 +295,8 @@ usage:
   touched-areas <change>        repo-relative paths the change names
   depends-on <change>           the > **Depends on:** blockquote, one per line
   route <change>                the agents those paths earn, one per line
+  route-paths                    same, but for repo-relative paths on stdin
+                                  (one per line, e.g. git diff --name-only)
   dep-status <change>           exit 0 only if provably archived
   classify-compare <status>     landed | orphaned | unknown; exit 0 on landed
   evidence-append <change> <h>  read a section from stdin
@@ -314,6 +336,15 @@ export function runPipeline(argv: readonly string[]): number {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       if (entry.isDirectory() && entry.name !== "archive") console.log(entry.name);
     }
+    return 0;
+  }
+
+  if (command === "route-paths") {
+    // No change name: the paths come from stdin, not from a change's own
+    // artefacts. Handled here, before the change-name guard, so a caller
+    // piping `git diff --name-only` isn't rejected for missing an argument
+    // this subcommand doesn't take.
+    for (const agent of routePathsFrom(readFileSync(0, "utf8"))) console.log(agent);
     return 0;
   }
 

@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { appendEvidence, blockedCommands, classifyCompareStatus, isSafeChangeName, parseDependsOn, KERNEL_MODULES, readState, routeAgents, runPipeline, statePath, touchedPaths, unapprovedBlocks, writeStateKey } from "./pipeline";
+import { appendEvidence, blockedCommands, classifyCompareStatus, isSafeChangeName, parseDependsOn, KERNEL_MODULES, readState, routeAgents, routePathsFrom, runPipeline, statePath, touchedPaths, unapprovedBlocks, writeStateKey } from "./pipeline";
 
 describe("parseDependsOn — the blockquote intent-to-proposal writes", () => {
   it("extracts backticked change names", () => {
@@ -135,6 +135,27 @@ describe("routeAgents — basename matching, because this repo's proposals cite 
     const agents = routeAgents(["cli.ts"]);
     expect(agents).toContain("test-engineer");
     expect(agents).not.toContain("checker-engineer");
+  });
+});
+
+describe("routePathsFrom — Stage 6 routes the diff, not prose", () => {
+  it("routes a kernel module path to checker-engineer", () => {
+    expect(routePathsFrom("packages/claims/src/wiring.ts\n")).toContain("checker-engineer");
+  });
+
+  it("produces no spurious empty path from blank lines or a trailing newline", () => {
+    expect(routePathsFrom("\n\n\n")).toEqual(["rule-auditor"]);
+    expect(routePathsFrom("packages/claims/src/wiring.ts\n\n")).toEqual(
+      routeAgents(["packages/claims/src/wiring.ts"]),
+    );
+  });
+
+  it("routes a real path with no backticks — touchedPaths would drop it, routePathsFrom must not", () => {
+    const raw = "packages/claims/src/wiring.ts";
+    // Sanity check on the premise: the backtick extractor really does find
+    // nothing in a plain `git diff --name-only` line.
+    expect(touchedPaths(raw)).toEqual([]);
+    expect(routePathsFrom(raw)).toContain("checker-engineer");
   });
 });
 
