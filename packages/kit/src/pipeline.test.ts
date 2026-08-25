@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { classifyCompareStatus, isSafeChangeName, parseDependsOn, KERNEL_MODULES, routeAgents, touchedPaths } from "./pipeline";
+import { blockedCommands, classifyCompareStatus, isSafeChangeName, parseDependsOn, KERNEL_MODULES, routeAgents, touchedPaths, unapprovedBlocks } from "./pipeline";
 
 describe("parseDependsOn — the blockquote intent-to-proposal writes", () => {
   it("extracts backticked change names", () => {
@@ -135,5 +135,69 @@ describe("touchedPaths + routeAgents composed — the seam Task 5 wires", () => 
       "rule-auditor",
       "test-engineer",
     ]);
+  });
+});
+
+describe("blockedCommands — what autonomy may not do unattended", () => {
+  it("refuses to merge, in any form", () => {
+    expect(blockedCommands("run `gh pr merge 38`")[0]?.reason).toContain("human");
+  });
+
+  it("refuses a squash even when the verb is not merge", () => {
+    expect(blockedCommands("gh pr merge --squash 38")).toHaveLength(1);
+    expect(blockedCommands("some-tool --squash")[0]?.reason).toContain("merge-never-squash");
+  });
+
+  it("refuses history rewrites and publishes", () => {
+    for (const command of [
+      "git push --force origin main",
+      "git push --force-with-lease",
+      "git rebase main",
+      "git filter-branch --all",
+      "npm publish",
+      "pnpm publish --access public",
+    ]) {
+      expect(blockedCommands(command), command).toHaveLength(1);
+    }
+  });
+
+  it("refuses to touch the settings file and the nullius state dir", () => {
+    expect(blockedCommands("edit .claude/settings.json")[0]?.reason).toContain("one-delivery-mechanism");
+    expect(blockedCommands("rm .git/nullius/canaries.json")).toHaveLength(1);
+  });
+
+  it("refuses openspec archive, which would satisfy this change's own dependents", () => {
+    expect(blockedCommands("openspec archive add-foo")[0]?.reason).toContain("dependents");
+  });
+
+  it("reports the line number so the orchestrator can flag the task", () => {
+    expect(blockedCommands("safe\nsafe\ngh pr merge 1")[0]?.line).toBe(3);
+  });
+
+  it("stays quiet on ordinary commands", () => {
+    expect(blockedCommands("pnpm build\npnpm test\ngit commit -m x\ngh pr create")).toEqual([]);
+  });
+});
+
+describe("unapprovedBlocks — Stage 1 pauses on an unchecked box", () => {
+  const proposal = [
+    "# Proposal",
+    "",
+    "## Human Approval Required",
+    "",
+    "- [ ] rotate the token",
+    "- [x] confirm the plan",
+    "",
+    "## Problem",
+    "",
+    "- [ ] this box is not an approval",
+  ].join("\n");
+
+  it("reports only unchecked boxes inside the block", () => {
+    expect(unapprovedBlocks(proposal)).toEqual([5]);
+  });
+
+  it("returns empty when there is no such block", () => {
+    expect(unapprovedBlocks("# Proposal\n\n- [ ] a task\n")).toEqual([]);
   });
 });

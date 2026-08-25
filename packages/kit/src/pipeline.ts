@@ -113,3 +113,58 @@ export function routeAgents(paths: readonly string[]): AgentName[] {
   }
   return [...agents].sort();
 }
+
+/** One human-only command found in a change's own artefacts. */
+export interface BlockedCommand {
+  readonly line: number;
+  readonly text: string;
+  readonly reason: string;
+}
+
+/**
+ * Commands a run may propose but never execute unattended. Drawn from the
+ * rules and from what autonomy could quietly break — not from a general idea
+ * of danger.
+ */
+const HUMAN_ONLY: readonly { readonly pattern: RegExp; readonly reason: string }[] = [
+  { pattern: /\bgh\s+pr\s+merge\b/, reason: "merge is the human's call" },
+  { pattern: /--squash\b/, reason: "merge-never-squash.md — a squash orphans every anchor stamp" },
+  { pattern: /\bgit\s+push\b.*--force/, reason: "rewrites published history" },
+  { pattern: /\bgit\s+(?:rebase|filter-branch)\b/, reason: "rewrites published history" },
+  { pattern: /\b(?:npm|pnpm)\s+publish\b/, reason: "publishes an artefact" },
+  { pattern: /\.claude\/settings\.json\b/, reason: "one-delivery-mechanism.md" },
+  { pattern: /\.git\/nullius\//, reason: "canary registry and witness journal" },
+  { pattern: /\bopenspec\s+archive\b/, reason: "archiving would satisfy this change's own dependents" },
+];
+
+export function blockedCommands(text: string): BlockedCommand[] {
+  const found: BlockedCommand[] = [];
+  text.split("\n").forEach((line, index) => {
+    for (const { pattern, reason } of HUMAN_ONLY) {
+      if (!pattern.test(line)) continue;
+      found.push({ line: index + 1, text: line.trim(), reason });
+      return;
+    }
+  });
+  return found;
+}
+
+/**
+ * Line numbers of unchecked boxes under a `Human Approval Required` heading.
+ *
+ * Scoped to that block deliberately: `tasks.md` is nothing but unchecked
+ * boxes, and a pause-check that counted them all would pause on every change.
+ */
+export function unapprovedBlocks(proposal: string): number[] {
+  const unchecked: number[] = [];
+  let inside = false;
+  proposal.split("\n").forEach((line, index) => {
+    if (/^#{1,6}\s+Human Approval Required\b/i.test(line)) {
+      inside = true;
+      return;
+    }
+    if (inside && /^#{1,6}\s/.test(line)) inside = false;
+    if (inside && /^\s*-\s*\[ \]/.test(line)) unchecked.push(index + 1);
+  });
+  return unchecked;
+}
