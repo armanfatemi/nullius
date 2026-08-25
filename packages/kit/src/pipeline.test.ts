@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { appendEvidence, blockedCommands, classifyCompareStatus, isSafeChangeName, parseDependsOn, KERNEL_MODULES, readState, routeAgents, statePath, touchedPaths, unapprovedBlocks, writeStateKey } from "./pipeline";
+import { appendEvidence, blockedCommands, classifyCompareStatus, isSafeChangeName, parseDependsOn, KERNEL_MODULES, readState, routeAgents, runPipeline, statePath, touchedPaths, unapprovedBlocks, writeStateKey } from "./pipeline";
 
 describe("parseDependsOn — the blockquote intent-to-proposal writes", () => {
   it("extracts backticked change names", () => {
@@ -298,5 +298,65 @@ describe("evidence — committed into the change folder, where CI re-verifies it
     expect(written).toContain("first");
     expect(written).toContain("second");
     expect(written.indexOf("first")).toBeLessThan(written.indexOf("second"));
+  });
+
+  it("refuses an unsafe change name before building an evidence path", () => {
+    expect(() => appendEvidence(scratch(), "../../etc", "H", "body")).toThrow(/change name/i);
+  });
+});
+
+describe("runPipeline — exit codes the skill branches on", () => {
+  it("returns 2 for an unknown subcommand", () => {
+    expect(runPipeline(["not-a-command"])).toBe(2);
+  });
+
+  it("returns 2 with no subcommand", () => {
+    expect(runPipeline([])).toBe(2);
+  });
+
+  it("returns 1 from pause-check when an approval box is unchecked", () => {
+    const root = scratch();
+    writeFileSync(
+      join(root, "openspec/changes/add-thing/proposal.md"),
+      "# P\n\n## Human Approval Required\n\n- [ ] rotate\n",
+    );
+    expect(runPipeline(["pause-check", "add-thing", "--root", root])).toBe(1);
+  });
+
+  it("returns 0 from pause-check when every box is checked", () => {
+    const root = scratch();
+    writeFileSync(
+      join(root, "openspec/changes/add-thing/proposal.md"),
+      "# P\n\n## Human Approval Required\n\n- [x] rotate\n",
+    );
+    expect(runPipeline(["pause-check", "add-thing", "--root", root])).toBe(0);
+  });
+
+  it("returns 1 from blocked-commands when one is present", () => {
+    const root = scratch();
+    writeFileSync(join(root, "openspec/changes/add-thing/proposal.md"), "# P\n");
+    writeFileSync(join(root, "openspec/changes/add-thing/tasks.md"), "- [ ] run `gh pr merge 1`\n");
+    expect(runPipeline(["blocked-commands", "add-thing", "--root", root])).toBe(1);
+  });
+
+  it("refuses an unsafe change name without touching the filesystem", () => {
+    expect(runPipeline(["pause-check", "../../etc", "--root", scratch()])).toBe(2);
+  });
+
+  it("reports an archived dependency as satisfied", () => {
+    const root = scratch();
+    mkdirSync(join(root, "openspec/changes/archive/add-old"), { recursive: true });
+    expect(runPipeline(["dep-status", "add-old", "--root", root])).toBe(0);
+  });
+
+  it("reports an unarchived dependency as unresolved, never as satisfied", () => {
+    const root = scratch();
+    expect(runPipeline(["dep-status", "add-thing", "--root", root])).toBe(1);
+  });
+
+  it("classifies a compare status by tested code, not by eye", () => {
+    expect(runPipeline(["classify-compare", "identical"])).toBe(0);
+    expect(runPipeline(["classify-compare", "diverged"])).toBe(1);
+    expect(runPipeline(["classify-compare", "nonsense"])).toBe(1);
   });
 });

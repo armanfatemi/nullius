@@ -9,7 +9,7 @@
  * and the run then reports a review that never happened.
  */
 
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 /** A dependency's state as the Stage 1 gate sees it. */
@@ -232,4 +232,175 @@ export function appendEvidence(root: string, change: string, heading: string, bo
   const path = join(root, "openspec", "changes", change, "review-evidence.md");
   const header = existsSync(path) ? "" : "# Review evidence\n";
   appendFileSync(path, `${header}\n## ${heading}\n\n${body.trimEnd()}\n`, "utf8");
+}
+
+const PIPELINE_USAGE = `nullius-kit pipeline — deterministic helpers for proposal-to-pr
+
+usage:
+  nullius-kit pipeline <command> <change> [--root <dir>]
+
+  list-changes                  every openspec/changes/<name>/
+  show <change>                 the change's artefacts; exit 1 if incomplete
+  state-get <change> [key]      read resume state
+  state-set <change> <k> <v>    write one key
+  state-reset <change>          wipe state for this change
+  pause-check <change>          exit 1 on an unchecked Human Approval box
+  blocked-commands <change>     exit 1 and print HUMAN: <cmd> for each
+  touched-areas <change>        repo-relative paths the change names
+  depends-on <change>           the > **Depends on:** blockquote, one per line
+  route <change>                the agents those paths earn, one per line
+  dep-status <change>           exit 0 only if provably archived
+  classify-compare <status>     landed | orphaned | unknown; exit 0 on landed
+  evidence-append <change> <h>  read a section from stdin
+  evidence-print <change>       print accumulated review evidence
+  progress-write <change>       overwrite progress.md from stdin
+
+Exit codes: 0 ok · 1 pause or blocker · 2 usage error`;
+
+function changeDir(root: string, change: string): string {
+  return join(root, "openspec", "changes", change);
+}
+
+function readIfPresent(path: string): string {
+  return existsSync(path) ? readFileSync(path, "utf8") : "";
+}
+
+export function runPipeline(argv: readonly string[]): number {
+  const rootIndex = argv.indexOf("--root");
+  const root = rootIndex === -1 ? process.cwd() : (argv[rootIndex + 1] ?? process.cwd());
+  // Guard the -1 case explicitly. `indexOf` returns -1 when the flag is
+  // absent, and `rootIndex + 1` is then 0 — a filter written without this
+  // branch drops argv[0], the subcommand itself.
+  const positional =
+    rootIndex === -1
+      ? [...argv]
+      : argv.filter((_, index) => index !== rootIndex && index !== rootIndex + 1);
+  const [command, change, ...rest] = positional;
+
+  if (command === undefined || command === "--help" || command === "-h") {
+    console.log(PIPELINE_USAGE);
+    return command === undefined ? 2 : 0;
+  }
+
+  if (command === "list-changes") {
+    const dir = join(root, "openspec", "changes");
+    if (!existsSync(dir)) return 0;
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.isDirectory() && entry.name !== "archive") console.log(entry.name);
+    }
+    return 0;
+  }
+
+  if (change === undefined) {
+    console.error(`pipeline ${command} needs a change name\n\n${PIPELINE_USAGE}`);
+    return 2;
+  }
+  // `classify-compare` takes a status word, not a change name, so it is
+  // answered before the name guard rather than exempted inside it.
+  if (command === "classify-compare") {
+    const verdict = classifyCompareStatus(change);
+    console.log(verdict);
+    return verdict === "landed" ? 0 : 1;
+  }
+  if (!isSafeChangeName(change)) {
+    console.error(`unsafe change name: ${change}`);
+    return 2;
+  }
+
+  const dir = changeDir(root, change);
+  const proposal = readIfPresent(join(dir, "proposal.md"));
+  const tasks = readIfPresent(join(dir, "tasks.md"));
+  const design = readIfPresent(join(dir, "design.md"));
+
+  switch (command) {
+    case "show": {
+      if (!existsSync(dir)) {
+        console.error(`no openspec/changes/${change}/`);
+        return 1;
+      }
+      const missing = ["proposal.md", "design.md", "tasks.md"].filter(
+        (file) => !existsSync(join(dir, file)),
+      );
+      for (const file of readdirSync(dir)) console.log(file);
+      if (missing.length > 0) {
+        console.error(`incomplete change — missing ${missing.join(", ")}`);
+        return 1;
+      }
+      return 0;
+    }
+    case "pause-check": {
+      const unchecked = unapprovedBlocks(proposal);
+      for (const line of unchecked) console.error(`proposal.md:${line} unchecked approval`);
+      return unchecked.length > 0 ? 1 : 0;
+    }
+    case "blocked-commands": {
+      const found = [...blockedCommands(tasks), ...blockedCommands(design)];
+      for (const entry of found) console.log(`HUMAN: ${entry.text}  — ${entry.reason}`);
+      return found.length > 0 ? 1 : 0;
+    }
+    case "touched-areas": {
+      for (const path of touchedPaths(`${proposal}\n${tasks}`)) console.log(path);
+      return 0;
+    }
+    case "depends-on": {
+      for (const name of parseDependsOn(proposal)) console.log(name);
+      return 0;
+    }
+    case "route": {
+      for (const agent of routeAgents(touchedPaths(`${proposal}\n${tasks}`))) console.log(agent);
+      return 0;
+    }
+    case "state-get": {
+      const state = readState(root, change);
+      const key = rest[0];
+      if (key === undefined) console.log(JSON.stringify(state, null, 2));
+      else if (state[key] !== undefined) console.log(state[key]);
+      return 0;
+    }
+    case "state-set": {
+      const [key, value] = rest;
+      if (key === undefined || value === undefined) {
+        console.error("state-set needs <key> <value>");
+        return 2;
+      }
+      writeStateKey(root, change, key, value);
+      return 0;
+    }
+    case "state-reset": {
+      const path = statePath(root, change);
+      if (existsSync(path)) writeFileSync(path, "{}\n", "utf8");
+      return 0;
+    }
+    case "evidence-append": {
+      const heading = rest[0];
+      if (heading === undefined) {
+        console.error("evidence-append needs a heading");
+        return 2;
+      }
+      appendEvidence(root, change, heading, readFileSync(0, "utf8"));
+      return 0;
+    }
+    case "evidence-print": {
+      process.stdout.write(readIfPresent(join(dir, "review-evidence.md")));
+      return 0;
+    }
+    case "progress-write": {
+      writeFileSync(join(dir, "progress.md"), readFileSync(0, "utf8"), "utf8");
+      return 0;
+    }
+    case "dep-status": {
+      // The archive check is the whole filesystem-answerable half. The PR half
+      // needs a network call, so the skill runs `gh` and hands the result back
+      // to `classify-compare` — the model performs the I/O, tested code
+      // interprets it. Anything not provably satisfied exits 1.
+      const archived = existsSync(join(root, "openspec", "changes", "archive", change));
+      const state: DepState = archived ? "satisfied" : "unknown";
+      console.log(state);
+      return archived ? 0 : 1;
+    }
+    default: {
+      console.error(`unknown subcommand: pipeline ${command}\n\n${PIPELINE_USAGE}`);
+      return 2;
+    }
+  }
 }
