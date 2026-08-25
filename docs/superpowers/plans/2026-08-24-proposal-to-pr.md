@@ -1010,7 +1010,7 @@ Expected: `Every declared reference resolves.` and no `UNSUBSTITUTED-TOKEN`. The
 
 - [ ] **Step 4: Verify the agent is dispatchable**
 
-Start a **fresh session** — Claude Code loads the agent registry at session start, so an agent file created in this session is not yet dispatchable. Then dispatch `retro-writer` with `prompt: "Say 'ok'."` and confirm it returns.
+Dispatch `retro-writer` with `prompt: "Say 'ok'."` and confirm it returns. The export warns that the agent registry loads only at session start; measured in this harness that is false — the agent was dispatchable immediately. The ping is the check that matters. Only if it fails do you need a fresh session.
 
 - [ ] **Step 5: Commit**
 
@@ -1062,6 +1062,8 @@ Work through the export section by section, applying the design doc's adaptation
 
 1. **Stage 1** — drop `jira_issue_key`, `id`, `model:`, the tier advisory, and the `grep -Rls '^id:'` resolution. Dependencies come from `nullius-kit pipeline depends-on <change>`; each name is a directory. Satisfied when the directory is under `openspec/changes/archive/`, or state carries a `pr_url` that is `MERGED` **and** whose `compare/main...<mergeCommit>` status is `identical|behind`. Port the compare-API block verbatim including its explanation of why a local `git merge-base` is wrong. `ORPHANED` and `UNKNOWN` are both unsatisfied, with distinct messages. **Add `pnpm build` as the first step of the stage.**
 2. **Stage 2** — add the probe, serial because the registry holds one canary: `canary plant`, dispatch `pipeline route`'s agents in parallel, `canary verify` on the synthesized report, `canary clear`. Score via `pipeline evidence-append <change> "Probe — stage 2"`. Never halts; if `plant` fails, note it and run unprobed.
+
+   **The probe section must record where the claim was planted, not only the verdict.** A `MISSED` has two very different causes — a review layer that has gone quiet, or a canary planted outside any dispatched reviewer's declared scope — and they are indistinguishable after the fact once `canary clear` has run. Writing the plant location (file and section) into `## Probe — stage 2` costs one line at plant time and is unrecoverable later. `retro-writer` reads that section to grade the run, and cannot make the distinction without it.
 3. **Stage 4** — delegate TDD to `superpowers:test-driven-development` in prose. Drop specialist-at-declared-tier. Rev-stamp any anchor written into `openspec/changes/**`.
 4. **Stage 5** — `pnpm build && pnpm type-check && pnpm test`; delete the lint step and its token. Encode the ugrep baseline: exactly six failures, all in `src/flagConformance.test.ts`, is baseline; any other count is real. Add the dogfood gates in both polarities.
 5. **Stage 7** — when a reviewer flags a drifted anchor, re-read and re-stamp both halves. Never repoint a line under an old hash.
@@ -1109,7 +1111,7 @@ git commit -m "feat(skill): land proposal-to-pr, and correct what its absence as
 
 - [ ] **Step 7: Acceptance run**
 
-In a **fresh session**, run the pipeline against `add-authoring-ergonomics` — smallest of the seven at 134 lines, and kernel-facing, so it exercises all four routing rows.
+Run the pipeline against `add-authoring-ergonomics` — smallest of the seven at 134 lines, and kernel-facing, so it exercises all four routing rows.
 
 The run is real if: `pipeline route` names four agents, all four return findings in the `[blocker] / [concern] / [looks-good]` shape, the probe returns `CAUGHT`, `review-evidence.md` carries both, and `nullius check` passes on the change folder before the PR opens.
 

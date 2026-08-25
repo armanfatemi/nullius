@@ -315,7 +315,15 @@ re-checked by the same code that checks a human's.
 
 ## First-run note
 
-Claude Code loads the agent registry at session start. `retro-writer.md` added
-in the same session you invoke the skill in is not dispatchable — the dispatch
-fails with `Agent type 'retro-writer' not found`. Start a fresh session after
-the agent file lands. Verify with a one-word ping dispatch before a real run.
+The export warns that Claude Code loads its agent registry at session start, so
+an agent file added mid-session is not dispatchable and the dispatch fails with
+`Agent type 'retro-writer' not found`.
+
+**Measured here, that is not true.** `retro-writer.md` landed and the agent was
+dispatchable in the same session, confirmed by a one-word ping that returned
+`ok`. The harness hot-loads new agent definitions.
+
+Treat the export's warning as a claim about a harness version rather than a law.
+The durable instruction is the verification, not the restart: **ping the agent
+with a one-word dispatch before relying on it.** If the ping fails, start a
+fresh session; if it returns, proceed.
