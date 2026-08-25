@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { classifyCompareStatus, isSafeChangeName, parseDependsOn } from "./pipeline";
+import { classifyCompareStatus, isSafeChangeName, parseDependsOn, KERNEL_MODULES, routeAgents, touchedPaths } from "./pipeline";
 
 describe("parseDependsOn — the blockquote intent-to-proposal writes", () => {
   it("extracts backticked change names", () => {
@@ -57,5 +57,66 @@ describe("isSafeChangeName — a change name reaches a filesystem path", () => {
     for (const value of ["../etc", "a/b", "", ".", "..", "a\0b"]) {
       expect(isSafeChangeName(value), value).toBe(false);
     }
+  });
+});
+
+describe("touchedPaths — repo-relative paths a change names", () => {
+  it("finds backticked source and spec paths", () => {
+    const doc = "Touches `packages/claims/src/wiring.ts` and `spec/wiring.md` today.";
+    expect(touchedPaths(doc)).toEqual(["packages/claims/src/wiring.ts", "spec/wiring.md"]);
+  });
+
+  it("deduplicates and sorts", () => {
+    const doc = "`spec/a.md` `packages/kit/src/doctor.ts` `spec/a.md`";
+    expect(touchedPaths(doc)).toEqual(["packages/kit/src/doctor.ts", "spec/a.md"]);
+  });
+
+  it("ignores prose that is not a path", () => {
+    expect(touchedPaths("the `Verdict` union and `isFailure`")).toEqual([]);
+  });
+});
+
+describe("routeAgents — one assertion per row, by name", () => {
+  it("always dispatches rule-auditor, because rule selection is the kernel's job", () => {
+    expect(routeAgents([])).toEqual(["rule-auditor"]);
+  });
+
+  it("dispatches checker-engineer for each kernel module and no others", () => {
+    for (const module of KERNEL_MODULES) {
+      expect(routeAgents([module]), module).toContain("checker-engineer");
+    }
+    expect(routeAgents(["packages/claims/src/parseClaims.ts"])).not.toContain("checker-engineer");
+  });
+
+  it("dispatches test-engineer for package sources", () => {
+    expect(routeAgents(["packages/kit/src/doctor.ts"])).toContain("test-engineer");
+    expect(routeAgents(["packages/claims/src/parseClaims.ts"])).toContain("test-engineer");
+  });
+
+  it("dispatches test-engineer for fixtures and workflows", () => {
+    expect(routeAgents(["spec/fixtures/valid-run.jsonl"])).toContain("test-engineer");
+    expect(routeAgents([".github/workflows/ci.yml"])).toContain("test-engineer");
+  });
+
+  it("dispatches architecture-reviewer for the spec family and openspec", () => {
+    for (const path of ["spec/wiring.md", "CLAUDE.md", "README.md", "openspec/project.md"]) {
+      expect(routeAgents([path]), path).toContain("architecture-reviewer");
+    }
+  });
+
+  it("dispatches all four for a kernel change", () => {
+    expect(routeAgents(["packages/claims/src/wiring.ts", "spec/wiring.md"])).toEqual([
+      "architecture-reviewer",
+      "checker-engineer",
+      "rule-auditor",
+      "test-engineer",
+    ]);
+  });
+
+  it("dispatches only two for a docs-only change", () => {
+    expect(routeAgents(["docs/adopting-the-pipeline.md", "openspec/project.md"])).toEqual([
+      "architecture-reviewer",
+      "rule-auditor",
+    ]);
   });
 });
