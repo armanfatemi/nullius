@@ -38,33 +38,33 @@
 
 ## 2. Unit tests (one assertion per verdict)
 
-- [ ] 2.1 `wiring.test.ts`: a `checkWiring` case where a `HarnessArtifact` has
+- [x] 2.1 `wiring.test.ts`: a `checkWiring` case where a `HarnessArtifact` has
       `malformed-hooks` set on the new field → asserts the finding's verdict,
       artifact, and detail.
-- [ ] 2.2 `wiring.test.ts`: same for `unclosed-frontmatter`.
-- [ ] 2.3 `wiringScan.test.ts`: a hooks/settings fixture that fails to parse →
+- [x] 2.2 `wiring.test.ts`: same for `unclosed-frontmatter`.
+- [x] 2.3 `wiringScan.test.ts`: a hooks/settings fixture that fails to parse →
       `scanHarnessRoot` produces an artifact with the new field set (in
       addition to the existing `hookCommands` return-`[]` assertion at line
       170, which stays as-is).
-- [ ] 2.4 `wiringScan.test.ts`: a markdown fixture with an opened, never-closed
+- [x] 2.4 `wiringScan.test.ts`: a markdown fixture with an opened, never-closed
       frontmatter fence → `scanHarnessRoot` produces an artifact with the new
       field set, and every declared-field array (`dispatches`, `skills`,
       `reads`, `globs`) still reads `[]` as before.
-- [ ] 2.5 `frontmatter.test.ts`: the new additive helper — asserts `true` for
+- [x] 2.5 `frontmatter.test.ts`: the new additive helper — asserts `true` for
       an opened/unclosed fence, `false` for no frontmatter at all, `false` for
       a normally-closed block. `parseFrontmatter`'s own existing tests
       (including the `toBeNull()` assertion at line 44) are not touched.
 
 ## 3. Fixtures — valid and broken — and the CI gate
 
-- [ ] 3.1 Add a broken hooks/settings fixture under
+- [x] 3.1 Add a broken hooks/settings fixture under
       `spec/fixtures/wiring-broken/` containing invalid JSON.
-- [ ] 3.2 Add a broken markdown fixture under `spec/fixtures/wiring-broken/`
+- [x] 3.2 Add a broken markdown fixture under `spec/fixtures/wiring-broken/`
       whose frontmatter opens and never closes.
-- [ ] 3.3 Extend `wiringScan.test.ts`'s `"the broken fixture trips every hard
+- [x] 3.3 Extend `wiringScan.test.ts`'s `"the broken fixture trips every hard
       verdict"` test (line 187) to include `"malformed-hooks"` and
       `"unclosed-frontmatter"` in the expected `Set<WiringVerdict>`.
-- [ ] 3.4 Confirm `"the valid fixture has no findings at all"` (line 181)
+- [x] 3.4 Confirm `"the valid fixture has no findings at all"` (line 181)
       still passes unchanged — the valid fixture has no malformed input to
       trip these on.
 
