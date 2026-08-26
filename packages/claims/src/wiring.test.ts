@@ -13,6 +13,7 @@ function artifact(over: Partial<HarnessArtifact> = {}): HarnessArtifact {
     path: ".claude/skills/demo/SKILL.md",
     kind: "skill",
     name: "demo",
+    parseError: null,
     dispatches: [],
     skills: [],
     reads: [],
@@ -393,5 +394,56 @@ describe("unsubstituted-token", () => {
 
     expect(report.findings[0]?.verdict).toBe("unsubstituted-token");
     expect(report.findings[0]?.subject).toBe("{{VERIFY_TEST}}");
+  });
+});
+
+describe("malformed-hooks", () => {
+  it("fails an artifact whose hooks/settings file failed to parse", () => {
+    const report = checkWiring(
+      [
+        artifact({
+          kind: "hooks",
+          path: "plugin/hooks/hooks.json",
+          parseError: {
+            verdict: "malformed-hooks",
+            line: 1,
+            detail: "not valid JSON — hook commands in this file cannot be read",
+          },
+        }),
+      ],
+      deps(),
+    );
+
+    expect(report.findings).toHaveLength(1);
+    expect(report.findings[0]?.verdict).toBe("malformed-hooks");
+    expect(report.findings[0]?.artifact).toBe("plugin/hooks/hooks.json");
+    expect(report.findings[0]?.detail).toBe(
+      "not valid JSON — hook commands in this file cannot be read",
+    );
+  });
+});
+
+describe("unclosed-frontmatter", () => {
+  it("fails an artifact whose frontmatter fence opened but never closed", () => {
+    const report = checkWiring(
+      [
+        artifact({
+          kind: "rule",
+          path: ".claude/rules/broken.md",
+          parseError: {
+            verdict: "unclosed-frontmatter",
+            line: 1,
+            detail:
+              "frontmatter fence opened but never closed — declared dispatches, skills, reads and applies_to in it cannot be read",
+          },
+        }),
+      ],
+      deps(),
+    );
+
+    expect(report.findings).toHaveLength(1);
+    expect(report.findings[0]?.verdict).toBe("unclosed-frontmatter");
+    expect(report.findings[0]?.artifact).toBe(".claude/rules/broken.md");
+    expect(report.findings[0]?.detail).toContain("never closed");
   });
 });

@@ -46,13 +46,16 @@ a package name are that package's own release; the kit versions independently.
   tokens, any backslash, whitespace in a candidate) is declined rather than
   checked, by design.
 
-  Seven verdicts: `dangling-agent` and `dangling-skill` (a declared name with
+  Nine verdicts: `dangling-agent` and `dangling-skill` (a declared name with
   no definition file), `missing-path` and `empty-glob` (a declared path or
   glob matching nothing), `dead-hook` (a hook command that does not resolve,
   or is not executable), `unsubstituted-token` (a `{{TOKEN}}` that survived a
-  port), and the advisory `loose-reference` (a backticked path in prose, which
-  might be a live pointer or an illustrative example, and nothing here can
-  tell the two apart). Only declared fields fail; prose is always advisory.
+  port), `malformed-hooks` (a hooks or settings file that fails to parse as
+  JSON) and `unclosed-frontmatter` (a frontmatter fence that opens and never
+  closes) — both fail closed, same as the six above — and the advisory
+  `loose-reference` (a backticked path in prose, which might be a live
+  pointer or an illustrative example, and nothing here can tell the two
+  apart). Only declared fields fail; prose is always advisory.
 
   **`WiringVerdict` is its own union, separate from the kernel's exported
   `Verdict`.** `Verdict` — the enum `check` and `audit` report against — is

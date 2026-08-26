@@ -38,9 +38,11 @@ export type WiringVerdict =
   | "loose-reference";
 ```
 
-`checkWiring` (`packages/claims/src/wiring.ts:216-381@8c6ea59`) is **not** an
-exhaustive switch over `WiringVerdict` the way `checkClaims.ts`'s core
-function is over `Verdict` — contrast:
+`checkWiring` (`packages/claims/src/wiring.ts:216-381@8c6ea59`) has no single
+dispatch point where a new verdict naturally lands. `checkClaims.ts` reaches
+its `"malformed"` verdict from a branch of a switch over the claim's *kind* —
+not over `Verdict`; no exhaustive switch over `Verdict` exists anywhere in the
+kernel — and that branch is a natural home for a parse failure:
 
 **Evidence:** `packages/claims/src/checkClaims.ts:604@8c6ea59`
 
@@ -120,6 +122,69 @@ break it for these two new cases alone.
 (See the `WiringVerdict` member list quoted above, showing the specific-name
 convention.)
 
+**Why these belong in `WiringVerdict` rather than a new union.** The question
+is not rhetorical: `openspec/project.md` states as an absolute constraint that
+new verdict *families* get new unions, and this module's own header names its
+subject narrowly:
+
+**Evidence:** `packages/claims/src/wiring.ts:2@0651b46` — ` * References that must resolve.`
+
+A verdict about a file that will not parse looks, at first reading, like a
+different family — document validity rather than reference resolution — and on
+that reading the constraint would require a second union.
+
+It is the same family, and the reason is what `wiring` actually asks. It does
+not ask whether a document is well-formed for its own sake; it asks whether
+what an artifact **declares** can be resolved. A `hooks.json` that fails
+`JSON.parse` has declared commands that cannot be resolved — not one of them,
+all of them. That is the limiting case of the existing family — every declared
+reference failing at once, for one recoverable reason.
+
+**`unclosed-frontmatter` needs a different argument, and the module supplies
+it.** The limiting-case reading does not stretch to cover it, for two reasons.
+`parseFrontmatter` returns `null` identically for *no fence* and *unclosed
+fence* (`packages/claims/src/frontmatter.ts:62` and `:65`), so the checker
+cannot know the block declared anything — "every declared reference failing at
+once" may be zero references failing. And the artifact's other fields still
+resolve: `front === null` sets `body = content`, so `tokens` and `loose` are
+populated from the whole file.
+
+The argument that does hold is the module's own division of labour:
+
+**Evidence:** `packages/claims/src/wiring.ts:8@0651b46` — ` * Only DECLARED fields fail. A path in prose might be a live pointer or an`
+
+**Evidence:** `packages/claims/src/wiring.ts:10@0651b46` — ` * unresolvable one is advisory. The hard half reads frontmatter, where the`
+
+The hard half reads frontmatter. An unclosed fence destroys that half's entire
+input, and `tokens` and `loose` surviving is not a counterexample — those are
+the advisory half, working exactly as designed. The checker is left unable to
+answer its own question for the half where the author committed to something.
+
+On "may be zero references failing": the checker cannot distinguish a
+declaration block that was empty from one it could not read, and for a checker
+whose whole subject is *do your declared references resolve*, unanswerable is
+not a pass. A file opening with `---` announced a declaration block; a file that
+does not, did not. The change is between "you declared nothing" and "you opened
+a commitment and I cannot read it."
+
+**The same epistemic limit applies to both, and neither argument rests on
+escaping it.** A hooks file that parses to `{}` declares zero commands
+legitimately, so a malformed one has unknown declarations exactly as an
+unreadable fence does — the "may be zero" objection is not special to the fence,
+and an earlier draft of this section conceded it for one verdict while letting
+the other keep an argument that assumed it away. Neither verdict needs to know
+how many references were declared. Both rest on the same thing: the hard half's
+input is destroyed, and a checker whose subject is *do your declared references
+resolve* cannot answer for that half.
+
+So neither verdict belongs in a new union. `malformed-hooks` additionally
+satisfies the limiting-case reading, which `unclosed-frontmatter` does not — but
+that is a bonus property of one, not the load-bearing argument for either. The
+union's subject is unchanged and the header needs no rewrite. The constraint is satisfied rather
+than set aside, which matters because setting aside a constraint documented as
+absolute is the kind of decision that reads as wrong six months later even when
+it was defensible at the time.
+
 ### 2. A `parseError` field on `HarnessArtifact`, checked ahead of the per-field loops
 
 **Chosen:** Add one field to `HarnessArtifact` — carrying at most one parse
@@ -127,10 +192,26 @@ failure (verdict, line, detail) per artifact — populated by `wiringScan.ts`
 when a hooks/settings file fails `JSON.parse`, or a markdown artifact's
 frontmatter fence opens and never closes. `checkWiring` checks this field
 once per artifact, pushes the finding if present, and lets the existing
-per-field loops run unchanged underneath it (they iterate zero times when a
-parse fails, since every declared-field array is already empty in that case —
-see `markdownArtifact`, `packages/claims/src/wiringScan.ts:146-164@8c6ea59`,
-and the hook-source loop, `packages/claims/src/wiringScan.ts:175-197@8c6ea59`).
+per-field loops run unchanged underneath it. **How many of those loops iterate
+zero times depends on which parse failed**, and two earlier drafts of this
+section got it wrong — first claiming every array is empty, then giving a single
+count for two paths that differ:
+
+| | empty | populated |
+|---|---|---|
+| `unclosed-frontmatter` | `dispatches`, `skills`, `reads`, `globs`, `hooks` | `tokens`, `loose` |
+| `malformed-hooks` | all but one | `tokens` |
+
+On the fence path, `markdownArtifact`
+(`packages/claims/src/wiringScan.ts:146-164@8c6ea59`) hard-codes `hooks: []`,
+and a `null` frontmatter sets `body = content` — so `tokens: tokensIn(content)`
+and `loose: looseCandidates(body, bodyStart)` are both populated from the whole
+file, unparsed frontmatter block included. On the hooks path `hookCommands`
+returns `[]` and `loose` is set to `[]` outright, so only `tokens` survives.
+
+That does not change the decision — the `parseError` field is still checked
+ahead of the loops, and a hard finding is still pushed once per artifact — but
+it is the model the Open Question below has to be answered against.
 
 **Alternatives considered:**
 (a) Force the failure through the existing per-field model — e.g., synthesize
@@ -219,7 +300,7 @@ export function parseFrontmatter(content: string): Frontmatter | null {
 genuine oversight with a tested, intentional design decision, and forcing a
 verdict onto the third would misrepresent an abstention as a defect. That
 holds up against the actual code and its own design record, not just as an
-assertion: `hookTarget`'s decline behavior carries 29 unit tests
+assertion: `hookTarget`'s decline behavior carries 25 unit tests
 (`describe("hookTarget", ...)`, `packages/claims/src/wiring.test.ts:199`),
 and `spec/wiring.md` devotes lines 123–226 to why declining beats guessing,
 including a concrete account of an earlier version of this exact function
@@ -256,17 +337,88 @@ export function hookTarget(command: string, pluginRoot: string): string | null {
 
 (Full `hookTarget` body, unchanged by this proposal.)
 
+### 5. Both new verdicts fail closed, and the precedent is `witness.ts`
+
+**Chosen:** Neither `malformed-hooks` nor `unclosed-frontmatter` is added to
+`PASSING`, so both fail the run.
+
+**Why this needs writing down at all.** `PASSING` is an allowlist:
+
+**Evidence:** `packages/claims/src/wiring.ts:85@0651b46` — `const PASSING: ReadonlySet<WiringVerdict> = new Set<WiringVerdict>(["ok", "loose-reference"]);`
+
+A new member therefore fails closed by *omission* — the default does the work,
+and nothing in the change records that anyone chose it. An unargued default and
+a deliberate calibration are indistinguishable in the diff, and the next author
+to add a verdict inherits no reasoning.
+
+**The precedent is not `unverifiable-rev`.** That verdict fails *open*, and the
+distinction is exactly the one that governs here: the thing it cannot read sits
+**outside** the authored file. A commit a shallow clone or a fork cannot resolve
+is not evidence about the author, so the checker declines to accuse. Nothing
+about that reasoning transfers to a file whose malformed bytes are committed in
+the working tree — the author committed them, and the checker can read the
+evidence perfectly well.
+
+The structurally correct precedent is `witness.ts`, which faces the same
+question about a journal line that will not parse and answers it the same way:
+
+**Evidence:** `packages/claims/src/witness.ts:120@0651b46` — `const PASSING: ReadonlySet<JournalVerdict> = new Set<JournalVerdict>(["ok"]);`
+
+Its `malformed` is absent from that set and so fails closed. This design
+already cites `witness.ts` for the *shape* of the fix — check for the parse
+failure before the per-field work — and this is the same module answering the
+calibration question too.
+
+**Alternatives considered:** advisory, like `loose-reference`. Rejected: an
+advisory is for a finding the checker cannot be sure about, and prose paths are
+the case that earns it — a backticked path may be a live pointer or an
+illustrative example, and nothing can tell them apart. A file that fails
+`JSON.parse` is not ambiguous. Making it advisory would mean a harness whose
+hooks file is syntactically broken reports a passing wiring run, which is the
+silence this change exists to remove.
+
+That argument covers `malformed-hooks` and says nothing about
+`unclosed-frontmatter`, which never calls `JSON.parse`. Its own
+near-zero-false-positive argument is scoping rather than syntax: the scanned set
+
+**Evidence:** `packages/claims/src/wiringScan.ts:18@06cb2ca`
+
+```ts
+  { glob: ".claude/agents/*.md", kind: "agent" },
+  { glob: ".claude/skills/**/SKILL.md", kind: "skill" },
+```
+
+is agents, skills, rules and commands — artifact classes that carry frontmatter
+by convention. A prose document opening with `---` as a thematic break is
+near-impossible inside that set, and a document outside it is never scanned at
+all. The heuristic is narrow because its input is narrow, which is the argument
+an unscoped whole-file check would not be able to make.
+
 ## Open questions
 
-- Whether `unclosed-frontmatter` should also count toward
-  `WiringReport.references` the way `unsubstituted-token` does (a token found
-  in prose still increments `references`,
-  `packages/claims/src/wiring.ts:370@8c6ea59`) or should not, on the reasoning
-  that a parse failure examined zero declared references rather than one bad
-  one. Implementation should follow whichever reading keeps
-  `cli.ts`'s "references === 0 means nothing was ever examined" invariant
-  (`packages/claims/src/cli.ts:363-372@8c6ea59`) true for a single-artifact
-  repo whose only artifact fails to parse.
+- ~~Whether `unclosed-frontmatter` should also count toward
+  `WiringReport.references`.~~ **Settled: neither verdict increments it.**
+  `references` is defined as declared references *examined*:
+
+  **Evidence:** `packages/claims/src/wiring.ts:77@06cb2ca` — `  /** Declared references examined. Advisory prose references are not counted. */`
+
+  Under the corrected model above, every declared-field loop iterates zero times
+  on both paths, so zero were examined. Incrementing would make the CLI print
+  "1 declared reference(s) checked" about a file it could not read, and would
+  contradict this design's own rejected alternative (a), which refuses an entry
+  that names nothing real.
+
+  Leaving this to implementer judgement was itself the risk: it is exactly the
+  kind of question two reasonable implementations answer differently, in a
+  counter the CLI's summary sentence depends on.
+
+  One inconsistency is inherited rather than introduced, and is named here so
+  the next change does not reason from it: `unsubstituted-token` *does*
+  increment `references` (`packages/claims/src/wiring.ts:370@8c6ea59`), even
+  though the CLI's own definition of the count lists only `dispatches`,
+  `skills`, `reads`, `applies_to` and hook `command`
+  (`packages/claims/src/cli.ts:363-372@8c6ea59`) — tokens are not among them.
+  That discrepancy predates this change and is out of scope for it.
 - Whether the two new verdicts belong in the `PASSING` set's neighborhood in
   `spec/wiring.md`'s table only, or also warrant a one-line mention in
   `openspec/specs/wiring/spec.md`'s `## Purpose` prose, which currently

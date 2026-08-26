@@ -171,6 +171,55 @@ describe("scanHarnessRoot hook resolution", () => {
     expect(() => scanHooksFile("{ this is not json")).not.toThrow();
     expect(scanHooksFile("{ this is not json")).toEqual([]);
   });
+
+  it("records a parseError on the artifact when the hooks file fails to parse", () => {
+    const root = mkdtempSync(join(tmpdir(), "wiring-scan-"));
+    try {
+      mkdirSync(join(root, "plugin", "hooks"), { recursive: true });
+      writeFileSync(join(root, "plugin", "hooks", "hooks.json"), "{ this is not json");
+
+      const artifacts = scanHarnessRoot(root);
+      const hooksArtifact = artifacts.find((artifact) => artifact.kind === "hooks");
+
+      expect(hooksArtifact?.hooks).toEqual([]);
+      expect(hooksArtifact?.parseError).toEqual({
+        verdict: "malformed-hooks",
+        line: 1,
+        detail: "not valid JSON — hook commands in this file cannot be read",
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("scanHarnessRoot frontmatter parse failures", () => {
+  it("records a parseError and empties every declared field when a fence never closes", () => {
+    const root = mkdtempSync(join(tmpdir(), "wiring-scan-"));
+    try {
+      mkdirSync(join(root, ".claude", "rules"), { recursive: true });
+      writeFileSync(
+        join(root, ".claude", "rules", "broken.md"),
+        "---\ndispatches:\n  - ghost-reviewer\n\nThe fence above never closes.\n",
+      );
+
+      const artifacts = scanHarnessRoot(root);
+      const artifact = artifacts.find((item) => item.path === ".claude/rules/broken.md");
+
+      expect(artifact?.parseError).toEqual({
+        verdict: "unclosed-frontmatter",
+        line: 1,
+        detail:
+          "frontmatter fence opened but never closed — declared dispatches, skills, reads and applies_to in it cannot be read",
+      });
+      expect(artifact?.dispatches).toEqual([]);
+      expect(artifact?.skills).toEqual([]);
+      expect(artifact?.reads).toEqual([]);
+      expect(artifact?.globs).toEqual([]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });
 
 // fileURLToPath, not URL.pathname: the latter is a URL component, and on a
@@ -198,6 +247,8 @@ describe("fixtures", () => {
         "dead-hook",
         "unsubstituted-token",
         "loose-reference",
+        "malformed-hooks",
+        "unclosed-frontmatter",
       ]),
     );
   });

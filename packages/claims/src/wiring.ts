@@ -34,10 +34,28 @@ export type WiringVerdict =
   | "dead-hook"
   /** A `{{TOKEN}}` placeholder survived a port. */
   | "unsubstituted-token"
+  /** A hooks or settings file failed to parse as JSON. */
+  | "malformed-hooks"
+  /** A frontmatter fence opened but never closed. */
+  | "unclosed-frontmatter"
   /** A backticked path in prose that does not resolve. Advisory. */
   | "loose-reference";
 
 export type ArtifactKind = "agent" | "skill" | "rule" | "hooks" | "settings" | "command";
+
+/**
+ * At most one parse failure for an artifact whose declared half could not be
+ * read at all — a hooks/settings file that failed `JSON.parse`, or a
+ * frontmatter fence that opened and never closed. `line` is a best-effort
+ * attribution (typically line 1, where the failure was detected), not a
+ * precise source location — the same honest-fallback convention `locateLine`
+ * uses in `wiringScan.ts`.
+ */
+export interface ArtifactParseError {
+  verdict: Extract<WiringVerdict, "malformed-hooks" | "unclosed-frontmatter">;
+  line: number;
+  detail: string;
+}
 
 export interface HarnessArtifact {
   /** Repo-relative path of the file these references came from. */
@@ -45,6 +63,14 @@ export interface HarnessArtifact {
   kind: ArtifactKind;
   /** The `name:` this artifact declares for itself, when it has one. */
   name: string | null;
+  /**
+   * Set when the scan could not read this artifact's declared half at all.
+   * `checkWiring` reports it once, ahead of the per-field loops below — every
+   * one of which still runs against whatever the scan did manage to populate,
+   * since which fields end up empty depends on which failure this is (see
+   * design.md's Decision 2 for the full breakdown).
+   */
+  parseError: ArtifactParseError | null;
   dispatches: Located[];
   skills: Located[];
   reads: Located[];
@@ -221,6 +247,24 @@ export function checkWiring(
   let references = 0;
 
   for (const item of artifacts) {
+    // A parse failure destroys the declared half of this artifact before any
+    // of the per-field loops below can run — an empty `dispatches` (or
+    // `skills`, `reads`, `globs`, `hooks`) now means either "declared
+    // nothing" or "couldn't be read," and those are not the same fact. One
+    // finding here says which, ahead of everything else; it does not `continue`,
+    // because the loops below still have real work to do against whatever the
+    // scan did populate (`tokens` and sometimes `loose` survive either
+    // failure — see design.md Decision 2).
+    if (item.parseError !== null) {
+      findings.push({
+        artifact: item.path,
+        line: item.parseError.line,
+        verdict: item.parseError.verdict,
+        subject: item.path,
+        detail: item.parseError.detail,
+      });
+    }
+
     for (const ref of item.dispatches) {
       references += 1;
       // Checked before the path is constructed and before the filesystem is

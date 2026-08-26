@@ -37,6 +37,13 @@ declared read path that is not there, an `applies_to` glob matching nothing,
 a hook command that does not resolve or is not executable, and a
 `{{TOKEN}}` placeholder left behind by a copy from scaffolding.
 
+Two of them are references it cannot even read: a hooks or settings file whose
+JSON does not parse, and a markdown artifact whose frontmatter fence opens and
+never closes. Both destroy the declared half of an artifact wholesale rather
+than one reference within it, and both are reported for the same reason as the
+rest — what the artifact declares does not resolve, and here the checker cannot
+determine how much of it failed.
+
 ## Declared references, and prose
 
 An artifact carries two different kinds of text that can look like a
@@ -115,10 +122,26 @@ JSON and walking the parsed structure recursively:
 
 **Evidence:** `packages/claims/src/wiringScan.ts:78@3cc0290` — `function collectCommands(node: unknown, found: string[]): void {`
 
-A file that fails to parse as JSON yields no hooks and no finding for this
-checker — reporting the parse failure itself would need verdict vocabulary
-this checker does not carry, since it speaks only about references
-resolving, not about document validity.
+A file that fails to parse as JSON still yields no hooks out of
+`hookCommands` itself — that half of the old claim above stayed true even
+after this changed:
+
+**Evidence:** `packages/claims/src/wiringScan.ts:138@9b90b33` — `return [];`
+
+What did not stay true is the rest of it, that the parse failure produced
+*no finding*. The scan now hands `hookCommands` a callback that fires on the
+same `JSON.parse` failure, and it is the caller — not the function — that
+records what happened:
+
+**Evidence:** `packages/claims/src/wiringScan.ts:204@9b90b33` — `      const hooks = hookCommands(content, "plugin", () => {`
+
+`checkWiring` checks for that record ahead of every per-field loop and
+reports it as `MALFORMED-HOOKS`:
+
+**Evidence:** `packages/claims/src/wiring.ts:258@9b90b33` — `if (item.parseError !== null) {`
+
+A hooks or settings file that will not parse now fails the run instead of
+passing it in silence.
 
 ### `hookTarget`: collect, then decline unless exactly one
 
@@ -262,16 +285,18 @@ exactly that reason, declared where the rest of this checker's shape is:
 | `EMPTY-GLOB` | A declared `applies_to` glob is unsafe, or matches no file | ❌ |
 | `DEAD-HOOK` | A resolved hook script does not exist, or is not executable | ❌ |
 | `UNSUBSTITUTED-TOKEN` | A `{{TOKEN}}` placeholder survived a port | ❌ |
+| `MALFORMED-HOOKS` | A hooks or settings file failed to parse as JSON | ❌ |
+| `UNCLOSED-FRONTMATTER` | A frontmatter fence opened but never closed | ❌ |
 | `LOOSE-REFERENCE` | An unresolvable backticked path in prose, not a declared field | ✅ |
 
-The union carries an eighth member, `ok` — the reference resolves — but as
+The union carries a tenth member, `ok` — the reference resolves — but as
 shipped, `checkWiring` never emits it as a finding; a reference that resolves
-produces no output at all, and only the six failures plus the one advisory
+produces no output at all, and only the eight failures plus the one advisory
 above ever reach the report:
 
 **Evidence:** `packages/claims/src/cli.ts:367@3cc0290` — ``checker never emits an `ok` finding``
 
-That is why the table above lists seven rows and not eight, and it is the
+That is why the table above lists nine rows and not ten, and it is the
 same shape [the witness journal's verdict table](./witness-journal.md#verdicts)
 takes for its own `ok`. The type exists so `isWiringFailure` has a defined
 answer for it and so the union stays honest about what a reference *could*

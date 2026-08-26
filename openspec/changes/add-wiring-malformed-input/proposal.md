@@ -97,7 +97,7 @@ documented scope boundary rather than treated as a gap:
    `spec/wiring.md:123-226@8c6ea59` spends over a hundred lines on why
    declining is correct ("Declining is the correct answer to ambiguity;
    picking is not." — line 144), and `hookTarget`'s decline behavior carries
-   29 unit tests (`describe("hookTarget", ...)`,
+   25 unit tests (`describe("hookTarget", ...)`,
    `packages/claims/src/wiring.test.ts:199`).
 
 Individually, each of these three is either a named scope boundary (#1, #3)
@@ -147,7 +147,7 @@ does.
   fresh devil's-advocate review of this idea specifically flagged as
   categorically different from the other two: a resolver that declines when
   it cannot tell one candidate script from several is a tested, documented
-  design decision (29 unit tests, a hundred-plus lines of `spec/wiring.md`
+  design decision (25 unit tests, a hundred-plus lines of `spec/wiring.md`
   reasoning), not an unhandled failure mode. Forcing a verdict onto it would
   misrepresent a deliberate abstention as a defect, and risks resurrecting
   the earlier design `spec/wiring.md:137-144@8c6ea59` describes as already

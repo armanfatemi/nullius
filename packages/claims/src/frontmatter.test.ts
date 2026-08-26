@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { declaredList, parseFrontmatter } from "./frontmatter";
+import { declaredList, hasUnclosedFrontmatter, parseFrontmatter } from "./frontmatter";
 
 describe("parseFrontmatter", () => {
   it("returns null when the file has no fence on line 1", () => {
@@ -42,6 +42,20 @@ describe("parseFrontmatter", () => {
 
   it("returns null when the fence is never closed", () => {
     expect(parseFrontmatter("---\nname: x\nno closing fence\n")).toBeNull();
+  });
+});
+
+describe("hasUnclosedFrontmatter", () => {
+  it("returns true when the fence opens and never closes", () => {
+    expect(hasUnclosedFrontmatter("---\nname: x\nno closing fence\n")).toBe(true);
+  });
+
+  it("returns false when there is no frontmatter at all", () => {
+    expect(hasUnclosedFrontmatter("# Just a heading\n")).toBe(false);
+  });
+
+  it("returns false when the fence closes normally", () => {
+    expect(hasUnclosedFrontmatter("---\nname: x\n---\nbody\n")).toBe(false);
   });
 });
 
