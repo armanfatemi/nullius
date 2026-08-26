@@ -167,8 +167,20 @@ not a pass. A file opening with `---` announced a declaration block; a file that
 does not, did not. The change is between "you declared nothing" and "you opened
 a commitment and I cannot read it."
 
-So neither verdict is a new family, by two different routes. The union's subject
-is unchanged and the header needs no rewrite. The constraint is satisfied rather
+**The same epistemic limit applies to both, and neither argument rests on
+escaping it.** A hooks file that parses to `{}` declares zero commands
+legitimately, so a malformed one has unknown declarations exactly as an
+unreadable fence does — the "may be zero" objection is not special to the fence,
+and an earlier draft of this section conceded it for one verdict while letting
+the other keep an argument that assumed it away. Neither verdict needs to know
+how many references were declared. Both rest on the same thing: the hard half's
+input is destroyed, and a checker whose subject is *do your declared references
+resolve* cannot answer for that half.
+
+So neither verdict belongs in a new union. `malformed-hooks` additionally
+satisfies the limiting-case reading, which `unclosed-frontmatter` does not — but
+that is a bonus property of one, not the load-bearing argument for either. The
+union's subject is unchanged and the header needs no rewrite. The constraint is satisfied rather
 than set aside, which matters because setting aside a constraint documented as
 absolute is the kind of decision that reads as wrong six months later even when
 it was defensible at the time.
@@ -180,20 +192,26 @@ failure (verdict, line, detail) per artifact — populated by `wiringScan.ts`
 when a hooks/settings file fails `JSON.parse`, or a markdown artifact's
 frontmatter fence opens and never closes. `checkWiring` checks this field
 once per artifact, pushes the finding if present, and lets the existing
-per-field loops run unchanged underneath it. Four of the seven — `dispatches`,
-`skills`, `reads`, `globs` — do iterate zero times when a parse fails, because
-those arrays are empty. **The other two do not**, and an earlier draft of this
-section claimed otherwise: in `markdownArtifact`
-(`packages/claims/src/wiringScan.ts:146-164@8c6ea59`) a `null` frontmatter sets
-`body = content`, so `tokens: tokensIn(content)` and
-`loose: looseCandidates(body, bodyStart)` are both populated from the whole
-file, unparsed frontmatter block included. They keep running and keep reporting.
+per-field loops run unchanged underneath it. **How many of those loops iterate
+zero times depends on which parse failed**, and two earlier drafts of this
+section got it wrong — first claiming every array is empty, then giving a single
+count for two paths that differ:
+
+| | empty | populated |
+|---|---|---|
+| `unclosed-frontmatter` | `dispatches`, `skills`, `reads`, `globs`, `hooks` | `tokens`, `loose` |
+| `malformed-hooks` | all but one | `tokens` |
+
+On the fence path, `markdownArtifact`
+(`packages/claims/src/wiringScan.ts:146-164@8c6ea59`) hard-codes `hooks: []`,
+and a `null` frontmatter sets `body = content` — so `tokens: tokensIn(content)`
+and `loose: looseCandidates(body, bodyStart)` are both populated from the whole
+file, unparsed frontmatter block included. On the hooks path `hookCommands`
+returns `[]` and `loose` is set to `[]` outright, so only `tokens` survives.
 
 That does not change the decision — the `parseError` field is still checked
 ahead of the loops, and a hard finding is still pushed once per artifact — but
-it does change the Open Question below about whether `unclosed-frontmatter`
-increments `references`, which must be reasoned against this model rather than
-against an all-empty one.
+it is the model the Open Question below has to be answered against.
 
 **Alternatives considered:**
 (a) Force the failure through the existing per-field model — e.g., synthesize
@@ -363,7 +381,12 @@ That argument covers `malformed-hooks` and says nothing about
 `unclosed-frontmatter`, which never calls `JSON.parse`. Its own
 near-zero-false-positive argument is scoping rather than syntax: the scanned set
 
-**Evidence:** `packages/claims/src/wiringScan.ts:17@0651b46` — `  { glob: ".claude/agents/*.md", kind: "agent" },`
+**Evidence:** `packages/claims/src/wiringScan.ts:18@06cb2ca`
+
+```ts
+  { glob: ".claude/agents/*.md", kind: "agent" },
+  { glob: ".claude/skills/**/SKILL.md", kind: "skill" },
+```
 
 is agents, skills, rules and commands — artifact classes that carry frontmatter
 by convention. A prose document opening with `---` as a thematic break is
@@ -373,15 +396,29 @@ an unscoped whole-file check would not be able to make.
 
 ## Open questions
 
-- Whether `unclosed-frontmatter` should also count toward
-  `WiringReport.references` the way `unsubstituted-token` does (a token found
-  in prose still increments `references`,
-  `packages/claims/src/wiring.ts:370@8c6ea59`) or should not, on the reasoning
-  that a parse failure examined zero declared references rather than one bad
-  one. Implementation should follow whichever reading keeps
-  `cli.ts`'s "references === 0 means nothing was ever examined" invariant
-  (`packages/claims/src/cli.ts:363-372@8c6ea59`) true for a single-artifact
-  repo whose only artifact fails to parse.
+- ~~Whether `unclosed-frontmatter` should also count toward
+  `WiringReport.references`.~~ **Settled: neither verdict increments it.**
+  `references` is defined as declared references *examined*:
+
+  **Evidence:** `packages/claims/src/wiring.ts:77@06cb2ca` — `  /** Declared references examined. Advisory prose references are not counted. */`
+
+  Under the corrected model above, every declared-field loop iterates zero times
+  on both paths, so zero were examined. Incrementing would make the CLI print
+  "1 declared reference(s) checked" about a file it could not read, and would
+  contradict this design's own rejected alternative (a), which refuses an entry
+  that names nothing real.
+
+  Leaving this to implementer judgement was itself the risk: it is exactly the
+  kind of question two reasonable implementations answer differently, in a
+  counter the CLI's summary sentence depends on.
+
+  One inconsistency is inherited rather than introduced, and is named here so
+  the next change does not reason from it: `unsubstituted-token` *does*
+  increment `references` (`packages/claims/src/wiring.ts:370@8c6ea59`), even
+  though the CLI's own definition of the count lists only `dispatches`,
+  `skills`, `reads`, `applies_to` and hook `command`
+  (`packages/claims/src/cli.ts:363-372@8c6ea59`) — tokens are not among them.
+  That discrepancy predates this change and is out of scope for it.
 - Whether the two new verdicts belong in the `PASSING` set's neighborhood in
   `spec/wiring.md`'s table only, or also warrant a one-line mention in
   `openspec/specs/wiring/spec.md`'s `## Purpose` prose, which currently
