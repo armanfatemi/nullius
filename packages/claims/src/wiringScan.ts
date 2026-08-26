@@ -200,6 +200,13 @@ export function scanHarnessRoot(root: string): HarnessArtifact[] {
   for (const source of HOOK_SOURCES) {
     for (const file of globSync(source.glob, { cwd: root }).sort()) {
       const content = readFileSync(join(root, file), "utf8");
+      // `hookCommands` MUST stay hoisted out of the object literal below.
+      // The callback writes `parseError` synchronously from the catch, and the
+      // literal reads `parseError` at a key ordered before `hooks` — inline the
+      // call and the read happens first, yielding `null` and dropping the
+      // verdict silently. TypeScript cannot catch that: `parseError` is written
+      // only inside a closure, so control-flow analysis narrows it to `null` at
+      // the read site and `null` is assignable to the field's type.
       let parseError: ArtifactParseError | null = null;
       const hooks = hookCommands(content, "plugin", () => {
         parseError = {

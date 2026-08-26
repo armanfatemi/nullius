@@ -37,6 +37,13 @@ declared read path that is not there, an `applies_to` glob matching nothing,
 a hook command that does not resolve or is not executable, and a
 `{{TOKEN}}` placeholder left behind by a copy from scaffolding.
 
+Two of them are references it cannot even read: a hooks or settings file whose
+JSON does not parse, and a markdown artifact whose frontmatter fence opens and
+never closes. Both destroy the declared half of an artifact wholesale rather
+than one reference within it, and both are reported for the same reason as the
+rest — what the artifact declares does not resolve, and here the checker cannot
+determine how much of it failed.
+
 ## Declared references, and prose
 
 An artifact carries two different kinds of text that can look like a
