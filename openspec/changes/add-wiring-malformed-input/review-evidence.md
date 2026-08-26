@@ -586,3 +586,44 @@ automatically:
   never reports as a finding. The implementer read the union rather than
   accepting the brief. This is the second time on this change that a dispatched
   agent caught an error in my instructions rather than in the work.
+
+## Stage 9 — Retro correction
+
+The retrospective read the artefacts and found two defects in this record. Both
+are the coordinator's. Recorded here because the record travels with the PR and
+was wrong.
+
+## Coordinator corrections since last append
+
+- **I filed a miss against `test-engineer` that was never in its remit, twice.**
+  The iteration-1 probe section records `in scope of: ... test-engineer
+  (spec/fixtures/**)`, and the iteration-1 synthesis carries a coordinator
+  correction noting `test-engineer` did not raise the planted claim "though
+  `spec/fixtures/**` is its declared scope". Both are wrong on two counts,
+  verified against `.claude/agents/test-engineer.md`:
+
+  - its declared fixture scope is `spec/fixtures/**/*.jsonl`, not all of
+    `spec/fixtures/**`. The planted claim named `spec/fixtures/wiring-valid/src/thing.ts`
+    — a `.ts` file, outside that glob.
+  - it declares **no false-premise pass at all**. The string "false-premise"
+    appears zero times in its agent file and eight times in
+    `architecture-reviewer.md`. Catching a planted false claim is not among the
+    things `test-engineer` is asked to do.
+
+  So the correct scope line for all three probe sections is
+  `architecture-reviewer` and `rule-auditor` only. `test-engineer` should never
+  have appeared in it, and the note about its silence measured nothing.
+
+  The failure mode is worth naming beyond the fact: I wrote the scope line from
+  what an agent's name suggests rather than from what its file declares, and
+  then wrote a correction reinforcing the same error. A per-agent signal derived
+  that way is worse than no signal, because it reads as measurement.
+
+- **The `probe` state key cannot represent this run.** State holds
+  `probe: caught`; the artefact scores MISSED, CAUGHT, CAUGHT across three
+  iterations. `writeStateKey` is last-write-wins and Stage 2 re-plants each
+  round, so the key records only the final iteration. Any rollup counting misses
+  from state would report zero for a run that had one. The artefact is correct
+  and is the record; state is a resume aid and should not be read as history.
+  Filed against the skill rather than fixed here — it is a schema question, not
+  a fact about this change.
