@@ -137,18 +137,41 @@ It is the same family, and the reason is what `wiring` actually asks. It does
 not ask whether a document is well-formed for its own sake; it asks whether
 what an artifact **declares** can be resolved. A `hooks.json` that fails
 `JSON.parse` has declared commands that cannot be resolved — not one of them,
-all of them. A markdown artifact whose frontmatter fence never closes has a
-`dispatches:`, `skills:` or `reads:` list that cannot be read at all. In both
-cases the answer to "does what this artifact declares resolve?" is *no*, and
-the checker knows it earlier and more completely than it knows any single
-dangling reference.
+all of them. That is the limiting case of the existing family — every declared
+reference failing at once, for one recoverable reason.
 
-So these are not a new family; they are the limiting case of the existing one —
-every declared reference in the artifact failing at once, for one recoverable
-reason. The union's subject is unchanged and the header needs no rewrite. The
-constraint is satisfied rather than set aside, which matters because setting
-aside a constraint documented as absolute is the kind of decision that reads as
-wrong six months later even when it was defensible at the time.
+**`unclosed-frontmatter` needs a different argument, and the module supplies
+it.** The limiting-case reading does not stretch to cover it, for two reasons.
+`parseFrontmatter` returns `null` identically for *no fence* and *unclosed
+fence* (`packages/claims/src/frontmatter.ts:62` and `:65`), so the checker
+cannot know the block declared anything — "every declared reference failing at
+once" may be zero references failing. And the artifact's other fields still
+resolve: `front === null` sets `body = content`, so `tokens` and `loose` are
+populated from the whole file.
+
+The argument that does hold is the module's own division of labour:
+
+**Evidence:** `packages/claims/src/wiring.ts:8@0651b46` — ` * Only DECLARED fields fail. A path in prose might be a live pointer or an`
+
+**Evidence:** `packages/claims/src/wiring.ts:10@0651b46` — ` * unresolvable one is advisory. The hard half reads frontmatter, where the`
+
+The hard half reads frontmatter. An unclosed fence destroys that half's entire
+input, and `tokens` and `loose` surviving is not a counterexample — those are
+the advisory half, working exactly as designed. The checker is left unable to
+answer its own question for the half where the author committed to something.
+
+On "may be zero references failing": the checker cannot distinguish a
+declaration block that was empty from one it could not read, and for a checker
+whose whole subject is *do your declared references resolve*, unanswerable is
+not a pass. A file opening with `---` announced a declaration block; a file that
+does not, did not. The change is between "you declared nothing" and "you opened
+a commitment and I cannot read it."
+
+So neither verdict is a new family, by two different routes. The union's subject
+is unchanged and the header needs no rewrite. The constraint is satisfied rather
+than set aside, which matters because setting aside a constraint documented as
+absolute is the kind of decision that reads as wrong six months later even when
+it was defensible at the time.
 
 ### 2. A `parseError` field on `HarnessArtifact`, checked ahead of the per-field loops
 
@@ -157,10 +180,20 @@ failure (verdict, line, detail) per artifact — populated by `wiringScan.ts`
 when a hooks/settings file fails `JSON.parse`, or a markdown artifact's
 frontmatter fence opens and never closes. `checkWiring` checks this field
 once per artifact, pushes the finding if present, and lets the existing
-per-field loops run unchanged underneath it (they iterate zero times when a
-parse fails, since every declared-field array is already empty in that case —
-see `markdownArtifact`, `packages/claims/src/wiringScan.ts:146-164@8c6ea59`,
-and the hook-source loop, `packages/claims/src/wiringScan.ts:175-197@8c6ea59`).
+per-field loops run unchanged underneath it. Four of the seven — `dispatches`,
+`skills`, `reads`, `globs` — do iterate zero times when a parse fails, because
+those arrays are empty. **The other two do not**, and an earlier draft of this
+section claimed otherwise: in `markdownArtifact`
+(`packages/claims/src/wiringScan.ts:146-164@8c6ea59`) a `null` frontmatter sets
+`body = content`, so `tokens: tokensIn(content)` and
+`loose: looseCandidates(body, bodyStart)` are both populated from the whole
+file, unparsed frontmatter block included. They keep running and keep reporting.
+
+That does not change the decision — the `parseError` field is still checked
+ahead of the loops, and a hard finding is still pushed once per artifact — but
+it does change the Open Question below about whether `unclosed-frontmatter`
+increments `references`, which must be reasoned against this model rather than
+against an all-empty one.
 
 **Alternatives considered:**
 (a) Force the failure through the existing per-field model — e.g., synthesize
@@ -249,7 +282,7 @@ export function parseFrontmatter(content: string): Frontmatter | null {
 genuine oversight with a tested, intentional design decision, and forcing a
 verdict onto the third would misrepresent an abstention as a defect. That
 holds up against the actual code and its own design record, not just as an
-assertion: `hookTarget`'s decline behavior carries 29 unit tests
+assertion: `hookTarget`'s decline behavior carries 25 unit tests
 (`describe("hookTarget", ...)`, `packages/claims/src/wiring.test.ts:199`),
 and `spec/wiring.md` devotes lines 123–226 to why declining beats guessing,
 including a concrete account of an earlier version of this exact function
@@ -325,6 +358,18 @@ illustrative example, and nothing can tell them apart. A file that fails
 `JSON.parse` is not ambiguous. Making it advisory would mean a harness whose
 hooks file is syntactically broken reports a passing wiring run, which is the
 silence this change exists to remove.
+
+That argument covers `malformed-hooks` and says nothing about
+`unclosed-frontmatter`, which never calls `JSON.parse`. Its own
+near-zero-false-positive argument is scoping rather than syntax: the scanned set
+
+**Evidence:** `packages/claims/src/wiringScan.ts:17@0651b46` — `  { glob: ".claude/agents/*.md", kind: "agent" },`
+
+is agents, skills, rules and commands — artifact classes that carry frontmatter
+by convention. A prose document opening with `---` as a thematic break is
+near-impossible inside that set, and a document outside it is never scanned at
+all. The heuristic is narrow because its input is narrow, which is the argument
+an unscoped whole-file check would not be able to make.
 
 ## Open questions
 
