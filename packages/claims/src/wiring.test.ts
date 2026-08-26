@@ -13,6 +13,7 @@ function artifact(over: Partial<HarnessArtifact> = {}): HarnessArtifact {
     path: ".claude/skills/demo/SKILL.md",
     kind: "skill",
     name: "demo",
+    parseError: null,
     dispatches: [],
     skills: [],
     reads: [],

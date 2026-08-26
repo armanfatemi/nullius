@@ -9,9 +9,15 @@ import { join } from "node:path";
 
 import { globSync } from "glob";
 
-import { declaredList, parseFrontmatter, type Located } from "./frontmatter";
+import { declaredList, hasUnclosedFrontmatter, parseFrontmatter, type Located } from "./frontmatter";
 import { isSafeRepoPath } from "./pathSafety";
-import { hookTarget, type ArtifactKind, type HarnessArtifact, type WiringDeps } from "./wiring";
+import {
+  hookTarget,
+  type ArtifactKind,
+  type ArtifactParseError,
+  type HarnessArtifact,
+  type WiringDeps,
+} from "./wiring";
 
 /** Where each kind of artifact lives, relative to the scanned root. */
 const SOURCES: { glob: string; kind: ArtifactKind }[] = [
@@ -111,17 +117,24 @@ function locateLine(lines: string[], command: string): number {
 /**
  * Every hook command in a hooks or settings JSON file, resolved through
  * `hookTarget`, with a best-effort line number (see `locateLine`).
+ *
+ * `onParseFailure`, when given, fires once on a `JSON.parse` failure — the
+ * return contract below is unchanged by it (still `[]`, never a throw); it
+ * exists only so the caller can record that the failure happened.
  */
-function hookCommands(content: string, pluginRoot: string): Located[] {
+function hookCommands(content: string, pluginRoot: string, onParseFailure?: () => void): Located[] {
   let parsed: unknown;
   try {
     parsed = JSON.parse(content);
   } catch {
-    // A hooks/settings file that fails to parse yields no hooks and no
-    // finding, rather than throwing out of the scan. Reporting the parse
-    // failure itself would need verdict vocabulary this command does not
-    // have — it only speaks about references resolving, not document
-    // validity — so this is a deliberate scope boundary, not an oversight.
+    // This function still yields no hooks here, exactly as before, and still
+    // has no vocabulary of its own for a parse failure — it only ever speaks
+    // about references resolving, not document validity. That is no longer
+    // the end of the story, though: `onParseFailure` lets the caller below
+    // record what happened, and `checkWiring` now reports it as
+    // `malformed-hooks` via `HarnessArtifact.parseError`. `hookCommands`
+    // itself stays quiet; only its caller speaks.
+    onParseFailure?.();
     return [];
   }
 
@@ -149,10 +162,22 @@ function markdownArtifact(root: string, file: string, kind: ArtifactKind): Harne
   const body = front === null ? content : content.split("\n").slice(front.bodyLine - 1).join("\n");
   const bodyStart = front === null ? 1 : front.bodyLine;
 
+  // `parseFrontmatter` already returns `null` here for an unclosed fence —
+  // indistinguishably from "no fence at all" — so this is a second, narrower
+  // read of the same content to recover just the bit `null` throws away.
+  const parseError: ArtifactParseError | null = hasUnclosedFrontmatter(content)
+    ? {
+        verdict: "unclosed-frontmatter",
+        line: 1,
+        detail: "frontmatter fence opened but never closed — declared dispatches, skills, reads and applies_to in it cannot be read",
+      }
+    : null;
+
   return {
     path: file,
     kind,
     name: front?.scalars.get("name")?.value ?? null,
+    parseError,
     dispatches: declaredList(front, "dispatches"),
     skills: declaredList(front, "skills"),
     reads: declaredList(front, "reads"),
@@ -175,10 +200,19 @@ export function scanHarnessRoot(root: string): HarnessArtifact[] {
   for (const source of HOOK_SOURCES) {
     for (const file of globSync(source.glob, { cwd: root }).sort()) {
       const content = readFileSync(join(root, file), "utf8");
+      let parseError: ArtifactParseError | null = null;
+      const hooks = hookCommands(content, "plugin", () => {
+        parseError = {
+          verdict: "malformed-hooks",
+          line: 1,
+          detail: "not valid JSON — hook commands in this file cannot be read",
+        };
+      });
       artifacts.push({
         path: file,
         kind: source.kind,
         name: null,
+        parseError,
         dispatches: [],
         skills: [],
         reads: [],
@@ -189,7 +223,7 @@ export function scanHarnessRoot(root: string): HarnessArtifact[] {
         // caller that ever derives this root dynamically (e.g. from an env
         // var or a file's own content) must run it through isSafeRepoPath
         // first. This literal needs no such check.
-        hooks: hookCommands(content, "plugin"),
+        hooks,
         tokens: tokensIn(content),
         loose: [],
       });

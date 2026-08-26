@@ -2,7 +2,7 @@
 
 ## 0. Prerequisites / setup
 
-- [ ] 0.1 Re-read `packages/claims/src/wiring.ts`, `wiringScan.ts`,
+- [x] 0.1 Re-read `packages/claims/src/wiring.ts`, `wiringScan.ts`,
       `frontmatter.ts`, and `spec/wiring.md` at the commit this work actually
       starts from, and re-confirm the line numbers cited in `design.md` — this
       proposal's anchors are rev-stamped at `8c6ea59` and will go `STALE`
@@ -11,26 +11,26 @@
 
 ## 1. Verdict type + parse-failure plumbing
 
-- [ ] 1.1 Add `"malformed-hooks"` and `"unclosed-frontmatter"` to
+- [x] 1.1 Add `"malformed-hooks"` and `"unclosed-frontmatter"` to
       `WiringVerdict` (`packages/claims/src/wiring.ts`), each with a one-line
       doc comment matching the existing members' style.
-- [ ] 1.2 Add the `parseError`-shaped field to `HarnessArtifact`
+- [x] 1.2 Add the `parseError`-shaped field to `HarnessArtifact`
       (`packages/claims/src/wiring.ts`) per `design.md` Decision 2.
-- [ ] 1.3 In `checkWiring`, check the new field once per artifact, ahead of
+- [x] 1.3 In `checkWiring`, check the new field once per artifact, ahead of
       the existing per-field loops, and push the corresponding finding when
       set.
-- [ ] 1.4 In `frontmatter.ts`, factor `parseFrontmatter`'s fence-matching
+- [x] 1.4 In `frontmatter.ts`, factor `parseFrontmatter`'s fence-matching
       logic into a shared internal helper, and add the new additive export
       that answers "opened but never closed," per `design.md` Decision 3.
       `parseFrontmatter`'s own signature and behavior do not change.
-- [ ] 1.5 In `wiringScan.ts`: populate the new field in the hook-source loop
+- [x] 1.5 In `wiringScan.ts`: populate the new field in the hook-source loop
       when `JSON.parse` throws (reusing the existing `try`/`catch` in
       `hookCommands`, or a sibling check at the call site — implementer's
       call, but do not change `hookCommands`'s own return contract, since
       `wiringScan.test.ts:170`'s existing assertion on it must keep passing
       unchanged); populate it in `markdownArtifact` when the new
       `frontmatter.ts` helper reports an unclosed fence.
-- [ ] 1.6 Update the stale comment at `wiringScan.ts:120-124` (currently
+- [x] 1.6 Update the stale comment at `wiringScan.ts:120-124` (currently
       framing the JSON-parse silence as final: "this is a deliberate scope
       boundary, not an oversight") to describe where the verdict now surfaces
       instead — `hookCommands` itself still returns `[]` on parse failure;

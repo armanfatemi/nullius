@@ -57,12 +57,29 @@ function flowItems(raw: string, line: number): Located[] {
     .map((value) => ({ value, line }));
 }
 
+/**
+ * Where a frontmatter fence opens and closes, or doesn't. Shared by
+ * `parseFrontmatter` and `hasUnclosedFrontmatter` so the two questions —
+ * "what's in the block" and "did the block ever close" — read the same
+ * fence once, the same way.
+ */
+interface FenceSpan {
+  /** Index into `lines` of the closing `---`, or -1 if it never appears. */
+  close: number;
+}
+
+/** Does `lines` open a frontmatter fence on line 1? Returns where it closes, if it does. */
+function matchFence(lines: string[]): FenceSpan | null {
+  if (lines[0]?.trim() !== FENCE) return null;
+  const close = lines.findIndex((line, index) => index > 0 && line.trim() === FENCE);
+  return { close };
+}
+
 export function parseFrontmatter(content: string): Frontmatter | null {
   const lines = content.split("\n");
-  if (lines[0]?.trim() !== FENCE) return null;
-
-  const close = lines.findIndex((line, index) => index > 0 && line.trim() === FENCE);
-  if (close === -1) return null;
+  const fence = matchFence(lines);
+  if (fence === null || fence.close === -1) return null;
+  const close = fence.close;
 
   const scalars = new Map<string, Located>();
   const lists = new Map<string, Located[]>();
@@ -105,6 +122,22 @@ export function parseFrontmatter(content: string): Frontmatter | null {
   }
 
   return { scalars, lists, bodyLine: close + 2 };
+}
+
+/**
+ * Did `content` open a frontmatter fence that never closed?
+ *
+ * `parseFrontmatter` returns `null` for this case and for "no fence at all"
+ * alike — every existing caller treats a `null` as one meaning, "proceed as
+ * if there is no frontmatter," and that contract does not change here. This
+ * is an additive answer to the one narrower question `nullius wiring` needs
+ * — a document that opened a declaration block and left it unreadable is not
+ * the same fact as a document that never declared one — without asking every
+ * other caller to handle a second outcome it has no use for.
+ */
+export function hasUnclosedFrontmatter(content: string): boolean {
+  const fence = matchFence(content.split("\n"));
+  return fence !== null && fence.close === -1;
 }
 
 /**
