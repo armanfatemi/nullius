@@ -88,7 +88,7 @@
       describing a limitation that has been closed.
 - [x] 5.3 Update `CHANGELOG.md`'s "Seven verdicts" line
       (`CHANGELOG.md:23-29`) to the new count and name the two additions.
-- [ ] 5.4 Full verification sweep: `pnpm build && pnpm type-check`; `pnpm
+- [x] 5.4 Full verification sweep: `pnpm build && pnpm type-check`; `pnpm
       test`; `node packages/claims/dist/cli.js wiring`; `node
       packages/claims/dist/cli.js check 'README.md' 'spec/**/*.md'
       --require-markers`; `node packages/claims/dist/cli.js check
