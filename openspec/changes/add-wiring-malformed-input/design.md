@@ -38,9 +38,11 @@ export type WiringVerdict =
   | "loose-reference";
 ```
 
-`checkWiring` (`packages/claims/src/wiring.ts:216-381@8c6ea59`) is **not** an
-exhaustive switch over `WiringVerdict` the way `checkClaims.ts`'s core
-function is over `Verdict` — contrast:
+`checkWiring` (`packages/claims/src/wiring.ts:216-381@8c6ea59`) has no single
+dispatch point where a new verdict naturally lands. `checkClaims.ts` reaches
+its `"malformed"` verdict from a branch of a switch over the claim's *kind* —
+not over `Verdict`; no exhaustive switch over `Verdict` exists anywhere in the
+kernel — and that branch is a natural home for a parse failure:
 
 **Evidence:** `packages/claims/src/checkClaims.ts:604@8c6ea59`
 
@@ -119,6 +121,34 @@ break it for these two new cases alone.
 
 (See the `WiringVerdict` member list quoted above, showing the specific-name
 convention.)
+
+**Why these belong in `WiringVerdict` rather than a new union.** The question
+is not rhetorical: `openspec/project.md` states as an absolute constraint that
+new verdict *families* get new unions, and this module's own header names its
+subject narrowly:
+
+**Evidence:** `packages/claims/src/wiring.ts:2@0651b46` — ` * References that must resolve.`
+
+A verdict about a file that will not parse looks, at first reading, like a
+different family — document validity rather than reference resolution — and on
+that reading the constraint would require a second union.
+
+It is the same family, and the reason is what `wiring` actually asks. It does
+not ask whether a document is well-formed for its own sake; it asks whether
+what an artifact **declares** can be resolved. A `hooks.json` that fails
+`JSON.parse` has declared commands that cannot be resolved — not one of them,
+all of them. A markdown artifact whose frontmatter fence never closes has a
+`dispatches:`, `skills:` or `reads:` list that cannot be read at all. In both
+cases the answer to "does what this artifact declares resolve?" is *no*, and
+the checker knows it earlier and more completely than it knows any single
+dangling reference.
+
+So these are not a new family; they are the limiting case of the existing one —
+every declared reference in the artifact failing at once, for one recoverable
+reason. The union's subject is unchanged and the header needs no rewrite. The
+constraint is satisfied rather than set aside, which matters because setting
+aside a constraint documented as absolute is the kind of decision that reads as
+wrong six months later even when it was defensible at the time.
 
 ### 2. A `parseError` field on `HarnessArtifact`, checked ahead of the per-field loops
 
@@ -255,6 +285,46 @@ export function hookTarget(command: string, pluginRoot: string): string | null {
 ```
 
 (Full `hookTarget` body, unchanged by this proposal.)
+
+### 5. Both new verdicts fail closed, and the precedent is `witness.ts`
+
+**Chosen:** Neither `malformed-hooks` nor `unclosed-frontmatter` is added to
+`PASSING`, so both fail the run.
+
+**Why this needs writing down at all.** `PASSING` is an allowlist:
+
+**Evidence:** `packages/claims/src/wiring.ts:85@0651b46` — `const PASSING: ReadonlySet<WiringVerdict> = new Set<WiringVerdict>(["ok", "loose-reference"]);`
+
+A new member therefore fails closed by *omission* — the default does the work,
+and nothing in the change records that anyone chose it. An unargued default and
+a deliberate calibration are indistinguishable in the diff, and the next author
+to add a verdict inherits no reasoning.
+
+**The precedent is not `unverifiable-rev`.** That verdict fails *open*, and the
+distinction is exactly the one that governs here: the thing it cannot read sits
+**outside** the authored file. A commit a shallow clone or a fork cannot resolve
+is not evidence about the author, so the checker declines to accuse. Nothing
+about that reasoning transfers to a file whose malformed bytes are committed in
+the working tree — the author committed them, and the checker can read the
+evidence perfectly well.
+
+The structurally correct precedent is `witness.ts`, which faces the same
+question about a journal line that will not parse and answers it the same way:
+
+**Evidence:** `packages/claims/src/witness.ts:120@0651b46` — `const PASSING: ReadonlySet<JournalVerdict> = new Set<JournalVerdict>(["ok"]);`
+
+Its `malformed` is absent from that set and so fails closed. This design
+already cites `witness.ts` for the *shape* of the fix — check for the parse
+failure before the per-field work — and this is the same module answering the
+calibration question too.
+
+**Alternatives considered:** advisory, like `loose-reference`. Rejected: an
+advisory is for a finding the checker cannot be sure about, and prose paths are
+the case that earns it — a backticked path may be a live pointer or an
+illustrative example, and nothing can tell them apart. A file that fails
+`JSON.parse` is not ambiguous. Making it advisory would mean a harness whose
+hooks file is syntactically broken reports a passing wiring run, which is the
+silence this change exists to remove.
 
 ## Open questions
 
