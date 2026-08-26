@@ -70,23 +70,23 @@
 
 ## 4. Spec delta (this change's own `specs/wiring/spec.md`)
 
-- [ ] 4.1 Already drafted as part of this proposal
+- [x] 4.1 Already drafted as part of this proposal
       (`specs/wiring/spec.md` in this change folder) — confirm it still
       matches the implementation once code lands, and adjust scenarios if the
       implementation resolved an Open Question differently than assumed.
 
 ## 5. Documentation and full verification
 
-- [ ] 5.1 Update `spec/wiring.md`'s verdict table (`spec/wiring.md:257-265`,
+- [x] 5.1 Update `spec/wiring.md`'s verdict table (`spec/wiring.md:257-265`,
       currently 7 rows) to add the two new rows, and update the "eighth
       member, `ok`" prose (`spec/wiring.md:267-278`) for the new total member
       count.
-- [ ] 5.2 Update `spec/wiring.md`'s gap #1 passage
+- [x] 5.2 Update `spec/wiring.md`'s gap #1 passage
       (`spec/wiring.md:118-121`, "A file that fails to parse as JSON yields no
       hooks and no finding…") — this is no longer true once `malformed-hooks`
       ships, and the passage should say what happens now instead of
       describing a limitation that has been closed.
-- [ ] 5.3 Update `CHANGELOG.md`'s "Seven verdicts" line
+- [x] 5.3 Update `CHANGELOG.md`'s "Seven verdicts" line
       (`CHANGELOG.md:23-29`) to the new count and name the two additions.
 - [ ] 5.4 Full verification sweep: `pnpm build && pnpm type-check`; `pnpm
       test`; `node packages/claims/dist/cli.js wiring`; `node
