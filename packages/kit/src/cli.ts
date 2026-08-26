@@ -34,6 +34,7 @@ import {
   terminalsIn,
 } from "./journalFile";
 import { planRecords, type RecordContext, type RecordPlan } from "./record";
+import { runPipeline } from "./pipeline";
 
 /** The schema this build writes. The validator reads 0.1 and 0.2. */
 const SCHEMA_VERSION = "0.2";
@@ -46,6 +47,7 @@ const USAGE = `nullius-kit — witness recording for agent runs
 usage:
   nullius-kit init   [--profile <name>] [--dry-run] [--yes] [--root <dir>]
   nullius-kit doctor [--fix] [--root <dir>]
+  nullius-kit pipeline <command> [<change>] [--root <dir>]
   nullius-kit witness record [--origin hooks|self-reported] [--root <dir>]
   nullius-kit witness check  [--root <dir>]
 
@@ -82,10 +84,11 @@ function main(): number {
     return argv.length === 0 ? 2 : 0;
   }
 
-  // `init` and `doctor` own their own flags; the witness options parser would
-  // reject them.
+  // `init`, `doctor`, and `pipeline` own their own flags; the witness options
+  // parser would reject them.
   if (argv[0] === "init") return runInit(argv.slice(1));
   if (argv[0] === "doctor") return runDoctor(argv.slice(1));
+  if (argv[0] === "pipeline") return runPipeline(argv.slice(1));
 
   const options = parseOptions(argv);
   if (options === null) return 2;
