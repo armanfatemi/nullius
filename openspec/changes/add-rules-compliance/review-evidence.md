@@ -272,3 +272,46 @@ whether it needs a doc tweak.
 
 None. The implementing subagent's report was verified accurate on
 independent re-check across all deliverables.
+
+## Stage 6 — Post-review
+
+## Stage 6 — Post-review (diff)
+
+Dispatched from the actual diff (`git diff --name-only main...HEAD | pipeline route-paths`), which itself surfaced a bug before dispatch even happened: `checker-engineer` was not initially routed, because `packages/kit/src/pipeline.ts`'s `KERNEL_MODULES` (a hardcoded list) had not been updated for the new `rules.ts`. Fixed (commit 17373ad) before dispatching, so all four candidates — architecture-reviewer, checker-engineer, rule-auditor, test-engineer — ran with real, diff-specific scope. All four survived the pre-flight; no drops.
+
+### Blockers
+
+None from any reviewer. One reviewer-labelled `[concern]` was cross-confirmed by three independent reviewers and fixed on that strength (see below).
+
+### False premises
+
+None.
+
+### Fixed this round
+
+1. **CI dogfood gate gap (architecture-reviewer, checker-engineer, test-engineer — 3-way convergence, treated as fix-required per this pipeline's own convergence rule).** Nothing ran `rules check` against the new `spec/fixtures/rules-valid`/`rules-broken` fixtures or this repo's own `.claude/rules/` tree in `.github/workflows/ci.yml`, unlike every sibling command (`witness`, `wiring`, `canary`, `check`). Added a `nullius rules (self)` step mirroring `wiring`'s exact shape (valid fixture passes, broken fixture fails negated, self-scan against the real tree). Verified locally: all three exit codes correct, including the real tree reporting zero hard failures with `ungrounded-rule`/`rule-rot` correctly advisory.
+2. **Missing regression test for the `KERNEL_MODULES` fix (test-engineer).** The existing `for (const module of KERNEL_MODULES)` loop test would pass identically whether or not `rules.ts` were in the list — it protects nothing about the fix itself. Added a literal, hard-coded assertion: `routeAgents(["packages/claims/src/rules.ts"], REPO_ROOT)` contains `checker-engineer`.
+3. **Stale agent charter (architecture-reviewer).** `.claude/agents/checker-engineer.md` described "the four modules that decide a verdict" and enumerated `checkClaims.ts`/`witness.ts`/`wiring.ts`/`config.ts` — inconsistent with `routeAgents` now dispatching it for a fifth (`rules.ts`). Updated the frontmatter description, the opening scope statement, the verdict-union-count section (with a real citation to `rules.ts:42`/`RuleVerdict` and `rules.ts:60@1a56884`/its `PASSING` set), and added one paragraph on the `isFailure`-vs-`isRuleFailure` distinction as a worked example of the document's own "is this omission argued or accidental" question — proportionate to the existing document's depth, not a full new section.
+4. **`.claude/settings.json`'s `NULLIUS_WITNESS_PROBE` regression (rule-auditor).** Not this change's task scope, but a real, confirmed accidental reintroduction of something `08bcd15` explicitly reverted for `add-probe-visibility`'s sake. Fixed in its own commit (917c2a9), separate from `add-rules-compliance`'s own work, with the reasoning recorded there.
+
+### Deliberately not fixed, recorded as open concerns for the PR body
+
+- **`comply.md`'s re-verification gap (architecture-reviewer, elevated from the coordinator's earlier "minor" framing — disputed and correctly so).** `check <plan>` only verifies anchors *inside* the plan document; a subagent's anchor pointing *at* the plan is never actually read unless the orchestrator first writes the reply into a document, which neither `comply.md` nor `specs/rules/spec.md` instructs. This is a real `model-proposes-code-verifies` gap, not cosmetic — but it is **inherited from `/audit`'s identical existing shape**, not introduced by this change. Fixing it would mean redesigning `/audit` too, out of scope for this PR. Recorded here and in the PR body rather than fixed.
+- **`FLAG_OWNERS`'s `--emit-brief` maps to `"audit"` only (checker-engineer, self-labelled cosmetic).** Now also valid under `rules select`; a misplaced-flag error under a third command would name only one of its two real homes. Genuinely minor; the `Map<string, string>` type would need widening for a nice-to-have error-message improvement. Not fixed.
+- **No CLI-level integration/characterization test for `rules select`/`rules check`'s argument parsing and exit-code aggregation (test-engineer)**, unlike every sibling command's `cli.characterization.test.ts` coverage. The kernel functions are thoroughly unit-tested; the CLI wiring itself is only exercised by hand and by the new CI dogfood step added this round. Left as a known gap — the new CI step covers the exit-code-correctness dimension at least, if not the full arg-parsing surface.
+- **`REPO_ROOT`-coupled tests in `pipeline.test.ts` (test-engineer)** — ~10 assertions now depend on this repo's live `.claude/rules/*.md` content, so an unrelated future rule edit could break them for reasons unrelated to a real `routeAgents` regression. Precedented by `doctor.test.ts`'s `REAL_PROBES` and well-commented in-file; accepted as the correct tradeoff (testing real behavior beats a synthetic fixture that tests nothing), same reasoning `design.md` Decision 5 gave for `routeAgents` itself.
+
+### Looks good
+
+- All three kernel reviewers independently confirmed the single highest-stakes property from 3 rounds of plan review holds in the actual shipped code: `rules.ts:238` calls `isFailure(result.verdict)` (checkClaims.ts's own function, on the per-anchor `Verdict`), never `isRuleFailure` and never a bare inequality. `rules.test.ts:184-208` pins this by name with an explicit `stale`-does-not-trigger-`rule-rot` test.
+- `**` correctly matches zero path segments (checker-engineer and architecture-reviewer both independently verified `packages/*/src/**/*.ts` vs `packages/claims/src/cli.ts` → `true`).
+- `rules.ts` stays pure (no `node:fs`/`glob` imports); `rulesScan.ts` is the sole disk reader — confirmed by all three kernel reviewers.
+- `buildComplianceBrief` requires anchors for both `COMPLIANT` and `VIOLATION` — confirmed against the actual shipped `audit.ts` and `specs/rules/spec.md`.
+- `routeAgents`'s boundary is clean: a direct kernel import (`selectRules`), not a subprocess or a duplicated matcher — confirmed by rule-auditor with specific attention to whether this duplicates or misrepresents its own job, since the diff changes when rule-auditor itself gets dispatched.
+- All 19 grounding anchors in the change directory verify; the only non-`OK` results are pre-existing `STALE` entries correctly left untouched.
+- `.claude/settings.json`'s `NULLIUS_WITNESS_PROBE` is confirmed NOT a `one-delivery-mechanism.md` violation in kind (it's an env var, not a duplicated hook entry) — the problem was provenance (an accidental revert-of-a-revert), not the rule this file exists to enforce.
+
+## Coordinator corrections since last append
+
+- I initially recorded `comply.md`'s `check <plan>` gap as "a minor known gap... left as a known gap." architecture-reviewer disputed this characterization directly and correctly: it is the exact shape of gap `model-proposes-code-verifies` exists to close, not a polish item. I did not act on the correction by fixing `/audit`'s shared pattern (out of scope for this PR), but I have corrected the framing here and in the PR body rather than let "minor" stand uncontested. `[corrected-coordinator]`
+- I did not myself notice, while implementing the `KERNEL_MODULES` fix (commit 17373ad), that the loop-based test protecting it was not actually a regression test for that specific fix — test-engineer caught this. `[corrected-coordinator]`

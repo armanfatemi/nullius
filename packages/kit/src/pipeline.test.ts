@@ -113,6 +113,17 @@ describe("routeAgents — one assertion per row, by name", () => {
     expect(routeAgents(["packages/claims/src/parseClaims.ts"], REPO_ROOT)).not.toContain("checker-engineer");
   });
 
+  it("dispatches checker-engineer for packages/claims/src/rules.ts specifically", () => {
+    // A literal assertion, not just the loop above: the loop iterates
+    // whatever KERNEL_MODULES currently holds, so it would pass identically
+    // whether or not rules.ts is in the list — it does not protect the fix
+    // that added it. rules.ts introduces its own verdict union (RuleVerdict)
+    // exactly like wiring.ts did, which is checker-engineer's whole remit;
+    // it was missing from KERNEL_MODULES until this was caught during this
+    // change's own Stage 6 post-review.
+    expect(routeAgents(["packages/claims/src/rules.ts"], REPO_ROOT)).toContain("checker-engineer");
+  });
+
   it("dispatches test-engineer for package sources", () => {
     expect(routeAgents(["packages/kit/src/doctor.ts"], REPO_ROOT)).toContain("test-engineer");
     expect(routeAgents(["packages/claims/src/parseClaims.ts"], REPO_ROOT)).toContain("test-engineer");

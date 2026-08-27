@@ -1,6 +1,6 @@
 ---
 name: add-rules-compliance-prereview
-description: add-rules-compliance (RuleVerdict / rules select) — pre-review iterations 1-3 (2026-08-26); all plan-stage blockers and concerns cleared at iteration 3; open work is post-review verification only
+description: add-rules-compliance (RuleVerdict / rules select) — pre-review iterations 1-3 then post-review of the shipped Section 1 kernel (2026-08-26); all blockers cleared, code matches plan
 metadata:
   type: project
 ---
@@ -34,8 +34,16 @@ unchanged lines and would report `ok` (`build-before-cli` package.json:32,
 ci.yml:149). The `isFailure`-not-`!== "ok"` argument still holds on the
 drifted ones — but say "several", not "all seven".
 
-**How to apply:** at post-review, check `PASSING`/`isRuleFailure` landed as
-specified and that the `rule-rot` call site passes a `Verdict` to `isFailure`,
-not a `RuleVerdict` to `isRuleFailure`. See
+**Post-review of the shipped Section 1 kernel (2026-08-26, branch
+`add-rules-compliance`, code at fed60b1 + 5ae40c0): every plan-stage item
+landed as specified.** The `rule-rot` trigger is correct in the code — a
+`Verdict` through `isFailure` at `rules.ts:238`, with a unit test asserting a
+`stale` anchor does NOT trip it. No blockers found. Only open judgment call
+left for a human: `rules check`'s hard failure is `malformed-rule-header`
+alone, and no `check` glob in ci.yml covers `.claude/rules/*.md`, so a
+`fabricated` anchor in a rule file surfaces nowhere as a hard gate.
+
+**How to apply:** if Section 2 (CI/gating) comes back for review, the
+rule-anchor gate reach is the thing to re-raise. See
 [[add-wiring-malformed-input-prereview]] for the prior change in this file
 family.
