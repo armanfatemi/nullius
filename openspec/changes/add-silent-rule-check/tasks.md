@@ -35,13 +35,27 @@
       all produce `{ verdict: "silent-rule", ruleId, detail }`. Covered → no
       finding for that id (implicitly `ok`).
 - [ ] 2.3 Do NOT touch `packages/claims/src/witness.ts`'s `JournalVerdict`,
-      `validateJournal`, or its internal record-parsing — this is a new,
-      separate union and function (design.md Decision 1/3).
+      `validateJournal`'s signature, or its internal record-parsing/pass
+      structure — this is a new, separate union and function (design.md
+      Decision 1/3). Task 2.5 is a narrow, deliberate exception (one small
+      additive export), not a reopening of this constraint.
 - [ ] 2.4 `RuleCoverageFinding` has NO `line` field — an absent-rule finding
       has no single journal line to point at (unlike every `JournalFinding`,
       which is about one record). Shape: `{ ruleId: string; verdict:
       RuleCoverageVerdict; detail: string }`. See task 3.2 for how this
       reports differently from a line-based finding.
+- [ ] 2.5 `packages/claims/src/witness.ts`: add one small, additive export,
+      `TERMINAL_RECORD_KINDS: readonly string[] = ["report"]`, placed next
+      to the existing `case "report":` in `validateJournal`'s Pass 2 switch
+      (`witness.ts:552`) with a comment on BOTH the export and the switch
+      case, each pointing at the other, so a future terminal kind is more
+      likely to get added in both places together. The switch itself is
+      NOT restructured to derive from this constant — it stays exactly as
+      written (design.md Decision 3, risk 3: this is corrected mitigation
+      #2, replacing an earlier draft's unenforceable "pin by test in
+      ruleCoverage.test.ts" plan). `checkRuleCoverage` (task 2.2) imports
+      and checks against `TERMINAL_RECORD_KINDS` rather than hardcoding its
+      own `"report"` literal.
 
 ## 3. CLI wiring
 
@@ -91,11 +105,14 @@
 - [ ] 4.2 A test for the re-dispatch case decided in task 2.2 (same rule id
       appearing in more than one dispatch record) — whichever convention was
       chosen, pin it by name so a future change can't silently flip it.
-- [ ] 4.3 A test pinning the current terminal-kind set (design.md Decision
-      3, risk 3): assert `checkRuleCoverage` recognizes `"report"` as the
-      only terminal kind. Written so that a future schema version adding a
-      second terminal kind fails this test rather than silently
-      misclassifying a covered rule as `silent-rule`.
+- [ ] 4.3 A test asserting `checkRuleCoverage` recognizes exactly the kinds
+      in `witness.ts`'s exported `TERMINAL_RECORD_KINDS` (task 2.5) as
+      terminal — imported, not re-hardcoded, so this actually couples to
+      `witness.ts`'s real value rather than pinning `checkRuleCoverage`'s
+      own guess (design.md Decision 3, risk 3 — this replaces an earlier,
+      unenforceable draft of this task caught in Stage 2 iteration 2
+      review: a self-referential test against a module-private constant
+      would never fail no matter what `witness.ts` did).
 - [ ] 4.4 A test for the two-independent-scanners risk (design.md Decision
       3, risk 1; Stage 2 concern, test-engineer): a journal containing one
       structurally malformed `dispatch` or `report` record (bad JSON, or a
@@ -105,6 +122,13 @@
       `ok`-covered on the strength of a record `validateJournal` itself
       would flag `malformed`) — whether by skipping it, or by producing its
       own finding; document which.
+- [ ] 4.5 A test pinning the `EXCERPT_LIMIT` truncation assumption (design.md
+      Decision 5, Stage 2 concern, architecture-reviewer): a `findings`
+      excerpt with a recognized verdict string within the first ~500
+      characters (matching where `buildComplianceBrief`'s template actually
+      places it) is recognized as covered. Makes the "the verdict is always
+      near the top" assumption an asserted property instead of an implicit
+      one.
 
 ## 5. Fixtures and the CI gate
 
@@ -143,7 +167,9 @@
 - [ ] 7.1 Export `RuleCoverageVerdict`, `isRuleCoverageFailure`,
       `checkRuleCoverage`, and `RuleCoverageFinding` from
       `packages/claims/src/index.ts`, following the existing per-module
-      export-block convention.
+      export-block convention. Also add `TERMINAL_RECORD_KINDS` (task 2.5)
+      to `witness.ts`'s existing export block in `index.ts`, consistent
+      with every other kernel module's public-surface convention.
 - [ ] 7.2 `pnpm build && pnpm type-check && pnpm test` clean (known baseline:
       exactly 6 `flagConformance` failures, all in that one file — see
       CLAUDE.md; anything else is real).

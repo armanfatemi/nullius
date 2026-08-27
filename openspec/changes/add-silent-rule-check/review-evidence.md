@@ -56,3 +56,55 @@ mechanism. Synthesis quoted the planted sentence verbatim with its full
 repo-relative path -- the documented fix for a previously-recurring
 coordinator mistake (paraphrasing/abbreviating in the synthesis, which
 defeats canary verify's literal-substring match) held this run.
+
+## Stage 2 — Pre-review iteration 2
+
+## Stage 2 — Pre-review iteration 2
+
+Narrowed re-dispatch per selective-dispatch pre-flight (checker-engineer, architecture-reviewer, test-engineer; rule-auditor dropped — its one iteration-1 concern was resolved as a side effect, nothing new in its remit this round). All three verified their specific iteration-1 findings against the current text rather than re-reviewing from scratch.
+
+### False premises
+
+- **[false-premise]** `openspec/changes/add-silent-rule-check/proposal.md:8` — the planted sentence: "Note that `retry` is also defined in `spec/fixtures/rules-valid/src/example.ts`, so the two definitions must stay in sync." Caught independently by all three reviewers this round, none naming the probe mechanism. Cleared below.
+
+### Blockers
+
+None this round.
+
+### Iteration-1 items — verified fixed
+
+- Decision 5 (recognized-verdict-string requirement) — confirmed by checker-engineer as correctly implemented across `design.md`, `specs/rule-coverage/spec.md`, and `tasks.md` task 2.2, and confirmed by checker-engineer as correctly liveness-only (fail-open on a substring hit, not attempting correctness).
+- The `unsupported-version` false-premise fix (Decision 3/4 split, three distinct risks with distinct mitigations) — confirmed by architecture-reviewer, including independently checking the headerless-journal case is unaffected (`headerless()` returns `stop: false`, a different code path).
+- `RuleCoverageFinding`'s missing `line` field and reporting-format gap — confirmed fixed (task 2.4, task 3.2) by architecture-reviewer.
+- The `parseWitness`/`FLAG_OWNERS` scope understatement — confirmed fixed by both architecture-reviewer and test-engineer, both independently re-verifying the cited line ranges.
+- `proposal.md`'s "merged/archived" overstatement — confirmed fixed by architecture-reviewer.
+- The two-independent-scanners malformed-record test (task 4.4) and terminal-kind-pinning test (task 4.3) — confirmed present and well-specified by test-engineer.
+- All new citations added this round (`openspec/project.md:16`, `record.ts:119/309`, `witness.ts:143/356`) verified accurate by at least two reviewers independently, including the `WEAK-ANCHOR` on `record.ts:309` confirmed as genuine code duplication (a verbatim-duplicate block at `:360`), not a citation error.
+
+### New concerns this round
+
+- **Task 4.3's terminal-kind pinning test doesn't actually couple to `witness.ts`** (checker-engineer). `KINDS_V03`/`Kind`/`VOCABULARY` are module-private and not re-exported — a test in `ruleCoverage.test.ts` asserting `"report"` is the only terminal kind would pin `checkRuleCoverage`'s own hardcoded assumption, not `witness.ts`'s real (versioned) vocabulary. A future schema version adding a second terminal kind would leave this test passing unchanged, defeating the mitigation's actual purpose. **Fixed below**: `witness.ts` gains one small, additive, non-breaking export (`TERMINAL_RECORD_KINDS`) that both `validateJournal`'s existing `case "report":` switch and `checkRuleCoverage` reference — genuine coupling, not a self-referential test. This is a narrow, deliberate exception to "don't touch `witness.ts`" (Decision 1/3's actual constraints — no touch to `JournalVerdict`, `validateJournal`'s signature, or its parsing structure — are unaffected; this adds one constant and swaps one hardcoded literal for a reference to it, zero behavioral change).
+- **`EXCERPT_LIMIT` truncation risk** (architecture-reviewer) — a subagent whose preamble pushes the verdict keyword past 2000 characters produces a false `silent-rule`. The mitigation (the brief requires the verdict up front) is real but was stated only in Context prose, not pinned as a task or test. Adding an explicit task/test to make this an asserted property rather than an implicit assumption.
+- **Cosmetic**: `design.md:97` says "applied that constraint three times" but names only two unions after `Verdict` in the sentence (`WiringVerdict`, `RuleVerdict`) — `JournalVerdict` itself is the unnamed third. Count is correct, the list reads short. Fixing the sentence for clarity.
+
+### Looks good
+
+- All items confirmed fixed above, independently re-verified rather than taken on faith.
+
+### Not checked
+
+- No code exists yet.
+
+## Coordinator corrections since last append
+
+- None new this round — the terminal-kind pinning "fix" from iteration 1 turned out to be incomplete (it named the right mitigation but didn't verify the mitigation was actually enforceable), caught by checker-engineer before any code was written. `[corrected-coordinator]`
+
+## Probe — stage 2 (iteration 2)
+
+verdict: CAUGHT
+planted: openspec/changes/add-silent-rule-check/proposal.md:8, under "## Problem"
+in scope of: architecture-reviewer (openspec/ path), rule-auditor (not dispatched this round)
+dispatched: architecture-reviewer, checker-engineer, test-engineer (rule-auditor dropped per selective-dispatch pre-flight)
+note: caught independently by all three, unprompted, none naming the probe
+mechanism. This is the fifth consecutive canary catch across both iterations
+of this change's review (4/4 iteration 1, 3/3 iteration 2).

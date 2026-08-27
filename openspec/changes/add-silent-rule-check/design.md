@@ -94,10 +94,12 @@ type.
 
 **Evidence:** `openspec/project.md:16@612f36b` — `new verdict families get new unions. Its command surface stays small.`
 
-This repository has already applied that constraint three times —
-`Verdict` → `WiringVerdict` → `RuleVerdict`. **The discriminator is not
-"different artifact class"** — `checkClaims`, `wiring`, and `rules` all scan
-repo files; artifact class never actually drove those three splits, and this
+This repository has already applied that constraint repeatedly: `WiringVerdict`,
+`RuleVerdict`, and `JournalVerdict` itself are each their own union, split
+from `Verdict` rather than grafted onto it — `JournalVerdict` is not a
+hypothetical fourth instance, it already exists as one. **The discriminator
+is not "different artifact class"** — `checkClaims`, `wiring`, and `rules`
+all scan repo files; artifact class never actually drove those splits, and this
 document does not lean on that framing. The real discriminator is *different
 question, different input shape*: every existing `JournalVerdict` member
 answers "is this journal internally consistent" from the journal's own bytes
@@ -190,10 +192,33 @@ and it does not.**
    hardcodes `"report"` as the terminal kind it looks for — a future version
    adding a second terminal kind would be valid to `validateJournal` and
    invisible to this scan, producing a false-positive `silent-rule` for a
-   genuinely-covered rule. **Mitigation: pin the current terminal-kind set
-   with a named unit test** (task 4.3), so a future schema bump that adds a
-   terminal kind is forced to touch this file's test too, rather than
-   silently drifting.
+   genuinely-covered rule.
+
+   **This mitigation was wrong in an earlier draft of this section, caught
+   in Stage 2 iteration 2 review.** It proposed "pin the current
+   terminal-kind set with a named unit test" in `ruleCoverage.test.ts` —
+   but `KINDS_V01`/`KINDS_V03`/`Kind`/`VOCABULARY` (`witness.ts:136-157`)
+   are module-private, not re-exported. A test asserting `"report"` is the
+   only terminal kind would pin `checkRuleCoverage`'s **own** hardcoded
+   assumption, disconnected from `witness.ts`'s real vocabulary — a future
+   schema version adding a terminal kind would leave that test passing
+   unchanged, which defeats the mitigation's actual purpose.
+
+   **Corrected mitigation: `witness.ts` gains one small, additive,
+   non-breaking export**, `TERMINAL_RECORD_KINDS: readonly string[]`, and
+   `checkRuleCoverage` imports and defers to it rather than hardcoding its
+   own copy. This is a narrow, deliberate exception to "don't touch
+   `witness.ts`" above — it does not touch `JournalVerdict`, does not
+   change `validateJournal`'s signature, and does not restructure its
+   `case "report":` switch (which stays exactly as written; the new export
+   sits beside it, not inside it). The residual risk this doesn't close: a
+   future terminal kind added to the switch without also updating
+   `TERMINAL_RECORD_KINDS` would still go unnoticed by `checkRuleCoverage`
+   — closing *that* would mean deriving the switch itself from the
+   constant, which is the internal restructuring this decision already
+   declined to do, for the same risk-to-a-tested-module reason. A code
+   comment at both the export and the switch, each pointing at the other,
+   is the residual, human-diligence half of this mitigation (task 2.5).
 
 ### 4. CLI wiring: one command, not two — `witness validate --expect-rules <id...>`
 
@@ -256,6 +281,16 @@ itself is re-verified separately, by `/comply`'s existing `check <plan>`
 step, not by this one. Requiring the keyword closes the "silently said
 nothing" gap; it does not and is not meant to close the "said something
 untrustworthy" gap.
+
+**Residual risk, named rather than left implicit (Stage 2 iteration 2,
+architecture-reviewer): a verdict pushed past `EXCERPT_LIMIT` (2000
+characters) by a long preamble would produce a false `silent-rule`.** The
+mitigation is real — `buildComplianceBrief`'s brief requires the read-receipt
+and verdict near the top of the answer, well inside 2000 characters for any
+realistic response — but was previously only argued in this document's
+Context, not pinned as a task. Task 4.5 asserts this as a property (a
+`findings` excerpt with the verdict string within the first ~500 characters
+recognizes correctly), turning an implicit assumption into a checked one.
 
 ## Open questions
 

@@ -1,6 +1,6 @@
 ---
 name: proposal-injected-prose
-description: Recurring planted-canary pattern — a false, topic-unrelated sentence spliced into an openspec/changes proposal; seen 3x, all naming `retry` in spec/fixtures/wiring-valid/src/thing.ts. Confirmed registered via `canary status`.
+description: Recurring planted-canary pattern — a false, topic-unrelated sentence spliced into an openspec/changes proposal; seen 4x, always a `retry` "must stay in sync" claim but the fixture path it names varies. Confirmed registered via `canary status`.
 metadata:
   type: project
 ---
@@ -15,6 +15,12 @@ definitions must stay in sync". That file contains only `export const thing = 1;
 - 2026-08-25 — `add-wiring-malformed-input/proposal.md`, mid-Problem paragraph.
 - 2026-08-26 — `add-rules-compliance/proposal.md:6`, mid-Why paragraph.
 - 2026-08-26 (iteration 2 re-review) — same file, same line, still present.
+- 2026-08-27 — `add-silent-rule-check/proposal.md:8`, mid-Problem paragraph,
+  **survived an iteration-1 flag and is still planted at iteration 2**. This one
+  varies the false path: it names `spec/fixtures/rules-valid/src/example.ts`
+  (which defines only `widgetCount`), not the wiring fixture the first three
+  used. So match on the *shape* — a `retry`/"stay in sync" sentence wedged into
+  a paragraph about something else — not on the specific path.
 - 2026-08-27 (post-review of the implementation diff) — **cleared**. `retry`
   no longer appears in `add-rules-compliance/proposal.md`, `canary status`
   reports "no active canary", and `check 'openspec/changes/add-rules-compliance/**/*.md'`

@@ -1,40 +1,40 @@
 ---
 name: add-silent-rule-check-prereview
-description: add-silent-rule-check (RuleCoverageVerdict / checkRuleCoverage) — pre-review at plan stage 2026-08-26; union placement endorsed, terminal-vs-delivered-verdict trigger blocker open
+description: add-silent-rule-check (RuleCoverageVerdict / checkRuleCoverage) — pre-review iterations 1-2 (2026-08-26); trigger blocker fixed by Decision 5, terminal-kind pin still weak
 metadata:
   type: project
 ---
 
 Pre-reviewed `openspec/changes/add-silent-rule-check/` at plan stage on
-2026-08-26 (change proposed at `ca6ce01`, anchors stamped `@612f36b`). Adds a
-fifth union `RuleCoverageVerdict = "ok" | "silent-rule"` in a new
-`packages/claims/src/ruleCoverage.ts`, deliberately separate from
-`witness.ts`'s `JournalVerdict`.
+2026-08-26 (anchors stamped `@612f36b`). Adds a fifth union
+`RuleCoverageVerdict = "ok" | "silent-rule"` in a new
+`packages/claims/src/ruleCoverage.ts`, separate from `JournalVerdict`.
 
-**Decision 1 (separate union) endorsed.** The discriminator is a different
-*question* + a different *input shape*, not a different artifact class —
-`checkClaims`/`wiring`/`rules` all read repo files, so artifact class was never
-what drove the earlier splits. Design.md argues it on the right axis.
+**Decision 1 (separate union) endorsed** — different question + different
+input shape (externally-produced expected rule-id list), not artifact class.
 
-**Open blocker to re-check post-review:** `silent-rule`'s trigger is
-"dispatch reached a terminal (`report`) record", but `witness.ts:127`'s
-`OUTCOMES = ["found", "empty", "no-report"]` means a `no-report` terminal is a
-terminal — so a rule that explicitly reported nothing counts as covered, while
-the spec's own requirement heading says "must reach a delivered verdict". Same
-shape as `add-rules-compliance`'s `rule-rot` trigger calibration.
+**Iteration 1 blocker — FIXED in iteration 2.** Decision 5 now requires the
+terminal `report` to have `outcome: "found"` AND a `findings` excerpt
+containing `COMPLIANT`/`VIOLATION`/`NOT-APPLICABLE`. design.md Decision 5,
+`specs/rule-coverage/spec.md`'s first requirement, and tasks 2.2 agree.
 
-**Second open item:** Decision 3's two-scanner bounding argument ("drift is
-bounded to record shape, which `malformed` catches") has a hole — the terminal
-*kind vocabulary* is versioned (`witness.ts:136-144`, `KINDS_V01..V03`); a
-future second terminal kind would be valid to `validateJournal` and invisible
-to a hardcoded `"report"` scan, producing a hard-failing false positive that
-`malformed` never sees.
+**Iteration 1 concern — PARTIALLY fixed, still open.** Terminal-kind
+versioning: mitigation is "pin the terminal-kind set with a unit test" (task
+4.3), but `witness.ts`'s `KINDS_V03` / `Kind` / `VOCABULARY` are
+module-private and not re-exported from `index.ts`. A test living in
+`ruleCoverage.test.ts` pins only its own behaviour and passes unchanged after
+a v0.4 adds a second terminal kind. Needs an exported vocabulary to assert
+against.
 
-**How to apply:** if this comes back post-review, check the trigger condition
-first (does a `no-report` terminal still count as covered?) and whether the
-terminal kind set is pinned by a test. See
-[[add-rules-compliance-prereview]] for the prior change in this family.
+**Verified true about the codebase** (2026-08-26): `record.ts:119`
+`EXCERPT_LIMIT = 2000`; `record.ts:309` genuinely duplicated verbatim at
+`:360` (subagent-stop vs `reportFor` paths) so its `WEAK-ANCHOR` is real
+duplication, not a proposal error; `witness.ts:356` unsupported-version stop;
+`witness.ts:143` `KINDS_V03`; `witness.ts:73` "Terminal, and alone".
+`buildComplianceBrief` puts the read-receipt + verdict at the top of the
+answer (`audit.ts:294-298`), so the 2000-char clip is not a truncation risk.
 
-**Also noted (repo hygiene, not this change's fault):** two unstamped anchors
-in `.claude/agents/checker-engineer.md` have drifted — `checkClaims.ts:167`
-(now 169) and `wiring.ts:85` (now 111).
+**How to apply:** post-review, check task 4.3's test actually fails on a
+schema bump, and whether the read-receipt (rule id echoed back) was used as
+the liveness signal instead of / alongside the verdict keyword. See
+[[add-rules-compliance-prereview]].
