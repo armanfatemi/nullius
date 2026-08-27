@@ -63,6 +63,8 @@ export interface RulesArgs {
   root: string;
   /** Only meaningful for `select`: candidate paths to match applies_to against. */
   paths: string[];
+  /** Only meaningful for `select`: print the starved compliance brief for one selected rule id. */
+  emitBrief: string | undefined;
 }
 
 export type Command =
@@ -313,12 +315,13 @@ function parseWiring(rawArgv: readonly string[]): WiringArgs {
 function parseRules(rawArgv: readonly string[]): RulesArgs {
   const [sub, ...rest] = rawArgv;
   if (sub !== "select" && sub !== "check") {
-    throw new CliError("usage: nullius rules <select --paths <path...> | check [root]>");
+    throw new CliError("usage: nullius rules <select --paths <path...> [--emit-brief <rule-id>] | check [root]>");
   }
 
   const { flags: argv, literal } = splitOperands(rest);
   const paths: string[] = [];
   const operands: string[] = [...literal];
+  let emitBrief: string | undefined;
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -336,6 +339,9 @@ function parseRules(rawArgv: readonly string[]): RulesArgs {
         index += 1;
       }
       index -= 1; // compensate for the outer loop's own increment
+    } else if (arg === "--emit-brief") {
+      index += 1;
+      emitBrief = requireValue(argv, index, "--emit-brief", "a rule id (e.g. build-before-cli)");
     } else if (arg.startsWith("-")) {
       rejectMisplaced(arg, "rules");
     } else {
@@ -352,14 +358,17 @@ function parseRules(rawArgv: readonly string[]): RulesArgs {
         `\`rules select\` takes no positional operands besides --paths, got: ${operands.join(" ")}`,
       );
     }
-    return { kind: "rules", sub: "select", root: ".", paths };
+    return { kind: "rules", sub: "select", root: ".", paths, emitBrief };
   }
 
   if (paths.length > 0) {
     throw new CliError("`rules check` does not take --paths — that belongs to `rules select`");
   }
+  if (emitBrief !== undefined) {
+    throw new CliError("`rules check` does not take --emit-brief — that belongs to `rules select`");
+  }
   if (operands.length > 1) {
     throw new CliError(`\`rules check\` takes at most one root, got: ${operands.join(" ")}`);
   }
-  return { kind: "rules", sub: "check", root: operands[0] ?? ".", paths: [] };
+  return { kind: "rules", sub: "check", root: operands[0] ?? ".", paths: [], emitBrief: undefined };
 }

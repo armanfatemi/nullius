@@ -33,10 +33,12 @@ export {
 export { buildEagerPrompt } from "./eagerPrompt";
 export {
   buildAuditBrief,
+  buildComplianceBrief,
   buildExtractionBrief,
   extractAuditClaims,
   formatAuditPlan,
   type AuditClaim,
+  type ComplianceRule,
 } from "./audit";
 export {
   isJournalFailure,

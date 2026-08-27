@@ -223,3 +223,52 @@ before ticking tasks 1.1-1.6.
 None. The implementing subagent's report was verified accurate on
 independent re-check (build, type-check, full test suite, all 4 fixtures
 read).
+
+## Stage 5 — Verify (Section 2: kit/plugin)
+
+build: pass
+type-check: pass
+test: pass (233/233 kit, 599/599 non-environmental claims tests; 6 known
+  ugrep flagConformance failures, all in that one file — baseline, not a
+  regression)
+dogfood gates: pass, both polarities (witness/wiring valid+broken, wiring .,
+  both check gates — comply.md introduced no new wiring findings)
+
+New/changed surface:
+- packages/claims/src/audit.ts: buildComplianceBrief(rule: ComplianceRule,
+  touchList), exported alongside ComplianceRule from index.ts. Sibling of
+  buildAuditBrief, not a refactor.
+- packages/claims/src/cliArgs.ts / cli.ts: `rules select --emit-brief <id>`
+  prints only the starved brief on stdout, mirroring `audit --emit-brief`
+  exactly. `rules check` rejects the flag.
+- plugin/commands/comply.md: new plugin command, mirrors audit.md's shape.
+- packages/kit/src/pipeline.ts: routeAgents(paths, root) — no longer
+  unconditional; imports scanRules/selectRules from @nullius-inverba/claims
+  directly (no subprocess), adds rule-auditor only when selectRules finds
+  >=1 match. routePathsFrom(input, root) threads the same way. Both
+  runPipeline call sites updated.
+- packages/kit/src/pipeline.test.ts: rewritten with a REPO_ROOT constant
+  (fileURLToPath precedent from doctor.test.ts's REAL_PROBES), testing
+  against this repo's real 8 rule files rather than a synthetic fixture.
+  Every corrected expectation carries a comment naming which real rule's
+  applies_to it was verified against, not asserted by guess.
+
+Coordinator verification (independent of the implementing subagent's
+self-report): re-ran build/type-check/full test suite/all 7 dogfood gates
+myself — all confirmed clean. Read the actual diffs for pipeline.ts,
+pipeline.test.ts, audit.ts, cliArgs.ts, cli.ts's emit-brief branch, and
+comply.md in full before ticking tasks 2.1-2.5.
+
+One thing not fully addressed, left as a minor known gap rather than a
+blocker: comply.md's step 3 runs `check <plan>` unconditionally, but step 1
+allows `$ARGUMENTS` to be raw touch-list paths with no single "plan"
+document — in that case there is no one `<plan>` file to hand `check`.
+Reasonable degradation (check whichever file an anchor's claim was
+extracted from) is left to whoever runs the command, not spelled out in the
+doc. Not fixed this round; flagging for Stage 6 post-review to weigh in on
+whether it needs a doc tweak.
+
+## Coordinator corrections since last append
+
+None. The implementing subagent's report was verified accurate on
+independent re-check across all deliverables.

@@ -23,6 +23,7 @@ import {
 } from "./canary";
 import {
   buildAuditBrief,
+  buildComplianceBrief,
   buildExtractionBrief,
   extractAuditClaims,
   formatAuditPlan,
@@ -42,7 +43,7 @@ import { DEMO_DOC_PATH, demoResults, writeDemoFixture } from "./demo";
 import { buildEagerPrompt } from "./eagerPrompt";
 import { parseClaims } from "./parseClaims";
 import { fileLinesReader, revFileReader, searchRunner } from "./runners";
-import { checkRule, isRuleFailure, selectRules } from "./rules";
+import { checkRule, isRuleFailure, parseRuleHeader, selectRules } from "./rules";
 import { scanRules } from "./rulesScan";
 import { checkWiring, isWiringFailure } from "./wiring";
 import { fsWiringDeps, scanHarnessRoot } from "./wiringScan";
@@ -81,6 +82,9 @@ commands:
                       the id of every rule under .claude/rules/ whose
                       applies_to matches at least one given path, in a
                       stable order, then print the excluded count.
+                      --emit-brief <rule-id> prints the starved compliance
+                      brief for one selected rule instead — one rule per
+                      agent, with no sibling rules and no plan rationale.
   rules check [root]  verify every rule's frontmatter (closed keys, a
                       required id, a known severity) and its incident
                       anchor, the same way \`check\` verifies any other
@@ -461,6 +465,34 @@ function runRules(args: RulesArgs): number {
 
   if (args.sub === "select") {
     const result = selectRules(files, args.paths);
+
+    if (args.emitBrief !== undefined) {
+      const wanted = args.emitBrief;
+      const selection = result.selected.find((rule) => rule.id === wanted);
+      if (selection === undefined) {
+        console.error(
+          `no rule '${wanted}' selected for --paths ${args.paths.join(" ")} — run \`nullius rules select --paths ${args.paths.join(" ")}\` for the list`,
+        );
+        return 2;
+      }
+      const file = files.find((candidate) => candidate.path === selection.path);
+      // `selection` came out of `selectRules(files, ...)` above, so a
+      // matching entry in `files` always exists and its header always
+      // reparses `ok` — both scans read the same in-memory `files`, not two
+      // separate directory reads that could have drifted between calls.
+      const header = file === undefined ? null : parseRuleHeader(file.content, file.path);
+      if (file === undefined || header === null || header.verdict !== "ok") {
+        console.error(`internal error: selected rule '${wanted}' has no readable header`);
+        return 2;
+      }
+      const body = file.content.split("\n").slice(header.bodyLine - 1).join("\n").trim();
+      // Deliberately the ONLY thing on stdout: the brief is piped straight
+      // into an agent, and anything else printed here is context the rule
+      // was supposed to be starved of.
+      console.log(buildComplianceBrief({ id: header.id, text: body }, args.paths));
+      return 0;
+    }
+
     for (const rule of result.selected) {
       console.log(rule.id);
     }

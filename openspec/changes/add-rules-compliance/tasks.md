@@ -58,7 +58,7 @@
 
 ## 2. Kit / plugin
 
-- [ ] 2.1 `packages/claims/src/audit.ts`: `buildComplianceBrief(rule,
+- [x] 2.1 `packages/claims/src/audit.ts`: `buildComplianceBrief(rule,
       touchList)` — a sibling of `buildAuditBrief`, same starved-dispatch
       shape (untrusted-text framing, closed verdict vocabulary, anchor
       grammar `check` re-verifies), not a generalization of it. Both
@@ -66,18 +66,18 @@
       `check` re-verifies (per the Stage 2 fix to `specs/rules/spec.md`'s
       "Starved compliance briefs" requirement) — only `NOT-APPLICABLE` is
       unanchored.
-- [ ] 2.2 `/comply` plugin command: select → dispatch per rule → collect →
+- [x] 2.2 `/comply` plugin command: select → dispatch per rule → collect →
       re-verify BOTH `COMPLIANT` and `VIOLATION` anchors with `check`
-- [ ] 2.3 Read-receipt convention (rule id quoted back) documented in the
+- [x] 2.3 Read-receipt convention (rule id quoted back) documented in the
       brief template
-- [ ] 2.4 Export `selectRules` from `@nullius-inverba/claims` and import it
+- [x] 2.4 Export `selectRules` from `@nullius-inverba/claims` and import it
       directly in `packages/kit/src/pipeline.ts`'s `routeAgents` (same
       pattern as `parseConfig`/`validateJournal` today — no subprocess call
       to `rules select`) to pre-filter before dispatching `rule-auditor`,
       replacing the agent's own glob-matching; update the function's doc
       comment (currently line 141) to describe the pre-filter instead of the
       gap
-- [ ] 2.5 Update `packages/kit/src/pipeline.test.ts`'s existing
+- [x] 2.5 Update `packages/kit/src/pipeline.test.ts`'s existing
       `routeAgents` suite for the new conditional behavior — the test
       currently named `"always dispatches rule-auditor, because rule
       selection is the kernel's job"` (≈10 assertions hard-code

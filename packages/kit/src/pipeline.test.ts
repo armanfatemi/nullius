@@ -1,9 +1,24 @@
 import { describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 
 import { appendEvidence, blockedCommands, classifyCompareStatus, isSafeChangeName, parseDependsOn, KERNEL_MODULES, readState, routeAgents, routePathsFrom, runPipeline, statePath, touchedPaths, unapprovedBlocks, writeStateKey } from "./pipeline";
+
+/**
+ * `routeAgents`'s `rule-auditor` pre-filter (task 2.4 of `add-rules-compliance`)
+ * genuinely scans `.claude/rules/*.md` under whatever root it is given, so a
+ * direct call in this file needs a root that actually has rules to select
+ * from — a scratch directory with no `.claude/rules` would make every such
+ * call return the same answer regardless of the paths given, which tests
+ * nothing. This repo's own, checked-in rule set is that root: the same
+ * precedent `doctor.test.ts` sets with `REAL_PROBES`, and correct for the
+ * same reason — `routeAgents` really does route against this repo's real
+ * rules in real use, the same way `wiring .` (a Stage 5 dogfood gate) tests
+ * against the real repo tree rather than a synthetic fixture.
+ */
+const REPO_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 
 describe("parseDependsOn — the blockquote intent-to-proposal writes", () => {
   it("extracts backticked change names", () => {
@@ -80,35 +95,46 @@ describe("touchedPaths — repo-relative paths a change names", () => {
 });
 
 describe("routeAgents — one assertion per row, by name", () => {
-  it("always dispatches rule-auditor, because rule selection is the kernel's job", () => {
-    expect(routeAgents([])).toEqual(["rule-auditor"]);
+  it("dispatches no rule-auditor for zero paths — an empty array matches zero applies_to globs", () => {
+    // This replaces the old "always dispatches rule-auditor, because rule
+    // selection is the kernel's job" assertion, whose premise task 2.4
+    // inverts. `paths.some(...)` over `[]` is vacuously false for every
+    // rule's `applies_to`, so `selectRules` selects nothing and
+    // `rule-auditor` is correctly omitted rather than dispatched to review
+    // paths that do not exist. This is also task 2.5's own required new
+    // assertion for the zero-applicable-rules exclusion case.
+    expect(routeAgents([], REPO_ROOT)).toEqual([]);
   });
 
   it("dispatches checker-engineer for each kernel module and no others", () => {
     for (const module of KERNEL_MODULES) {
-      expect(routeAgents([module]), module).toContain("checker-engineer");
+      expect(routeAgents([module], REPO_ROOT), module).toContain("checker-engineer");
     }
-    expect(routeAgents(["packages/claims/src/parseClaims.ts"])).not.toContain("checker-engineer");
+    expect(routeAgents(["packages/claims/src/parseClaims.ts"], REPO_ROOT)).not.toContain("checker-engineer");
   });
 
   it("dispatches test-engineer for package sources", () => {
-    expect(routeAgents(["packages/kit/src/doctor.ts"])).toContain("test-engineer");
-    expect(routeAgents(["packages/claims/src/parseClaims.ts"])).toContain("test-engineer");
+    expect(routeAgents(["packages/kit/src/doctor.ts"], REPO_ROOT)).toContain("test-engineer");
+    expect(routeAgents(["packages/claims/src/parseClaims.ts"], REPO_ROOT)).toContain("test-engineer");
   });
 
   it("dispatches test-engineer for fixtures and workflows", () => {
-    expect(routeAgents(["spec/fixtures/valid-run.jsonl"])).toContain("test-engineer");
-    expect(routeAgents([".github/workflows/ci.yml"])).toContain("test-engineer");
+    expect(routeAgents(["spec/fixtures/valid-run.jsonl"], REPO_ROOT)).toContain("test-engineer");
+    expect(routeAgents([".github/workflows/ci.yml"], REPO_ROOT)).toContain("test-engineer");
   });
 
   it("dispatches architecture-reviewer for the spec family and openspec", () => {
     for (const path of ["spec/wiring.md", "CLAUDE.md", "README.md", "openspec/project.md"]) {
-      expect(routeAgents([path]), path).toContain("architecture-reviewer");
+      expect(routeAgents([path], REPO_ROOT), path).toContain("architecture-reviewer");
     }
   });
 
   it("dispatches all four for a kernel change", () => {
-    expect(routeAgents(["packages/claims/src/wiring.ts", "spec/wiring.md"])).toEqual([
+    // Empirically verified against this repo's real .claude/rules/*.md:
+    // packages/claims/src/wiring.ts alone selects build-before-cli,
+    // model-proposes-code-verifies, and verdict-needs-fixture-and-test, so
+    // rule-auditor belongs in this set independent of spec/wiring.md.
+    expect(routeAgents(["packages/claims/src/wiring.ts", "spec/wiring.md"], REPO_ROOT)).toEqual([
       "architecture-reviewer",
       "checker-engineer",
       "rule-auditor",
@@ -117,7 +143,11 @@ describe("routeAgents — one assertion per row, by name", () => {
   });
 
   it("dispatches only two for a docs-only change", () => {
-    expect(routeAgents(["docs/adopting-the-pipeline.md", "openspec/project.md"])).toEqual([
+    // Empirically verified: docs/adopting-the-pipeline.md and
+    // openspec/project.md each match never-repoint-under-old-stamp's
+    // applies_to (docs/**/*.md and openspec/**/*.md respectively), so
+    // rule-auditor still belongs here even though nothing else applies.
+    expect(routeAgents(["docs/adopting-the-pipeline.md", "openspec/project.md"], REPO_ROOT)).toEqual([
       "architecture-reviewer",
       "rule-auditor",
     ]);
@@ -127,30 +157,33 @@ describe("routeAgents — one assertion per row, by name", () => {
 describe("routeAgents — basename matching, because this repo's proposals cite files by basename", () => {
   it("dispatches checker-engineer for each kernel module cited by bare filename", () => {
     for (const basename of ["checkClaims.ts", "config.ts", "wiring.ts", "witness.ts"]) {
-      expect(routeAgents([basename]), basename).toContain("checker-engineer");
+      expect(routeAgents([basename], REPO_ROOT), basename).toContain("checker-engineer");
     }
   });
 
   it("dispatches test-engineer but not checker-engineer for a non-kernel bare filename", () => {
-    const agents = routeAgents(["cli.ts"]);
+    const agents = routeAgents(["cli.ts"], REPO_ROOT);
     expect(agents).toContain("test-engineer");
     expect(agents).not.toContain("checker-engineer");
   });
 
   it("dispatches architecture-reviewer for the bare project.md citation, not only openspec/project.md", () => {
-    expect(routeAgents(["project.md"])).toContain("architecture-reviewer");
+    expect(routeAgents(["project.md"], REPO_ROOT)).toContain("architecture-reviewer");
   });
 });
 
 describe("routePathsFrom — Stage 6 routes the diff, not prose", () => {
   it("routes a kernel module path to checker-engineer", () => {
-    expect(routePathsFrom("packages/claims/src/wiring.ts\n")).toContain("checker-engineer");
+    expect(routePathsFrom("packages/claims/src/wiring.ts\n", REPO_ROOT)).toContain("checker-engineer");
   });
 
   it("produces no spurious empty path from blank lines or a trailing newline", () => {
-    expect(routePathsFrom("\n\n\n")).toEqual(["rule-auditor"]);
-    expect(routePathsFrom("packages/claims/src/wiring.ts\n\n")).toEqual(
-      routeAgents(["packages/claims/src/wiring.ts"]),
+    // Empirically verified: stdinPaths("\n\n\n") is [], and an empty path
+    // array selects zero rules under REPO_ROOT's real .claude/rules — task
+    // 2.4's premise, not the old unconditional ["rule-auditor"].
+    expect(routePathsFrom("\n\n\n", REPO_ROOT)).toEqual([]);
+    expect(routePathsFrom("packages/claims/src/wiring.ts\n\n", REPO_ROOT)).toEqual(
+      routeAgents(["packages/claims/src/wiring.ts"], REPO_ROOT),
     );
   });
 
@@ -159,19 +192,23 @@ describe("routePathsFrom — Stage 6 routes the diff, not prose", () => {
     // Sanity check on the premise: the backtick extractor really does find
     // nothing in a plain `git diff --name-only` line.
     expect(touchedPaths(raw)).toEqual([]);
-    expect(routePathsFrom(raw)).toContain("checker-engineer");
+    expect(routePathsFrom(raw, REPO_ROOT)).toContain("checker-engineer");
   });
 });
 
 describe("touchedPaths + routeAgents composed — the seam Task 5 wires", () => {
   it("dispatches architecture-reviewer for a change touching only root docs", () => {
+    // Empirically verified: README.md alone matches merge-never-squash and
+    // never-repoint-under-old-stamp's applies_to (a literal "README.md"
+    // entry in both); CLAUDE.md matches no rule at all, but README.md's
+    // match is enough to keep rule-auditor here.
     const doc = "This change rewrites `CLAUDE.md` and `README.md` only.";
-    expect(routeAgents(touchedPaths(doc))).toEqual(["architecture-reviewer", "rule-auditor"]);
+    expect(routeAgents(touchedPaths(doc), REPO_ROOT)).toEqual(["architecture-reviewer", "rule-auditor"]);
   });
 
   it("dispatches all four from prose naming a kernel module and a spec", () => {
     const doc = "Touches `packages/claims/src/wiring.ts` and `spec/wiring.md`.";
-    expect(routeAgents(touchedPaths(doc))).toEqual([
+    expect(routeAgents(touchedPaths(doc), REPO_ROOT)).toEqual([
       "architecture-reviewer",
       "checker-engineer",
       "rule-auditor",
@@ -179,11 +216,17 @@ describe("touchedPaths + routeAgents composed — the seam Task 5 wires", () => 
     ]);
   });
 
-  it("dispatches checker-engineer, rule-auditor, and test-engineer for prose citing bare filenames", () => {
+  it("dispatches checker-engineer and test-engineer, but not rule-auditor, for prose citing bare filenames", () => {
+    // Empirically verified against REPO_ROOT: every current rule's
+    // applies_to is directory-anchored (e.g. `packages/*/src/**/*.ts`,
+    // `openspec/**/*.md`) or names a literal root file (`README.md`) — no
+    // rule matches a bare basename like `checkClaims.ts` or `cli.ts` with no
+    // directory. checker-engineer/test-engineer still fire because those two
+    // rows match on KERNEL_BASENAMES/TEST_PATHS directly, a separate,
+    // basename-aware table from selectRules's applies_to matcher.
     const doc = "This change touches `checkClaims.ts` and `cli.ts`.";
-    expect(routeAgents(touchedPaths(doc))).toEqual([
+    expect(routeAgents(touchedPaths(doc), REPO_ROOT)).toEqual([
       "checker-engineer",
-      "rule-auditor",
       "test-engineer",
     ]);
   });
@@ -220,10 +263,15 @@ describe("route — a change routes its own artefacts, not only the paths it cit
 
     const { code, lines } = captureRoute(["route", "add-thing", "--root", root]);
     expect(code).toBe(0);
+    // No rule-auditor: `scratch()` creates no `.claude/rules` directory at
+    // all under `root`, so `scanRules(root)` finds zero rule files and
+    // `selectRules` can select nothing — regardless of what paths this
+    // change touches. This is empirically correct behavior for task 2.4's
+    // pre-filter, not a fixture gap: a root with no rules genuinely has no
+    // rule-auditor work to route.
     expect(lines).toEqual([
       "architecture-reviewer",
       "checker-engineer",
-      "rule-auditor",
       "test-engineer",
     ]);
   });
@@ -237,10 +285,12 @@ describe("route — a change routes its own artefacts, not only the paths it cit
 
     const { code, lines } = captureRoute(["route", "add-thing", "--root", root]);
     expect(code).toBe(0);
+    // Same reason as the test above: `root` here is still `scratch()`, which
+    // has no `.claude/rules` — the paths cited are irrelevant to whether
+    // rule-auditor fires, because there is nothing under this root to select.
     expect(lines).toEqual([
       "architecture-reviewer",
       "checker-engineer",
-      "rule-auditor",
       "test-engineer",
     ]);
   });
@@ -249,13 +299,15 @@ describe("route — a change routes its own artefacts, not only the paths it cit
     // Stage 6 depends on this. `route-paths` routes exactly the paths it is
     // given; if the artefact union leaked into it, every diff would earn
     // architecture-reviewer and the discriminating rows would stop
-    // discriminating.
-    expect(routePathsFrom("packages/claims/src/checkClaims.ts\n")).toEqual([
+    // discriminating. Uses REPO_ROOT, not scratch(): packages/claims/src/
+    // checkClaims.ts's rule-auditor inclusion below depends on real rules
+    // existing to select.
+    expect(routePathsFrom("packages/claims/src/checkClaims.ts\n", REPO_ROOT)).toEqual([
       "checker-engineer",
       "rule-auditor",
       "test-engineer",
     ]);
-    expect(routePathsFrom("packages/claims/src/checkClaims.ts\n")).not.toContain(
+    expect(routePathsFrom("packages/claims/src/checkClaims.ts\n", REPO_ROOT)).not.toContain(
       "architecture-reviewer",
     );
   });
