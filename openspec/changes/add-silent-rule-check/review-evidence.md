@@ -108,3 +108,61 @@ dispatched: architecture-reviewer, checker-engineer, test-engineer (rule-auditor
 note: caught independently by all three, unprompted, none naming the probe
 mechanism. This is the fifth consecutive canary catch across both iterations
 of this change's review (4/4 iteration 1, 3/3 iteration 2).
+
+## Stage 5 — Verify (full implementation)
+
+build: pass
+type-check: pass
+test: pass (629 claims + 234 kit; 6 known ugrep flagConformance failures,
+  all in that one file — documented environmental baseline, not a
+  regression)
+dogfood gates: pass, both polarities
+  - witness validate valid-run.jsonl / broken-run.jsonl: 0 / 1
+  - witness validate v0.3-run.jsonl / v0.3-broken-run.jsonl: 0 / 1
+  - witness validate rule-coverage-valid.jsonl --expect-rules ...: 0
+  - witness validate rule-coverage-broken.jsonl --expect-rules ...: 1
+  - wiring valid/broken: 0/1; wiring .: 0
+  - rules check valid/broken/self: 0/1/0
+  - check README/spec --require-markers: 0; check openspec/**: 0
+grounding: all 13 anchors in the change directory verified.
+
+Implementation note: the kernel/CLI implementation agent was terminated
+mid-run by an account-level session-limit error (not a task failure), with
+no self-report produced. All verification in this entry was performed
+directly by the coordinator against the actual diff, file by file, exactly
+as if no self-report existed to (dis)trust.
+
+What was found and fixed on review, before any of this was accepted:
+- `spec/fixtures/rule-coverage-broken.jsonl` line 7 was genuinely truncated
+  mid-JSON-object (the file the agent was writing when the session limit
+  hit) -- confirmed by direct JSON.parse of every line. A comment in the
+  half-written ci.yml diff revealed the original intent was a 3-way broken
+  fixture (never-dispatched + no-report + malformed-terminal). Since task
+  4.4's dedicated unit test already covers the malformed-record risk with
+  inline content (more precise, and doesn't require committing
+  intentionally-invalid JSON to a fixture file), completed the record as
+  valid+COMPLIANT instead of restoring the malformed intent, and corrected
+  the now-inaccurate ci.yml comment to match.
+- That same fix changed the fixture's semantics (model-proposes-code-verifies
+  becomes legitimately covered, not silent), which broke an already-written
+  characterization test in cli.characterization.test.ts asserting the
+  opposite. Fixed the test's expectations to match the corrected fixture,
+  and kept the now-mixed-outcome fixture (2 covered, 2 silent) as a
+  deliberate improvement -- it proves the check distinguishes passing rules
+  from failing ones within the same run, not just "everything fails".
+
+Everything else in the diff (ruleCoverage.ts, its 5 task-numbered test
+groups, witness.ts's TERMINAL_RECORD_KINDS export, cliArgs.ts/cli.ts's
+--expect-rules wiring with its own dedicated tests, index.ts exports, and
+plugin/commands/comply.md's tasks 1.1/8.1, implemented by a second,
+successfully-completed agent) was read in full against design.md's 5
+Decisions and found to match exactly -- no further defects found.
+
+## Coordinator corrections since last append
+
+- I initially had no way to distinguish "the interrupted agent's work is
+  reliable" from "it silently failed partway" -- resolved by not trusting
+  either assumption and reviewing every changed file directly against the
+  design, the same discipline applied throughout this pipeline run, rather
+  than treating a missing self-report as either a pass or a failure by
+  default. `[corrected-coordinator]`

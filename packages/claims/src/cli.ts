@@ -43,6 +43,7 @@ import { DEMO_DOC_PATH, demoResults, writeDemoFixture } from "./demo";
 import { buildEagerPrompt } from "./eagerPrompt";
 import { parseClaims } from "./parseClaims";
 import { fileLinesReader, revFileReader, searchRunner } from "./runners";
+import { checkRuleCoverage, isRuleCoverageFailure } from "./ruleCoverage";
 import { checkRule, isRuleFailure, parseRuleHeader, selectRules } from "./rules";
 import { scanRules } from "./rulesScan";
 import { checkWiring, isWiringFailure } from "./wiring";
@@ -73,6 +74,12 @@ commands:
                       verify that a run's own record holds up — every dispatch
                       terminated, no verification cited after the thing it
                       verified changed, no omitted corrections.
+                      --expect-rules <rule-id...> additionally checks that
+                      every named rule id reached a delivered verdict in this
+                      journal (SILENT-RULE otherwise) — the ids \`rules
+                      select\` named for this run. Skipped when the journal
+                      itself is UNSUPPORTED-VERSION: nothing past its header
+                      was read.
   wiring [root]       verify that harness artifacts reference things that
                       exist — agents, skills, read paths, applies_to globs,
                       hook commands. A dispatch naming an agent with no
@@ -110,6 +117,11 @@ check options:
                       that is deliberately checking a planted document
   --help              show this message
   --version           print the package version
+
+witness options:
+  --expect-rules <rule-id...>
+                      fail the run if any named rule id never reached a
+                      delivered verdict (see \`witness validate\` above)
 
 audit options:
   --emit-brief <id>   print the starved brief for one claim — one claim per
@@ -286,7 +298,7 @@ function runAudit(args: AuditArgs): number {
 function runWitness(args: WitnessArgs): number {
   const [sub, journal] = args.operands;
   if (sub !== "validate" || journal === undefined || args.operands.length > 2) {
-    console.error("usage: nullius witness validate <journal.jsonl>");
+    console.error("usage: nullius witness validate <journal.jsonl> [--expect-rules <rule-id...>]");
     return 2;
   }
   if (!existsSync(journal)) {
@@ -294,7 +306,8 @@ function runWitness(args: WitnessArgs): number {
     return 2;
   }
 
-  const report = validateJournal(readFileSync(journal, "utf8"));
+  const content = readFileSync(journal, "utf8");
+  const report = validateJournal(content);
 
   let failures = 0;
   for (const finding of report.findings) {
@@ -311,7 +324,10 @@ function runWitness(args: WitnessArgs): number {
 
   // A schema this build cannot read means the records below the header were
   // never looked at. Printing counts for them would be the exact move the
-  // journal exists to catch: a summary standing in for work not done.
+  // journal exists to catch: a summary standing in for work not done. And
+  // for the same reason, rule coverage — which reads those same unread bytes
+  // — must not run either (design.md Decisions 3 and 4): it would misreport
+  // silence about content the validator explicitly declined to judge.
   const unreadable = report.findings.some((finding) => finding.verdict === "unsupported-version");
   if (unreadable) {
     console.error("");
@@ -319,6 +335,27 @@ function runWitness(args: WitnessArgs): number {
       "Validation stopped at the header: this build does not read that schema, so it has no opinion on anything below it. Upgrade the validator rather than reading this as a verdict.",
     );
     return 1;
+  }
+
+  // `--expect-rules` rides along with journal validation rather than being a
+  // separate command (design.md Decision 4) — a run that validates its
+  // journal but forgets a separate coverage flag would recreate the exact
+  // silent-check-skipped failure this proposal exists to catch.
+  let coverageFailures = 0;
+  if (args.expectRules !== undefined) {
+    const coverage = checkRuleCoverage(content, args.expectRules);
+    for (const finding of coverage) {
+      // `RuleCoverageFinding` has no `line` field — an absent-rule finding is
+      // about the journal's content as a whole, not one record — so this is
+      // deliberately NOT the `<journal>:<line>` shape the loop above uses.
+      const line = `${finding.verdict.toUpperCase()}  ${finding.ruleId}  ${finding.detail}`;
+      if (isRuleCoverageFailure(finding.verdict)) {
+        coverageFailures += 1;
+        console.error(line);
+      } else {
+        console.log(line);
+      }
+    }
   }
 
   console.log("");
@@ -332,10 +369,22 @@ function runWitness(args: WitnessArgs): number {
     `Outcomes: ${report.outcomes.found} found, ${report.outcomes.empty} explicitly empty, ${report.outcomes.noReport} never reported.`,
   );
   console.log(provenance(report));
+  if (args.expectRules !== undefined) {
+    console.log(
+      `Rule coverage: ${args.expectRules.length} expected rule(s) checked, ${coverageFailures} silent.`,
+    );
+  }
 
-  if (failures > 0) {
+  if (failures > 0 || coverageFailures > 0) {
     console.error("");
-    console.error(`${failures} invalid record(s) — this run's own account of itself does not hold up.`);
+    if (failures > 0) {
+      console.error(`${failures} invalid record(s) — this run's own account of itself does not hold up.`);
+    }
+    if (coverageFailures > 0) {
+      console.error(
+        `${coverageFailures} rule(s) never reached a delivered verdict in this journal — a terminal record existing is not the same as one being delivered.`,
+      );
+    }
     return 1;
   }
 

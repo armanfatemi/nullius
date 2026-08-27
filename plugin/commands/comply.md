@@ -2,7 +2,7 @@
 description: Check a plan's or diff's compliance with this repo's rule files — deterministic selection, one starved brief per rule, verdicts re-checked against the plan
 ---
 
-Rule compliance is checked in two deterministic steps and one dispatch step.
+Rule compliance is checked in deterministic steps around one dispatch step.
 The protocols live in the CLI so they cannot drift from the checker. Emit
 them and follow them exactly.
 
@@ -57,6 +57,17 @@ The starve is the mechanism: rules presented together imply a story, and a
 model handed a story reconciles them into one. Do not "helpfully" add
 context.
 
+When you dispatch, set the Task/Agent tool's `description` parameter
+explicitly to `comply: <rule-id>` — e.g. `description: "comply:
+one-delivery-mechanism"` — with the brief as the prompt. This is not
+cosmetic: the run's journal records a dispatch's `task` field from
+`description` if given,
+and only falls back to the first line of `prompt` otherwise — and a starved
+brief's rule id sits on its 7th rendered line, not its first. Skip the
+explicit `description` and the journal carries the brief's generic opening
+sentence instead of the rule id, and step 4 below — which matches journal
+dispatches back to rule ids — has nothing to match against.
+
 ## 3. Collect verdicts
 
 Each subagent's answer quotes the rule id back — a read-receipt proving the
@@ -84,11 +95,50 @@ anchor fails to verify, say so specifically: a `FABRICATED` or
 `COUNT-MISMATCH` verdict is not a citation typo, and the finding it supported
 needs re-examining, not silent acceptance.
 
-## 4. Report
+## 4. Verify journal coverage
+
+Close the loop against the run's own journal: did every rule dispatched in
+step 2 actually reach a delivered verdict, not just get sent out.
+
+Journals are keyed by session id, and there is no environment variable or
+other mechanism that exposes the current session's id to a command's
+shell-based instructions. So locate the journal the way `/audit` and
+`/ground` locate a plan with no reliable pointer: the most recently modified
+`.jsonl` file under `.nullius/runs/`, newest first. **This is a heuristic,
+not a guarantee** — under concurrent sessions or worktrees the newest file
+need not be *this* run's journal, so treat a surprising result with that in
+mind rather than as settled fact.
+
+If `.nullius/runs/` does not exist at all, `.nullius/` is not opted into for
+this repository. Say so plainly and stop here — there is nothing to check,
+which is a real answer, not an error to work around.
+
+Otherwise, run:
+
+```sh
+npx -y @nullius-inverba/claims witness validate <journal> --expect-rules <rule-ids...>
+```
+
+against the journal located above, passing every rule id `rules select`
+printed in step 1 as `<rule-ids...>` — the same ids dispatched in step 2, not
+the excluded ones. This re-derives, from the journal's own bytes, whether
+each rule's dispatch actually reached a delivered verdict — catching a rule
+that never got dispatched, was dispatched but never reported, or reported
+without a recognized verdict keyword, none of which step 3's collection
+would notice on its own since it only sees the verdicts subagents actually
+returned.
+
+## 5. Report
 
 One line per rule: its id, its verdict, and — for `COMPLIANT`/`VIOLATION` —
 the anchor. Then the excluded count from step 1, so a silently-narrowed
 selection stays visible to the user even when every reported rule passed.
+
+Report any `SILENT-RULE` finding from step 4 with **exactly the same
+prominence as a `VIOLATION`** — not a footnote, not folded into a closing
+caveat. `SILENT-RULE` means a rule this run was supposed to check never
+actually delivered a verdict; burying it defeats the entire point of running
+step 4.
 
 If the `rules` command is unavailable (older package version), tell the user
 to update `@nullius-inverba/claims` rather than improvising the protocol.

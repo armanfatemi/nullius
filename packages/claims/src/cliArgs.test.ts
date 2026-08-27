@@ -123,12 +123,78 @@ describe("parseCli — witness", () => {
     expect(parse("witness", "validate", "run.jsonl")).toMatchObject({
       kind: "witness",
       operands: ["validate", "run.jsonl"],
+      expectRules: undefined,
     });
   });
 
-  it("accepts no flags at all", () => {
+  it("rejects a flag that is not --expect-rules", () => {
     expect(() => parse("witness", "validate", "run.jsonl", "--config", "x")).toThrow(
       /unknown option for `witness`/,
+    );
+  });
+
+  it("still rejects a flag belonging to another command by naming its owner", () => {
+    expect(() => parse("witness", "validate", "run.jsonl", "--require-markers")).toThrow(
+      /--require-markers is an option of `check`, not `witness`/,
+    );
+  });
+
+  it("parses --expect-rules with one rule id", () => {
+    expect(parse("witness", "validate", "run.jsonl", "--expect-rules", "build-before-cli")).toMatchObject({
+      kind: "witness",
+      operands: ["validate", "run.jsonl"],
+      expectRules: ["build-before-cli"],
+    });
+  });
+
+  it("parses --expect-rules with several rule ids, greedily consumed", () => {
+    expect(
+      parse(
+        "witness",
+        "validate",
+        "run.jsonl",
+        "--expect-rules",
+        "build-before-cli",
+        "merge-never-squash",
+        "openspec-shall-first-line",
+      ),
+    ).toMatchObject({
+      kind: "witness",
+      operands: ["validate", "run.jsonl"],
+      expectRules: ["build-before-cli", "merge-never-squash", "openspec-shall-first-line"],
+    });
+  });
+
+  it("greedily swallows a positional operand placed after --expect-rules — the flag comes last", () => {
+    // Documented, not accidental: --expect-rules is variadic and greedy, the
+    // same as `rules select --paths`, so it must be the LAST thing on the
+    // line (`witness validate <journal> --expect-rules <id...>`). Putting it
+    // before the operands would swallow them as rule ids instead — this pins
+    // that known ordering constraint rather than leaving it undiscovered.
+    expect(
+      parse("witness", "--expect-rules", "build-before-cli", "validate", "run.jsonl"),
+    ).toMatchObject({
+      kind: "witness",
+      operands: [],
+      expectRules: ["build-before-cli", "validate", "run.jsonl"],
+    });
+  });
+
+  it("rejects --expect-rules with no value", () => {
+    expect(() => parse("witness", "validate", "run.jsonl", "--expect-rules")).toThrow(
+      /--expect-rules requires at least one rule id argument/,
+    );
+  });
+
+  it("rejects --expect-rules immediately followed by another flag", () => {
+    expect(() =>
+      parse("witness", "validate", "run.jsonl", "--expect-rules", "--config", "x"),
+    ).toThrow(/--expect-rules requires at least one rule id argument/);
+  });
+
+  it("a misplaced --expect-rules on another command names witness as its owner", () => {
+    expect(() => parse("check", "doc.md", "--expect-rules", "x")).toThrow(
+      /--expect-rules is an option of `witness`, not `check`/,
     );
   });
 });

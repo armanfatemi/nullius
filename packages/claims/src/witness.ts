@@ -407,6 +407,17 @@ function scanHeader(lines: string[]): HeaderScan {
   return headerless();
 }
 
+/**
+ * Terminal record kinds — the only kinds a dispatch can end on. `"report"` is
+ * the only one today, but this is exported so a future terminal kind is added
+ * to one list instead of two: `checkRuleCoverage`
+ * (packages/claims/src/ruleCoverage.ts) imports and defers to this rather
+ * than hardcoding its own copy, so it stays coupled to what this file's
+ * switch below actually treats as terminal. Keep this in sync with the
+ * `case "report":` below — a comment there points back here.
+ */
+export const TERMINAL_RECORD_KINDS: readonly string[] = ["report"];
+
 export function validateJournal(content: string): JournalReport {
   const records: JournalRecord[] = [];
   const byId = new Map<string, JournalRecord>();
@@ -549,6 +560,10 @@ export function validateJournal(content: string): JournalReport {
         dispatches += 1;
         break;
 
+      // The only terminal kind today — see the exported TERMINAL_RECORD_KINDS
+      // above, which packages/claims/src/ruleCoverage.ts imports instead of
+      // hardcoding its own copy. A second terminal kind added here and not
+      // there would go unnoticed by that scan.
       case "report": {
         const target = record.raw.dispatch;
         if (!nonEmptyString(target)) {
