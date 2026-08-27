@@ -24,30 +24,62 @@
       records, ignore every other kind. For each id in `expectedRuleIds`, find
       dispatch records whose `task` field equals it (see task 1.1 and the
       matching-convention open question in design.md — resolve during
-      implementation, document the choice made). A rule with no matching
-      dispatch, or whose matching dispatch(es) never reached a terminal
-      record, produces `{ verdict: "silent-rule", ruleId, detail }`. All
-      matched and terminated → no finding for that id (implicitly `ok`).
+      implementation, document the choice made).
+      **A rule counts as covered only when its matching dispatch's terminal
+      `report` has `outcome: "found"` AND its `findings` excerpt contains
+      `COMPLIANT`, `VIOLATION`, or `NOT-APPLICABLE` (design.md Decision 5 —
+      this was Stage 2's one blocker: "reached a terminal record" is NOT the
+      same fact as "delivered a verdict", and `outcome: "no-report"`/`"empty"`
+      are terminals that must still produce `silent-rule`).** No matching
+      dispatch, no terminal, or a terminal with no recognized verdict string
+      all produce `{ verdict: "silent-rule", ruleId, detail }`. Covered → no
+      finding for that id (implicitly `ok`).
 - [ ] 2.3 Do NOT touch `packages/claims/src/witness.ts`'s `JournalVerdict`,
       `validateJournal`, or its internal record-parsing — this is a new,
       separate union and function (design.md Decision 1/3).
+- [ ] 2.4 `RuleCoverageFinding` has NO `line` field — an absent-rule finding
+      has no single journal line to point at (unlike every `JournalFinding`,
+      which is about one record). Shape: `{ ruleId: string; verdict:
+      RuleCoverageVerdict; detail: string }`. See task 3.2 for how this
+      reports differently from a line-based finding.
 
 ## 3. CLI wiring
 
 - [ ] 3.1 `packages/claims/src/cliArgs.ts`: add an optional `--expect-rules
       <id...>` flag to `witness validate`'s argument parsing (`WitnessArgs`
-      gains `expectRules: string[] | undefined`), variadic like `rules
-      select`'s `--paths` (mirror that parsing shape, `cliArgs.ts`'s existing
-      `parseRules`).
+      gains `expectRules: string[] | undefined`).
+      **This is NOT a drop-in mirror of `rules select`'s `--paths` parsing —
+      `parseWitness` (`cliArgs.ts:267-272`) currently accepts NO flags at
+      all** (every `-`-prefixed arg is rejected via `rejectMisplaced`); this
+      task is a structural change to that shared flag-rejection logic, not
+      an additive copy of an existing flag-accepting parser. Also add a
+      `FLAG_OWNERS` entry (`cliArgs.ts:82-89`) for `--expect-rules`, or a
+      misplaced use of it under another command reports the wrong home in
+      its own error message. (Stage 2: checker-engineer, test-engineer, and
+      architecture-reviewer independently caught this same understatement —
+      read task 3.1 carefully before starting, this is not as small as it
+      first reads.)
 - [ ] 3.2 `packages/claims/src/cli.ts`'s `runWitness`: when `--expect-rules`
-      is given, also call `checkRuleCoverage(content, expectRules)` and merge
-      its findings into the same report/exit-code as `validateJournal`'s
-      (design.md Decision 4 — one command, not two). Report each
-      `silent-rule` finding in the same uppercase-verdict-line format the rest
-      of `runWitness` already uses.
+      is given —
+      1. Run `validateJournal(content)` first.
+      2. **If its findings include `unsupported-version`, do NOT run
+         `checkRuleCoverage` at all** (design.md Decisions 3 and 4) — report
+         only the validation failure, exit non-zero.
+      3. Otherwise, also call `checkRuleCoverage(content, expectRules)` and
+         merge its findings into the same report/exit-code.
+      `RuleCoverageFinding` has no `line` field (task 2.4) — report it in a
+      format that doesn't imply one, e.g. `SILENT-RULE  <ruleId>  <detail>`
+      rather than `runWitness`'s existing `<VERDICT> <journal>:<line>
+      <subject>` line shape, which assumes a line number every
+      `JournalFinding` has and no `RuleCoverageFinding` does.
 - [ ] 3.3 Without the flag, `witness validate`'s behaviour is byte-for-byte
       unchanged — add a test asserting this (existing `witness.test.ts`
       fixtures must still pass with no flag).
+- [ ] 3.4 Add a unit test for the `unsupported-version` skip (task 3.2 step
+      2): a journal declaring an unreadable schema, run with
+      `--expect-rules`, must report `unsupported-version` and exit non-zero
+      WITHOUT any `silent-rule` finding — pin this by name, since it's the
+      fix for a false premise caught in Stage 2 review (design.md Decision 3).
 
 ## 4. Unit tests (`.claude/rules/verdict-needs-fixture-and-test.md` — blocker severity)
 
@@ -59,6 +91,20 @@
 - [ ] 4.2 A test for the re-dispatch case decided in task 2.2 (same rule id
       appearing in more than one dispatch record) — whichever convention was
       chosen, pin it by name so a future change can't silently flip it.
+- [ ] 4.3 A test pinning the current terminal-kind set (design.md Decision
+      3, risk 3): assert `checkRuleCoverage` recognizes `"report"` as the
+      only terminal kind. Written so that a future schema version adding a
+      second terminal kind fails this test rather than silently
+      misclassifying a covered rule as `silent-rule`.
+- [ ] 4.4 A test for the two-independent-scanners risk (design.md Decision
+      3, risk 1; Stage 2 concern, test-engineer): a journal containing one
+      structurally malformed `dispatch` or `report` record (bad JSON, or a
+      record missing its `id`) alongside otherwise-valid records. Assert
+      that `checkRuleCoverage`'s scan does not silently treat the malformed
+      record as a valid dispatch/terminal (e.g. does not report a rule
+      `ok`-covered on the strength of a record `validateJournal` itself
+      would flag `malformed`) — whether by skipping it, or by producing its
+      own finding; document which.
 
 ## 5. Fixtures and the CI gate
 
@@ -67,7 +113,11 @@
       convention) — a journal where every expected rule id has a
       dispatch-with-terminal.
 - [ ] 5.2 `spec/fixtures/rule-coverage-broken.jsonl` — a journal with one rule
-      id silently missing.
+      id silently missing (covers task 4.1's cases), plus either this file or
+      a sibling fixture covering the `outcome: "no-report"`-still-silent case
+      (task 2.2 / design.md Decision 5) and the malformed-record case (task
+      4.4) — split into separate fixture files if one journal covering all
+      three gets hard to read.
 - [ ] 5.3 CI dogfood gate in `.github/workflows/ci.yml`, mirroring the
       pattern `add-rules-compliance` established for `nullius rules (self)`:
       valid fixture passes with `--expect-rules`, broken fixture fails

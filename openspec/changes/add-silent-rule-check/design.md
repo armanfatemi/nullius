@@ -58,6 +58,21 @@ existing hooks (`plugin/hooks/hooks.json`'s `PreToolUse`/`PostToolUse`/
 up journaling," it is "make the journaled `task` field actually say which
 rule."
 
+**A terminal `report` record with `outcome: "found"` carries the subagent's
+actual answer text, not just a flag that it answered:**
+
+**Evidence:** `packages/kit/src/record.ts:309@612f36b` — `...(text.length > EXCERPT_LIMIT ? { truncated: true, response_chars: text.length } : {}),`
+
+**Evidence:** `packages/kit/src/record.ts:119@612f36b` — `const EXCERPT_LIMIT = 2000;`
+
+2000 characters is comfortably enough to hold `buildComplianceBrief`'s
+required read-receipt-then-verdict opening. `outcome` itself distinguishes
+three shapes: `"found"` (the subagent said something and it was captured),
+`"empty"`/`"no-report"` (the subagent explicitly said nothing, or never
+reported at all). This matters for Decision 5 below — "reached a terminal
+record" and "delivered a verdict" are not the same fact, and `no-report` is
+a terminal.
+
 ## Decisions
 
 ### 1. `silent-rule` gets its own union, not a member of `JournalVerdict`
@@ -74,19 +89,24 @@ optional `expectedRuleIds` parameter, or by a separate function that still
 returns `JournalFinding` shapes tagged with the existing `JournalVerdict`
 type.
 
-**Rationale:** This repository has already answered this exact question
-three times — `Verdict` → `WiringVerdict` → `RuleVerdict`, each split
-justified by "a new *kind* of check gets its own union and its own
-`isXFailure` function, not a branch grafted onto an existing one" (the
-precedent `.claude/agents/checker-engineer.md` now teaches explicitly, using
-`RuleVerdict` as the worked example). Every existing `JournalVerdict` member
-answers "is this journal internally consistent"; `silent-rule` answers "does
-this journal's content match an externally-produced expectation" — a
-different question, needing a different input shape, checking the same
-document for a different reason. Widening `validateJournal`'s signature to
-accept an optional parameter every other call site now has to omit is the
-"less work than standing up a new family" shortcut the precedent specifically
-warns against.
+**Rationale:** `openspec/project.md` lists this as one of the kernel's
+*absolute* constraints, not merely observed precedent:
+
+**Evidence:** `openspec/project.md:16@612f36b` — `new verdict families get new unions. Its command surface stays small.`
+
+This repository has already applied that constraint three times —
+`Verdict` → `WiringVerdict` → `RuleVerdict`. **The discriminator is not
+"different artifact class"** — `checkClaims`, `wiring`, and `rules` all scan
+repo files; artifact class never actually drove those three splits, and this
+document does not lean on that framing. The real discriminator is *different
+question, different input shape*: every existing `JournalVerdict` member
+answers "is this journal internally consistent" from the journal's own bytes
+alone; `silent-rule` answers "does this journal's content match an
+externally-produced expectation" — a different question, needing an input
+(the expected rule-id list) no other member needs. Widening
+`validateJournal`'s signature to accept an optional parameter every other
+call site now has to omit is the "less work than standing up a new family"
+shortcut the constraint above exists to rule out.
 
 **The cost this creates — a caller must remember to run two checks — is real
 and is closed at the CLI layer, not by folding the union together** (see
@@ -123,8 +143,9 @@ whether each dispatch id reached any terminal (`report`) record — ignoring
 `validateJournal` handles.
 
 **Alternatives considered:** Export `validateJournal`'s internal
-`JournalRecord` parsing pass (currently module-private, `witness.ts:220-253`
-and the pass-1/pass-2 loop inside `validateJournal` itself) for reuse.
+`JournalRecord` parsing pass — the interface is declared at `witness.ts:220`,
+`byId` deduplication at `witness.ts:412`, and the pass-1/pass-2 loop inside
+`validateJournal` itself (`witness.ts:436`, `:524`) — for reuse.
 
 **Rationale:** That internal pass is deeply coupled to the full
 invariant-checking pipeline — `byId` deduplication, `duplicate-id` detection,
@@ -138,12 +159,41 @@ independently testable, and does not risk `validateJournal`'s existing
 behaviour.
 
 **This does mean two independent JSON-Lines scanners exist over the same
-file format.** Accepted: `RuleCoverageFinding`'s scan is a strict subset of
-what `validateJournal` already parses (dispatch existence, terminal
-existence — not the full invariant set), so drift between the two is bounded
-to "did the record shape change," which `validateJournal`'s own `malformed`
-verdict already catches independently for any journal `checkRuleCoverage`
-would also see.
+file format, and the residual risk needs two separate mitigations, not one —
+an earlier draft of this section claimed one mitigation covered both risks,
+and it does not.**
+
+1. **A structurally invalid record** (bad JSON, wrong kind, missing id) —
+   *is* bounded by `validateJournal`'s own `malformed` verdict, for every
+   journal where `validateJournal` actually reads that far. This part of the
+   original claim holds.
+2. **A journal `validateJournal` never reads past its header at all** — does
+   **not** reduce to a `malformed` finding, and the original claim was wrong
+   to say so. When a journal declares an unsupported schema version,
+   `validateJournal` stops immediately and reads nothing further:
+
+   **Evidence:** `packages/claims/src/witness.ts:356@612f36b` — `if (version === null || !VERSIONS.some((known) => known === version)) {`
+
+   There is no `malformed` finding for the records after the header in that
+   case — `unsupported-version` is documented as "Terminal, and alone." A
+   version-blind `checkRuleCoverage` scan would still read those same bytes
+   and could emit a hard `silent-rule` finding about content the validator
+   explicitly refused to judge. **Fixed by Decision 4's CLI wiring**: when
+   `validateJournal`'s findings include `unsupported-version`, the coverage
+   check does not run at all — see Decision 4.
+3. **A future schema version introduces a second terminal record kind.**
+   `validateJournal`'s vocabulary is versioned:
+
+   **Evidence:** `packages/claims/src/witness.ts:143@612f36b` — `const KINDS_V03 = [...KINDS_V02, "stage", "finding", "resolution", "check", "decision"] as const;`
+
+   `report` is the only terminal kind today. `checkRuleCoverage`'s scan
+   hardcodes `"report"` as the terminal kind it looks for — a future version
+   adding a second terminal kind would be valid to `validateJournal` and
+   invisible to this scan, producing a false-positive `silent-rule` for a
+   genuinely-covered rule. **Mitigation: pin the current terminal-kind set
+   with a named unit test** (task 4.3), so a future schema bump that adds a
+   terminal kind is forced to touch this file's test too, rather than
+   silently drifting.
 
 ### 4. CLI wiring: one command, not two — `witness validate --expect-rules <id...>`
 
@@ -164,6 +214,48 @@ forgets the coverage flag reports "journal valid" while a rule went silent,
 which is precisely the false-clean-run this proposal exists to prevent.
 Folding it into `witness validate` means the coverage check rides along with
 whatever already calls journal validation.
+
+**When `validateJournal`'s own findings include `unsupported-version`, the
+coverage check does not run at all** — reported as a validation failure
+only, never compounded with a `silent-rule` finding computed from content
+the validator itself refused to read (this is the fix for Decision 3's
+second residual-risk case above). `unsupported-version` is documented as
+"Terminal, and alone," so its presence in the findings is a reliable signal
+that nothing after the header was read, independent of whether the journal
+happens to also be headerless (a normal, unrelated case read as v0.1 that
+must NOT trigger this skip).
+
+### 5. `silent-rule` requires a recognized verdict keyword in the terminal's findings — "reached a terminal" is not "delivered a verdict"
+
+**Chosen:** A rule counts as covered only when its matching dispatch reached
+a terminal `report` with `outcome: "found"` **and** that report's `findings`
+excerpt contains one of the exact strings `COMPLIANT`, `VIOLATION`, or
+`NOT-APPLICABLE` (`buildComplianceBrief`'s own required vocabulary). A
+terminal with `outcome: "empty"` or `outcome: "no-report"`, or a `"found"`
+terminal whose excerpt contains none of the three verdict strings, does
+**not** count as covered — `silent-rule` fires for it.
+
+**Alternatives considered:** Treat "reached any terminal record" as
+sufficient, matching `no-terminal`'s own criterion in `JournalVerdict`.
+
+**Rationale:** This was Stage 2's one real blocker. `specs/rule-coverage/spec.md`'s
+requirement is titled "every rule must reach a **delivered verdict**," but a
+"reached any terminal" mechanism would count `outcome: "no-report"` as
+covered — and `outcome: "no-report"` is a subagent that ran and explicitly
+reported nothing, which `proposal.md`'s own Problem statement names as one
+of the three silence modes this proposal exists to catch ("dispatched but
+never reported"). The stated requirement and the terminal-only mechanism
+diverged; requiring a recognized verdict string in a `"found"` excerpt
+closes that gap and makes the requirement's own words true of what the code
+actually checks.
+
+**This still checks liveness, not correctness** (proposal.md's Non-Goals
+holds): a subagent could write `COMPLIANT` into a fabricated answer with no
+real anchor, and this check would still count it as delivered — the anchor
+itself is re-verified separately, by `/comply`'s existing `check <plan>`
+step, not by this one. Requiring the keyword closes the "silently said
+nothing" gap; it does not and is not meant to close the "said something
+untrustworthy" gap.
 
 ## Open questions
 

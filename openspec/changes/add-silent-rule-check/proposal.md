@@ -73,8 +73,9 @@ Closes issue #8 (attestation ledger) and half of issue #11, per
 
 ### Hard (must be merged before this starts)
 
-None. Both real prerequisites — `add-witness-recording` and
-`add-rules-compliance` — are already merged/archived.
+None. Both real prerequisites are already landed: `add-witness-recording` is
+archived, and `add-rules-compliance` is merged (`612f36b`) — not yet
+archived, but on `main`, which is what this gate actually requires.
 
 ### Soft (design assumes these exist; graceful degradation if absent)
 

@@ -5,10 +5,14 @@
 ### Requirement: Every selected rule must reach a delivered verdict
 
 `checkRuleCoverage` SHALL report `silent-rule` for any rule id present in a
-run's expected-rules list that has no dispatch record reaching a terminal
-record in that run's journal. A rule id with a matching, terminated dispatch
-SHALL NOT produce a finding. This check is liveness-only: it verifies a
-verdict was delivered, not that the verdict is correct.
+run's expected-rules list unless that rule has a matching `dispatch` record
+whose terminal `report` has `outcome: "found"` and whose `findings` excerpt
+contains `COMPLIANT`, `VIOLATION`, or `NOT-APPLICABLE`. A terminal record's
+mere existence is not sufficient — an `outcome` of `"empty"` or `"no-report"`
+SHALL still produce `silent-rule`, since a subagent that ran and reported
+nothing is one of the silence modes this check exists to catch. This check
+is liveness-only: it verifies a verdict was delivered, not that the verdict
+is correct.
 
 #### Scenario: a rule with no matching dispatch is silent
 
@@ -22,11 +26,33 @@ verdict was delivered, not that the verdict is correct.
   id, but no corresponding terminal (`report`) record
 - **THEN** `checkRuleCoverage` reports `silent-rule` for that rule id
 
+#### Scenario: a rule that reported nothing is silent, not covered
+
+- **WHEN** a journal contains a `dispatch` record matching an expected rule
+  id, and its terminal `report` has `outcome: "no-report"` or `"empty"`
+- **THEN** `checkRuleCoverage` reports `silent-rule` for that rule id, even
+  though a terminal record exists
+
 #### Scenario: full coverage produces no findings
 
-- **WHEN** every rule id `rules select` names has a matching dispatch that
-  reached a terminal record
+- **WHEN** every rule id `rules select` names has a matching dispatch whose
+  terminal report has `outcome: "found"` and a `findings` excerpt containing
+  a recognized verdict string
 - **THEN** `checkRuleCoverage` reports no findings
+
+### Requirement: A journal `validateJournal` could not read is never scanned for coverage
+
+`checkRuleCoverage` SHALL NOT run when `validateJournal`'s findings for the
+same journal include `unsupported-version` — that verdict means nothing
+after the header was read, and a version-blind coverage scan over unread
+content would misreport what the validator explicitly declined to judge.
+
+#### Scenario: an unreadable schema version suppresses the coverage check
+
+- **WHEN** `witness validate <journal> --expect-rules a b` is run against a
+  journal declaring a schema version this build does not know
+- **THEN** the command reports `unsupported-version` and exits non-zero, and
+  reports no `silent-rule` finding for `a` or `b`
 
 ### Requirement: Coverage checking is a separate union from journal validity
 
