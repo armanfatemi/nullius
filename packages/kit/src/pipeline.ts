@@ -75,6 +75,7 @@ export const KERNEL_MODULES: readonly string[] = [
   "packages/claims/src/config.ts",
   "packages/claims/src/wiring.ts",
   "packages/claims/src/witness.ts",
+  "packages/claims/src/rules.ts",
 ];
 
 /**
