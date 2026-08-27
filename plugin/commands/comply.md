@@ -58,15 +58,19 @@ model handed a story reconciles them into one. Do not "helpfully" add
 context.
 
 When you dispatch, set the Task/Agent tool's `description` parameter
-explicitly to `comply: <rule-id>` — e.g. `description: "comply:
-one-delivery-mechanism"` — with the brief as the prompt. This is not
-cosmetic: the run's journal records a dispatch's `task` field from
-`description` if given,
-and only falls back to the first line of `prompt` otherwise — and a starved
-brief's rule id sits on its 7th rendered line, not its first. Skip the
-explicit `description` and the journal carries the brief's generic opening
-sentence instead of the rule id, and step 4 below — which matches journal
-dispatches back to rule ids — has nothing to match against.
+explicitly to the **bare rule id, and nothing else** — e.g.
+`description: "one-delivery-mechanism"`, not `"comply:
+one-delivery-mechanism"` or any other prefixed form. Step 4 below matches a
+journal's dispatch `task` field against a rule id by **exact string
+equality** — a prefix, a label, or any other decoration breaks that match
+silently: every dispatch would report `SILENT-RULE`, and CI's fixtures
+(which use bare ids) would stay green while every real run failed. This is
+not cosmetic: the run's journal records a dispatch's `task` field from
+`description` if given, and only falls back to the first line of `prompt`
+otherwise — and a starved brief's rule id sits on its 7th rendered line, not
+its first. Skip the explicit `description` and the journal carries the
+brief's generic opening sentence instead of the rule id, and step 4 has
+nothing to match against either way.
 
 ## 3. Collect verdicts
 
@@ -142,3 +146,8 @@ step 4.
 
 If the `rules` command is unavailable (older package version), tell the user
 to update `@nullius-inverba/claims` rather than improvising the protocol.
+The same applies to `--expect-rules` in step 4 specifically: it is newer
+than `rules select` itself, so a published version recent enough for step 1
+can still predate it. On an older version the failure reads `unknown option
+for \`witness\`: --expect-rules` — an update problem, not a sign step 4's
+instructions are wrong.

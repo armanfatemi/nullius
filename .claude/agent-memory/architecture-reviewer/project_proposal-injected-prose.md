@@ -26,6 +26,12 @@ definitions must stay in sync". That file contains only `export const thing = 1;
   reports "no active canary", and `check 'openspec/changes/add-rules-compliance/**/*.md'`
   reports no `CANARY-PRESENT`. So absence is now the expected state for this
   change — re-run the two commands rather than assuming it is still planted.
+- 2026-08-26/27 (`add-silent-rule-check`, post-review of the implementation
+  diff) — **also cleared**, and the clearing is itself documented: that
+  change's `review-evidence.md` records the planted line at `proposal.md:8`
+  in both Stage 2 rounds and says it was removed by `canary clear`, not by
+  editing the file. Confirms the plant/clear lifecycle runs per change —
+  expect a canary during plan review and its absence in the shipped diff.
 
 **It is a registered canary.** On the third sighting, `node
 packages/claims/dist/cli.js check 'openspec/changes/<name>/**/*.md'` reported

@@ -1,6 +1,6 @@
 ---
 name: feedback-anchor-verification-method
-description: How to verify stamped Evidence Anchors precisely without off-by-one/two errors, and where unstamped anchors tend to hide
+description: How to verify stamped Evidence Anchors precisely without off-by-one/two errors, where unstamped anchors hide, and how to tell a benign STALE drift from a real repoint violation
 metadata:
   type: feedback
 ---
@@ -41,3 +41,28 @@ don't only grep for `\*\*Evidence:\*\*` lines — also grep for the bare
 backtick `path:line(@hash)?` pattern across the whole doc, and diff the two
 sets. Anything in the second set but not the first is a candidate unstamped
 anchor worth spot-checking for accuracy and flagging.
+
+**A `STALE` verdict from the tool is not automatically a
+`never-repoint-under-old-stamp.md` violation — check `git blame` before
+flagging.** On `add-silent-rule-check` post-review, `node
+packages/claims/dist/cli.js check` reported `design.md:17`
+(`witness.ts:688@612f36b`) as `STALE`: the quoted text was genuinely at line
+688 at commit `612f36b`, but had drifted to line 703 in the current working
+tree. That drift was NOT a repoint — `git blame -L 17,17` showed the anchor
+line was written once (in the proposal's first commit) and never touched
+again; the drift was caused entirely by *later commits on the same branch*
+inserting ~11 lines earlier in `witness.ts` (adding `TERMINAL_RECORD_KINDS`),
+which shifted everything below it. Leaving the citation exactly as written
+and letting it report `STALE` is the *correct*, rule-prescribed behavior, not
+a violation — the violation would be someone editing the `688` to `703`
+while keeping `@612f36b`. **How to apply:** before writing up any `STALE` or
+`FABRICATED` finding as a rule violation, run `git blame -L <line>,<line>` on
+the anchor line itself. If blame shows one commit and it's never been
+edited since, the drift is passive (rule followed correctly, mention as
+`[looks-good]` if anything); only an anchor whose line number changed in a
+*later* commit while the `@hash` suffix stayed fixed is the actual violation.
+Also worth independently re-deriving any coordinator's own account of a
+fixture fix (e.g. via `node -e` + `JSON.parse` per line) rather than trusting
+the narrative in `review-evidence.md`/commit messages — cheap to do, and is
+exactly the `model-proposes-code-verifies.md` discipline applied to my own
+audit process, not just to the code I'm auditing.

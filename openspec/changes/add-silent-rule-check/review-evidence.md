@@ -166,3 +166,34 @@ Decisions and found to match exactly -- no further defects found.
   design, the same discipline applied throughout this pipeline run, rather
   than treating a missing self-report as either a pass or a failure by
   default. `[corrected-coordinator]`
+
+## Stage 6 — Post-review
+
+## Stage 6 — Post-review (diff)
+
+Routed from `git diff --name-only main...HEAD | pipeline route-paths`: architecture-reviewer, checker-engineer, rule-auditor, test-engineer. All four survived the pre-flight with concrete, diff-specific justifications and were dispatched. All four returned.
+
+### Blockers
+
+- **[blocker]** (architecture-reviewer) — `plugin/commands/comply.md` instructed `description: "comply: <rule-id>"` (a prefixed form), but `packages/claims/src/ruleCoverage.ts` matches a dispatch's `task` field against a rule id by **exact string equality**, with no prefix stripping. Verified live by the reviewer: a journal with `"task":"comply: build-before-cli"` and an otherwise-valid `COMPLIANT` report still produced `SILENT-RULE build-before-cli`, exit 1. **Every real `/comply` run would have reported 100% of its rules as silent**, while CI stayed green because both fixtures use bare rule ids without the prefix — CI exercising a path the product never actually takes. **Root cause**: the two Stage 4 implementation streams (kernel/CLI work and `comply.md` edits) ran in parallel, each independently choosing a wire format for the same interface without seeing the other's work — the kernel side's own doc comment stated its expectation clearly ("comply.md's dispatch step is responsible for setting `description: <rule-id>`"), but the `comply.md` implementer never read that comment and picked a different, more repo-idiomatic-looking format instead. **Fixed**: `comply.md`'s dispatch instruction now says explicitly "the bare rule id, and nothing else," names the exact-equality matching contract, and states the CI-stays-green-while-everything-fails failure mode directly so a future editor doesn't reintroduce a prefix by "improving" the label.
+
+### Concerns
+
+- checker-engineer: `TERMINAL_RECORD_KINDS` is typed `readonly string[]` rather than `readonly Kind[]` — a kind removed from `witness.ts`'s real vocabulary wouldn't be a compile error in `ruleCoverage.ts`. Real, but `witness.ts`'s `Kind` type is not currently exported, and exporting it is a larger surface-area decision than this fix warrants; noted for a future pass rather than fixed here.
+- checker-engineer: `excerpt.includes("COMPLIANT")` also matches inside `NON-COMPLIANT` and any prose merely mentioning the word. The error direction is toward *covered* (a false negative on silence), which is the safer of the two possible mistakes for a liveness-only check — accepted, not fixed.
+- checker-engineer: `"ok"` is never actually constructed as a `RuleCoverageFinding` value (covered rules produce no finding at all), so `cli.ts`'s non-failure log branch for it is presently unreachable. Harmless, parallel to an existing pattern elsewhere in this codebase (`rules.ts`) — noted, not fixed.
+- architecture-reviewer: `comply.md` invokes the *published* `@nullius-inverba/claims` package via `npx -y`, and `--expect-rules` is newer than the rest of the file's `rules` commands — a published version recent enough for step 1 can still predate step 4's flag. **Fixed**: extended the file's existing version-guard note to name this specific failure mode and its exact error text, so it reads as an update problem rather than a bug in the instructions.
+- architecture-reviewer: two advisory anchor notes (a `WEAK-ANCHOR` and a `STALE`, both introduced by this diff) — both confirmed passing verdicts, stamps verify, no action needed. rule-auditor independently re-confirmed the `STALE` one is genuine passive drift (via `git blame`), not a repoint violation.
+
+### Looks good
+
+- All three kernel reviewers independently confirmed the four highest-stakes properties hold in the shipped code: Decision 5's recognized-verdict-string requirement, the additive-only `witness.ts` change, the malformed-record scan safety, and the `unsupported-version` skip.
+- test-engineer independently re-ran both new CI gate lines and confirmed the broken fixture reports exactly 2 of 4 rule ids silent (not 4) — proving the fixture's mixed-outcome design (2 covered, 2 silent) works as intended, not just "everything fails."
+- test-engineer independently confirmed `witness validate`'s no-flag output is byte-for-byte identical to `main`'s, by building `main` in a worktree and diffing directly — not just trusting the pinned string literal.
+- rule-auditor independently re-verified `rule-coverage-broken.jsonl` parses cleanly line-by-line, confirming the coordinator's earlier fixture fix is accurate, not just asserted.
+- All four reviewers confirm `verdict-needs-fixture-and-test.md` is satisfied (fixture + named unit test for `silent-rule`) and all 13 Evidence Anchors in the change directory verify.
+- No false premises found by any reviewer.
+
+## Coordinator corrections since last append
+
+- I reviewed the kernel implementation (`ruleCoverage.ts`) and the `comply.md` implementation independently and thoroughly — including specifically checking `ruleCoverage.ts`'s matching-convention doc comment — but never cross-checked the two against each other for whether they agreed on the exact wire format of the `description`/`task` field. Both pieces were individually correct against their own stated assumptions; the defect only existed in the seam between them, which is exactly the kind of thing that survives even careful per-file review and needed the diff-level, cross-file post-review pass this stage exists for. `[corrected-coordinator]`
