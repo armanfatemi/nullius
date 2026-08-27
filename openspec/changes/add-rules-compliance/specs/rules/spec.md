@@ -44,8 +44,13 @@ The kit SHALL emit one compliance brief per selected rule, carrying the rule
 text and the plan's touch-list and nothing else — no sibling rules, no plan
 rationale. The brief SHALL be the only content on stdout. The responding
 agent's verdict (`COMPLIANT` / `VIOLATION` / `NOT-APPLICABLE`) SHALL quote
-the rule id, and a `VIOLATION` SHALL cite the plan as an Evidence Anchor that
-`check` re-verifies.
+the rule id. `COMPLIANT` and `VIOLATION` SHALL each cite the plan as an
+Evidence Anchor that `check` re-verifies — the specific touch-list text that
+satisfies the rule, or the specific text that violates it. Only
+`NOT-APPLICABLE` needs no anchor, since it asserts nothing is present in the
+plan for the rule to bind to. A `COMPLIANT` decided on the agent's word
+alone, uncited, is a model in the verification path in exactly the shape
+this repo's own `model-proposes-code-verifies` invariant exists to close.
 
 #### Scenario: a violation is machine-re-checkable
 
@@ -53,12 +58,19 @@ the rule id, and a `VIOLATION` SHALL cite the plan as an Evidence Anchor that
 - **THEN** `check` on the plan verifies the cited text exists at the cited
   line before the violation is reported to the user
 
+#### Scenario: compliance is machine-re-checkable too
+
+- **WHEN** a compliance agent reports `COMPLIANT` with an anchor into the plan
+- **THEN** `check` on the plan verifies the cited text exists at the cited
+  line before the compliance is reported to the user — the same gate a
+  `VIOLATION` passes through, not a lighter one
+
 ### Requirement: Silent rules fail the run
 
-Once witness recording exists, every rule id emitted by `select` for a run
-SHALL reach a delivered verdict in the run's journal, or validation reports
-`SILENT-RULE` for it. Three states are preserved: violation found, explicit
-compliance, and never-audited are never collapsed.
+Every rule id emitted by `select` for a run SHALL reach a delivered verdict
+in the run's journal, or validation reports `SILENT-RULE` for it. Three
+states are preserved: violation found, explicit compliance, and
+never-audited are never collapsed.
 
 #### Scenario: a dead rule audit is not a pass
 
