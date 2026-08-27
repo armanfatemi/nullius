@@ -4,38 +4,30 @@ _Started 2026-08-27; last updated 2026-08-27_
 
 ## Phases completed
 
-- [x] Stage 1: Load — done. Complete artefact set, `openspec validate` clean,
-  no pause gate, no blocked commands, no dependencies (both real
-  prerequisites — add-witness-recording, add-rules-compliance — already
-  merged/archived).
+- [x] Stage 1 (Load), Stage 2/3 (2 refinement iterations, 5 canary catches
+  across both), Stage 4 (Implement, 23/23 tasks), Stage 5 (Verify, clean),
+  Stage 6 (Post-review, 1 blocker found and fixed), Stage 7 (Address
+  must-fix) — all done. Full detail in review-evidence.md.
 
 ## Current phase
 
-**Stage 2 (Pre-review)** — about to run the grounding gate and dispatch
-reviewers.
+**Stage 8 (PR)** — about to open the PR.
 
 ## Next 3 actions
 
-1. Grounding gate on `openspec/changes/add-silent-rule-check/**/*.md`
-   (already green from proposal generation's own `check` pass — re-run
-   before dispatching per Stage 2's own process).
-2. `pipeline route add-silent-rule-check` for the reviewer candidate set,
-   selective-dispatch pre-flight.
-3. Plant canary, dispatch survivors in parallel.
+1. `canary status` / grounding check on the change dir before opening.
+2. Resolve base branch (main), open PR.
+3. Stage 9: dispatch retro-writer.
 
 ## Integration points the next session needs to read on resume
 
-- `openspec/changes/add-silent-rule-check/design.md` — 4 Decisions, the
-  central one being union placement (`RuleCoverageVerdict` as its own union,
-  not a `JournalVerdict` member) — argued, not settled; Stage 2's
-  checker-engineer dispatch should weigh in directly.
-- `packages/claims/src/witness.ts:48` (`JournalVerdict`) and `:120`
-  (`PASSING`) — this proposal's union must NOT touch either.
-- `packages/kit/src/record.ts:157` (`task` field population) — the reason
-  task 1.1 (`comply.md`'s dispatch-description fix) exists at all.
-- Two Open Questions in design.md are genuinely unresolved: how `/comply`
-  discovers the current session's journal path (task 8.1 is blocked on
-  this), and the re-dispatch rule-id matching convention.
+- `packages/claims/src/ruleCoverage.ts` — the kernel check, Decision 5's
+  recognized-verdict-string mechanism is the load-bearing piece.
+- `packages/claims/src/witness.ts`'s `TERMINAL_RECORD_KINDS` export — the
+  one narrow, deliberate exception to "don't touch witness.ts".
+- `plugin/commands/comply.md` — carries the bare-rule-id wire-format
+  contract that Stage 6 found broken and fixed; any future edit to either
+  this file or `ruleCoverage.ts`'s matching logic must keep both in sync.
 
 ## Pending user decisions
 
@@ -43,8 +35,11 @@ None currently open.
 
 ## Notes
 
-- Working branch is `openspec/add-silent-rule-check` (created by
-  `intent-to-proposal`'s branch-hygiene step, since the coordinator was on
-  `main` when the proposal was generated) — not the `feat/<change>`
-  convention this skill defaults to. Recorded as `feature_branch` in state
-  as-is, matching the same precedent from `add-rules-compliance`'s own run.
+- Working branch: `openspec/add-silent-rule-check` (not `feat/<change>`,
+  same precedent as prior runs this session).
+- Stage 4's kernel/CLI implementation agent was cut off mid-run by an
+  account-level session-limit error; recovered by direct coordinator review
+  of the diff rather than trusting a self-report that didn't exist. Two real
+  defects found this way, both fixed (a truncated fixture line; a
+  downstream test assertion the fixture fix invalidated) — full account in
+  review-evidence.md's Stage 5 entry.
