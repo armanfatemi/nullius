@@ -12,6 +12,8 @@
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
+import { scanRules, selectRules } from "@nullius-inverba/claims";
+
 /** A dependency's state as `dep-status` can prove it from the filesystem —
  *  exactly the two values it emits. The `unsatisfied` / `orphaned` distinction
  *  belongs to the PR half of the gate, which needs a network call the kit
@@ -73,6 +75,7 @@ export const KERNEL_MODULES: readonly string[] = [
   "packages/claims/src/config.ts",
   "packages/claims/src/wiring.ts",
   "packages/claims/src/witness.ts",
+  "packages/claims/src/rules.ts",
 ];
 
 /**
@@ -137,14 +140,24 @@ export function touchedPaths(text: string): string[] {
 /**
  * Decide which reviewers a set of touched paths earns.
  *
- * `rule-auditor` is unconditional. Deciding whether a rule applies means
- * matching its `applies_to` globs, and that is `rules select`'s job in the
- * kernel — a second implementation here is exactly the duplicate this
- * pipeline is forbidden to grow, so the agent globs for itself. When
- * `rules select` lands, this row can pre-filter instead.
+ * `rule-auditor` is now pre-filtered rather than unconditional: `selectRules`
+ * is imported directly from `@nullius-inverba/claims` — the same pattern
+ * `doctor.ts` already uses for `parseConfig`/`validateJournal`, not a spawned
+ * `rules select` subprocess (design.md Decision 5 of `add-rules-compliance`:
+ * every existing kit↔claims boundary crossing in this codebase is a
+ * workspace import, bundled at build time by `tsup`, and a subprocess call
+ * would reintroduce exactly the hazard `build-before-cli.md` exists to name —
+ * this compiled output silently depending on `packages/claims/dist/cli.js`
+ * being fresh, on top of its own package's build). `rule-auditor` is added
+ * only when scanning `root`'s `.claude/rules/*.md` and matching against
+ * `paths` yields at least one selected rule — the second `applies_to`
+ * matcher this row used to refuse to grow is now unnecessary, because the
+ * kernel's real matcher is called here instead of duplicated.
  */
-export function routeAgents(paths: readonly string[]): AgentName[] {
-  const agents = new Set<AgentName>(["rule-auditor"]);
+export function routeAgents(paths: readonly string[], root: string): AgentName[] {
+  const agents = new Set<AgentName>();
+  const rules = scanRules(root);
+  if (selectRules(rules, [...paths]).selected.length > 0) agents.add("rule-auditor");
   for (const path of paths) {
     if (KERNEL_MODULES.includes(path) || KERNEL_BASENAMES.has(path)) agents.add("checker-engineer");
     if (ARCHITECTURE_PATHS.some((pattern) => pattern.test(path))) agents.add("architecture-reviewer");
@@ -165,17 +178,21 @@ export function routeAgents(paths: readonly string[]): AgentName[] {
  * never carries backticks — running it through the extractor would drop
  * every path.
  */
-export function routePathsFrom(input: string): AgentName[] {
-  return routeAgents(stdinPaths(input));
+export function routePathsFrom(input: string, root: string): AgentName[] {
+  return routeAgents(stdinPaths(input), root);
 }
 
 /**
  * The non-empty, trimmed lines of a stdin payload.
  *
  * Split out of `routePathsFrom` because "nothing was piped in" has to be
- * distinguishable from "these paths earned this set". `routeAgents` always
- * returns the unconditional `rule-auditor`, so an empty payload otherwise
- * produces a one-agent answer that reads exactly like a real routing result.
+ * distinguishable from "these paths earned this set" — and, since task 2.4's
+ * pre-filter, the two can produce the identical empty result: zero paths
+ * select zero rules, the same as a real-but-narrow selection that happens to
+ * match none of `root`'s rules either. `route-paths` (below) is the caller
+ * that must tell "nothing was piped in" apart from "this really routed to
+ * nothing", and it does so by checking the raw stdin payload itself before
+ * ever calling `routeAgents`, not by reading anything into an empty result.
  */
 export function stdinPaths(input: string): string[] {
   return input
@@ -417,7 +434,7 @@ export function runPipeline(argv: readonly string[], readInput: StdinReader = re
       console.error("pipeline route-paths got no paths on stdin — routing nothing is not a routing answer");
       return 1;
     }
-    for (const agent of routeAgents(paths)) console.log(agent);
+    for (const agent of routeAgents(paths, root)) console.log(agent);
     return 0;
   }
 
@@ -556,7 +573,7 @@ export function runPipeline(argv: readonly string[], readInput: StdinReader = re
         (file) => `openspec/changes/${change}/${file}`,
       );
       const paths = [...touchedPaths(`${proposal}\n${tasks}`), ...artefacts];
-      for (const agent of routeAgents(paths)) console.log(agent);
+      for (const agent of routeAgents(paths, root)) console.log(agent);
       return 0;
     }
     case "state-get": {

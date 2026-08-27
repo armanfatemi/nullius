@@ -23,6 +23,7 @@ import {
 } from "./canary";
 import {
   buildAuditBrief,
+  buildComplianceBrief,
   buildExtractionBrief,
   extractAuditClaims,
   formatAuditPlan,
@@ -33,6 +34,7 @@ import {
   type AuditArgs,
   type CanaryArgs,
   type CheckArgs,
+  type RulesArgs,
   type WiringArgs,
   type WitnessArgs,
 } from "./cliArgs";
@@ -41,6 +43,8 @@ import { DEMO_DOC_PATH, demoResults, writeDemoFixture } from "./demo";
 import { buildEagerPrompt } from "./eagerPrompt";
 import { parseClaims } from "./parseClaims";
 import { fileLinesReader, revFileReader, searchRunner } from "./runners";
+import { checkRule, isRuleFailure, parseRuleHeader, selectRules } from "./rules";
+import { scanRules } from "./rulesScan";
 import { checkWiring, isWiringFailure } from "./wiring";
 import { fsWiringDeps, scanHarnessRoot } from "./wiringScan";
 import { isJournalFailure, validateJournal, type JournalReport } from "./witness";
@@ -73,6 +77,19 @@ commands:
                       exist — agents, skills, read paths, applies_to globs,
                       hook commands. A dispatch naming an agent with no
                       definition file does not error at runtime; it no-ops.
+  rules select --paths <path...>
+                      deterministic rule selection, no model involved: emit
+                      the id of every rule under .claude/rules/ whose
+                      applies_to matches at least one given path, in a
+                      stable order, then print the excluded count.
+                      --emit-brief <rule-id> prints the starved compliance
+                      brief for one selected rule instead — one rule per
+                      agent, with no sibling rules and no plan rationale.
+  rules check [root]  verify every rule's frontmatter (closed keys, a
+                      required id, a known severity) and its incident
+                      anchor, the same way \`check\` verifies any other
+                      document's Evidence Anchors. UNGROUNDED-RULE and
+                      RULE-ROT are advisory; a malformed header fails.
   canary plant <doc>  insert a registered, plausibly-false claim, then run
                       your review against the document. A pipeline that flags
                       it is demonstrably alive; one that misses it has been
@@ -432,6 +449,109 @@ function runWiring(args: WiringArgs): number {
   return 0;
 }
 
+/**
+ * `rules select` (deterministic selection, no model) and `rules check`
+ * (verify every rule's header and incident anchor) — the kernel half of
+ * `add-rules-compliance`. Both scan `.claude/rules/*.md` under `args.root`
+ * via `scanRules`, then hand the results to the pure functions in `rules.ts`.
+ */
+function runRules(args: RulesArgs): number {
+  if (!existsSync(args.root)) {
+    console.error(`no such directory: ${args.root}`);
+    return 2;
+  }
+
+  const files = scanRules(args.root);
+
+  if (args.sub === "select") {
+    const result = selectRules(files, args.paths);
+
+    if (args.emitBrief !== undefined) {
+      const wanted = args.emitBrief;
+      const selection = result.selected.find((rule) => rule.id === wanted);
+      if (selection === undefined) {
+        console.error(
+          `no rule '${wanted}' selected for --paths ${args.paths.join(" ")} — run \`nullius rules select --paths ${args.paths.join(" ")}\` for the list`,
+        );
+        return 2;
+      }
+      const file = files.find((candidate) => candidate.path === selection.path);
+      // `selection` came out of `selectRules(files, ...)` above, so a
+      // matching entry in `files` always exists and its header always
+      // reparses `ok` — both scans read the same in-memory `files`, not two
+      // separate directory reads that could have drifted between calls.
+      const header = file === undefined ? null : parseRuleHeader(file.content, file.path);
+      if (file === undefined || header === null || header.verdict !== "ok") {
+        console.error(`internal error: selected rule '${wanted}' has no readable header`);
+        return 2;
+      }
+      const body = file.content.split("\n").slice(header.bodyLine - 1).join("\n").trim();
+      // Deliberately the ONLY thing on stdout: the brief is piped straight
+      // into an agent, and anything else printed here is context the rule
+      // was supposed to be starved of.
+      console.log(buildComplianceBrief({ id: header.id, text: body }, args.paths));
+      return 0;
+    }
+
+    for (const rule of result.selected) {
+      console.log(rule.id);
+    }
+    console.log("");
+    console.log(
+      `${result.selected.length} rule(s) selected, ${result.excludedCount} excluded — a selection that silently narrows is the failure this verb exists to prevent.`,
+    );
+    return 0;
+  }
+
+  // args.sub === "check"
+  if (files.length === 0) {
+    console.error(`no rule files under ${args.root} — expected .claude/rules/*.md`);
+    return 2;
+  }
+
+  const deps = {
+    readFileLines: fileLinesReader(args.root),
+    readFileAtRev: revFileReader(args.root),
+    runSearch: searchRunner(args.root),
+  };
+
+  let failures = 0;
+  let advisories = 0;
+  for (const file of files) {
+    const result = checkRule(file, deps);
+    const line = `${result.verdict.toUpperCase().padEnd(22)} ${result.path}  ${result.id ?? "(no id)"}`;
+    if (isRuleFailure(result.verdict)) {
+      failures += 1;
+      console.error(line);
+      console.error(`                       ! ${result.detail}`);
+    } else {
+      if (result.verdict !== "ok") advisories += 1;
+      console.log(line);
+      if (result.detail.length > 0) console.log(`                       ~ ${result.detail}`);
+    }
+  }
+
+  console.log("");
+  console.log(`${files.length} rule(s) scanned.`);
+
+  if (failures > 0) {
+    console.error("");
+    console.error(
+      `${failures} malformed rule header(s) — an unknown key, a missing id, or an invalid severity.`,
+    );
+    return 1;
+  }
+
+  if (advisories > 0) {
+    console.log(
+      `${advisories} advisory finding(s) above (ungrounded or rotted rules) — not counted toward this failure.`,
+    );
+  }
+
+  console.log("Every rule header parses. No hard failures.");
+  return 0;
+}
+
 function runCheck(args: CheckArgs): number {
   let config: ClaimsConfig;
   try {
@@ -746,6 +866,8 @@ function main(): number {
       return runWitness(command);
     case "wiring":
       return runWiring(command);
+    case "rules":
+      return runRules(command);
     case "canary":
       return runCanary(command);
     case "audit":

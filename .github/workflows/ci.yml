@@ -181,3 +181,15 @@ jobs:
           node packages/claims/dist/cli.js wiring spec/fixtures/wiring-valid
           ! node packages/claims/dist/cli.js wiring spec/fixtures/wiring-broken
           node packages/claims/dist/cli.js wiring
+
+      # The rules check, dogfooded on both fixtures and on this repo's own
+      # .claude/rules/ tree. A malformed rule header must keep failing; the
+      # unit tests (rules.test.ts, rulesScan.test.ts) assert WHICH verdicts
+      # fire, because the exit code here stays 1 even when one of them goes
+      # quiet. `ungrounded-rule` and `rule-rot` are advisory by design and
+      # do not fail this step even on the real tree.
+      - name: nullius rules (self)
+        run: |
+          node packages/claims/dist/cli.js rules check spec/fixtures/rules-valid
+          ! node packages/claims/dist/cli.js rules check spec/fixtures/rules-broken
+          node packages/claims/dist/cli.js rules check

@@ -149,3 +149,67 @@ describe("wiring", () => {
     expect(() => parseCli(["wiring", "--require-markers"])).toThrow(/option of `check`/);
   });
 });
+
+describe("rules", () => {
+  it("parses `select --paths` with one path", () => {
+    expect(parseCli(["rules", "select", "--paths", "src/graphql/schema.ts"])).toEqual({
+      kind: "rules",
+      sub: "select",
+      root: ".",
+      paths: ["src/graphql/schema.ts"],
+    });
+  });
+
+  it("parses `select --paths` with several paths, greedily consumed", () => {
+    expect(
+      parseCli(["rules", "select", "--paths", "a.ts", "b.ts", "c.ts"]),
+    ).toEqual({
+      kind: "rules",
+      sub: "select",
+      root: ".",
+      paths: ["a.ts", "b.ts", "c.ts"],
+    });
+  });
+
+  it("rejects `select` with no --paths", () => {
+    expect(() => parseCli(["rules", "select"])).toThrow(/requires --paths/);
+  });
+
+  it("rejects `select --paths` with no value", () => {
+    expect(() => parseCli(["rules", "select", "--paths"])).toThrow(
+      /--paths requires at least one path argument/,
+    );
+  });
+
+  it("defaults `check`'s root to the working directory", () => {
+    expect(parseCli(["rules", "check"])).toEqual({
+      kind: "rules",
+      sub: "check",
+      root: ".",
+      paths: [],
+    });
+  });
+
+  it("accepts one root operand for `check`", () => {
+    expect(parseCli(["rules", "check", "spec/fixtures/rules-valid"])).toEqual({
+      kind: "rules",
+      sub: "check",
+      root: "spec/fixtures/rules-valid",
+      paths: [],
+    });
+  });
+
+  it("rejects `check` with --paths", () => {
+    expect(() => parseCli(["rules", "check", "--paths", "a.ts"])).toThrow(
+      /does not take --paths/,
+    );
+  });
+
+  it("rejects an unknown subcommand", () => {
+    expect(() => parseCli(["rules", "bogus"])).toThrow(/usage: nullius rules/);
+  });
+
+  it("rejects a flag belonging to another command by naming its owner", () => {
+    expect(() => parseCli(["check", "--paths", "a.ts"])).toThrow(/option of `rules`/);
+  });
+});
