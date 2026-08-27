@@ -2,7 +2,7 @@
 
 ## 1. Kernel
 
-- [ ] 1.1 `packages/claims/src/rules.ts` (pure core) + `rulesScan.ts` (the
+- [x] 1.1 `packages/claims/src/rules.ts` (pure core) + `rulesScan.ts` (the
       only module that reads files/globs, mirroring `wiring.ts`/
       `wiringScan.ts`): `parseRuleHeader` — wraps the existing
       `parseFrontmatter`/`declaredList`, adds closed-key/required-id
@@ -10,7 +10,7 @@
       reader, no change to the rule files themselves; a malformed header is
       a `RuleVerdict` (`malformed-rule-header`), not a thrown error, so a
       directory scan reports every bad file, not just the first
-- [ ] 1.2 `RuleVerdict` union (separate from `Verdict` and from
+- [x] 1.2 `RuleVerdict` union (separate from `Verdict` and from
       `WiringVerdict`), members lowercase-kebab and `ok`-first, matching the
       sibling unions' own convention: `ok`, `ungrounded-rule`, `rule-rot`,
       `malformed-rule-header`. A `PASSING` set (`ok`/`ungrounded-rule`/
@@ -18,7 +18,7 @@
       wrapper, mirroring `checkClaims.ts:169-179`'s `PASSING`/`isFailure`
       exactly — do not decide passing/failing from a bare `!== "ok"` check
       anywhere.
-- [ ] 1.3 Incident-anchor verification: any `**Evidence:**` anchor anywhere
+- [x] 1.3 Incident-anchor verification: any `**Evidence:**` anchor anywhere
       in a rule's body (no heading-text match required — settled in
       design.md Decision 3) is checked via `checkClaims.ts`'s existing
       per-claim verification (either a new export exposing it, or claims
@@ -37,7 +37,7 @@
       report `stale` today (a passing verdict) from ordinary line drift; a
       naive inequality check would misreport 4 of those 7 rules as rotted
       immediately.
-- [ ] 1.4 `rules select --paths` with stable order and excluded count; glob
+- [x] 1.4 `rules select --paths` with stable order and excluded count; glob
       matching is a small hand-rolled `appliesToMatches` (literal segments,
       `*`, `**` — the vocabulary the current 8 rule files actually use), not
       a `minimatch` dependency. `**` MUST match zero segments (so
@@ -45,12 +45,12 @@
       `isSafeRepoPath` (or equivalent) on the candidate path before matching,
       mirroring `wiring.ts:357`'s existing traversal check on the pattern
       side.
-- [ ] 1.5 Fixtures: grounded rule, ungrounded rule (a **frozen copy** under
+- [x] 1.5 Fixtures: grounded rule, ungrounded rule (a **frozen copy** under
       `spec/fixtures/`, modeled on but not a live reference to
       `openspec-shall-first-line.md` — a future edit to that real rule for
       unrelated reasons must not silently stop this fixture testing what it
       claims), rotted rule, malformed header.
-- [ ] 1.6 Unit tests, one per `RuleVerdict` member, each asserting that
+- [x] 1.6 Unit tests, one per `RuleVerdict` member, each asserting that
       specific verdict fires by name against its task-1.5 fixture — not
       just that the directory scan's exit code goes non-zero. Required by
       `.claude/rules/verdict-needs-fixture-and-test.md`: a fixture alone is

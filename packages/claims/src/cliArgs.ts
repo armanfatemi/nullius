@@ -56,6 +56,15 @@ export interface WiringArgs {
   root: string;
 }
 
+export interface RulesArgs {
+  kind: "rules";
+  sub: "select" | "check";
+  /** Root to scan. Defaults to the working directory. */
+  root: string;
+  /** Only meaningful for `select`: candidate paths to match applies_to against. */
+  paths: string[];
+}
+
 export type Command =
   | { kind: "help"; requested: boolean }
   | { kind: "version" }
@@ -64,6 +73,7 @@ export type Command =
   | AuditArgs
   | WitnessArgs
   | WiringArgs
+  | RulesArgs
   | CanaryArgs;
 
 /** Which command owns which flag, so a misplaced one can name its home. */
@@ -73,6 +83,7 @@ const FLAG_OWNERS: ReadonlyMap<string, string> = new Map([
   ["--emit-brief", "audit"],
   ["--extract", "audit"],
   ["--propose", "audit"],
+  ["--paths", "rules"],
 ]);
 
 const COMMANDS: ReadonlySet<string> = new Set([
@@ -80,6 +91,7 @@ const COMMANDS: ReadonlySet<string> = new Set([
   "audit",
   "witness",
   "wiring",
+  "rules",
   "canary",
   "demo",
   "eager-prompt",
@@ -164,6 +176,7 @@ export function parseCli(argv: readonly string[]): Command {
   if (first === "check") return parseCheck(rest);
   if (first === "witness") return parseWitness(rest);
   if (first === "wiring") return parseWiring(rest);
+  if (first === "rules") return parseRules(rest);
   if (first === "canary") return parseCanary(rest);
   return parseAudit(rest, first === "eager-prompt");
 }
@@ -287,4 +300,66 @@ function parseWiring(rawArgv: readonly string[]): WiringArgs {
     throw new CliError(`\`wiring\` takes at most one root, got: ${operands.join(" ")}`);
   }
   return { kind: "wiring", root: operands[0] ?? "." };
+}
+
+/**
+ * `rules select --paths <path...>` and `rules check [root]`.
+ *
+ * `--paths` is variadic — the only variadic flag this parser has — so it
+ * greedily consumes every following argument up to the next flag (or the
+ * end of the line) rather than taking exactly one value the way every other
+ * flag here does.
+ */
+function parseRules(rawArgv: readonly string[]): RulesArgs {
+  const [sub, ...rest] = rawArgv;
+  if (sub !== "select" && sub !== "check") {
+    throw new CliError("usage: nullius rules <select --paths <path...> | check [root]>");
+  }
+
+  const { flags: argv, literal } = splitOperands(rest);
+  const paths: string[] = [];
+  const operands: string[] = [...literal];
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === undefined) continue;
+    if (arg === "--paths") {
+      const first = argv[index + 1];
+      if (first === undefined || first.startsWith("-")) {
+        throw new CliError("--paths requires at least one path argument");
+      }
+      index += 1;
+      while (index < argv.length) {
+        const value = argv[index];
+        if (value === undefined || value.startsWith("-")) break;
+        paths.push(value);
+        index += 1;
+      }
+      index -= 1; // compensate for the outer loop's own increment
+    } else if (arg.startsWith("-")) {
+      rejectMisplaced(arg, "rules");
+    } else {
+      operands.push(arg);
+    }
+  }
+
+  if (sub === "select") {
+    if (paths.length === 0) {
+      throw new CliError("`rules select` requires --paths <path...>");
+    }
+    if (operands.length > 0) {
+      throw new CliError(
+        `\`rules select\` takes no positional operands besides --paths, got: ${operands.join(" ")}`,
+      );
+    }
+    return { kind: "rules", sub: "select", root: ".", paths };
+  }
+
+  if (paths.length > 0) {
+    throw new CliError("`rules check` does not take --paths — that belongs to `rules select`");
+  }
+  if (operands.length > 1) {
+    throw new CliError(`\`rules check\` takes at most one root, got: ${operands.join(" ")}`);
+  }
+  return { kind: "rules", sub: "check", root: operands[0] ?? ".", paths: [] };
 }

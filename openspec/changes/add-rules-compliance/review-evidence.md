@@ -167,3 +167,59 @@ Decision 3 / task 1.3. Not scored (would read MISSED, but that would be a
 probe-placement mismatch for this narrow round, not a review-layer signal).
 Iteration 2 already measured the review layer alive: CAUGHT, independently,
 by two reviewers, unprompted.
+
+## Stage 5 — Verify (Section 1: kernel)
+
+build: pass
+type-check: pass
+test: pass (20 claims test files + 6 kit test files; 599 claims tests + 233
+  kit tests passing; 6 known ugrep flagConformance failures, all in that one
+  file — the documented environmental baseline, not a regression)
+dogfood gates: pass, both polarities
+  - witness validate valid-run.jsonl: exit 0
+  - witness validate broken-run.jsonl: exit 1 (6 invalid records reported)
+  - wiring spec/fixtures/wiring-valid: exit 0
+  - wiring spec/fixtures/wiring-broken: exit 1 (8 unresolved references)
+  - wiring . : exit 0 (14 pre-existing advisory loose-references, unrelated
+    to this change — template placeholders in skill docs)
+  - check README.md spec/**/*.md --require-markers: exit 0, 34/34 verified
+  - check openspec/**/*.md: exit 0, 97/97 verified
+
+New surface: packages/claims/src/rules.ts (pure core), rulesScan.ts (the
+only fs-touching module, mirrors wiring.ts/wiringScan.ts split). Exports
+RuleVerdict, isRuleFailure, RuleSeverity, parseRuleHeader, checkRule,
+appliesToMatches, selectRules, plus supporting types. Wired into cli.ts as
+`rules select --paths <path...>` and `rules check [root]`. Exported from
+index.ts.
+
+Deviations from tasks.md, all within stated "implementer's choice" bounds,
+reviewed by the coordinator against the actual code before this append:
+- Task 1.3's checkClaims-reuse choice resolved to "claims synthesized
+  through checkClaims + CheckDeps" — via the existing parseClaims +
+  checkClaims + runners.ts (fileLinesReader/revFileReader/searchRunner)
+  pipeline, the same one cli.ts already uses for `check`. No new kernel
+  export was needed after all.
+- severity enum resolved to "blocker" | "concern" — the only two values
+  used across all 8 real rule files.
+- All three frontmatter keys (id, applies_to, severity) treated as
+  required, matching spec.md's "closed keys (id, applies_to, severity)"
+  framing and every real rule file populating all three.
+- appliesToMatches runs isSafeRepoPath on both the pattern and the
+  candidate path, not just the candidate side tasks.md named — design.md's
+  own argument (repo-controlled content on both sides) supports checking
+  both.
+- Added `rules check [root]` alongside the spec'd `rules select --paths`,
+  since spec.md's scenarios describe "checking the rules directory" and no
+  other command was named for reporting RuleVerdict per file.
+
+Coordinator verification: re-ran build/type-check/test/dogfood gates
+independently rather than trusting the implementing agent's self-report (it
+initially surfaced as clean; independently confirmed rather than assumed).
+Read rules.ts, rulesScan.ts, the cli.ts diff, and all 4 fixtures in full
+before ticking tasks 1.1-1.6.
+
+## Coordinator corrections since last append
+
+None. The implementing subagent's report was verified accurate on
+independent re-check (build, type-check, full test suite, all 4 fixtures
+read).

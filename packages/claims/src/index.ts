@@ -91,3 +91,20 @@ export {
   type Frontmatter,
   type Located,
 } from "./frontmatter";
+export {
+  appliesToMatches,
+  checkRule,
+  isRuleFailure,
+  parseRuleHeader,
+  selectRules,
+  type MalformedRuleHeader,
+  type ParsedRuleHeader,
+  type RuleCheckResult,
+  type RuleFile,
+  type RuleHeaderResult,
+  type RuleSelection,
+  type RuleSeverity,
+  type RuleVerdict,
+  type SelectRulesResult,
+} from "./rules";
+export { scanRules } from "./rulesScan";
