@@ -668,8 +668,14 @@ suite("CLI characterization — --format json on a no-match run", () => {
   it("keeps exit 1 under --require-markers and the same JSON shape", () => {
     const result = run("check", "no/such/dir/**/*.md", "--format", "json", "--require-markers");
     expect(result.code).toBe(1);
-    const report = JSON.parse(result.stdout) as { documents: unknown[]; diagnostics: string[] };
+    const report = JSON.parse(result.stdout) as {
+      documents: unknown[];
+      summary: { markerFloorFailed: boolean; failures: number };
+      diagnostics: string[];
+    };
     expect(report.documents).toEqual([]);
+    expect(report.summary.markerFloorFailed).toBe(true);
+    expect(report.summary.failures).toBe(0);
     expect(report.diagnostics[0]).toMatch(/^no files matched/);
   });
 

@@ -322,3 +322,19 @@ test: pass (claims 765 passed, 6 known ugrep failures in flagConformance; kit 23
 dogfood gates: pass, both polarities
 smoke: `check 'zz/**/*.md' --format json` now emits an empty-documents report with `diagnostics[0]` = "no files matched: …"
 note: the dispatched fixer agent stalled (600s watchdog) after writing one test; the coordinator applied the three fixes inline, keeping that test.
+
+## Stage 6 — Post-review, second pass (fix diff)
+
+Dispatched on `git diff 26ced3c..HEAD`: checker-engineer, architecture-reviewer (test-engineer and rule-auditor dropped: the fix adds tests in the shape they approved and touches no rule-bearing path).
+
+## Blockers
+None. checker-engineer walked every return in `checkStamped` — all explicit literals; the fail-open branch is the only place `foundLine` could have leaked and it is closed. architecture-reviewer: `diagnostics` is additive under the Decision 5 policy; kernel purity holds; the two README-citing anchors are advisory STALE as intended.
+
+## Concerns — folded in as one-line doc/report edits, not re-reviewed
+- [architecture-reviewer] spec did not state "stdout is exactly one JSON document, always" — one sentence and a no-match scenario added to `specs/check-cli/spec.md`.
+- [architecture-reviewer] README bullet named half the stamp condition — reworded to "working tree *and* at HEAD".
+- [checker-engineer] the "read `failing`" consumer rule did not hold for a no-match run under `--require-markers` (exit 1, `markerFloorFailed: false`) — the no-match report now sets `markerFloorFailed`, and the schema doc states the exact rule: non-zero exit ⇔ `failures > 0 || markerFloorFailed || diagnostics`.
+
+## Coordinator corrections since last append
+- Process: the Stage 7 fixer agent stalled; I applied the fixes inline and kept its one test. Recorded in that chunk's verify block.
+- None of the second-pass findings contradicted a coordinator claim.

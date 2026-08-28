@@ -62,13 +62,24 @@ and reported.
 same predicate that decides the exit code) plus summary counts including
 anchor density and zero-anchor documents by name. The report SHALL carry an
 integer `version` field, bumped when a field is renamed or removed or when the
-verdict vocabulary grows. The default human output SHALL be unchanged.
+verdict vocabulary grows. Under `--format json` stdout SHALL be exactly one
+JSON document on every run, including a run that matched no files; messages
+that changed the exit code or the matched set SHALL appear in a `diagnostics`
+array, and a non-zero exit SHALL imply `failures > 0`, `markerFloorFailed`, or
+a non-empty `diagnostics`. The default human output SHALL be unchanged.
 
 #### Scenario: scripting the checker
 
 - **WHEN** `check --format json` runs over passing and failing documents
 - **THEN** stdout parses as JSON, the exit code matches the human-mode exit
   code, and each failing claim appears with its verdict string
+
+#### Scenario: nothing matched is still a document
+
+- **WHEN** `check "no/such/**/*.md" --format json --require-markers` runs
+- **THEN** it exits 1, stdout parses as JSON with an empty `documents` array,
+  `summary.markerFloorFailed` is true, and `diagnostics[0]` begins with
+  `no files matched`
 
 ### Requirement: The funnel names the next command
 

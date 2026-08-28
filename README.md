@@ -411,9 +411,11 @@ format is shaped this way; the linter is what you install.
   journal validator (`witness validate`) ships now; the harvester is held back
   until its conventions have more real-world mileage.
 - **Stamping help** — shipped: `check --stamp` fills in the commit for
-  anchors that verify at HEAD, `check --fix` repoints `DRIFT`/`WRONG-LINE`
-  citations on unstamped anchors, and `check --format json` emits a
-  versioned machine-readable report. See `nullius check --help`.
+  anchors that verify in the working tree *and* at HEAD (a locally failing
+  anchor is never stamped, whatever HEAD holds), `check --fix` repoints
+  `DRIFT`/`WRONG-LINE` citations on unstamped anchors, and
+  `check --format json` emits a versioned machine-readable report. See
+  `nullius check --help`.
 - Open threads: [`init`](https://github.com/armanfatemi/nullius/issues/1),
   [embedded `--eager`](https://github.com/armanfatemi/nullius/issues/6).
 

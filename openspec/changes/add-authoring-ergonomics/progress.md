@@ -1,6 +1,6 @@
 # Progress — proposal-to-pr: add-authoring-ergonomics
 
-_Started 2026-08-28T02:41:50Z; last updated 2026-08-28T18:16:48Z_
+_Started 2026-08-28T02:41:50Z; last updated 2026-08-28T19:30:43Z_
 
 ## Phases completed
 
@@ -14,7 +14,7 @@ _Started 2026-08-28T02:41:50Z; last updated 2026-08-28T18:16:48Z_
 
 ## Current phase
 
-**Stage 6 (Post-review)** — Stage 4 complete: all 10 coded tasks committed (last 26ced3c); dispatching all four reviewers on `git diff main...HEAD` (23 files).
+**Stage 7 (Address must-fixes)** — Stage 6 found 1 blocker + 2 promoted concerns; fixed in 5909b77, Stage 5 green; re-running Stage 6 (checker-engineer, architecture-reviewer) on the fix diff.
 
 ## Next 3 actions
 

@@ -714,7 +714,10 @@ function runCheck(args: CheckArgs): number {
     // with the diagnostic that explains the exit code. A consumer piping to
     // jq must never see a parse error on a legitimate result.
     if (args.format === "json") {
-      process.stdout.write(renderJson(summarize([], args.requireMarkers), [message]));
+      // Nothing matched, so nothing was anchored: under --require-markers that
+      // is the floor failing, and the report says so in its own field.
+      const empty = { ...summarize([], args.requireMarkers), markerFloorFailed: args.requireMarkers };
+      process.stdout.write(renderJson(empty, [message]));
     }
     return args.requireMarkers ? 1 : 0;
   }

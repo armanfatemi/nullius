@@ -243,8 +243,13 @@ export interface ReportRewrites {
  * `rewrites` is present only when `--fix` or `--stamp` ran. `diagnostics`
  * carries messages that also went to stderr and that changed the exit code or
  * the matched set (no files matched; an unreadable canary registry); absent
- * when there were none, so a report that says pass and a process that exits
- * non-zero can never disagree silently.
+ * when there were none.
+ *
+ * The exit-code rule a consumer can rely on: the process exits non-zero if
+ * and only if `summary.failures > 0`, or `summary.markerFloorFailed`, or
+ * `diagnostics` is present. A no-match run under `--require-markers` sets
+ * `markerFloorFailed` (nothing matched, so nothing was anchored), and the
+ * unreadable-registry case is the one exit that only `diagnostics` explains.
  */
 export interface CheckReport {
   version: 1;
