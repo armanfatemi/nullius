@@ -189,7 +189,7 @@ suite("CLI — flags belong to commands", () => {
     expect(result.output).toContain("--require-markers is an option of `check`");
   });
 
-  it("refuses flags on witness, which takes none", () => {
+  it("refuses a flag on witness that is not --expect-rules", () => {
     const result = run("witness", "validate", "spec/fixtures/valid-run.jsonl", "--oops");
 
     expect(result.code).toBe(2);
@@ -334,6 +334,94 @@ suite("CLI characterization — witness", () => {
 
   it("fails a broken journal with exit 1", () => {
     expect(run("witness", "validate", "spec/fixtures/broken-run.jsonl").code).toBe(1);
+  });
+});
+
+/**
+ * `--expect-rules` — add-silent-rule-check tasks 3.2-3.4. Exercised through
+ * the built CLI, same as the rest of this suite: `runWitness` is not exported
+ * (cli.ts ends in `process.exit(main())`), so the observable contract is
+ * argv in, exit code and output out.
+ */
+suite("CLI characterization — witness --expect-rules", () => {
+  // Task 3.3: without the flag, `witness validate`'s behaviour is
+  // byte-for-byte unchanged — pinned as a literal output snapshot, since
+  // "unchanged" is otherwise unfalsifiable without one. The existing
+  // "CLI characterization — witness" suite above (no --expect-rules
+  // anywhere in it) is the other half of this proof: those fixtures still
+  // validate/fail exactly as they did before this capability existed.
+  it("prints no coverage section at all when --expect-rules is omitted", () => {
+    const result = run("witness", "validate", "spec/fixtures/valid-run.jsonl");
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toBe(
+      "\n11 record(s) read: 3 dispatch(es), 1 verification(s), 1 mutation(s).\n" +
+        "Outcomes: 1 found, 1 explicitly empty, 1 never reported.\n" +
+        "Schema 0.2, origin: hooks — records emitted by the harness runtime, which the agent had no opportunity to decline.\n" +
+        "Journal valid.\n",
+    );
+    expect(result.output).not.toContain("SILENT-RULE");
+    expect(result.output).not.toContain("Rule coverage:");
+  });
+
+  it("passes when every expected rule id reached a delivered verdict", () => {
+    const result = run(
+      "witness",
+      "validate",
+      "spec/fixtures/rule-coverage-valid.jsonl",
+      "--expect-rules",
+      "build-before-cli",
+      "merge-never-squash",
+      "one-delivery-mechanism",
+    );
+
+    expect(result.code).toBe(0);
+    expect(result.output).not.toContain("SILENT-RULE");
+    expect(result.output).toContain("Journal valid.");
+  });
+
+  it("fails and reports SILENT-RULE for each rule that never reached a delivered verdict", () => {
+    const result = run(
+      "witness",
+      "validate",
+      "spec/fixtures/rule-coverage-broken.jsonl",
+      "--expect-rules",
+      "build-before-cli",
+      "verdict-needs-fixture-and-test",
+      "rev-stamp-change-anchors",
+      "model-proposes-code-verifies",
+    );
+
+    expect(result.code).toBe(1);
+    // Two covered rules must not appear as SILENT-RULE — build-before-cli
+    // (a clean COMPLIANT) and model-proposes-code-verifies (also COMPLIANT),
+    // included specifically to prove this check distinguishes passing rules
+    // from failing ones within the same run, not just "everything fails".
+    expect(result.output).not.toContain("SILENT-RULE  build-before-cli");
+    expect(result.output).not.toContain("SILENT-RULE  model-proposes-code-verifies");
+    // The two silent ones must, one line each, in a format that names no
+    // line number — RuleCoverageFinding has none (task 2.4/3.2).
+    expect(result.output).toContain("SILENT-RULE  verdict-needs-fixture-and-test");
+    expect(result.output).toContain("SILENT-RULE  rev-stamp-change-anchors");
+  });
+
+  // Task 3.4: an unreadable schema version must suppress the coverage check
+  // entirely — no SILENT-RULE finding computed from content the validator
+  // itself declined to read, even though every named id is absent from it.
+  it("reports UNSUPPORTED-VERSION and no SILENT-RULE finding when the journal's schema is unreadable", () => {
+    const result = run(
+      "witness",
+      "validate",
+      "spec/fixtures/future-run.jsonl",
+      "--expect-rules",
+      "build-before-cli",
+      "merge-never-squash",
+    );
+
+    expect(result.code).toBe(1);
+    expect(result.output).toContain("UNSUPPORTED-VERSION");
+    expect(result.output).not.toContain("SILENT-RULE");
+    expect(result.output).not.toContain("Rule coverage:");
   });
 });
 

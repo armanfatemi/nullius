@@ -29,8 +29,8 @@ A caller who switches on `Verdict` today has an exhaustive `switch`; every membe
 
 All four functions have the same shape: a `PASSING` set of the verdicts that do *not* fail the run, and a function that returns `!PASSING.has(verdict)`.
 
-**Evidence:** `packages/claims/src/checkClaims.ts:167` — `const PASSING: ReadonlySet<Verdict> = new Set<Verdict>([`
-**Evidence:** `packages/claims/src/wiring.ts:85` — `const PASSING: ReadonlySet<WiringVerdict> = new Set<WiringVerdict>(["ok", "loose-reference"]);`
+**Evidence:** `packages/claims/src/checkClaims.ts:169` — `const PASSING: ReadonlySet<Verdict> = new Set<Verdict>([`
+**Evidence:** `packages/claims/src/wiring.ts:111` — `const PASSING: ReadonlySet<WiringVerdict> = new Set<WiringVerdict>(["ok", "loose-reference"]);`
 **Evidence:** `packages/claims/src/witness.ts:120` — `const PASSING: ReadonlySet<JournalVerdict> = new Set<JournalVerdict>(["ok"]);`
 **Evidence:** `packages/claims/src/rules.ts:60@1a56884` — `const PASSING: ReadonlySet<RuleVerdict> = new Set<RuleVerdict>([`
 

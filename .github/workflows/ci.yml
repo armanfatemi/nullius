@@ -96,6 +96,15 @@ jobs:
           # resolutions are themselves malformed — which must not discharge it.
           node packages/claims/dist/cli.js witness validate spec/fixtures/v0.3-run.jsonl
           ! node packages/claims/dist/cli.js witness validate spec/fixtures/v0.3-broken-run.jsonl
+          # --expect-rules: did every rule rules select named actually reach a
+          # delivered verdict in this journal? "Reached a terminal record" is
+          # not enough — the broken fixture trips a never-dispatched rule and
+          # a no-report terminal, neither of which may silently read as
+          # covered. The malformed-record risk (a bad JSON line skipped
+          # rather than trusted) is covered by a dedicated unit test
+          # (ruleCoverage.test.ts, task 4.4), not this fixture.
+          node packages/claims/dist/cli.js witness validate spec/fixtures/rule-coverage-valid.jsonl --expect-rules build-before-cli merge-never-squash one-delivery-mechanism
+          ! node packages/claims/dist/cli.js witness validate spec/fixtures/rule-coverage-broken.jsonl --expect-rules build-before-cli verdict-needs-fixture-and-test rev-stamp-change-anchors model-proposes-code-verifies
       # The producer, end to end and under contention. Hook payloads in,
       # journal out, validator's verdict on it — and the parallel case is the
       # one that matters: several subagent hooks append to one file at once,

@@ -43,12 +43,19 @@ export {
 export {
   isJournalFailure,
   validateJournal,
+  TERMINAL_RECORD_KINDS,
   type JournalFinding,
   type JournalHeader,
   type JournalOrigin,
   type JournalReport,
   type JournalVerdict,
 } from "./witness";
+export {
+  checkRuleCoverage,
+  isRuleCoverageFailure,
+  type RuleCoverageFinding,
+  type RuleCoverageVerdict,
+} from "./ruleCoverage";
 export { isSafeRepoPath, type PathVerdict } from "./pathSafety";
 export {
   isSafeSearchCommand,

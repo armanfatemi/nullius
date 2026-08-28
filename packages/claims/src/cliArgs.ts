@@ -43,6 +43,8 @@ export interface AuditArgs {
 export interface WitnessArgs {
   kind: "witness";
   operands: string[];
+  /** Rule ids `witness validate` must confirm reached a delivered verdict. */
+  expectRules: string[] | undefined;
 }
 
 export interface CanaryArgs {
@@ -86,6 +88,7 @@ const FLAG_OWNERS: ReadonlyMap<string, string> = new Map([
   ["--extract", "audit"],
   ["--propose", "audit"],
   ["--paths", "rules"],
+  ["--expect-rules", "witness"],
 ]);
 
 const COMMANDS: ReadonlySet<string> = new Set([
@@ -261,15 +264,54 @@ function parseAudit(rawArgv: readonly string[], viaAlias: boolean): AuditArgs {
 }
 
 /**
- * `witness` takes a subcommand and an operand and no flags at all. Its arity
- * is checked by the runner, which already owns the usage string.
+ * `witness` takes a subcommand and an operand, plus one optional variadic
+ * flag: `--expect-rules <id...>`. Everything else the command needs — arity
+ * of the subcommand/operand pair — is checked by the runner, which already
+ * owns the usage string.
+ *
+ * `--expect-rules` is variadic, the same shape as `rules select`'s `--paths`
+ * (see `parseRules` below): it greedily consumes every following argument up
+ * to the next flag or the end of the line, rather than taking exactly one
+ * value the way `--config` or `--emit-brief` do. Unlike `--paths` — which
+ * `rules select` accepts as its only argument, so greediness is unambiguous
+ * there — `witness validate` also takes two required positional operands.
+ * That makes ordering load-bearing: `--expect-rules` must come AFTER
+ * `validate <journal>` (`witness validate <journal> --expect-rules <id...>`,
+ * matching the usage string). Placed before the operands, it greedily
+ * swallows them as rule ids instead — a known, tested constraint, not a
+ * silent footgun (see cliArgs.test.ts).
  */
 function parseWitness(rawArgv: readonly string[]): WitnessArgs {
   const { flags: argv, literal } = splitOperands(rawArgv);
-  for (const arg of argv) {
-    if (arg.startsWith("-")) rejectMisplaced(arg, "witness");
+  const operands: string[] = [...literal];
+  let expectRules: string[] | undefined;
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === undefined) continue;
+    if (arg === "--expect-rules") {
+      const first = argv[index + 1];
+      if (first === undefined || first.startsWith("-")) {
+        throw new CliError("--expect-rules requires at least one rule id argument");
+      }
+      const values: string[] = [];
+      index += 1;
+      while (index < argv.length) {
+        const value = argv[index];
+        if (value === undefined || value.startsWith("-")) break;
+        values.push(value);
+        index += 1;
+      }
+      index -= 1; // compensate for the outer loop's own increment
+      expectRules = values;
+    } else if (arg.startsWith("-")) {
+      rejectMisplaced(arg, "witness");
+    } else {
+      operands.push(arg);
+    }
   }
-  return { kind: "witness", operands: [...argv, ...literal] };
+
+  return { kind: "witness", operands, expectRules };
 }
 
 /**

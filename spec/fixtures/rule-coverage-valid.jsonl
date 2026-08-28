@@ -1,0 +1,9 @@
+{"kind":"journal","version":"0.2","origin":"hooks","session":"valid-rc-1","source":"startup"}
+{"kind":"dispatch","id":"d1","task":"build-before-cli"}
+{"kind":"report","id":"r1","dispatch":"d1","outcome":"found","findings":["Read .claude/rules/build-before-cli.md and packages/claims/package.json. COMPLIANT — dist/cli.js is what ships, and the anchor matches."]}
+{"kind":"dispatch","id":"d2","task":"merge-never-squash"}
+{"kind":"report","id":"r2","dispatch":"d2","outcome":"found","findings":["Read the rule and the PR history. VIOLATION — PR #12 was squashed and its anchors were never re-pinned to the squash commit."]}
+{"kind":"dispatch","id":"d3","task":"one-delivery-mechanism"}
+{"kind":"report","id":"r3","dispatch":"d3","outcome":"no-report","statement":"agent exited before answering; re-dispatched as d4"}
+{"kind":"dispatch","id":"d4","task":"one-delivery-mechanism"}
+{"kind":"report","id":"r4","dispatch":"d4","outcome":"found","findings":["Read the rule and .claude/settings.json. NOT-APPLICABLE — this change touches no hook delivery."]}
