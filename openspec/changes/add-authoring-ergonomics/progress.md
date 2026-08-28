@@ -1,6 +1,6 @@
 # Progress — proposal-to-pr: add-authoring-ergonomics
 
-_Started 2026-08-28T02:41:50Z; last updated 2026-08-28T03:46:55Z_
+_Started 2026-08-28T02:41:50Z; last updated 2026-08-28T03:57:07Z_
 
 ## Phases completed
 
@@ -14,7 +14,7 @@ _Started 2026-08-28T02:41:50Z; last updated 2026-08-28T03:46:55Z_
 
 ## Current phase
 
-**PAUSED — refinement_cap** after Stage 2 iteration 3 (probe caught): 1 blocker remains — proposal.md:23-24 and specs/check-cli/spec.md:7-12 omit the working-tree ok/weak-anchor precondition for --stamp (design Decision 4 carries it). Plus 1 concern: proposal.md:36-37 'three-way outcome counts' not in the JSON schema.
+**Stage 2 (Pre-review) iteration 4** — user raised the cap to 4 and chose one more round; Stage 3 iteration 3 committed (working-tree precondition clause in proposal + spec; JSON remnant dropped). Canary planted; dispatching architecture-reviewer + rule-auditor.
 
 ## Next 3 actions
 

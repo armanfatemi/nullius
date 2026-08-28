@@ -202,3 +202,44 @@ in scope of: architecture-reviewer (openspec/ path), rule-auditor (unconditional
 dispatched: architecture-reviewer, rule-auditor
 found by: architecture-reviewer only (1 of 2); rule-auditor's focused re-check did not flag it
 leak: architecture-reviewer again confirmed via the per-clone registry. Same sentence and line in all four rounds. verify exit code: 0
+
+## Stage 2 — Pre-review iteration 4
+
+Dispatched: architecture-reviewer, rule-auditor (owners of the iteration-3 findings; the other two dropped — no kernel or test-plan text changed).
+Grounding gate (Step 0, before plant): exit 0 — 29/29 OK at @5d5b2e0.
+
+## False premises
+
+- FP1 `openspec/changes/add-authoring-ergonomics/proposal.md:6` — the `retry` / "must stay in sync" sentence naming `spec/fixtures/rules-valid/src/example.ts`. Flagged by architecture-reviewer (via the local registry, "fifth successive plant"); not flagged by rule-auditor (1 of 2). No other false premise: rule-auditor re-checked the Decision 4 anchors against `git show 5d5b2e0:` directly.
+
+## Blockers
+
+None. The iteration-3 blocker is closed: proposal.md:23-30, design Decision 4 and spec.md:7-15 state the same two-part stamp condition, and scenario (c) exercises the laundering case (architecture-reviewer). rule-auditor: no remaining path writes a stamp the checker would later fail or turns a working-tree failure into a stamped pass.
+
+## Concerns
+
+- C1 [architecture-reviewer] `specs/check-cli/spec.md:75-77` — the funnel SHALL ("final line names the retrofit command") is also satisfied by appending after `All 0 grounding marker(s) verified.`, the shape Decision 6 rejects and task 3.2 tests against. Add "replacing" to the SHALL. Folded in before Stage 4 as a one-word edit; not re-reviewed (Stage 6 sees the diff).
+- C2 [architecture-reviewer] `proposal.md:23-30` omits exit-2-on-unresolvable-HEAD and the `rev-unreadable` skip; both are in design and spec. Summary-level; left as is.
+
+## Looks good
+
+- Two-part `--stamp` gate closes the laundering path; `verifyAtRev` gates on read status, a deterministic re-read (rule-auditor, model-proposes-code-verifies).
+- `RevVerification` outside `Verdict`; `failing` via `isFailure`; pure cores, I/O in CLI/runners (architecture-reviewer).
+- `openspec validate --strict` valid; 29/29 anchors OK (both).
+
+## Decision
+
+Zero blockers, zero false premises beyond the plant → Stage 4.
+
+## Coordinator corrections since last append
+
+- None in the artefacts this round. Process note: rule-auditor did not flag the plant in either of its last two focused re-checks; the probe was caught only through architecture-reviewer's registry side channel. The review layer's "catch" signal for this change has been the registry, not reading, since iteration 1 — recorded for the retro.
+
+## Probe — stage 2 (iteration 4)
+
+verdict: CAUGHT
+planted: openspec/changes/add-authoring-ergonomics/proposal.md:6, under "## Why"
+in scope of: architecture-reviewer (openspec/ path), rule-auditor (unconditional)
+dispatched: architecture-reviewer, rule-auditor
+found by: architecture-reviewer only (1 of 2), via the per-clone registry ("fifth successive plant")
+leak: same sentence and line every round; the registry and the committed probe sections make it recognisable without reading. verify exit code: 0

@@ -73,7 +73,8 @@ verdict vocabulary grows. The default human output SHALL be unchanged.
 ### Requirement: The funnel names the next command
 
 The final line of `check` output SHALL name the concrete retrofit command
-for the largest matched document, in copy-pasteable form, whenever `check`
+for the largest matched document, in copy-pasteable form — replacing, not
+following, the `All 0 grounding marker(s) verified.` line — whenever `check`
 matches documents but finds zero grounding markers.
 
 #### Scenario: anchorless repo gets a next step
