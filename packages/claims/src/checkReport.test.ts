@@ -83,6 +83,9 @@ const UNANCHORED: CheckedDocument = {
   plan: null,
 };
 
+const SMALLEST: CheckedDocument = { ...UNANCHORED, doc: "docs/a-zero.md", lines: 3 };
+const LARGEST: CheckedDocument = { ...UNANCHORED, doc: "docs/c.md", lines: 120 };
+
 const PLAN: RewritePlan = {
   content: "",
   applied: [
@@ -135,8 +138,32 @@ describe("summarize — the collected structure", () => {
     expect(run.absenceAnchors).toBe(1);
   });
 
-  it("leaves next null — the funnel is a later task's to fill", () => {
-    expect(summarize([UNANCHORED], false).next).toBeNull();
+  it("leaves next null when no document matched, and when any document carries a marker", () => {
+    expect(summarize([], false).next).toBeNull();
+    expect(summarize([anchored()], false).next).toBeNull();
+    expect(summarize([anchored(), UNANCHORED], false).next).toBeNull();
+    expect(summarize([anchored(), UNANCHORED, LARGEST], true).next).toBeNull();
+  });
+
+  it("names the largest matched document in the funnel when no document carries a marker", () => {
+    expect(summarize([SMALLEST, UNANCHORED, LARGEST], false).next).toBe(
+      "nullius audit docs/c.md --propose",
+    );
+    // The floor changes the exit code, not the next step.
+    expect(summarize([SMALLEST, UNANCHORED, LARGEST], true).next).toBe(
+      "nullius audit docs/c.md --propose",
+    );
+  });
+
+  it("breaks a tie on line count by taking the first document in order", () => {
+    const twin: CheckedDocument = { ...UNANCHORED, doc: "docs/z.md" };
+    expect(summarize([UNANCHORED, twin], false).next).toBe("nullius audit docs/b.md --propose");
+    expect(summarize([twin, UNANCHORED], false).next).toBe("nullius audit docs/z.md --propose");
+  });
+
+  it("does not let a canary guard alone lift a document out of the funnel", () => {
+    const guardOnly: CheckedDocument = { ...UNANCHORED, guard: GUARD };
+    expect(summarize([guardOnly], false).next).toBe("nullius audit docs/b.md --propose");
   });
 
   it("computes the exit code from the same fields both renderers read", () => {
@@ -216,6 +243,13 @@ describe("renderJson — the Decision 5 schema", () => {
       markerFloorFailed: true,
       next: null,
     });
+  });
+
+  it("surfaces the funnel as summary.next, and only on a zero-marker run", () => {
+    expect(render([SMALLEST, UNANCHORED, LARGEST]).summary.next).toBe(
+      "nullius audit docs/c.md --propose",
+    );
+    expect(render([anchored(), LARGEST]).summary.next).toBeNull();
   });
 
   it("omits rewrites when no rewrite ran, and flattens them with a doc when one did", () => {

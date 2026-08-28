@@ -274,3 +274,12 @@ test: pass (claims 23/24 files; 747 passed, 6 known ugrep failures in flagConfor
 dogfood gates: pass, both polarities (witness 0/1; wiring 0/1; wiring . 0; check README+spec --require-markers 0; check openspec 0)
 smoke: `check --format json` over the change folder parses (version 1, 6 docs, stderr empty); exit parity with human mode on a passing set (0/0) and a fabricated anchor (1/1); failing entry carries verdict "fabricated", failing true
 note: the implementing agent was terminated by a session rate limit after finishing the work but before reporting; the coordinator reviewed runCheck/collectCheck/buildReport directly and ran the gates
+
+## Stage 5 — Verify chunk 2.2 + 3.2 (funnel, parity pins)
+
+build: pass
+type-check: pass
+test: pass (claims 759 passed, 6 known ugrep failures in flagConformance; kit 234 passed)
+dogfood gates: pass, both polarities
+smoke: zero-marker run over two temp docs ends with `next: nullius audit <longer> --propose`
+note: the coordinator's first green-gate script miscounted pnpm's `[ERR_PNPM_RECURSIVE_FAIL]` line as a seventh test failure and refused to commit; re-read the vitest summary (6 failed / 759 passed, all flagConformance) and committed.

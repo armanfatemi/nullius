@@ -58,8 +58,8 @@ export interface CheckRun {
   guardFired: boolean;
   /**
    * The funnel command (`nullius audit <doc> --propose`) when the run matched
-   * documents but found no grounding markers. Always null until the funnel
-   * task lands; reserved here so both renderers already carry the slot.
+   * documents but found no grounding markers; null otherwise. Both renderers
+   * carry it — the human closing line and `summary.next` are the same string.
    */
   next: string | null;
 }
@@ -109,8 +109,24 @@ export function summarize(documents: CheckedDocument[], requireMarkers: boolean)
     // license every other document in the glob to carry none.
     markerFloorFailed: requireMarkers && unanchored.length > 0,
     guardFired,
-    next: null,
+    next: checked === 0 ? funnel(documents) : null,
   };
+}
+
+/**
+ * The retrofit command for the largest matched document (Decision 6). Only
+ * consulted when NO document carried a grounding marker: `All 0 grounding
+ * marker(s) verified.` is literally true and reads as a pass on a repository
+ * the tool has not examined, so the closing line names the next step instead.
+ * Ties on line count go to the first document in the run's (sorted) order.
+ * Null when nothing matched — there is no document to point at.
+ */
+function funnel(documents: readonly CheckedDocument[]): string | null {
+  let largest: CheckedDocument | null = null;
+  for (const document of documents) {
+    if (largest === null || document.lines > largest.lines) largest = document;
+  }
+  return largest === null ? null : `nullius audit ${largest.doc} --propose`;
 }
 
 /**

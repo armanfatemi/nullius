@@ -1,9 +1,18 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync, statSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 
 /**
  * A characterization suite: it records what the CLI DOES today, not what it
@@ -22,6 +31,7 @@ import { describe, expect, it } from "vitest";
  */
 
 const CLI = fileURLToPath(new URL("../dist/cli.js", import.meta.url));
+const REPO_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 
 interface Run {
   code: number;
@@ -38,11 +48,34 @@ function run(...args: string[]): Run {
   const result = spawnSync(process.execPath, [CLI, ...args], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
-    cwd: fileURLToPath(new URL("../../..", import.meta.url)),
+    cwd: REPO_ROOT,
   });
   const stdout = result.stdout ?? "";
   const stderr = result.stderr ?? "";
   return { code: result.status ?? 1, stdout, stderr, output: stdout + stderr };
+}
+
+/**
+ * Scratch documents for the funnel and parity suites. They cite REPO-RELATIVE
+ * paths, so the CLI still runs with cwd = repo root (`run()` above) and the
+ * documents are passed by absolute path.
+ */
+const scratchRoots: string[] = [];
+
+afterAll(() => {
+  for (const root of scratchRoots) rmSync(root, { recursive: true, force: true });
+});
+
+function scratch(prefix: string): string {
+  const root = mkdtempSync(join(tmpdir(), prefix));
+  scratchRoots.push(root);
+  return root;
+}
+
+function writeDoc(root: string, name: string, lines: readonly string[]): string {
+  const path = join(root, name);
+  writeFileSync(path, `${lines.join("\n")}\n`);
+  return path;
 }
 
 const built = existsSync(CLI);
@@ -469,5 +502,148 @@ suite("CLI characterization — demo", () => {
 
     expect(result.code).toBe(0);
     expect(result.output).toContain("the demo exits 0");
+  });
+});
+
+/**
+ * Decision 6, second half: on a matched set with no grounding markers, the
+ * closing line is the next command, not `All 0 grounding marker(s) verified.`
+ * — REPLACED, never appended. The exit code does not move.
+ */
+suite("CLI characterization — the zero-marker funnel", () => {
+  const OLD_CLOSING = "All 0 grounding marker(s) verified.";
+
+  function funnelDocs(): { glob: string; longer: string } {
+    const root = scratch("nullius-funnel-");
+    writeDoc(root, "short.md", ["# Short", "", "Two paragraphs, no citations at all."]);
+    const longer = writeDoc(root, "long.md", [
+      "# Long",
+      "",
+      "This document says a great deal about the code and cites none of it.",
+      "",
+      "Paragraph two.",
+      "",
+      "Paragraph three.",
+      "",
+      "Paragraph four.",
+    ]);
+    return { glob: join(root, "*.md"), longer };
+  }
+
+  function lastLine(text: string): string {
+    const lines = text.split("\n").filter((line) => line.trim() !== "");
+    return lines[lines.length - 1] ?? "";
+  }
+
+  it("ends with `next: nullius audit <largest> --propose` and exits 0", () => {
+    const { glob, longer } = funnelDocs();
+    const result = run("check", glob);
+
+    expect(result.code).toBe(0);
+    expect(lastLine(result.stdout)).toBe(`next: nullius audit ${longer} --propose`);
+    expect(result.stdout).not.toContain(OLD_CLOSING);
+  });
+
+  it("still prints the next line under --require-markers, and still exits 1", () => {
+    const { glob, longer } = funnelDocs();
+    const result = run("check", glob, "--require-markers");
+
+    expect(result.code).toBe(1);
+    expect(result.stdout).toContain(`next: nullius audit ${longer} --propose`);
+    expect(result.stdout).not.toContain(OLD_CLOSING);
+    expect(result.stderr).toContain("carry no grounding markers");
+  });
+
+  it("carries the same string as summary.next under --format json", () => {
+    const { glob, longer } = funnelDocs();
+    const human = run("check", glob);
+    const json = run("check", glob, "--format", "json");
+
+    expect(json.code).toBe(human.code);
+    const report = JSON.parse(json.stdout) as { summary: { next: string | null } };
+    expect(report.summary.next).toBe(`nullius audit ${longer} --propose`);
+    expect(lastLine(human.stdout)).toBe(`next: ${report.summary.next}`);
+  });
+
+  it("does not fire when any matched document carries a marker", () => {
+    const result = run("check", "README.md");
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).not.toContain("next: nullius audit");
+    expect(result.stdout).toMatch(/All \d+ grounding marker\(s\) verified\./);
+  });
+});
+
+/**
+ * Decision 5's owed test: `--format json` is a second renderer over the same
+ * results and the same exit code. For each case the two modes are run against
+ * the same documents and the exit codes must agree; the JSON must parse and
+ * its `failing` entries must sum to `summary.failures`.
+ */
+suite("CLI characterization — --format json parity", () => {
+  interface Report {
+    version: number;
+    documents: { doc: string; results: { verdict: string; failing: boolean }[] }[];
+    summary: { failures: number; markerFloorFailed: boolean; next: string | null };
+  }
+
+  function parity(...args: string[]): { human: Run; json: Run; report: Report } {
+    const human = run("check", ...args);
+    const json = run("check", ...args, "--format", "json");
+
+    expect(json.code, "exit code parity").toBe(human.code);
+    expect(human.stdout.startsWith("{"), "human stdout is not JSON").toBe(false);
+    const report = JSON.parse(json.stdout) as Report;
+    expect(report.version).toBe(1);
+    const failing = report.documents.flatMap((entry) => entry.results).filter((entry) => entry.failing);
+    expect(report.summary.failures).toBe(failing.length);
+    return { human, json, report };
+  }
+
+  const readmeFirstLine = readFileSync(join(REPO_ROOT, "README.md"), "utf8").split("\n")[0] ?? "";
+
+  it("agrees on a passing document", () => {
+    const root = scratch("nullius-parity-ok-");
+    const doc = writeDoc(root, "ok.md", [
+      "# Grounded",
+      "",
+      `**Evidence:** \`README.md:1\` — \`${readmeFirstLine}\``,
+    ]);
+    const { human, report } = parity(doc);
+
+    expect(human.code).toBe(0);
+    expect(report.summary.failures).toBe(0);
+    expect(report.documents[0]?.results[0]?.verdict).toBe("ok");
+  });
+
+  it("agrees on a failing document, and names the fabricated claim", () => {
+    const root = scratch("nullius-parity-fab-");
+    const doc = writeDoc(root, "fabricated.md", [
+      "# Invented",
+      "",
+      "**Evidence:** `README.md:1` — `this sentence was never written into the readme`",
+    ]);
+    const { human, report } = parity(doc);
+
+    expect(human.code).toBe(1);
+    expect(report.summary.failures).toBe(1);
+    expect(report.documents[0]?.results[0]).toMatchObject({ verdict: "fabricated", failing: true });
+  });
+
+  it("agrees on an unanchored document under --require-markers", () => {
+    const root = scratch("nullius-parity-floor-");
+    const doc = writeDoc(root, "bare.md", ["# Bare", "", "Nothing cited."]);
+    const { human, report } = parity(doc, "--require-markers");
+
+    expect(human.code).toBe(1);
+    expect(report.summary.failures).toBe(0);
+    expect(report.summary.markerFloorFailed).toBe(true);
+  });
+
+  it("agrees on this change's own folder", () => {
+    const { human, report } = parity("openspec/changes/add-authoring-ergonomics/*.md");
+
+    expect(report.documents.length).toBeGreaterThan(0);
+    expect(human.code).toBe(report.summary.failures > 0 || report.summary.markerFloorFailed ? 1 : 0);
   });
 });

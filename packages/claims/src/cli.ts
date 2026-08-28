@@ -909,12 +909,18 @@ function renderHumanSummary(run: CheckRun): void {
     );
   }
 
-  if (exitCode(run) !== 0) {
-    console.error(`See ${SPEC_URL}.`);
-    return;
-  }
+  if (exitCode(run) !== 0) console.error(`See ${SPEC_URL}.`);
 
-  console.log(`All ${run.checked} grounding marker(s) verified.`);
+  // The funnel REPLACES the closing line rather than following it: on a
+  // zero-marker run "All 0 grounding marker(s) verified." reads as a pass on
+  // a repository the tool has not examined. It prints on stdout whatever the
+  // exit code — under --require-markers the floor's stderr block above says
+  // why the run failed; this says what to do about it.
+  if (run.next !== null) {
+    console.log(`next: ${run.next}`);
+  } else if (exitCode(run) === 0) {
+    console.log(`All ${run.checked} grounding marker(s) verified.`);
+  }
 }
 
 /**

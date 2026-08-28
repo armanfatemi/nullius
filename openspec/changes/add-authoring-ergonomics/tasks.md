@@ -55,7 +55,7 @@ which are read-only inputs to CI gates for other subsystems.
       `summary.next`, `rewrites`) and the stated compatibility policy in a doc
       comment. Tests: JSON renderer over a fixed result set; the collected
       structure's failure count and marker-floor flag for a mixed result set
-- [ ] 2.2 Exit-code parity pinned in `cli.characterization.test.ts`: passing
+- [x] 2.2 Exit-code parity pinned in `cli.characterization.test.ts`: passing
       doc, failing doc, `--require-markers` over an unanchored doc — `--format
       json` vs human exit codes equal, stdout parses as JSON, human output
       unchanged
@@ -66,7 +66,7 @@ which are read-only inputs to CI gates for other subsystems.
       split into per-command blocks; one example each; one line of philosophy
       per command). Tests: `cliArgs.test.ts` `check --help` → help with
       `command: "check"`; characterization: exits 0, prints exactly one example
-- [ ] 3.2 Zero-marker funnel: closing line becomes `next: nullius audit <doc>
+- [x] 3.2 Zero-marker funnel: closing line becomes `next: nullius audit <doc>
       --propose` (largest matched doc), replacing `All 0 grounding marker(s)
       verified.`; `summary.next` under `--format json`. Tests: replacement
       (old string absent), and `summary.next` present
