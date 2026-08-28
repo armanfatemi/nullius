@@ -18,7 +18,7 @@ which are read-only inputs to CI gates for other subsystems.
       list prefix ± separator variant, embedded in random content, 200 trials
       over a seeded PRNG (fixed seed); oracle: every byte outside the
       `:LINE`/`@rev` spans of affected marker lines is identical to the input
-- [ ] 1.2 `foundLine?: number` on `ClaimResult`, set from `locate`'s
+- [x] 1.2 `foundLine?: number` on `ClaimResult`, set from `locate`'s
       exact-preferred unique match on `drift`/`wrong-line`; the drift window is
       measured from that line and the substring window scan is removed
       (design Decision 2). Edit the DRIFT row of `spec/evidence-anchors.md`

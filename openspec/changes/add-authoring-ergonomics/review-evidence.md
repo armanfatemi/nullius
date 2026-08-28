@@ -243,3 +243,10 @@ in scope of: architecture-reviewer (openspec/ path), rule-auditor (unconditional
 dispatched: architecture-reviewer, rule-auditor
 found by: architecture-reviewer only (1 of 2), via the per-clone registry ("fifth successive plant")
 leak: same sentence and line every round; the registry and the committed probe sections make it recognisable without reading. verify exit code: 0
+
+## Stage 5 — Verify chunk 1.2 (foundLine)
+
+build: pass
+type-check: pass
+test: pass (claims 20/21 files; 638 passed, 6 known ugrep failures in flagConformance; kit 234 passed)
+dogfood gates: pass, both polarities (witness valid 0 / broken 1; wiring valid 0 / broken 1; wiring . 0; check README+spec --require-markers 0 with 3 pre-existing advisory STALE; check openspec 0)

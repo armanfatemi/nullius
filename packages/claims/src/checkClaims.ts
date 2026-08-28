@@ -78,6 +78,13 @@ export interface ClaimResult {
   claim: Claim;
   verdict: Verdict;
   detail: string;
+  /**
+   * The 1-based line `locate` identified as the quote's unique match, set on
+   * `drift` and `wrong-line` only — the two verdicts where the text is real
+   * but the cited line is not where it is. Absent on every other verdict,
+   * including everything the stamped path returns.
+   */
+  foundLine?: number;
 }
 
 export type SearchOutcome =
@@ -281,7 +288,7 @@ function evaluateAgainst(
   claim: Extract<Claim, { kind: "presence" }>,
   driftWindow: number,
   minAnchorChars: number,
-): { verdict: Verdict; detail: string } {
+): { verdict: Verdict; detail: string; foundLine?: number } {
   const block = citedBlock(claim);
   const quote = block.map(normalize).join(" ").trim();
   const where = locate(lines, block);
@@ -323,22 +330,25 @@ function evaluateAgainst(
     ? ` (and the quote is only ${quote.length} character(s) — worth quoting more)`
     : "";
 
-  // Near miss — the file gained or lost a few lines since the doc was written.
-  const lower = Math.max(1, claim.line - driftWindow);
-  const upper = Math.min(lines.length, claim.line + driftWindow);
-  for (let candidate = lower; candidate <= upper; candidate += 1) {
-    if (matchesAt(lines, candidate, block)) {
+  // The quote identifies exactly one place, and it is not the cited line. Both
+  // verdicts below are measured from the line `locate` pinned — the
+  // exact-preferred unique match — so the verdict and the number a fixer would
+  // move to can never disagree. A separate window scan by substring could name
+  // a longer line that merely CONTAINS the quote while the uniqueness survey
+  // pointed elsewhere.
+  if (where.first !== null) {
+    // Near miss — the file gained or lost a few lines since the doc was written.
+    if (Math.abs(where.first - claim.line) <= driftWindow) {
       return {
         verdict: "drift",
-        detail: `text is on line ${candidate}, not ${claim.line} — update the citation${stale}`,
+        detail: `text is on line ${where.first}, not ${claim.line} — update the citation${stale}`,
+        foundLine: where.first,
       };
     }
-  }
-
-  if (where.first !== null) {
     return {
       verdict: "wrong-line",
       detail: `text is on line ${where.first}, not ${claim.line} — the quote still identifies real code, so this is stale rather than wrong; update the citation${stale}`,
+      foundLine: where.first,
     };
   }
 
@@ -481,13 +491,17 @@ function checkUnstamped(
       detail: `no such file: ${claim.path}`,
     };
   }
-  const { verdict, detail } = evaluateAgainst(
+  const { verdict, detail, foundLine } = evaluateAgainst(
     lines,
     claim,
     driftWindow,
     minAnchorChars,
   );
-  return { claim, verdict, detail };
+  // Explicit field list, never a spread: `foundLine` must be added as a key
+  // only when it exists, and must never leak into a stamped result.
+  return foundLine === undefined
+    ? { claim, verdict, detail }
+    : { claim, verdict, detail, foundLine };
 }
 
 function checkPresence(

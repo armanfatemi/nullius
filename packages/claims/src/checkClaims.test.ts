@@ -574,3 +574,127 @@ describe("checkClaims — the two axes of a citation", () => {
     expect(result?.verdict).toBe("unpinned");
   });
 });
+
+describe("foundLine", () => {
+  // The line `locate` identified, surfaced as a number so a fixer can move a
+  // citation without parsing the checker's own English. It is set only on the
+  // two verdicts where the quote matched exactly ONE place off its cited line.
+  const distinctive = "status: ProcessorTaskStatus! @shareable";
+
+  it("names the found line on drift", () => {
+    // Text is on line 9; cited at 11 — inside the default window of 3.
+    const [result] = checkClaims([presence("schema.graphqls", 11, distinctive)], deps());
+
+    expect(result?.verdict).toBe("drift");
+    expect(result?.foundLine).toBe(9);
+    expect(result?.detail).toContain("line 9");
+  });
+
+  it("names the found line on wrong-line", () => {
+    const [result] = checkClaims([presence("schema.graphqls", 1, distinctive)], deps());
+
+    expect(result?.verdict).toBe("wrong-line");
+    expect(result?.foundLine).toBe(9);
+    expect(result?.detail).toContain("line 9");
+  });
+
+  it("is absent on ok", () => {
+    const [result] = checkClaims([presence("schema.graphqls", 9, distinctive)], deps());
+
+    expect(result?.verdict).toBe("ok");
+    expect(result).not.toHaveProperty("foundLine");
+  });
+
+  it("is absent on fabricated", () => {
+    const [result] = checkClaims(
+      [presence("schema.graphqls", 4, "enum ProcessorTaskStatus @shareable {")],
+      deps(),
+    );
+
+    expect(result?.verdict).toBe("fabricated");
+    expect(result).not.toHaveProperty("foundLine");
+  });
+
+  it("is absent on unpinned", () => {
+    const [result] = checkClaims([presence("schema.graphqls", 1, "}")], deps());
+
+    expect(result?.verdict).toBe("unpinned");
+    expect(result).not.toHaveProperty("foundLine");
+  });
+
+  it("is absent on weak-anchor", () => {
+    const [result] = checkClaims([presence("schema.graphqls", 5, "PENDING")], deps());
+
+    expect(result?.verdict).toBe("weak-anchor");
+    expect(result).not.toHaveProperty("foundLine");
+  });
+
+  it("prefers the exact match outside the window over a substring match inside it", () => {
+    // Edge shape 1 (design Decision 2). Line 2 CONTAINS the quote and sits
+    // inside the window; line 10 IS the quote and sits outside it. `locate`
+    // pins the exact line, so the verdict is measured from line 10 and the
+    // number a fixer would move to agrees with the uniqueness survey. Before
+    // this change the window scan reported `drift` naming line 2.
+    const lines = [
+      "// 1",
+      "const x = 1; // trailing note",
+      "// 3",
+      "// 4",
+      "// 5",
+      "// 6",
+      "// 7",
+      "// 8",
+      "// 9",
+      "const x = 1;",
+    ];
+    const [result] = checkClaims(
+      [presence("src/app.ts", 1, "const x = 1;")],
+      deps({ readFileLines: () => lines }),
+    );
+
+    expect(result?.verdict).toBe("wrong-line");
+    expect(result?.foundLine).toBe(10);
+    expect(result?.detail).toContain("line 10");
+  });
+
+  it("names the exact line when a nearer line inside the window merely contains the quote", () => {
+    // Edge shape 2 (design Decision 2). Both lines are inside the window, the
+    // substring line is nearer, and the verdict stays `drift` — but the number
+    // is the exact line, not whichever the old scan reached first.
+    const lines = [
+      "// 1",
+      "const x = 1; // trailing note",
+      "// 3",
+      "const x = 1;",
+    ];
+    const [result] = checkClaims(
+      [presence("src/app.ts", 1, "const x = 1;")],
+      deps({ readFileLines: () => lines }),
+    );
+
+    expect(result?.verdict).toBe("drift");
+    expect(result?.foundLine).toBe(4);
+    expect(result?.detail).toContain("line 4");
+  });
+
+  it("is absent on the stamped path — a drifted stamped anchor is stale, with no line", () => {
+    const atRev = ["export function retry() {", "  const attempts = 5;", "}"];
+    const current = ["// header", ...atRev];
+    const claim: Claim = {
+      kind: "presence",
+      path: "src/app.ts",
+      line: 2,
+      text: "  const attempts = 5;",
+      rev: "a1b2c3d",
+      source: { doc: "design.md", line: 1 },
+    };
+    const [result] = checkClaims([claim], {
+      readFileLines: () => current,
+      readFileAtRev: () => ({ status: "ok", lines: atRev }),
+      runSearch: () => ({ ok: true, count: 0 }),
+    });
+
+    expect(result?.verdict).toBe("stale");
+    expect(result).not.toHaveProperty("foundLine");
+  });
+});
