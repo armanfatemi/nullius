@@ -602,6 +602,54 @@ function checkMoment(
   return { claim, verdict: "ok", detail: "" };
 }
 
+/**
+ * Whether an anchor holds at a named commit — the gate `--stamp` writes behind.
+ * NOT a `Verdict`: it has no PASSING set and is never rendered as a result.
+ * `ok`/`weak-anchor` are the same evaluation outcomes `evaluateAgainst` gives on
+ * the lines actually read at `rev`; `not-at-rev` is any other outcome on those
+ * lines; `rev-unreadable` means the file could not be read at `rev` at all —
+ * no reader, unknown rev, unavailable git, or the file absent at that commit —
+ * and says nothing about the claim either way.
+ */
+export type RevVerification = "ok" | "weak-anchor" | "not-at-rev" | "rev-unreadable";
+
+/**
+ * Evaluates `claim` against the file as it stood at `rev`, and ONLY that.
+ *
+ * `claim.rev`, if set, is ignored: the question is about the commit passed
+ * in. The working tree is never consulted, so no answer here can be a
+ * working-tree `ok` wearing a commit's name — the read status is the gate,
+ * and a read that is anything but `ok` is `rev-unreadable`. The same
+ * `CheckOptions` as `checkClaims` resolve `driftWindow`/`minAnchorChars`
+ * identically, so `ok`/`weak-anchor` here means what it means there.
+ */
+export function verifyAtRev(
+  claim: Extract<Claim, { kind: "presence" }>,
+  rev: string,
+  deps: CheckDeps,
+  options: CheckOptions = {},
+): RevVerification {
+  const { driftWindow, minAnchorChars } = presenceThresholds(options);
+  // Same gate as `checkPresence`: the path comes from document content and
+  // must not reach `git show` unchecked.
+  if (!isSafeRepoPath(claim.path).safe) return "rev-unreadable";
+  const readAtRev = deps.readFileAtRev;
+  if (readAtRev === undefined) return "rev-unreadable";
+  const atRev = readAtRev(claim.path, rev);
+  if (atRev.status !== "ok") return "rev-unreadable";
+
+  const { verdict } = evaluateAgainst(atRev.lines, claim, driftWindow, minAnchorChars);
+  return verdict === "ok" || verdict === "weak-anchor" ? verdict : "not-at-rev";
+}
+
+/** The two presence thresholds, resolved from options the one way both callers share. */
+function presenceThresholds(options: CheckOptions): { driftWindow: number; minAnchorChars: number } {
+  return {
+    driftWindow: options.driftWindow ?? DEFAULT_DRIFT_WINDOW,
+    minAnchorChars: options.minAnchorChars ?? DEFAULT_MIN_ANCHOR_CHARS,
+  };
+}
+
 export function checkClaims(
   claims: Claim[],
   deps: CheckDeps,
@@ -609,8 +657,7 @@ export function checkClaims(
 ): ClaimResult[] {
   const moments = options.moments ?? DEFAULT_BINDING_MOMENTS;
   const ciCaughtMoments = options.ciCaughtMoments ?? ["build-time"];
-  const driftWindow = options.driftWindow ?? DEFAULT_DRIFT_WINDOW;
-  const minAnchorChars = options.minAnchorChars ?? DEFAULT_MIN_ANCHOR_CHARS;
+  const { driftWindow, minAnchorChars } = presenceThresholds(options);
   const relaxedControl = options.relaxedControl ?? true;
 
   return claims.map((claim) => {

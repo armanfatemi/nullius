@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { checkClaims, isFailure, type CheckDeps } from "./checkClaims";
-import { parseClaims, type Claim } from "./parseClaims";
+import {
+  checkClaims,
+  isFailure,
+  verifyAtRev,
+  type CheckDeps,
+  type RevRead,
+} from "./checkClaims";
+import { parseClaims, type Claim, type PresenceClaim } from "./parseClaims";
 
 const FILE = [
   "extend schema",
@@ -696,5 +702,102 @@ describe("foundLine", () => {
 
     expect(result?.verdict).toBe("stale");
     expect(result).not.toHaveProperty("foundLine");
+  });
+});
+
+describe("verifyAtRev", () => {
+  const AT_REV = [
+    "export function retry() {",
+    "  const attempts = 5;",
+    "  return attempts;",
+    "}",
+  ];
+
+  function claim(line: number, text: string, path = "src/app.ts"): PresenceClaim {
+    return { kind: "presence", path, line, text, source: { doc: "design.md", line: 1 } };
+  }
+
+  function revDeps(atRev: RevRead | undefined): CheckDeps & { calls: number } {
+    const d: CheckDeps & { calls: number } = {
+      calls: 0,
+      // The working tree is deliberately DIFFERENT from `rev`, so that any
+      // answer that came from `readFileLines` is distinguishable.
+      readFileLines: () => ["nothing here matches"],
+      runSearch: () => ({ ok: true, count: 0 }),
+    };
+    if (atRev !== undefined) {
+      d.readFileAtRev = () => {
+        d.calls += 1;
+        return atRev;
+      };
+    }
+    return d;
+  }
+
+  const okRead: RevRead = { status: "ok", lines: AT_REV };
+
+  it("is ok when the quote is at the cited line at rev", () => {
+    expect(verifyAtRev(claim(2, "  const attempts = 5;"), "a1b2c3d", revDeps(okRead))).toBe("ok");
+  });
+
+  it("is weak-anchor when the quote is at the line but too short to be distinctive", () => {
+    expect(verifyAtRev(claim(3, "return"), "a1b2c3d", revDeps(okRead))).toBe("weak-anchor");
+  });
+
+  it("is not-at-rev when the text is at rev but on another line", () => {
+    expect(verifyAtRev(claim(1, "  const attempts = 5;"), "a1b2c3d", revDeps(okRead))).toBe(
+      "not-at-rev",
+    );
+  });
+
+  it("is not-at-rev when the text is absent at rev", () => {
+    expect(verifyAtRev(claim(2, "  const attempts = 500;"), "a1b2c3d", revDeps(okRead))).toBe(
+      "not-at-rev",
+    );
+  });
+
+  it("is rev-unreadable when there is no reader at all", () => {
+    expect(verifyAtRev(claim(2, "  const attempts = 5;"), "a1b2c3d", revDeps(undefined))).toBe(
+      "rev-unreadable",
+    );
+  });
+
+  it.each<RevRead>([
+    { status: "unknown-rev" },
+    { status: "no-file" },
+    { status: "unavailable", reason: "x" },
+  ])("is rev-unreadable on a $status read, never a claim about the text", (read) => {
+    expect(verifyAtRev(claim(2, "  const attempts = 5;"), "a1b2c3d", revDeps(read))).toBe(
+      "rev-unreadable",
+    );
+  });
+
+  it("resolves minAnchorChars from options exactly as checkClaims does", () => {
+    const short = claim(2, "= 5");
+    expect(verifyAtRev(short, "a1b2c3d", revDeps(okRead))).toBe("weak-anchor");
+    expect(verifyAtRev(short, "a1b2c3d", revDeps(okRead), { minAnchorChars: 1 })).toBe("ok");
+  });
+
+  it("resolves driftWindow from options exactly as checkClaims does", () => {
+    const drifted = claim(1, "  const attempts = 5;");
+    expect(verifyAtRev(drifted, "a1b2c3d", revDeps(okRead), { driftWindow: 0 })).toBe(
+      "not-at-rev",
+    );
+    expect(verifyAtRev(drifted, "a1b2c3d", revDeps(okRead), { driftWindow: 3 })).toBe(
+      "not-at-rev",
+    );
+  });
+
+  it("ignores claim.rev — the argument is the commit being asked about", () => {
+    const stampedElsewhere = { ...claim(2, "  const attempts = 5;"), rev: "ffffffff" };
+    expect(verifyAtRev(stampedElsewhere, "a1b2c3d", revDeps(okRead))).toBe("ok");
+  });
+
+  it("refuses an unsafe path without ever calling the reader", () => {
+    const d = revDeps(okRead);
+    expect(verifyAtRev(claim(2, "  const attempts = 5;", "../x"), "a1b2c3d", d)).toBe(
+      "rev-unreadable",
+    );
+    expect(d.calls).toBe(0);
   });
 });

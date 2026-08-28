@@ -55,90 +55,132 @@ const SPEC_URL =
 
 const DEFAULT_CONFIG_PATH = "nullius.config.json";
 
+/*
+ * Help is one block per command. `nullius <command> --help` prints that block
+ * alone; `nullius --help` prints every block, so there is exactly one copy of
+ * each command's text and the overview cannot drift from the per-command
+ * page. Each block carries the command's purpose, its options, and exactly
+ * one `example:` line showing a real invocation — the characterization suite
+ * counts them. The essays live in spec/; a block gets one sentence of why.
+ */
+
+const CHECK_HELP = `nullius check [globs...]
+  verify every Evidence Anchor in the matched markdown documents against the
+  working tree. Run from the repo root (citations are repo-relative). Globs
+  come from the command line, or from the "docs" key of ${DEFAULT_CONFIG_PATH}
+  when none are given.
+  options:
+    --config <path>     config file (default: ${DEFAULT_CONFIG_PATH} if present)
+    --require-markers   fail when any matched document carries no grounding
+                        markers (the floor is per document, not per run)
+    --probing           suppress the CANARY-PRESENT merge guard, for the one run
+                        that is deliberately checking a planted document
+  example: nullius check 'docs/**/*.md' --require-markers`;
+
+const DEMO_HELP = `nullius demo
+  build a sandbox fixture and check it — one claim per verdict class, no
+  adoption required. The ten-second tour.
+  example: nullius demo`;
+
+const AUDIT_HELP = `nullius audit <doc>
+  list the document's claims as one dispatch each, for a model to try to
+  REFUTE. check asks whether the author looked; audit asks whether the claim
+  is true. Refutations come back as anchors, which \`check\` re-verifies.
+  \`eager-prompt <doc>\` is a deprecated alias for \`audit <doc> --propose\`.
+  options:
+    --config <path>     config file (default: ${DEFAULT_CONFIG_PATH} if present)
+    --emit-brief <id>   print the starved brief for one claim — one claim per
+                        agent, with no siblings and no surrounding document, so
+                        the model has no narrative to steelman
+    --extract           print the brief that pulls UNANCHORED claims out of the
+                        prose (extraction only; it may not judge them)
+    --propose           the older confirmation-shaped mode: hunt evidence FOR the
+                        document and propose anchors. Kept because retrofitting an
+                        unanchored document needs it — but a model sent to find
+                        support finds support, so prefer the default
+  example: nullius audit docs/design.md --emit-brief c1`;
+
+const WITNESS_HELP = `nullius witness validate <journal.jsonl>
+  verify that a run's own record holds up — every dispatch terminated, no
+  verification cited after the thing it verified changed, no omitted
+  corrections.
+  options:
+    --expect-rules <rule-id...>
+                        fail the run if any named rule id never reached a
+                        delivered verdict in this journal (SILENT-RULE
+                        otherwise) — the ids \`rules select\` named for this
+                        run. Skipped when the journal itself is
+                        UNSUPPORTED-VERSION: nothing past its header was read.
+                        Comes AFTER the journal path.
+  example: nullius witness validate spec/fixtures/valid-run.jsonl --expect-rules build-before-cli`;
+
+const WIRING_HELP = `nullius wiring [root]
+  verify that harness artifacts reference things that exist — agents, skills,
+  read paths, applies_to globs, hook commands. A dispatch naming an agent with
+  no definition file does not error at runtime; it no-ops.
+  example: nullius wiring .`;
+
+const RULES_HELP = `nullius rules <select|check>
+  select --paths <path...>
+                        deterministic rule selection, no model involved: emit
+                        the id of every rule under .claude/rules/ whose
+                        applies_to matches at least one given path, in a
+                        stable order, then print the excluded count.
+  check [root]          verify every rule's frontmatter (closed keys, a
+                        required id, a known severity) and its incident
+                        anchor, the same way \`check\` verifies any other
+                        document's Evidence Anchors. UNGROUNDED-RULE and
+                        RULE-ROT are advisory; a malformed header fails.
+  options:
+    --emit-brief <rule-id>
+                        (select only) print the starved compliance brief for
+                        one selected rule instead — one rule per agent, with
+                        no sibling rules and no plan rationale
+  example: nullius rules select --paths packages/claims/src/cli.ts`;
+
+const CANARY_HELP = `nullius canary <plant|verify|status|clear>
+  plant <doc>           insert a registered, plausibly-false claim, then run
+                        your review against the document. A pipeline that
+                        flags it is demonstrably alive; one that misses it has
+                        been measured dead rather than assumed alive.
+  verify <report>       exit 0 CANARY-CAUGHT, 1 CANARY-MISSED, 3 CANARY-TAINTED
+                        (the report named the probe machinery, so the probe is
+                        invalid rather than passed), 2 when it could not run.
+  status                show the active canary; exit 1 when one is planted
+  clear                 remove the planted claim, restoring the document
+  example: nullius canary plant docs/design.md`;
+
+/** Overview order. Keyed by the command word `parseCli` reports on help. */
+const COMMAND_HELP: ReadonlyMap<string, string> = new Map([
+  ["check", CHECK_HELP],
+  ["demo", DEMO_HELP],
+  ["audit", AUDIT_HELP],
+  ["witness", WITNESS_HELP],
+  ["wiring", WIRING_HELP],
+  ["rules", RULES_HELP],
+  ["canary", CANARY_HELP],
+]);
+
 const USAGE = `usage: nullius <command>
 
-commands:
-  check [globs...]    verify every Evidence Anchor in the matched markdown
-                      documents against the working tree. Run from the repo
-                      root (citations are repo-relative). Globs come from the
-                      command line, or from the "docs" key of
-                      ${DEFAULT_CONFIG_PATH} when none are given.
-  demo                build a sandbox fixture and check it — one claim per
-                      verdict class, no adoption required. The ten-second tour.
-  audit <doc>         list the document's claims as one dispatch each, for a
-                      model to try to REFUTE. check asks whether the author
-                      looked; audit asks whether the claim is true. Refutations
-                      come back as anchors, so check re-verifies them: the model
-                      proposes, the checker disposes.
-  witness validate <journal.jsonl>
-                      verify that a run's own record holds up — every dispatch
-                      terminated, no verification cited after the thing it
-                      verified changed, no omitted corrections.
-                      --expect-rules <rule-id...> additionally checks that
-                      every named rule id reached a delivered verdict in this
-                      journal (SILENT-RULE otherwise) — the ids \`rules
-                      select\` named for this run. Skipped when the journal
-                      itself is UNSUPPORTED-VERSION: nothing past its header
-                      was read.
-  wiring [root]       verify that harness artifacts reference things that
-                      exist — agents, skills, read paths, applies_to globs,
-                      hook commands. A dispatch naming an agent with no
-                      definition file does not error at runtime; it no-ops.
-  rules select --paths <path...>
-                      deterministic rule selection, no model involved: emit
-                      the id of every rule under .claude/rules/ whose
-                      applies_to matches at least one given path, in a
-                      stable order, then print the excluded count.
-                      --emit-brief <rule-id> prints the starved compliance
-                      brief for one selected rule instead — one rule per
-                      agent, with no sibling rules and no plan rationale.
-  rules check [root]  verify every rule's frontmatter (closed keys, a
-                      required id, a known severity) and its incident
-                      anchor, the same way \`check\` verifies any other
-                      document's Evidence Anchors. UNGROUNDED-RULE and
-                      RULE-ROT are advisory; a malformed header fails.
-  canary plant <doc>  insert a registered, plausibly-false claim, then run
-                      your review against the document. A pipeline that flags
-                      it is demonstrably alive; one that misses it has been
-                      measured dead rather than assumed alive.
-  canary verify <report>
-                      exit 0 CANARY-CAUGHT, 1 CANARY-MISSED, 3 CANARY-TAINTED
-                      (the report named the probe machinery, so the probe is
-                      invalid rather than passed), 2 when it could not run.
-  canary status       show the active canary; exit 1 when one is planted
-  canary clear        remove the planted claim, restoring the document
-  eager-prompt <doc>  deprecated alias for \`audit <doc> --propose\`.
+${[...COMMAND_HELP.values()].join("\n\n")}
 
-check options:
-  --config <path>     config file (default: ${DEFAULT_CONFIG_PATH} if present)
-  --require-markers   fail when any matched document carries no grounding
-                      markers (the floor is per document, not per run)
-  --probing           suppress the CANARY-PRESENT merge guard, for the one run
-                      that is deliberately checking a planted document
-  --help              show this message
+global options:
+  --help, -h          show this message; \`nullius <command> --help\` shows
+                      one command
   --version           print the package version
-
-witness options:
-  --expect-rules <rule-id...>
-                      fail the run if any named rule id never reached a
-                      delivered verdict (see \`witness validate\` above)
-
-audit options:
-  --emit-brief <id>   print the starved brief for one claim — one claim per
-                      agent, with no siblings and no surrounding document, so
-                      the model has no narrative to steelman
-  --extract           print the brief that pulls UNANCHORED claims out of the
-                      prose (extraction only; it may not judge them)
-  --propose           the older confirmation-shaped mode: hunt evidence FOR the
-                      document and propose anchors. Kept because retrofitting an
-                      unanchored document needs it — but a model sent to find
-                      support finds support, so prefer the default
 
 The checker verifies a convention: on a repo with no anchors, \`check\` has
 nothing to verify. Adoption starts with the authoring rule (one paste into
 your agents' instructions) — see the spec.
 
 spec: ${SPEC_URL}`;
+
+/** One command's block when the parser named one; the overview otherwise. */
+function helpFor(command: string | undefined): string {
+  const block = command === undefined ? undefined : COMMAND_HELP.get(command);
+  return block === undefined ? USAGE : `${block}\n\nspec: ${SPEC_URL}`;
+}
 
 function loadConfig(explicitPath: string | undefined): ClaimsConfig {
   const path = explicitPath ?? DEFAULT_CONFIG_PATH;
@@ -903,7 +945,7 @@ function main(): number {
       console.log(packageVersion());
       return 0;
     case "help":
-      console.log(USAGE);
+      console.log(helpFor(command.command));
       // No arguments is not the same request as `--help`, and the exit code
       // is where the difference is visible to a script.
       return command.requested ? 0 : 2;

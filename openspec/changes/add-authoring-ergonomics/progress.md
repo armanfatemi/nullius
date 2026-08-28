@@ -1,6 +1,6 @@
 # Progress — proposal-to-pr: add-authoring-ergonomics
 
-_Started 2026-08-28T02:41:50Z; last updated 2026-08-28T03:57:07Z_
+_Started 2026-08-28T02:41:50Z; last updated 2026-08-28T04:03:26Z_
 
 ## Phases completed
 
@@ -14,7 +14,7 @@ _Started 2026-08-28T02:41:50Z; last updated 2026-08-28T03:57:07Z_
 
 ## Current phase
 
-**Stage 2 (Pre-review) iteration 4** — user raised the cap to 4 and chose one more round; Stage 3 iteration 3 committed (working-tree precondition clause in proposal + spec; JSON remnant dropped). Canary planted; dispatching architecture-reviewer + rule-auditor.
+**Stage 4 (Implement)**, section 1 (rewrite machinery): 1.2 committed bb44f65; 1.1 dispatched; then 1.3, 1.4. Stage 2 iteration 4 was clean (probe CAUGHT); Stage 5 green after 1.2.
 
 ## Next 3 actions
 

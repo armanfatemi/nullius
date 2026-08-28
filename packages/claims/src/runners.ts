@@ -222,6 +222,34 @@ export function revFileReader(root?: string, timeoutMs = DEFAULT_GIT_TIMEOUT_MS)
   }
 }
 
+/**
+ * The short hash of HEAD, or null when there is nothing to name.
+ *
+ * Read once per run, not per anchor: every stamp a run writes is a claim
+ * about the same commit. Null covers git missing, not a repository, an empty
+ * repository, a timeout, and output that is not a hash — and a caller holding
+ * null has nothing to claim, because a stamp is a claim about a commit and
+ * there is no commit. It must not fall back to stamping against the working
+ * tree; the stamp is the one part of an anchor that becomes a HARD failure
+ * when it is wrong.
+ */
+export function headRev(root?: string, timeoutMs = DEFAULT_GIT_TIMEOUT_MS): string | null {
+  const base = root ?? process.cwd();
+  const result = spawnSync("git", ["-C", base, "rev-parse", "--short", "HEAD"], {
+    shell: false,
+    encoding: "utf8",
+    maxBuffer: STAGE_MAX_BUFFER,
+    timeout: timeoutMs,
+    killSignal: "SIGKILL",
+    input: "",
+    env: childEnv(),
+  });
+
+  if (result.error || result.status !== 0) return null;
+  const rev = (result.stdout ?? "").trim();
+  return REV_PATTERN.test(rev) ? rev : null;
+}
+
 export function searchRunner(
   root?: string,
   timeoutMs = DEFAULT_SEARCH_TIMEOUT_MS,

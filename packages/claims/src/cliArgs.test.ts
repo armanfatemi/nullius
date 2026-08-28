@@ -36,6 +36,36 @@ describe("parseCli — top level", () => {
   });
 });
 
+describe("parseCli — per-command help", () => {
+  it("names the command when --help follows a command word", () => {
+    expect(parse("check", "--help")).toEqual({ kind: "help", requested: true, command: "check" });
+    expect(parse("witness", "--help")).toEqual({ kind: "help", requested: true, command: "witness" });
+    expect(parse("canary", "-h")).toEqual({ kind: "help", requested: true, command: "canary" });
+  });
+
+  it("still answers when the rest of the line is nonsense", () => {
+    expect(parse("check", "--bogus", "--help")).toEqual({
+      kind: "help",
+      requested: true,
+      command: "check",
+    });
+  });
+
+  it("maps the deprecated alias onto the command it aliases", () => {
+    expect(parse("eager-prompt", "--help")).toEqual({ kind: "help", requested: true, command: "audit" });
+  });
+
+  it("leaves the overview shape alone when no command word leads", () => {
+    expect(parse("--help")).toEqual({ kind: "help", requested: true });
+    expect(parse("--help", "check")).toEqual({ kind: "help", requested: true });
+    expect(parse("--help")).not.toHaveProperty("command");
+  });
+
+  it("lets --version win over a command-scoped --help", () => {
+    expect(parse("check", "--help", "--version")).toEqual({ kind: "version" });
+  });
+});
+
 describe("parseCli — flags belong to commands", () => {
   it("points a misplaced flag at its owning command", () => {
     expect(() => parse("check", "doc.md", "--extract")).toThrow(

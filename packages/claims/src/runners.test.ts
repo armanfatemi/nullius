@@ -22,7 +22,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { checkClaims } from "./checkClaims";
 import { parseSearchCommand } from "./commandSafety";
 import { parseClaims } from "./parseClaims";
-import { fileLinesReader, searchRunner } from "./runners";
+import { fileLinesReader, headRev, searchRunner } from "./runners";
 
 /** Whether a binary this test needs is present on the machine. */
 function binaryAvailable(binary: string): boolean {
@@ -324,5 +324,79 @@ describe("the reachability control, against real searches", () => {
   it("does not fire when the claim is non-zero", () => {
     const root = sandbox();
     expect(verdictFor(root, "grep -rn -e legacyRetryHelper src/", 1)).toBe("ok");
+  });
+});
+
+describe("headRev", () => {
+  const roots: string[] = [];
+
+  afterAll(() => {
+    for (const root of roots) rmSync(root, { recursive: true, force: true });
+  });
+
+  function scratch(prefix: string): string {
+    const root = mkdtempSync(join(tmpdir(), prefix));
+    roots.push(root);
+    return root;
+  }
+
+  function repo(): { root: string; first: string } {
+    const root = scratch("nullius-head-");
+    const git = (...args: string[]): string =>
+      execFileSync("git", ["-C", root, ...args], { encoding: "utf8" }).trim();
+    git("init", "-q", "-b", "main");
+    git("config", "user.email", "test@example.com");
+    git("config", "user.name", "Test");
+    writeFileSync(join(root, "a.txt"), "one\n");
+    git("add", ".");
+    git("commit", "-qm", "first");
+    return { root, first: git("rev-parse", "--short", "HEAD") };
+  }
+
+  it("returns the short hash of HEAD in a repository with a commit", () => {
+    const { root, first } = repo();
+    const head = headRev(root);
+    expect(head).toBe(first);
+    expect(head).toMatch(/^[0-9a-f]{7,40}$/);
+  });
+
+  it("returns null in a directory that is not a repository", () => {
+    expect(headRev(scratch("nullius-norepo-"))).toBeNull();
+  });
+
+  it("returns null in a repository with no commits", () => {
+    const root = scratch("nullius-empty-");
+    execFileSync("git", ["-C", root, "init", "-q", "-b", "main"]);
+    expect(headRev(root)).toBeNull();
+  });
+
+  it("returns null when git does not answer within the budget", () => {
+    if (process.platform === "win32") return;
+    // A `git` that never answers, placed ahead of the real one on PATH. This
+    // is deterministic where a 1ms budget against real git would not be.
+    const bin = scratch("nullius-slowgit-");
+    writeFileSync(join(bin, "git"), "#!/bin/sh\nsleep 5\n");
+    chmodSync(join(bin, "git"), 0o755);
+    const saved = process.env["PATH"];
+    process.env["PATH"] = `${bin}:${saved ?? ""}`;
+    try {
+      expect(headRev(bin, 200)).toBeNull();
+    } finally {
+      process.env["PATH"] = saved;
+    }
+  });
+
+  it("returns null when git prints something that is not a hash", () => {
+    if (process.platform === "win32") return;
+    const bin = scratch("nullius-fakegit-");
+    writeFileSync(join(bin, "git"), "#!/bin/sh\necho 'HEAD is not a hash'\n");
+    chmodSync(join(bin, "git"), 0o755);
+    const saved = process.env["PATH"];
+    process.env["PATH"] = `${bin}:${saved ?? ""}`;
+    try {
+      expect(headRev(bin)).toBeNull();
+    } finally {
+      process.env["PATH"] = saved;
+    }
   });
 });

@@ -156,6 +156,44 @@ suite("CLI characterization — top-level", () => {
 });
 
 /**
+ * `nullius <command> --help` prints that command's block alone. The overview
+ * is composed from the same blocks, so the two are pinned against each other:
+ * one example per block, seven blocks in the overview, and a block that does
+ * not leak its neighbours.
+ */
+suite("CLI characterization — per-command help", () => {
+  const COMMAND_NAMES = ["check", "demo", "audit", "witness", "wiring", "rules", "canary"];
+
+  function exampleLines(text: string): string[] {
+    return text.split("\n").filter((line) => line.trimStart().startsWith("example:"));
+  }
+
+  it("prints only the check block for `check --help`, with exactly one example", () => {
+    const result = run("check", "--help");
+
+    expect(result.code).toBe(0);
+    expect(exampleLines(result.stdout)).toHaveLength(1);
+    expect(result.stdout).toContain("--require-markers");
+    expect(result.stdout).not.toContain("witness validate");
+    expect(result.stdout).toContain("spec: ");
+  });
+
+  it("prints the whole overview for `--help`: every command, one example each", () => {
+    const result = run("--help");
+
+    expect(result.code).toBe(0);
+    for (const name of COMMAND_NAMES) {
+      expect(result.stdout, name).toContain(`nullius ${name}`);
+    }
+    expect(exampleLines(result.stdout)).toHaveLength(7);
+  });
+
+  it("still exits 2 with no arguments at all", () => {
+    expect(run().code).toBe(2);
+  });
+});
+
+/**
  * These four cases are the whole point of task 1.1, and they are the only
  * expectations in this file that the refactor was allowed to change. Each one
  * records what it used to do, because "a flag from another command is accepted

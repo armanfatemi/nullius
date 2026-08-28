@@ -70,7 +70,12 @@ export interface RulesArgs {
 }
 
 export type Command =
-  | { kind: "help"; requested: boolean }
+  /**
+   * `command` is set when a command word led the line (`nullius check
+   * --help`), so the CLI can print that command's block alone instead of the
+   * whole overview. Absent for `nullius --help` and for bare `nullius`.
+   */
+  | { kind: "help"; requested: boolean; command?: string }
   | { kind: "version" }
   | { kind: "demo" }
   | CheckArgs
@@ -138,7 +143,7 @@ function rejectMisplaced(flag: string, command: string): never {
 /**
  * `--help` and `--version` belong to no command and to every command.
  * `nullius check --help` is the most-typed help form there is, and the USAGE
- * text lists both under "check options:" — so scoping them to argv[0] made the
+ * text advertises both as global options — so scoping them to argv[0] made the
  * CLI reject a flag its own help advertises.
  */
 const GLOBAL_FLAGS: ReadonlySet<string> = new Set(["--help", "-h", "--version"]);
@@ -146,6 +151,14 @@ const GLOBAL_FLAGS: ReadonlySet<string> = new Set(["--help", "-h", "--version"])
 function globalFlag(argv: readonly string[]): Command | null {
   if (argv.some((arg) => arg === "--version")) return { kind: "version" };
   if (argv.some((arg) => arg === "--help" || arg === "-h")) {
+    // Only a LEADING command word scopes the help. `--help check` is someone
+    // asking for the overview with a stray word after it, not for check's
+    // block; and the alias gets the block of the command it aliases, since
+    // the alias has no options of its own to document.
+    const first = argv[0];
+    if (first !== undefined && COMMANDS.has(first)) {
+      return { kind: "help", requested: true, command: first === "eager-prompt" ? "audit" : first };
+    }
     return { kind: "help", requested: true };
   }
   return null;

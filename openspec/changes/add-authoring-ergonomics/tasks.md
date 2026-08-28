@@ -6,7 +6,7 @@ which are read-only inputs to CI gates for other subsystems.
 
 ## 1. Rewrite machinery
 
-- [ ] 1.1 `rewriteMarker` exported from `parseClaims.ts` beside the PRESENCE
+- [x] 1.1 `rewriteMarker` exported from `parseClaims.ts` beside the PRESENCE
       regexes: splices by match index so only the `:LINE` / `@rev` character
       spans change (the separator dash and everything outside those spans are
       copied verbatim); mirrors the DOUBLE-before-SINGLE try order; null when
@@ -62,7 +62,7 @@ which are read-only inputs to CI gates for other subsystems.
 
 ## 3. Surface polish
 
-- [ ] 3.1 Per-command `--help` (`cliArgs.ts` returns `command` on help; USAGE
+- [x] 3.1 Per-command `--help` (`cliArgs.ts` returns `command` on help; USAGE
       split into per-command blocks; one example each; one line of philosophy
       per command). Tests: `cliArgs.test.ts` `check --help` → help with
       `command: "check"`; characterization: exits 0, prints exactly one example
