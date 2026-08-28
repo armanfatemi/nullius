@@ -164,3 +164,41 @@ in scope of: architecture-reviewer (openspec/ path), rule-auditor (unconditional
 dispatched: architecture-reviewer, rule-auditor
 found by: both (2 of 2)
 leak: architecture-reviewer confirmed via the per-clone registry ("third successive plant"); same sentence and line as iterations 0 and 1. verify exit code: 0
+
+## Stage 2 — Pre-review iteration 3
+
+Dispatched: architecture-reviewer, rule-auditor (owners of the iteration-2 findings; checker-engineer and test-engineer dropped — no kernel or test-plan text changed).
+Grounding gate (Step 0, before plant): exit 0 — 29/29 OK at @5d5b2e0.
+
+## False premises
+
+- FP1 `openspec/changes/add-authoring-ergonomics/proposal.md:6` — the `retry` / "must stay in sync" sentence naming `spec/fixtures/rules-valid/src/example.ts`. Flagged by architecture-reviewer (via the local registry, "fourth time"); NOT flagged by rule-auditor on this focused re-check (1 of 2).
+
+## Blockers
+
+- B1 [architecture-reviewer] `proposal.md:23-24` and `specs/check-cli/spec.md:7-12` — both omit Decision 4's working-tree precondition (design.md: only results whose working-tree verdict is `ok`/`weak-anchor`, or just-fixed, are stamp candidates). As written, the proposal and spec mandate stamping every unstamped anchor whose quote is at the cited line at HEAD — which includes a working-tree `FABRICATED` anchor whose text an uncommitted edit removed; once stamped it re-checks as passing `STALE`. That is the laundering the proposal's own parenthetical forbids. One clause in each document closes it. [corrected-coordinator]: Stage 3 iteration 2 rewrote the proposal bullet and the spec around the HEAD read and dropped the working-tree half of the filter that the design carries.
+
+## Concerns
+
+- C1 [architecture-reviewer] `proposal.md:36-37` — "the three-way outcome counts from `witness validate`'s sibling philosophy" is listed as a JSON summary item but appears in neither Decision 5's schema nor the spec. Prose remnant from the original proposal; align by dropping it or adding it to the schema.
+
+## Looks good
+
+- Re-stamp to `@5d5b2e0` is the compliant repair: main's own tip, reachable from any clone, byte-identical files, no line moved under a stamp; `openspec validate --strict` passes (rule-auditor).
+- `version` clause present with SHALL on line 1, matching Decision 5 (architecture-reviewer).
+- `RevVerification` outside `Verdict`; `failing` via `isFailure`; pure cores with I/O in the CLI and `runners.ts` (architecture-reviewer).
+- No false premises in the kernel claims; `checkClaims.ts:400` re-confirmed (rule-auditor).
+
+## Coordinator corrections since last append
+
+- In Stage 3 iteration 2 I rewrote the proposal's `--stamp` bullet and the spec's stamp requirement to say "verified at HEAD" and dropped the working-tree `ok`/`weak-anchor` precondition that design Decision 4 still carries — so the normative text now permits stamping a working-tree `FABRICATED` anchor. Caught by architecture-reviewer (B1). Not yet changed: the refinement cap (3) is reached, so this is surfaced to the user rather than edited.
+- Process: after the iteration-3 notifications arrived I did not act on them until the user asked; the canary stayed planted for that interval. Nothing was read or written in between, and it is cleared in this append's own run.
+
+## Probe — stage 2 (iteration 3)
+
+verdict: CAUGHT
+planted: openspec/changes/add-authoring-ergonomics/proposal.md:6, under "## Why"
+in scope of: architecture-reviewer (openspec/ path), rule-auditor (unconditional)
+dispatched: architecture-reviewer, rule-auditor
+found by: architecture-reviewer only (1 of 2); rule-auditor's focused re-check did not flag it
+leak: architecture-reviewer again confirmed via the per-clone registry. Same sentence and line in all four rounds. verify exit code: 0
