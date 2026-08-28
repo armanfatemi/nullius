@@ -9,15 +9,15 @@ independent of every other live proposal.
 **The corrected line number already exists, but only as prose.** A presence
 result is `{ claim, verdict, detail }` and nothing else:
 
-**Evidence:** `packages/claims/src/checkClaims.ts:77@87eb675` — `export interface ClaimResult {`
+**Evidence:** `packages/claims/src/checkClaims.ts:77@5d5b2e0` — `export interface ClaimResult {`
 
 For `drift` and `wrong-line` the line the text was actually found on is
 interpolated into `detail` — `text is on line N, not M — update the citation`
 — and discarded as a number:
 
-**Evidence:** `packages/claims/src/checkClaims.ts:332@87eb675` — `verdict: "drift",`
+**Evidence:** `packages/claims/src/checkClaims.ts:332@5d5b2e0` — `verdict: "drift",`
 
-**Evidence:** `packages/claims/src/checkClaims.ts:340@87eb675` — `verdict: "wrong-line",`
+**Evidence:** `packages/claims/src/checkClaims.ts:340@5d5b2e0` — `verdict: "wrong-line",`
 
 So `--fix` cannot be built on today's result shape without either parsing the
 checker's own English or recomputing the match. Decision 2 closes this.
@@ -27,17 +27,17 @@ branches do not name the same line.** Before `evaluateAgainst` can return
 `drift` or `wrong-line`, an ambiguous quote — one matching more than one place
 in the file — has already been returned as `unpinned`:
 
-**Evidence:** `packages/claims/src/checkClaims.ts:317@87eb675` — `verdict: "unpinned",`
+**Evidence:** `packages/claims/src/checkClaims.ts:317@5d5b2e0` — `verdict: "unpinned",`
 
 Uniqueness is decided by `locate`, which prefers exact whole-line matches and
 falls back to substring matches only when there is no exact one:
 
-**Evidence:** `packages/claims/src/checkClaims.ts:269@87eb675` — `function locate(lines: string[], block: string[]): MatchSurvey {`
+**Evidence:** `packages/claims/src/checkClaims.ts:269@5d5b2e0` — `function locate(lines: string[], block: string[]): MatchSurvey {`
 
 The `drift` branch, however, does not use that result. It scans the window
 around the cited line with a substring match and reports the first hit:
 
-**Evidence:** `packages/claims/src/checkClaims.ts:330@87eb675` — `if (matchesAt(lines, candidate, block)) {`
+**Evidence:** `packages/claims/src/checkClaims.ts:330@5d5b2e0` — `if (matchesAt(lines, candidate, block)) {`
 
 So a quote with exactly one exact match far away and a substring match nearby
 is `drift` naming the nearby substring line, while `locate` — the survey that
@@ -54,14 +54,14 @@ the consequence.)
 stamped commit is readable, a mispositioned quote is folded into `advisory`
 and every working-tree divergence into `stale`:
 
-**Evidence:** `packages/claims/src/checkClaims.ts:427@87eb675` — `const mispositioned = gate.verdict === "drift" || gate.verdict === "wrong-line";`
+**Evidence:** `packages/claims/src/checkClaims.ts:427@5d5b2e0` — `const mispositioned = gate.verdict === "drift" || gate.verdict === "wrong-line";`
 
 But that line is downstream of the fail-open branch. When the stamped commit
 cannot be read — a shallow clone, a squash-merged branch, a fork — the checker
 evaluates the anchor as if it were unstamped and returns that result
 *verbatim* whenever it passes:
 
-**Evidence:** `packages/claims/src/checkClaims.ts:400@87eb675` — `if (!isFailure(fallback.verdict)) return fallback;`
+**Evidence:** `packages/claims/src/checkClaims.ts:400@5d5b2e0` — `if (!isFailure(fallback.verdict)) return fallback;`
 
 `drift` and `wrong-line` are passing, so on that path the result carries
 `claim.rev` *and* one of the two verdicts `--fix` acts on. An earlier draft of
@@ -80,20 +80,20 @@ does not gate on a verdict at all.
 Both fixable verdicts, and `stale`, are members of the passing set — `--fix`
 is a convenience over passing results, never a way to turn a red run green:
 
-**Evidence:** `packages/claims/src/checkClaims.ts:169@87eb675` — `const PASSING: ReadonlySet<Verdict> = new Set<Verdict>([`
+**Evidence:** `packages/claims/src/checkClaims.ts:169@5d5b2e0` — `const PASSING: ReadonlySet<Verdict> = new Set<Verdict>([`
 
 **The parser records where in the document each marker sits, and its grammar
 is three module-private regexes.** Every claim carries a 1-based document
 line:
 
-**Evidence:** `packages/claims/src/parseClaims.ts:43@87eb675` — `/** 1-based line number within that document. */`
+**Evidence:** `packages/claims/src/parseClaims.ts:43@5d5b2e0` — `/** 1-based line number within that document. */`
 
 and a presence marker is one of the inline forms or the block-form head, all
 of which capture `(path)`, `(line)`, and an optional `(@rev)` as groups:
 
-**Evidence:** `packages/claims/src/parseClaims.ts:119@87eb675` — `const PRESENCE_DOUBLE =`
+**Evidence:** `packages/claims/src/parseClaims.ts:119@5d5b2e0` — `const PRESENCE_DOUBLE =`
 
-**Evidence:** `packages/claims/src/parseClaims.ts:125@87eb675` — `const PRESENCE_BLOCK_HEAD =`
+**Evidence:** `packages/claims/src/parseClaims.ts:125@5d5b2e0` — `const PRESENCE_BLOCK_HEAD =`
 
 A rewrite therefore never needs to touch the quote: for every marker shape the
 line number and the stamp sit inside the *first* backtick span, and the quoted
@@ -102,17 +102,17 @@ rewrite must live beside them (Decision 1) rather than carry a copy. The
 parser lower-cases the rev it captures, so a stamp written in lower-case hex
 round-trips byte-identically:
 
-**Evidence:** `packages/claims/src/parseClaims.ts:225@87eb675` — `return { rev: captured.slice(1).toLowerCase() };`
+**Evidence:** `packages/claims/src/parseClaims.ts:225@5d5b2e0` — `return { rev: captured.slice(1).toLowerCase() };`
 
 **The kernel already reads git and already writes user documents — in bounded
 ways.** `revFileReader` runs `git show <rev>:<path>` and caches per `(rev,
 path)`:
 
-**Evidence:** `packages/claims/src/runners.ts:149@87eb675` — `export function revFileReader(root?: string, timeoutMs = DEFAULT_GIT_TIMEOUT_MS) {`
+**Evidence:** `packages/claims/src/runners.ts:149@5d5b2e0` — `export function revFileReader(root?: string, timeoutMs = DEFAULT_GIT_TIMEOUT_MS) {`
 
 and `demo` already resolves a short HEAD the way `--stamp` needs to:
 
-**Evidence:** `packages/claims/src/demo.ts:171@87eb675` — `return git('rev-parse', '--short', 'HEAD');`
+**Evidence:** `packages/claims/src/demo.ts:171@5d5b2e0` — `return git('rev-parse', '--short', 'HEAD');`
 
 `canary plant` / `canary clear` are the precedent for editing a checked
 document in place (`plantCanary` in `canary.ts` inserts one line and
@@ -124,23 +124,23 @@ them at least that narrow.
 which reads config, globs, runs the checker per document, prints the human
 report, and computes the exit code:
 
-**Evidence:** `packages/claims/src/cli.ts:604@87eb675` — `function runCheck(args: CheckArgs): number {`
+**Evidence:** `packages/claims/src/cli.ts:604@5d5b2e0` — `function runCheck(args: CheckArgs): number {`
 
 Per-result rendering is `report()`, which prints *and* counts failures in the
 same pass — so a second renderer cannot simply be swapped in; counting has to
 be separated from printing first (Decision 5):
 
-**Evidence:** `packages/claims/src/cli.ts:185@87eb675` — `function report(results: ClaimResult[]): number {`
+**Evidence:** `packages/claims/src/cli.ts:185@5d5b2e0` — `function report(results: ClaimResult[]): number {`
 
 The run ends on a density line and, when nothing failed, `All N grounding
 marker(s) verified.` — which on a repository with no anchors at all reads
 `All 0 grounding marker(s) verified.` and points at nothing:
 
-**Evidence:** `packages/claims/src/cli.ts:736@87eb675` — ``matched document(s) carry grounding markers.``
+**Evidence:** `packages/claims/src/cli.ts:736@5d5b2e0` — ``matched document(s) carry grounding markers.``
 
 The only next-step pointer is a spec URL:
 
-**Evidence:** `packages/claims/src/cli.ts:53@87eb675` — `const SPEC_URL =`
+**Evidence:** `packages/claims/src/cli.ts:53@5d5b2e0` — `const SPEC_URL =`
 
 Nothing in this repository consumes that closing line: the Action derives its
 headline from the exit status and echoes the report verbatim, and CI keys on
@@ -152,23 +152,23 @@ proposal says this change "rides on" has landed (the change is archived as
 `openspec/changes/archive/2026-08-21-add-init-doctor`), and flag ownership is
 a table:
 
-**Evidence:** `packages/claims/src/cliArgs.ts:4@87eb675` — `* The predecessor was one parser over a shared flag namespace: every flag was`
+**Evidence:** `packages/claims/src/cliArgs.ts:4@5d5b2e0` — `* The predecessor was one parser over a shared flag namespace: every flag was`
 
-**Evidence:** `packages/claims/src/cliArgs.ts:85@87eb675` — `["--require-markers", "check"],`
+**Evidence:** `packages/claims/src/cliArgs.ts:85@5d5b2e0` — `["--require-markers", "check"],`
 
-**Evidence:** `packages/claims/src/cliArgs.ts:201@87eb675` — `function parseCheck(rawArgv: readonly string[]): CheckArgs {`
+**Evidence:** `packages/claims/src/cliArgs.ts:201@5d5b2e0` — `function parseCheck(rawArgv: readonly string[]): CheckArgs {`
 
 But `--help` is still global — it is detected before the command word is
 looked at, and prints one usage block for every command:
 
-**Evidence:** `packages/claims/src/cliArgs.ts:148@87eb675` — `if (argv.some((arg) => arg === "--help" || arg === "-h")) {`
+**Evidence:** `packages/claims/src/cliArgs.ts:148@5d5b2e0` — `if (argv.some((arg) => arg === "--help" || arg === "-h")) {`
 
-**Evidence:** `packages/claims/src/cli.ts:905@87eb675` — `case "help":`
+**Evidence:** `packages/claims/src/cli.ts:905@5d5b2e0` — `case "help":`
 
 **The Action cannot adopt JSON output in this change.** It pins the
 *published* checker version, and no published version has `--format`:
 
-**Evidence:** `action/action.yml:47@87eb675` — `default: '0.7.0'`
+**Evidence:** `action/action.yml:47@5d5b2e0` — `default: '0.7.0'`
 
 Bumping `packages/claims/package.json` inside this change would not help — the
 Action resolves from npm. Task 2.3 is therefore a follow-up gated on a
@@ -181,7 +181,7 @@ comment on #4 and #7 linking the PR, which is a human step (Decision 7).
 
 **`--propose` is deliberately not the default audit mode:**
 
-**Evidence:** `spec/evidence-anchors.md:393@87eb675` — `and not the default, deliberately: institutionalising the confirmation-shaped`
+**Evidence:** `spec/evidence-anchors.md:393@5d5b2e0` — `and not the default, deliberately: institutionalising the confirmation-shaped`
 
 The funnel in Decision 6 names it anyway, because the funnel fires only on a
 repository with *zero* anchors — the retrofit case the same passage says
@@ -190,12 +190,12 @@ questions rather than resolved here.
 
 **The command surface is constrained, not just small by habit:**
 
-**Evidence:** `openspec/project.md:16@87eb675` — `new verdict families get new unions. Its command surface stays small.`
+**Evidence:** `openspec/project.md:16@5d5b2e0` — `new verdict families get new unions. Its command surface stays small.`
 
 This change adds three flags to one existing command and no command. The
 README already promises the first of them:
 
-**Evidence:** `README.md:414@87eb675` — ``--stamp` pass that fills in the commit for anchors that verify against the``
+**Evidence:** `README.md:414@5d5b2e0` — ``--stamp` pass that fills in the commit for anchors that verify against the``
 
 ## Decisions
 

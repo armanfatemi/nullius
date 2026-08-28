@@ -58,8 +58,9 @@ and reported.
 `check --format json` SHALL emit a stable JSON report: one entry per claim
 (verdict, document location, citation, detail, `failing` computed by the
 same predicate that decides the exit code) plus summary counts including
-anchor density and zero-anchor documents by name. The default human output
-SHALL be unchanged.
+anchor density and zero-anchor documents by name. The report SHALL carry an
+integer `version` field, bumped when a field is renamed or removed or when the
+verdict vocabulary grows. The default human output SHALL be unchanged.
 
 #### Scenario: scripting the checker
 

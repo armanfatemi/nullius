@@ -122,3 +122,45 @@ in scope of: architecture-reviewer (openspec/ path), rule-auditor (unconditional
 dispatched: checker-engineer, test-engineer, architecture-reviewer, rule-auditor
 found by: checker-engineer, architecture-reviewer, rule-auditor (3 of 4); test-engineer did not flag it (both rounds)
 leak: rule-auditor recognised the plant as "the same planted probe from iteration 0" from this file's own iteration-0 probe section; architecture-reviewer confirmed it via the per-clone registry. Same sentence and line planted in both rounds. verify exit code: 0
+
+## Stage 2 — Pre-review iteration 2
+
+Dispatched: architecture-reviewer, rule-auditor (checker-engineer and test-engineer dropped at pre-flight: nothing changed in their domain since iteration 1 — their concerns were folded verbatim).
+Grounding gate (Step 0, before plant): exit 0 — 29/29 OK.
+
+## False premises
+
+- FP1 `openspec/changes/add-authoring-ergonomics/proposal.md:6` — the `retry` / "must stay in sync" sentence naming `spec/fixtures/rules-valid/src/example.ts` (defines only `widgetCount`). Flagged by both reviewers (2 of 2). architecture-reviewer confirmed via the local registry ("third successive plant"); rule-auditor from the grammar break and a grep.
+- FP2 `proposal.md:22-25` [corrected-coordinator] — architecture-reviewer: the `--stamp` bullet still says "for every anchor that verifies against the working tree and carries no `@rev`, rewrite it" — the alternative design Decision 4 rejects, and the proposal seeds the PR body. Stage 3 iteration 1 rewrote the spec and left this bullet.
+
+## Blockers
+
+None.
+
+## Concerns
+
+- C1 [rule-auditor] [corrected-coordinator] every design anchor is stamped `@87eb675`, the tip of the old `add-authoring-ergonomics` branch — not an ancestor of `feat/add-authoring-ergonomics` (`git merge-base --is-ancestor` fails both ways). Resolvable locally today; unreachable in CI's clone, so all 28 would fail open to `UNVERIFIABLE-REV` — the shape `merge-never-squash` warns about, via divergence. I ran `git rev-parse --short HEAD` on the wrong branch when drafting. Repair: verify the cited files are identical at `main`'s tip, then re-stamp both halves to that commit (line numbers unchanged because the files are unchanged); the checker re-verifies every anchor at the new rev.
+- C2 [architecture-reviewer] `specs/check-cli/spec.md:57-62` — the JSON requirement omits the `version` tag Decision 5 relies on to signal breaking union growth; add it normatively.
+- C3 [architecture-reviewer] task 1.2's drift/wrong-line boundary change has no requirement of its own; acceptable because no `openspec/specs/check-cli` exists to carry a MODIFIED requirement.
+
+## Looks good
+
+- Spec `--fix`/`--stamp` requirements now carry both filters and all negative scenarios; SHALL on line 1 throughout; `openspec validate --strict` passes (both reviewers).
+- `RevVerification` correctly outside `Verdict`, implementing project.md:16 rather than violating it (rule-auditor); `failing` via `isFailure` (architecture-reviewer).
+- Follow-ups are plain bullets; Impact's issue claims verified (architecture-reviewer).
+- The DRIFT-row edit in `spec/evidence-anchors.md` owes no new anchor: the floor is per document and the file already carries markers (rule-auditor).
+
+## Coordinator corrections since last append
+
+- I left the proposal's `--stamp` bullet describing working-tree stamping after rewriting the spec and design to reject it. Caught by architecture-reviewer. Change: bullet rewritten.
+- I stamped all 28 design anchors at `87eb675`, a commit on a branch the PR does not descend from, so the stamps would fail open in CI. Caught by rule-auditor. Change: verified file identity at `main`'s tip and re-stamped both halves there. Process rule for next time: run `git rev-parse --short HEAD` on the branch the PR will be opened from, after cutting it.
+- Process: dropped two reviewers at pre-flight on the grounds that nothing in their domain changed; both survivors found only coordinator errors in artefacts, which supports the drop.
+
+## Probe — stage 2 (iteration 2)
+
+verdict: CAUGHT
+planted: openspec/changes/add-authoring-ergonomics/proposal.md:6, under "## Why"
+in scope of: architecture-reviewer (openspec/ path), rule-auditor (unconditional)
+dispatched: architecture-reviewer, rule-auditor
+found by: both (2 of 2)
+leak: architecture-reviewer confirmed via the per-clone registry ("third successive plant"); same sentence and line as iterations 0 and 1. verify exit code: 0

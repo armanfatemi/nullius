@@ -8,7 +8,7 @@ make a linter loved rather than tolerated are deterministic, small, and
 already half-promised — the README's own roadmap calls unstamped anchors "the
 last piece of clerical work":
 
-**Evidence:** `README.md:414@87eb675` — `pass that fills in the commit for anchors that verify against the`
+**Evidence:** `README.md:414@5d5b2e0` — `pass that fills in the commit for anchors that verify against the`
 
 And on `DRIFT`/`WRONG-LINE`, the checker already computes the correct line
 and then makes the human type it. Meanwhile there is no machine-readable
@@ -19,10 +19,12 @@ These are kernel-only changes, independent of every other proposal.
 
 ## What Changes
 
-- **`check --stamp`** (kernel): for every anchor that verifies against the
-  working tree and carries no `@rev`, rewrite it in place with the current
-  short HEAD. One git read per run; anchors that do not verify are left
-  untouched (stamping an unverified claim would launder it).
+- **`check --stamp`** (kernel): for every unstamped anchor whose quote is at
+  the cited line in the file *as read at HEAD*, rewrite it in place with the
+  current short HEAD. HEAD is resolved once per run; anchors that do not
+  verify at HEAD — including ones that pass in the working tree because of an
+  uncommitted edit — are left untouched and reported (stamping an unverified
+  claim would launder it).
 - **`check --fix`** (kernel): rewrite the line number for `DRIFT` and
   `WRONG-LINE` verdicts — the verdicts where the quote still uniquely
   identifies real code and only the coordinate is stale. Never touches
