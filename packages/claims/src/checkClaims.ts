@@ -81,8 +81,10 @@ export interface ClaimResult {
   /**
    * The 1-based line `locate` identified as the quote's unique match, set on
    * `drift` and `wrong-line` only — the two verdicts where the text is real
-   * but the cited line is not where it is. Absent on every other verdict,
-   * including everything the stamped path returns.
+   * but the cited line is not where it is — and only on UNSTAMPED results.
+   * The stamped path never carries it, including its fail-open branch: that
+   * branch may borrow the working-tree verdict when the commit cannot be
+   * read, but a stamped anchor never carries a line `--fix` could act on.
    */
   foundLine?: number;
 }
@@ -407,7 +409,12 @@ function checkStamped(
     // cannot read the history it was pointed at does not get to call anyone a
     // fabricator.
     const fallback = checkUnstamped(claim, deps, driftWindow, minAnchorChars);
-    if (!isFailure(fallback.verdict)) return fallback;
+    if (!isFailure(fallback.verdict)) {
+      // The verdict is borrowed; the repoint target is not. A stamped anchor
+      // never carries `foundLine`, even when the commit could not be read —
+      // `--fix` must have nothing to act on under an old stamp.
+      return { claim, verdict: fallback.verdict, detail: fallback.detail };
+    }
     const why =
       atRev.status === "unknown-rev"
         ? `commit ${rev} is not in this clone`
@@ -497,8 +504,8 @@ function checkUnstamped(
     driftWindow,
     minAnchorChars,
   );
-  // Explicit field list, never a spread: `foundLine` must be added as a key
-  // only when it exists, and must never leak into a stamped result.
+  // Explicit field list, never a spread: `foundLine` is added as a key only
+  // when it exists. The stamped path strips it again on its fail-open branch.
   return foundLine === undefined
     ? { claim, verdict, detail }
     : { claim, verdict, detail, foundLine };

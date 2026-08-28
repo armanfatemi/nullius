@@ -410,9 +410,10 @@ format is shaped this way; the linter is what you install.
   PR-evidence harvester plus the "bad witness" retro-agent conventions. The
   journal validator (`witness validate`) ships now; the harvester is held back
   until its conventions have more real-world mileage.
-- **Stamping help** — `@rev` anchors are written by hand today. A
-  `--stamp` pass that fills in the commit for anchors that verify against the
-  working tree would remove the last piece of clerical work.
+- **Stamping help** — shipped: `check --stamp` fills in the commit for
+  anchors that verify at HEAD, `check --fix` repoints `DRIFT`/`WRONG-LINE`
+  citations on unstamped anchors, and `check --format json` emits a
+  versioned machine-readable report. See `nullius check --help`.
 - Open threads: [`init`](https://github.com/armanfatemi/nullius/issues/1),
   [embedded `--eager`](https://github.com/armanfatemi/nullius/issues/6).
 

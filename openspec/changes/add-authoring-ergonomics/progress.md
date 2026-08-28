@@ -1,6 +1,6 @@
 # Progress — proposal-to-pr: add-authoring-ergonomics
 
-_Started 2026-08-28T02:41:50Z; last updated 2026-08-28T18:07:41Z_
+_Started 2026-08-28T02:41:50Z; last updated 2026-08-28T18:16:48Z_
 
 ## Phases completed
 
@@ -14,7 +14,7 @@ _Started 2026-08-28T02:41:50Z; last updated 2026-08-28T18:07:41Z_
 
 ## Current phase
 
-**Stage 4 (Implement)** — committed: 1.2, 1.1+1.4k+3.1, 1.3+1.4 CLI, 2.1 (476cb70); in flight: 2.2 + 3.2 (last two); then Stage 6 post-review on the diff.
+**Stage 6 (Post-review)** — Stage 4 complete: all 10 coded tasks committed (last 26ced3c); dispatching all four reviewers on `git diff main...HEAD` (23 files).
 
 ## Next 3 actions
 

@@ -647,3 +647,35 @@ suite("CLI characterization — --format json parity", () => {
     expect(human.code).toBe(report.summary.failures > 0 || report.summary.markerFloorFailed ? 1 : 0);
   });
 });
+
+suite("CLI characterization — --format json on a no-match run", () => {
+  it("still writes one JSON document, with the diagnostic, and exits 0", () => {
+    const result = run("check", "no/such/dir/**/*.md", "--format", "json");
+    expect(result.code).toBe(0);
+    const report = JSON.parse(result.stdout) as {
+      version: number;
+      documents: unknown[];
+      summary: { documents: number };
+      diagnostics: string[];
+    };
+    expect(report.version).toBe(1);
+    expect(report.documents).toEqual([]);
+    expect(report.summary.documents).toBe(0);
+    expect(report.diagnostics[0]).toMatch(/^no files matched/);
+    expect(result.stderr).toContain("no files matched");
+  });
+
+  it("keeps exit 1 under --require-markers and the same JSON shape", () => {
+    const result = run("check", "no/such/dir/**/*.md", "--format", "json", "--require-markers");
+    expect(result.code).toBe(1);
+    const report = JSON.parse(result.stdout) as { documents: unknown[]; diagnostics: string[] };
+    expect(report.documents).toEqual([]);
+    expect(report.diagnostics[0]).toMatch(/^no files matched/);
+  });
+
+  it("human mode on a no-match run still writes nothing to stdout", () => {
+    const result = run("check", "no/such/dir/**/*.md");
+    expect(result.code).toBe(0);
+    expect(result.stdout).toBe("");
+  });
+});

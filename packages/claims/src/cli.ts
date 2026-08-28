@@ -708,7 +708,14 @@ function runCheck(args: CheckArgs): number {
   ].sort();
 
   if (docs.length === 0) {
-    console.error(`no files matched: ${globs.join(" ")}`);
+    const message = `no files matched: ${globs.join(" ")}`;
+    console.error(message);
+    // stdout is still one JSON document under --format json: an empty run,
+    // with the diagnostic that explains the exit code. A consumer piping to
+    // jq must never see a parse error on a legitimate result.
+    if (args.format === "json") {
+      process.stdout.write(renderJson(summarize([], args.requireMarkers), [message]));
+    }
     return args.requireMarkers ? 1 : 0;
   }
 
@@ -757,10 +764,20 @@ function runCheck(args: CheckArgs): number {
 
   const run = collectCheck(docs, args, deps, options, activeCanary, head);
 
+  // An unreadable registry fails closed below; the JSON report must carry the
+  // same reason, so it is known before the document is written.
+  const registryFailure =
+    canaryWarning === undefined
+      ? []
+      : [
+          canaryWarning,
+          "canary state cannot be determined — restore or delete .git/nullius/canaries.json, then re-run",
+        ];
+
   if (args.format === "json") {
     // stdout is the document and nothing else. Every diagnostic below keeps
     // its stream, and the exit code is the same expression human mode uses.
-    process.stdout.write(renderJson(run));
+    process.stdout.write(renderJson(run, registryFailure));
   } else {
     renderHumanDocuments(run);
   }
@@ -769,10 +786,7 @@ function runCheck(args: CheckArgs): number {
     // Fail closed: an unreadable registry means canary state is unknown, and
     // a guard that silently stands down is the failure mode this tool exists
     // to prevent. Advisory would collapse "guarded" and "unguarded" again.
-    console.error(canaryWarning);
-    console.error(
-      "canary state cannot be determined — restore or delete .git/nullius/canaries.json, then re-run",
-    );
+    for (const line of registryFailure) console.error(line);
     return 1;
   }
 

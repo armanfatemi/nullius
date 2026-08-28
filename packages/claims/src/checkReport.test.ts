@@ -268,3 +268,18 @@ describe("renderJson — the Decision 5 schema", () => {
     expect(text).toBe(`${JSON.stringify(JSON.parse(text), null, 2)}\n`);
   });
 });
+
+describe("renderJson — diagnostics", () => {
+  it("omits the key when there are no diagnostics", () => {
+    const report = JSON.parse(renderJson(summarize([], false))) as Record<string, unknown>;
+    expect(report).not.toHaveProperty("diagnostics");
+    expect(report).toMatchObject({ version: 1, documents: [], summary: { documents: 0, next: null } });
+  });
+
+  it("carries the messages that also went to stderr", () => {
+    const report = JSON.parse(renderJson(summarize([], true), ["no files matched: x/**/*.md"])) as {
+      diagnostics: string[];
+    };
+    expect(report.diagnostics).toEqual(["no files matched: x/**/*.md"]);
+  });
+});

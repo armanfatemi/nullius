@@ -283,3 +283,42 @@ test: pass (claims 759 passed, 6 known ugrep failures in flagConformance; kit 23
 dogfood gates: pass, both polarities
 smoke: zero-marker run over two temp docs ends with `next: nullius audit <longer> --propose`
 note: the coordinator's first green-gate script miscounted pnpm's `[ERR_PNPM_RECURSIVE_FAIL]` line as a seventh test failure and refused to commit; re-read the vitest summary (6 failed / 759 passed, all flagConformance) and committed.
+
+## Stage 6 — Post-review
+
+Dispatched on `git diff main...HEAD` (23 files) via route-paths: checker-engineer, test-engineer, architecture-reviewer, rule-auditor — all four survived pre-flight with file-specific targets.
+
+## Blockers
+
+- B1 [checker-engineer] `packages/claims/src/checkClaims.ts:81-86` and `:499` — the `foundLine` JSDoc and `checkUnstamped`'s comment say it never reaches a stamped result. False: the fail-open branch (`:409-410`) returns `checkUnstamped`'s result verbatim, so a stamped claim with an unreadable rev returns `{verdict:"drift", foundLine, claim.rev}` (reproduced against dist/). Safe today only because `rewrite.ts:114` filters on `rev` independently; the comment invites a future caller to repoint under an old stamp. Fix: strip `foundLine` on the fail-open return (explicit field list) and correct both comments; add a named test.
+- B2 [architecture-reviewer, labelled concern; promoted by the coordinator because it contradicts a SHALL scenario] `cli.ts:711-713` — under `--format json` the no-match early return writes nothing to stdout; spec says "stdout parses as JSON". Fix: emit an empty-documents report before returning.
+- B3 [architecture-reviewer, labelled concern; promoted for the same reason — exit/report disagreement] `cli.ts:768-777` — the unreadable-canary-registry path emits a report whose fields all say pass, then exits 1. Fix: an optional, non-breaking `diagnostics: string[]` on the report carrying the stderr message (also used by B2's no-match case).
+
+## Concerns (carried to the PR body)
+
+- C1 [architecture-reviewer] `design.md:229` — Decision 1's fenced `planRewrites` signature is stale vs the shipped `RewriteIntent` (`rewrite.ts:42-47`); the prose is right. Fixed in Stage 7 as a doc edit.
+- C2 [architecture-reviewer] `README.md:413-415` — Roadmap still lists `--stamp` as future; this branch ships it. Fixed in Stage 7 (roadmap bullet reworded); the anchors that cite that line go advisory STALE, as designed.
+- C3 [architecture-reviewer] `packages/claims/src/index.ts` — ten new exports; only `verifyAtRev`/`RevVerification` are argued as public API in the design. Not changed; the author decides the API surface.
+- The `--propose` funnel tension remains an open user decision (recorded three times already).
+
+## Looks good
+
+- test-engineer: every named negative test exists and asserts bytes/exit codes directly; property test non-vacuity guard real; temp-repo tests hermetic; no pre-existing characterization assertion removed; fixtures and flagConformance untouched.
+- rule-auditor: fix pass structurally excludes stamped claims, pinned by three named tests; all stamps are ancestors of HEAD; history is merge-commits only; RevVerification not a Verdict; freshness guard fails loudly.
+- architecture-reviewer: JSON matches Decision 5 field-for-field, `failing` via isFailure, exit code from one structure, stdout pure under json, kernel purity holds; the 19 STALE design anchors are the intended advisory outcome.
+- checker-engineer: `where.first` non-null at both branches; `verifyAtRev` threshold-independent and read-status gated; `d` flag index-only, no lastIndex hazard; CRLF/double-backtick splices verified by probe; `headRev` matches `revFileReader` hardening.
+
+## Coordinator corrections since last append
+
+- I promoted two architecture-reviewer `[concern]`s (B2, B3) to blockers on my own judgement because each contradicts the spec's "stdout parses as JSON" / exit-parity contract; recorded so the retro can see the label change was the coordinator's, not the reviewer's.
+- The `foundLine`-never-on-stamped claim (B1) was mine: I wrote it into the 1.2 brief ("must NOT gain foundLine" on the stamped path) after the pre-review had already established that the fail-open branch returns the unstamped result verbatim. The agent implemented the brief faithfully; the brief was wrong. [corrected-coordinator]
+- Process: my Stage 5 green-gate script for the last chunk counted pnpm's `[ERR_PNPM_RECURSIVE_FAIL]` as a seventh FAIL and refused to commit; corrected by reading the vitest summary (recorded in that chunk's verify block).
+
+## Stage 5 — Verify Stage 7 fixes
+
+build: pass
+type-check: pass
+test: pass (claims 765 passed, 6 known ugrep failures in flagConformance; kit 234 passed)
+dogfood gates: pass, both polarities
+smoke: `check 'zz/**/*.md' --format json` now emits an empty-documents report with `diagnostics[0]` = "no files matched: …"
+note: the dispatched fixer agent stalled (600s watchdog) after writing one test; the coordinator applied the three fixes inline, keeping that test.

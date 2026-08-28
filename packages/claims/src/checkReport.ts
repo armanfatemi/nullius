@@ -240,13 +240,18 @@ export interface ReportRewrites {
  *   across union growth because it is computed by `isFailure` rather than by
  *   enumerating verdicts.
  *
- * `rewrites` is present only when `--fix` or `--stamp` ran.
+ * `rewrites` is present only when `--fix` or `--stamp` ran. `diagnostics`
+ * carries messages that also went to stderr and that changed the exit code or
+ * the matched set (no files matched; an unreadable canary registry); absent
+ * when there were none, so a report that says pass and a process that exits
+ * non-zero can never disagree silently.
  */
 export interface CheckReport {
   version: 1;
   documents: ReportDocument[];
   summary: ReportSummary;
   rewrites?: ReportRewrites;
+  diagnostics?: string[];
 }
 
 export const REPORT_VERSION = 1;
@@ -315,6 +320,8 @@ export function buildReport(run: CheckRun): CheckReport {
 }
 
 /** One pretty-printed JSON document, two-space indent, trailing newline. */
-export function renderJson(run: CheckRun): string {
-  return `${JSON.stringify(buildReport(run), null, 2)}\n`;
+export function renderJson(run: CheckRun, diagnostics: readonly string[] = []): string {
+  const report = buildReport(run);
+  if (diagnostics.length > 0) report.diagnostics = [...diagnostics];
+  return `${JSON.stringify(report, null, 2)}\n`;
 }

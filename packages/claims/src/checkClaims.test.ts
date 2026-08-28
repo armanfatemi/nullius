@@ -703,6 +703,31 @@ describe("foundLine", () => {
     expect(result?.verdict).toBe("stale");
     expect(result).not.toHaveProperty("foundLine");
   });
+
+  it("is absent on the stamped path's fail-open branch — an unreadable rev softens to drift, with no line", () => {
+    // The commit cannot be read, so the stamped path falls open to the
+    // working tree and keeps the unstamped `drift`. The verdict may be
+    // borrowed; the repoint target must not be — a stamped anchor never
+    // carries a line `--fix` could act on.
+    const current = ["// 1", "// 2", "export function retry() {", "  const attempts = 5;", "}"];
+    const claim: Claim = {
+      kind: "presence",
+      path: "src/app.ts",
+      line: 2,
+      text: "  const attempts = 5;",
+      rev: "abcdef1",
+      source: { doc: "design.md", line: 1 },
+    };
+    const [result] = checkClaims([claim], {
+      readFileLines: () => current,
+      readFileAtRev: () => ({ status: "unknown-rev" }),
+      runSearch: () => ({ ok: true, count: 0 }),
+    });
+
+    expect(result?.verdict).toBe("drift");
+    expect(result?.claim).toMatchObject({ rev: "abcdef1" });
+    expect(result).not.toHaveProperty("foundLine");
+  });
 });
 
 describe("verifyAtRev", () => {

@@ -223,10 +223,12 @@ mirrored, for the same reason it exists there.
 A new `packages/claims/src/rewrite.ts` exports a pure planner:
 
 ```ts
+type StampCheck = (claim: PresenceClaim) => string; // "ok" | "weak-anchor" stamp; any other string is the skip reason
+interface RewriteIntent { fix: boolean; stamp: { rev: string; verify: StampCheck } | null }
 planRewrites(
   content: string,
   results: readonly ClaimResult[],
-  intent: { stamp: string | null; fix: boolean },
+  intent: RewriteIntent,
 ): { content: string; applied: Rewrite[]; skipped: Skipped[] }
 ```
 
