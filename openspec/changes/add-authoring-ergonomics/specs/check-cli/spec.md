@@ -45,9 +45,9 @@ SHALL be unchanged.
 
 ### Requirement: The funnel names the next command
 
-When `check` matches documents but finds zero grounding markers, its final
-line SHALL name the concrete retrofit command for the largest matched
-document, in copy-pasteable form.
+The final line of `check` output SHALL name the concrete retrofit command
+for the largest matched document, in copy-pasteable form, whenever `check`
+matches documents but finds zero grounding markers.
 
 #### Scenario: anchorless repo gets a next step
 
