@@ -212,8 +212,13 @@ rewriteMarker(line: string, patch: { line?: number; rev?: string }): string | nu
 It runs the same `PRESENCE_DOUBLE` / `PRESENCE_SINGLE` / `PRESENCE_BLOCK_HEAD`
 patterns the parser runs, and returns the line with only the `:LINE` and
 `@rev` groups substituted — or `null` when the line does not parse as a
-presence marker. The quote, the prefix, the dash and everything after the
-first backtick span are copied through untouched by construction.
+presence marker. It splices by **match index**: only the `:LINE` and `@rev`
+character spans are replaced, and every other byte of the line — the list
+prefix, the separator (which sits outside every capture group and may be an
+em-dash, en-dash or hyphen), the quote, trailing whitespace — is copied
+through verbatim. Rebuilding the line from capture groups would silently
+normalise the separator. The parser's `DOUBLE`-before-`SINGLE` try order is
+mirrored, for the same reason it exists there.
 
 A new `packages/claims/src/rewrite.ts` exports a pure planner:
 
@@ -261,11 +266,14 @@ not an exported regex and a second consumer.
 source line no longer parses to the same `(path, line, rev)` is skipped and
 reported, and the line is byte-identical; and the property test the spec asks
 for — a hand-rolled generator over synthetic marker lines (all three shapes,
-with and without a stamp, with list prefixes) embedded in random surrounding
-content, with the oracle that every byte outside the affected marker lines is
-identical and, within an affected line, the quote span is identical. There is
-no property-testing library in this repository and adding one for a single
-test is not worth the dependency.
+with and without a stamp, with list prefixes and each separator variant)
+embedded in random surrounding content, 200 trials over a seeded PRNG with a
+fixed seed so the run is deterministic, with the oracle that **every byte
+outside the `:LINE`/`@rev` spans of the affected marker lines is identical to
+the input**. That is deliberately stricter than "the quote span is identical":
+it also pins the prefix and the separator, which is where a rebuild-from-groups
+implementation would go wrong. There is no property-testing library in this
+repository and adding one for a single test is not worth the dependency.
 
 ### 2. `ClaimResult` gains an optional `foundLine`, taken from `locate`, and the drift window is measured from it
 
@@ -279,11 +287,16 @@ computed from that same line: `drift` when `|where.first − claim.line| ≤
 driftWindow`, `wrong-line` otherwise. The window scan with `matchesAt` is
 removed; `detail` on both branches names `where.first`.
 
-**This is a behaviour change in one edge case**, and it is called out rather
-than smuggled: a quote with exactly one exact match outside the window and a
-substring match inside it is `drift` today (naming the substring line) and
-becomes `wrong-line` (naming the exact line). Both verdicts pass, so no run
-changes colour. A named test pins the case.
+**This is a behaviour change in two edge shapes**, and both are called out
+rather than smuggled. (1) A quote with exactly one exact match outside the
+window and a substring match inside it is `drift` today (naming the substring
+line) and becomes `wrong-line` (naming the exact line). (2) An exact match and
+a substring-only line both inside the window: the verdict stays `drift`, but
+the reported number moves from whichever the scan hit first to the exact
+line. Every verdict involved passes, so no run changes colour. A named test
+pins each shape. The DRIFT row of `spec/evidence-anchors.md` ("text found
+within the drift window") is edited to say the *unique* match is within the
+window, so the spec describes the new rule (task 1.2).
 
 **Alternatives considered:** parse `text is on line (\d+)` out of `detail`;
 have `rewrite.ts` call `locate()` again on the file; keep the window scan and
@@ -351,10 +364,18 @@ commit to claim.
 `checkClaims.ts` exports one new pure helper:
 
 ```ts
+export type RevVerification = "ok" | "weak-anchor" | "not-at-rev" | "rev-unreadable";
 verifyAtRev(
   claim: PresenceClaim, rev: string, deps: CheckDeps, options?: CheckOptions,
-): "ok" | "weak-anchor" | "not-at-rev" | "rev-unreadable"
+): RevVerification
 ```
+
+`RevVerification` is a named vocabulary and public API, and it is **not a
+`Verdict`**: it has no `PASSING` set, is never rendered as a result, and two
+of its members share spelling with `Verdict` members only because they are
+the same evaluation outcome on the same lines. The CLI passes `verifyAtRev`
+the same `CheckOptions` it passed `checkClaims`, so `driftWindow` and
+`minAnchorChars` resolve identically in both places.
 
 It calls `deps.readFileAtRev(claim.path, rev)` and **requires
 `status === "ok"`**; anything else — `no-file`, `unknown-rev`, `unavailable`,
@@ -453,7 +474,10 @@ Shape (version-tagged so it can change):
 
 `claim` is the parsed `Claim` minus `source` (hoisted); `verdict` is the
 union member verbatim; `label` is the human-mode label (`SEARCH-CLEAN` for a
-passing absence claim) so scripts can key on either. `summary.next` carries
+passing absence claim) so scripts can key on either. `failing` is computed
+by `isFailure` — the same allowlist predicate that decides the exit code —
+and never by enumerating failing verdicts, which would invert that allowlist
+and drift the first time the union grows. `summary.next` carries
 the funnel command from Decision 6 when it fires. `rewrites` is present only
 when `--stamp` or `--fix` ran.
 
@@ -519,8 +543,10 @@ with no anchors, which is the retrofit case the spec keeps `--propose` for; a
 refute-first audit of a document with nothing to refute produces nothing. The
 proposal names `--propose` explicitly. The spec's caution — that making the
 confirmation-shaped lane the suggested road builds the bias in — applies
-regardless, so this is listed under Open questions for a human call rather
-than settled by the coordinator.
+regardless, and two reviewers across two rounds (rule-auditor, then
+architecture-reviewer) recommended plain `audit <doc>`. This document does
+not override the author's explicit choice; it is listed under Open questions
+and carried in the PR body for a human call. The string is one constant.
 
 **Tests this decision owes** (`tasks.md` 3.1–3.2): `cliArgs.test.ts` —
 `check --help` parses to help with `command: "check"`; characterization —
@@ -528,15 +554,15 @@ than settled by the coordinator.
 with the `next:` line and does **not** print `All 0 grounding marker(s)
 verified.`; the same run under `--format json` carries `summary.next`.
 
-### 7. Two tasks change shape: 2.3 is a follow-up, 3.3 is a human step
+### 7. Two former tasks leave the task list: the Action follow-up and the issue comments
 
-**Chosen:** Adopting JSON in the Action's comment rendering (formerly task
-2.2, now 2.3) is a follow-up gated on the release that ships `--format
-json`, because the Action pins the published checker (Context). Task 3.3
-becomes a human step — comment on closed issues #4 and #7 with the PR link,
-noting which half of #4 remains — because there is nothing left to close,
-and posting to issues is outward-facing action this pipeline does not take
-on its own. The proposal's Impact bullet has been corrected to say the
+**Chosen:** Adopting JSON in the Action's comment rendering is a follow-up
+gated on the release that ships `--format json`, because the Action pins the
+published checker (Context). Commenting on closed issues #4 and #7 with the
+PR link is a human step — there is nothing left to close, and posting to
+issues is outward-facing action this pipeline does not take on its own. Both
+live under a `Follow-ups` heading in `tasks.md` as plain bullets, not
+checkboxes, so no gate can tick them on faith. The proposal's Impact bullet has been corrected to say the
 issues are closed and this change delivers the behaviour they asked for.
 
 **Rationale:** A task that cannot be completed inside the change is a task

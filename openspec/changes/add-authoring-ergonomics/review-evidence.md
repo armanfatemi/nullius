@@ -68,3 +68,57 @@ The Probe — stage 2 section above records MISSED. That verdict is real and sta
 ## Coordinator corrections since last append
 
 - I recorded `probe=missed` and initially read it as "the review layer went quiet". Wrong: the reviewers caught it; the synthesis format hid it from the matcher. Caught by re-reading `verifyCanary` before acting on the score. Change: none to state (the score is the score); iteration 1's synthesis cites the full path.
+
+## Stage 2 — Pre-review iteration 1
+
+Dispatched: checker-engineer, test-engineer, architecture-reviewer, rule-auditor (all four router candidates survived pre-flight with iteration-specific targets).
+Grounding gate (Step 0, before plant): exit 0 — 29/29 anchors OK across the change folder.
+
+## False premises
+
+- FP1 `openspec/changes/add-authoring-ergonomics/proposal.md:6` — the `retry` / "must stay in sync" sentence naming `spec/fixtures/rules-valid/src/example.ts`; the file defines only `widgetCount`. Flagged by checker-engineer (as a blocker to clear), architecture-reviewer, rule-auditor (3 of 4); test-engineer did not flag it. rule-auditor identified it as the iteration-0 probe by reading `review-evidence.md`'s probe section; architecture-reviewer identified it via the local registry.
+- FP2 `proposal.md:57` — "the machine output #6 named" [corrected-coordinator]: architecture-reviewer — issue #6 is `check --eager` (an Agent-SDK refute-first loop) and names no machine-readable output. I wrote that sentence in Stage 3 iteration 0 while correcting the neighbouring closed-issues claim, carrying the original proposal's "#6" attribution without checking it.
+
+## Blockers
+
+- B1 [architecture-reviewer] `specs/check-cli/spec.md:20-24` — the `--fix` requirement forbids only `FABRICATED`/`UNPINNED`/failing verdicts; Decision 3's load-bearing filter (`claim.rev === undefined`) is absent, so the normative text mandates exactly the repoint-under-old-stamp the rule forbids. [corrected-coordinator]: Stage 3 iteration 0 rewrote design/proposal/tasks and did not touch the spec.
+- B2 [architecture-reviewer] `specs/check-cli/spec.md:7-9` — `--stamp` SHALL stamp anchors that "verif[y] against the working tree" — verbatim the behaviour Decision 4 rejected. Same omission. [corrected-coordinator]
+
+## Concerns
+
+- C1 [checker-engineer] `parseClaims.ts:120-126` — the `\s*[—–-]+\s*` separator and trailing `\s*$` lie outside every capture group; `rewriteMarker` must splice by match index, not rebuild from groups (an em-dash would silently become a hyphen). Tighten the 1.1 oracle to "every byte outside the `:LINE`/`@rev` spans identical"; mirror the `DOUBLE ?? SINGLE` try order (`parseClaims.ts:321`).
+- C2 [checker-engineer] Decision 2 has two edge shapes, not one: exact X and substring Y both inside the window — verdict stays `drift`, only the reported number moves from Y to X.
+- C3 [checker-engineer] Decision 4 — `verifyAtRev`'s return type is an unnamed fourth string vocabulary; name it, document it is not a `Verdict` with no `PASSING` set; the CLI must pass the same `CheckOptions` object so `driftWindow`/`minAnchorChars` resolve identically.
+- C4 [architecture-reviewer] `failing` in the JSON output must be computed via `isFailure` (`checkClaims.ts:169`, an allowlist) — a renderer enumerating failing verdicts inverts it.
+- C5 [architecture-reviewer] `spec/evidence-anchors.md:240` — the DRIFT row ("text found within the drift window") becomes over-broad under Decision 2; no task edits it.
+- C6 [architecture-reviewer, converging with rule-auditor iteration 0] the funnel string: print plain `audit <doc>` unless the author rules otherwise. Two independent reviewers across two rounds. Not adopted by the coordinator: the proposal's own words name `--propose`, and this is the author's design call — carried as a pending user decision and in the PR body, implemented as the proposal states.
+- C7 [architecture-reviewer] 2.3/3.3 are unchecked boxes for work outside the change; move them out of the task list so no gate ticks them on faith.
+- C8 [test-engineer] 1.1's property test needs a stated trial count and seed or it degenerates into 12 examples / a flaky RNG.
+- C9 [test-engineer] the collect/render split is only indirectly tested through 2.2's parity pins.
+- C10 [test-engineer] `cli.characterization.test.ts` skips silently when `dist/` is absent — not a plan defect; CI builds first.
+
+## Looks good
+
+- Decision 3's `claim.rev === undefined` filter closes the fail-open hole completely (`checkClaims.ts:399` returns `checkUnstamped`'s result whose `claim` is the original stamped claim, `:490`); the converse cannot occur since a malformed `@rev` fails the whole presence regex (checker-engineer).
+- `where.first` is provably non-null at both `drift`/`wrong-line` branches; removing the window scan touches neither `tooShort`/`weak-anchor` nor the stamped path (checker-engineer).
+- Decision 4's read-status gate is strictly narrower than `checkStamped`'s; `--fix --stamp` composition is sound (checker-engineer, rule-auditor).
+- Both iteration-0 test blockers closed; every coded task names a test that would fail pre-change; the 1.2 edge case was hand-traced and genuinely diverges (test-engineer).
+- `readFileAtRev` `unavailable` is simulable through the injected `CheckDeps` seam, as `revAnchors.test.ts:38-45` already does (test-engineer).
+- All anchors OK; proposal.md:12 and design.md agree at `README.md:414@87eb675` (rule-auditor).
+- Decision 2 is legitimate calibration under fuzzy-heuristics-stay-advisory; `Verdict` and `PASSING` untouched (architecture-reviewer).
+
+## Coordinator corrections since last append
+
+- Process: Stage 3 iteration 0 edited `design.md`, `proposal.md` and `tasks.md` and left `specs/check-cli/spec.md` untouched, so the normative requirements still described the two behaviours the design had just rejected. Caught by architecture-reviewer (B1/B2). Change: the spec is rewritten in Stage 3 iteration 1 and the Stage 3 checklist in `progress.md` names all four artefacts.
+- I wrote "the machine output #6 named" into `proposal.md` while correcting the closed-issues sentence, without opening issue #6. False. Caught by architecture-reviewer (FP2). Change: the #6 attribution is removed.
+- Reversal not adopted: two reviewers (rule-auditor iteration 0, architecture-reviewer iteration 1) recommend plain `audit <doc>` over `--propose` in the funnel. I am implementing the proposal's wording and carrying the recommendation to the author rather than overriding an explicit design choice in the user's artefact.
+- Probe: the previous round's probe section in the committed `review-evidence.md` names the plant location, and rule-auditor used it to identify this round's plant. A second side channel alongside the per-clone registry; recorded under the probe section.
+
+## Probe — stage 2 (iteration 1)
+
+verdict: CAUGHT
+planted: openspec/changes/add-authoring-ergonomics/proposal.md:6, under "## Why"
+in scope of: architecture-reviewer (openspec/ path), rule-auditor (unconditional), checker-engineer and test-engineer (both briefed to read proposal.md in full)
+dispatched: checker-engineer, test-engineer, architecture-reviewer, rule-auditor
+found by: checker-engineer, architecture-reviewer, rule-auditor (3 of 4); test-engineer did not flag it (both rounds)
+leak: rule-auditor recognised the plant as "the same planted probe from iteration 0" from this file's own iteration-0 probe section; architecture-reviewer confirmed it via the per-clone registry. Same sentence and line planted in both rounds. verify exit code: 0

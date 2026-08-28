@@ -52,8 +52,8 @@ These are kernel-only changes, independent of every other proposal.
   edits user files. Writes are confined to marker lines whose current content
   the checker just read; a marker that changed between read and write is
   skipped and reported, not overwritten.
-- Delivers what issues #7 and #4 (the `--fix` half) asked for, and the
-  machine output #6 named. All three are already closed; the PR comments on #4
-  and #7 rather than closing anything. The severity-separation half of #4 is
+- Delivers what issues #7 and #4 (the `--fix` half) asked for. Both are
+  already closed; the PR comments on them rather than closing anything.
+  Issue #6 (`--eager`) is unrelated and not addressed here. The severity-separation half of #4 is
   not addressed here. The Action adopts the JSON output only after a release
   ships it.

@@ -2,26 +2,42 @@
 
 ## ADDED Requirements
 
-### Requirement: Stamp verified anchors
+### Requirement: Stamp anchors verified at HEAD
 
-`check --stamp` SHALL rewrite each unstamped presence anchor that verifies
-against the working tree to carry the current short HEAD (`path:line@rev`),
-reading git once per run. Anchors that do not verify SHALL NOT be stamped.
+`check --stamp` SHALL rewrite an unstamped presence anchor to carry the
+current short HEAD (`path:line@rev`) only after reading the cited file at
+HEAD and finding the quote at the cited line in the lines read there
+(`ok` or `weak-anchor` against HEAD, not against the working tree). HEAD
+SHALL be resolved once per run. An anchor whose cited file cannot be read at
+HEAD, or whose quote is not at the cited line at HEAD, SHALL NOT be stamped
+and SHALL be reported as skipped with the reason. When HEAD cannot be
+resolved, `check --stamp` SHALL exit 2 without writing any document.
 
-#### Scenario: only verified claims are settled
+#### Scenario: only claims verified at HEAD are settled
 
-- **WHEN** a document holds one `OK` unstamped anchor and one `FABRICATED`
-  anchor and `check --stamp` runs
-- **THEN** the `OK` anchor gains `@<head>` and the `FABRICATED` anchor is
-  byte-identical, still failing
+- **WHEN** a document holds one unstamped anchor whose quote is at the cited
+  line both in the working tree and at HEAD, one unstamped anchor whose cited
+  file has an uncommitted edit that moved the quote, and one `FABRICATED`
+  anchor, and `check --stamp` runs
+- **THEN** the first anchor gains `@<head>`, the second is byte-identical and
+  reported `not-at-rev`, and the `FABRICATED` anchor is byte-identical, still
+  failing
+
+#### Scenario: no commit to claim
+
+- **WHEN** `check --stamp` runs where HEAD cannot be resolved
+- **THEN** it exits 2 and no document is written
 
 ### Requirement: Fix stale coordinates
 
 `check --fix` SHALL rewrite the cited line number for `DRIFT` and
-`WRONG-LINE` results — the verdicts whose quote still uniquely identifies
-real code. It SHALL NOT alter quoted text and SHALL NOT touch `FABRICATED`,
-`UNPINNED`, or any failing verdict. A marker whose content changed between
-read and write SHALL be skipped and reported.
+`WRONG-LINE` results whose anchor carries no `@rev` — the verdicts whose
+quote still uniquely identifies real code. It SHALL NOT alter quoted text or
+any byte outside the line-number span, SHALL NOT touch any anchor that
+carries a `@rev` stamp whatever its verdict, and SHALL NOT touch
+`FABRICATED`, `UNPINNED`, or any failing verdict. A marker whose line no
+longer parses to the citation the result was computed from SHALL be skipped
+and reported.
 
 #### Scenario: drift repaired, fabrication untouched
 
@@ -30,10 +46,18 @@ read and write SHALL be skipped and reported.
 - **THEN** the citation now reads `:1`, re-checking yields `OK`, and no other
   byte of the document changed
 
+#### Scenario: a stamped anchor is never repointed
+
+- **WHEN** a document holds a stamped anchor whose commit cannot be read, so
+  the checker reports `DRIFT` for it on the fail-open path, and `check --fix`
+  runs
+- **THEN** that anchor is byte-identical
+
 ### Requirement: Machine-readable output
 
 `check --format json` SHALL emit a stable JSON report: one entry per claim
-(verdict, document location, citation, detail) plus summary counts including
+(verdict, document location, citation, detail, `failing` computed by the
+same predicate that decides the exit code) plus summary counts including
 anchor density and zero-anchor documents by name. The default human output
 SHALL be unchanged.
 
