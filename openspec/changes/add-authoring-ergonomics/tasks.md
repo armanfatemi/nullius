@@ -38,7 +38,10 @@ which are read-only inputs to CI gates for other subsystems.
       unstamped `ok`/`weak-anchor` (and just-fixed) anchors that `verifyAtRev`
       returns `ok`/`weak-anchor` for; exit 2 when HEAD cannot be resolved.
       Tests (temp git repos; `unavailable` via the injected `CheckDeps` seam):
-      uncommitted edit to the cited file → `not-at-rev`, not stamped;
+      uncommitted edit added the quote (local `ok`, absent at HEAD) →
+      `not-at-rev`, not stamped; uncommitted edit removed the quote (local
+      `fabricated`, present at HEAD) → not a candidate, byte-identical, still
+      failing;
       `readFileAtRev` `unavailable` → `rev-unreadable`, nothing stamped; no
       HEAD → exit 2, no writes; clean `ok` gains `@<head>` and re-checks `ok`;
       `--fix --stamp` repoints then stamps at the new line

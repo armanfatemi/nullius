@@ -5,23 +5,25 @@
 ### Requirement: Stamp anchors verified at HEAD
 
 `check --stamp` SHALL rewrite an unstamped presence anchor to carry the
-current short HEAD (`path:line@rev`) only after reading the cited file at
-HEAD and finding the quote at the cited line in the lines read there
-(`ok` or `weak-anchor` against HEAD, not against the working tree). HEAD
-SHALL be resolved once per run. An anchor whose cited file cannot be read at
+current short HEAD (`path:line@rev`) only when the anchor verifies at the
+cited line in the working tree (`ok` or `weak-anchor`, or was repointed by
+`--fix` in the same run) **and** the cited file, read at HEAD, holds the
+quote at the cited line. An anchor that fails in the working tree SHALL NOT
+be stamped whatever HEAD holds. HEAD SHALL be resolved once per run. An anchor whose cited file cannot be read at
 HEAD, or whose quote is not at the cited line at HEAD, SHALL NOT be stamped
 and SHALL be reported as skipped with the reason. When HEAD cannot be
 resolved, `check --stamp` SHALL exit 2 without writing any document.
 
 #### Scenario: only claims verified at HEAD are settled
 
-- **WHEN** a document holds one unstamped anchor whose quote is at the cited
-  line both in the working tree and at HEAD, one unstamped anchor whose cited
-  file has an uncommitted edit that moved the quote, and one `FABRICATED`
-  anchor, and `check --stamp` runs
-- **THEN** the first anchor gains `@<head>`, the second is byte-identical and
-  reported `not-at-rev`, and the `FABRICATED` anchor is byte-identical, still
-  failing
+- **WHEN** a document holds (a) an unstamped anchor whose quote is at the
+  cited line both in the working tree and at HEAD, (b) an unstamped anchor
+  whose quote an uncommitted edit added, so it is at the cited line locally
+  but not at HEAD, and (c) an unstamped anchor whose quote an uncommitted
+  edit removed, so it is `FABRICATED` locally but present at HEAD, and
+  `check --stamp` runs
+- **THEN** (a) gains `@<head>`, (b) is byte-identical and reported
+  `not-at-rev`, and (c) is byte-identical and still `FABRICATED`
 
 #### Scenario: no commit to claim
 

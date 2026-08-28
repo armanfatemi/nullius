@@ -420,9 +420,11 @@ directions: `--fix` writes `:LINE`, `--stamp` appends `@rev`, and the marker
 is re-parsed between the two plans.
 
 **Tests this decision owes** (`tasks.md` 1.4, temp-dir git repos in the
-style of `revAnchors.test.ts`): an anchor that passes in the working tree
-but whose cited file has an uncommitted edit that moves or removes the text
-is **not** stamped and is reported `not-at-rev`; with `readFileAtRev`
+style of `revAnchors.test.ts`): an anchor whose quote an uncommitted edit
+added, so it passes in the working tree but is not at HEAD, is **not**
+stamped and is reported `not-at-rev`; an anchor whose quote an uncommitted
+edit removed, so it is `fabricated` locally but present at HEAD, is never a
+candidate — byte-identical and still failing (the laundering case); with `readFileAtRev`
 returning `unavailable` (simulated git timeout) nothing is stamped and every
 candidate is reported `rev-unreadable`; with no resolvable HEAD the command
 exits 2 and writes nothing; a clean-tree `ok` anchor gains `@<head>` and

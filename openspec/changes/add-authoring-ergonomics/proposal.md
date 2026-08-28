@@ -19,12 +19,14 @@ These are kernel-only changes, independent of every other proposal.
 
 ## What Changes
 
-- **`check --stamp`** (kernel): for every unstamped anchor whose quote is at
-  the cited line in the file *as read at HEAD*, rewrite it in place with the
-  current short HEAD. HEAD is resolved once per run; anchors that do not
-  verify at HEAD — including ones that pass in the working tree because of an
-  uncommitted edit — are left untouched and reported (stamping an unverified
-  claim would launder it).
+- **`check --stamp`** (kernel): for every unstamped anchor that verifies in
+  the working tree (`OK`/`WEAK-ANCHOR`, or just repointed by `--fix`) **and**
+  whose quote is at the cited line in the file *as read at HEAD*, rewrite it
+  in place with the current short HEAD. HEAD is resolved once per run; an
+  anchor failing either test — one that passes locally but not at HEAD
+  because of an uncommitted edit, or one that fails locally however HEAD
+  reads — is left untouched and reported (stamping an unverified claim would
+  launder it).
 - **`check --fix`** (kernel): rewrite the line number for `DRIFT` and
   `WRONG-LINE` verdicts — the verdicts where the quote still uniquely
   identifies real code and only the coordinate is stale. Never touches
@@ -32,9 +34,9 @@ These are kernel-only changes, independent of every other proposal.
   the tool fixes citations, not claims. Composes with `--stamp` in one pass. (Subsumes issues #7 and the
   `--fix` half of #4.)
 - **`check --format json`** (kernel): stable machine output — one object per
-  claim result plus the summary counts (anchor density, unanchored docs, the
-  three-way outcome counts from `witness validate`'s sibling philosophy).
-  Human output unchanged and default.
+  claim result plus the summary counts (anchor density, unanchored documents
+  by name, per-verdict counts, failures) and a `version` tag. Human output
+  unchanged and default.
 - **Per-command help and the funnel** (kernel): each command gets `--help`
   with one example invocation; philosophy stays at one line per command, the
   essays stay in the specs. When `check` finds zero grounding markers in a
