@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /* eslint-disable no-console -- this is a CLI tool; console output is its user-facing surface */
 
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -10,6 +10,7 @@ import { globSync } from "glob";
 import {
   checkClaims,
   isFailure,
+  verifyAtRev,
   type CheckOptions,
   type ClaimResult,
 } from "./checkClaims";
@@ -41,8 +42,9 @@ import {
 import { parseConfig, type ClaimsConfig } from "./config";
 import { DEMO_DOC_PATH, demoResults, writeDemoFixture } from "./demo";
 import { buildEagerPrompt } from "./eagerPrompt";
-import { parseClaims } from "./parseClaims";
-import { fileLinesReader, revFileReader, searchRunner } from "./runners";
+import { parseClaims, parsePresenceMarker, type PresenceClaim } from "./parseClaims";
+import { planRewrites, type Rewrite } from "./rewrite";
+import { fileLinesReader, headRev, revFileReader, searchRunner } from "./runners";
 import { checkRuleCoverage, isRuleCoverageFailure } from "./ruleCoverage";
 import { checkRule, isRuleFailure, parseRuleHeader, selectRules } from "./rules";
 import { scanRules } from "./rulesScan";
@@ -75,6 +77,12 @@ const CHECK_HELP = `nullius check [globs...]
                         markers (the floor is per document, not per run)
     --probing           suppress the CANARY-PRESENT merge guard, for the one run
                         that is deliberately checking a planted document
+    --fix               repoint DRIFT / WRONG-LINE anchors that carry no @rev to
+                        the line their quote uniquely matches; stamped anchors
+                        are never moved
+    --stamp             add @<head> to unstamped anchors that hold at HEAD as
+                        well as in the working tree; exits 2 when HEAD cannot
+                        be resolved
   example: nullius check 'docs/**/*.md' --require-markers`;
 
 const DEMO_HELP = `nullius demo
@@ -193,13 +201,18 @@ function loadConfig(explicitPath: string | undefined): ClaimsConfig {
   return parseConfig(JSON.parse(readFileSync(path, "utf8")), path);
 }
 
+/** The `path:line[@rev]` half of a presence citation, as the document states it. */
+function citation(claim: Pick<PresenceClaim, "path" | "line" | "rev">): string {
+  return `${claim.path}:${claim.line}${claim.rev === undefined ? "" : `@${claim.rev}`}`;
+}
+
 function describe(result: ClaimResult): string {
   const { claim } = result;
   switch (claim.kind) {
     case "presence":
       // The rev is shown: which commit an anchor was settled against is the
       // difference between "this failed" and "this used to be true".
-      return `${claim.path}:${claim.line}${claim.rev === undefined ? "" : `@${claim.rev}`}`;
+      return citation(claim);
     case "absence":
       return `${claim.command} → ${claim.expectedCount}`;
     case "moment":
@@ -249,6 +262,48 @@ function report(results: ClaimResult[]): number {
   }
 
   return failures;
+}
+
+/**
+ * One line per marker `--fix` / `--stamp` changed or declined to change, then
+ * a count. Printed AFTER the verdict report for the document, so the run reads
+ * "here is what was found; here is what was changed" — the exit code comes
+ * from the first half and a rewrite never alters it.
+ */
+function reportRewrites(doc: string, plan: ReturnType<typeof planRewrites>): void {
+  const before = (rewrite: Rewrite): string => {
+    const marker = parsePresenceMarker(rewrite.before);
+    return marker === null ? rewrite.before.trim() : citation(marker);
+  };
+  for (const rewrite of plan.applied) {
+    console.log(
+      `rewrote  ${doc}:${rewrite.source.line}  ${before(rewrite)} -> ${citation(rewrite.claim)}`,
+    );
+  }
+  for (const skip of plan.skipped) {
+    console.log(`skipped  ${doc}:${skip.source.line}  ${skip.reason}`);
+  }
+  const fixed = plan.applied.filter((rewrite) => rewrite.kind === "fix").length;
+  const stamped = plan.applied.length - fixed;
+  if (fixed + stamped + plan.skipped.length > 0) {
+    console.log(`${doc}: ${fixed} fixed, ${stamped} stamped, ${plan.skipped.length} skipped`);
+  }
+}
+
+/**
+ * Write via a sibling temp file and rename, so a document is either the old
+ * bytes or the new ones — never a truncated file, which a crash mid-write
+ * would otherwise leave a checker to read as a document with no anchors.
+ */
+function writeAtomically(path: string, content: string): void {
+  const tmp = `${path}.nullius-tmp-${process.pid}`;
+  try {
+    writeFileSync(tmp, content);
+    renameSync(tmp, path);
+  } catch (error) {
+    rmSync(tmp, { force: true });
+    throw error;
+  }
 }
 
 function packageVersion(): string {
@@ -697,6 +752,20 @@ function runCheck(args: CheckArgs): number {
     runSearch: searchRunner(undefined, config.searchTimeoutMs),
   };
 
+  // A stamp is a claim about a commit, so HEAD is resolved once, up front, and
+  // no document is read — let alone written — when there is no commit to
+  // claim. Resolved after the glob so an empty match keeps its own exit code.
+  let head: string | null = null;
+  if (args.stamp) {
+    head = headRev();
+    if (head === null) {
+      console.error(
+        "cannot stamp: HEAD could not be resolved — not a git repository, or git is unavailable",
+      );
+      return 2;
+    }
+  }
+
   // The canary merge guard: registry content is untrusted and read once; the
   // guard never opens a file — it only inspects documents already matched.
   const { entry: activeCanary, warning: canaryWarning } = loadActiveCanary(
@@ -734,6 +803,22 @@ function runCheck(args: CheckArgs): number {
     absenceAnchors += claims.filter((claim) => claim.kind === "absence").length;
     console.log(`--- ${doc} — ${parsed.length} anchor(s) / ${lines} lines`);
     failures += report(results);
+
+    // Rewrites are planned from `parsed`, never `results`: the canary guard is
+    // not a marker and must not reach the planner. The exit code was already
+    // counted above, from the pre-rewrite verdicts.
+    if (args.fix || head !== null) {
+      const rev = head;
+      const plan = planRewrites(content, parsed, {
+        fix: args.fix,
+        stamp:
+          rev === null
+            ? null
+            : { rev, verify: (claim) => verifyAtRev(claim, rev, deps, options) },
+      });
+      if (plan.applied.length > 0) writeAtomically(doc, plan.content);
+      reportRewrites(doc, plan);
+    }
   }
 
   if (canaryWarning !== undefined) {

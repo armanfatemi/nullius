@@ -258,3 +258,10 @@ type-check: pass
 test: pass (claims 21/22 files; 714 passed, 6 known ugrep failures in flagConformance; kit 234 passed)
 dogfood gates: pass, both polarities (witness 0/1; wiring 0/1; wiring . 0; check README+spec --require-markers 0; check openspec 0)
 smoke: `check --help` prints exactly one example line
+
+## Stage 5 — Verify chunk 1.3 + 1.4 CLI (--fix/--stamp)
+
+build: pass
+type-check: pass
+test: pass (claims 22/23 files; 728 passed, 6 known ugrep failures in flagConformance; kit 234 passed)
+dogfood gates: pass, both polarities (witness 0/1; wiring 0/1; wiring . 0; check README+spec --require-markers 0; check openspec 0)

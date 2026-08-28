@@ -27,6 +27,16 @@ export interface CheckArgs {
    * run wants the guard, which is why the default is off.
    */
   probing: boolean;
+  /**
+   * Repoint `drift` / `wrong-line` anchors that carry no `@rev` to the line
+   * their quote uniquely matches. Never touches a stamped anchor.
+   */
+  fix: boolean;
+  /**
+   * Add `@<head>` to unstamped anchors that verify at HEAD as well as in the
+   * working tree. Exits 2 when HEAD cannot be resolved.
+   */
+  stamp: boolean;
 }
 
 export interface AuditArgs {
@@ -89,6 +99,8 @@ export type Command =
 const FLAG_OWNERS: ReadonlyMap<string, string> = new Map([
   ["--require-markers", "check"],
   ["--probing", "check"],
+  ["--fix", "check"],
+  ["--stamp", "check"],
   ["--emit-brief", "audit"],
   ["--extract", "audit"],
   ["--propose", "audit"],
@@ -219,6 +231,8 @@ function parseCheck(rawArgv: readonly string[]): CheckArgs {
     configPath: undefined,
     requireMarkers: false,
     probing: false,
+    fix: false,
+    stamp: false,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -228,6 +242,10 @@ function parseCheck(rawArgv: readonly string[]): CheckArgs {
       args.requireMarkers = true;
     } else if (arg === "--probing") {
       args.probing = true;
+    } else if (arg === "--fix") {
+      args.fix = true;
+    } else if (arg === "--stamp") {
+      args.stamp = true;
     } else if (arg === "--config") {
       index += 1;
       args.configPath = requireValue(argv, index, "--config", "a path argument");

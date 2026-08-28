@@ -96,6 +96,25 @@ describe("parseCli — check", () => {
     expect(args).toMatchObject({ kind: "check", globs: ["a.md", "b.md"] });
   });
 
+  it("defaults --fix and --stamp to off", () => {
+    expect(parse("check", "a.md")).toMatchObject({ fix: false, stamp: false });
+  });
+
+  it("parses --fix and --stamp, together or apart", () => {
+    expect(parse("check", "--fix", "a.md")).toMatchObject({ fix: true, stamp: false, globs: ["a.md"] });
+    expect(parse("check", "a.md", "--stamp")).toMatchObject({ fix: false, stamp: true, globs: ["a.md"] });
+    expect(parse("check", "--fix", "--stamp", "a.md")).toMatchObject({ fix: true, stamp: true });
+  });
+
+  it("names check as the owner when --fix or --stamp lands on another command", () => {
+    expect(() => parse("audit", "doc.md", "--fix")).toThrow(
+      /--fix is an option of `check`, not `audit`/,
+    );
+    expect(() => parse("audit", "doc.md", "--stamp")).toThrow(
+      /--stamp is an option of `check`, not `audit`/,
+    );
+  });
+
   it("consumes the value after --config", () => {
     expect(parse("check", "--config", "custom.json", "a.md")).toMatchObject({
       configPath: "custom.json",

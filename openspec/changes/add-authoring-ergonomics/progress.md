@@ -1,6 +1,6 @@
 # Progress — proposal-to-pr: add-authoring-ergonomics
 
-_Started 2026-08-28T02:41:50Z; last updated 2026-08-28T04:03:26Z_
+_Started 2026-08-28T02:41:50Z; last updated 2026-08-28T04:10:34Z_
 
 ## Phases completed
 
@@ -14,7 +14,7 @@ _Started 2026-08-28T02:41:50Z; last updated 2026-08-28T04:03:26Z_
 
 ## Current phase
 
-**Stage 4 (Implement)**, section 1 (rewrite machinery): 1.2 committed bb44f65; 1.1 dispatched; then 1.3, 1.4. Stage 2 iteration 4 was clean (probe CAUGHT); Stage 5 green after 1.2.
+**Stage 4 (Implement)** — committed: 1.2 (bb44f65), 1.1 + 1.4-kernel + 3.1 (91323e9); in flight: 1.3 + 1.4 CLI wiring; then 2.1 → 2.2 → 3.2. Stage 5 green after each chunk.
 
 ## Next 3 actions
 

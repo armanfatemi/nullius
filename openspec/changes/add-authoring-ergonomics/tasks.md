@@ -26,12 +26,12 @@ which are read-only inputs to CI gates for other subsystems.
       only on those two verdicts; absent on the stamped path; exact-far /
       substring-near → `wrong-line` naming the exact line; exact-near /
       substring-nearer → `drift` naming the exact line
-- [ ] 1.3 `--fix`: rewrite for `drift`/`wrong-line` **with `claim.rev`
+- [x] 1.3 `--fix`: rewrite for `drift`/`wrong-line` **with `claim.rev`
       undefined only**; compose with `--stamp`. Tests: a stamped anchor is never
       rewritten, including when `readFileAtRev` returns `unknown-rev` and the
       verdict is `drift`; `fabricated`/`unpinned` byte-identical; `drift` and
       `wrong-line` repoint and re-check `ok`
-- [ ] 1.4 `headRev(root)` in `runners.ts`; `verifyAtRev` exported from
+- [x] 1.4 `headRev(root)` in `runners.ts`; `verifyAtRev` exported from
       `checkClaims.ts` returning the named `RevVerification` vocabulary (not a
       `Verdict`; no PASSING set) and requiring `readFileAtRev` status `ok`; the
       CLI passes the same `CheckOptions` it gave `checkClaims`; `--stamp` stamps
