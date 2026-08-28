@@ -1,6 +1,6 @@
 # Progress — proposal-to-pr: add-authoring-ergonomics
 
-_Started 2026-08-28T02:41:50Z; last updated 2026-08-28T19:30:43Z_
+_Started 2026-08-28T02:41:50Z; last updated 2026-08-28T19:42:23Z_
 
 ## Phases completed
 
@@ -14,7 +14,7 @@ _Started 2026-08-28T02:41:50Z; last updated 2026-08-28T19:30:43Z_
 
 ## Current phase
 
-**Stage 7 (Address must-fixes)** — Stage 6 found 1 blocker + 2 promoted concerns; fixed in 5909b77, Stage 5 green; re-running Stage 6 (checker-engineer, architecture-reviewer) on the fix diff.
+**Stage 9 (Retro)** — PR open: https://github.com/armanfatemi/nullius/pull/42 (base main, head feat/add-authoring-ergonomics, 13 commits). Stage 6 second pass clean; concerns folded or carried in the PR body. retro-writer dispatched.
 
 ## Next 3 actions
 
