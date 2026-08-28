@@ -16,11 +16,25 @@
  * `process.exit(main())` and therefore cannot be imported by a test.
  */
 
+export type CheckFormat = "human" | "json";
+
+const CHECK_FORMATS: ReadonlySet<string> = new Set<CheckFormat>(["human", "json"]);
+
+function isCheckFormat(value: string): value is CheckFormat {
+  return CHECK_FORMATS.has(value);
+}
+
 export interface CheckArgs {
   kind: "check";
   globs: string[];
   configPath: string | undefined;
   requireMarkers: boolean;
+  /**
+   * Which renderer reads the collected results. `json` puts exactly one
+   * version-tagged document on stdout and nothing else; stderr diagnostics
+   * and the exit code are the same as `human`.
+   */
+  format: CheckFormat;
   /**
    * Suppress the CANARY-PRESENT merge guard. Set only by the probe run that
    * deliberately checks a document with a planted canary in it; every other
@@ -101,6 +115,7 @@ const FLAG_OWNERS: ReadonlyMap<string, string> = new Map([
   ["--probing", "check"],
   ["--fix", "check"],
   ["--stamp", "check"],
+  ["--format", "check"],
   ["--emit-brief", "audit"],
   ["--extract", "audit"],
   ["--propose", "audit"],
@@ -230,6 +245,7 @@ function parseCheck(rawArgv: readonly string[]): CheckArgs {
     globs: [...literal],
     configPath: undefined,
     requireMarkers: false,
+    format: "human",
     probing: false,
     fix: false,
     stamp: false,
@@ -246,6 +262,13 @@ function parseCheck(rawArgv: readonly string[]): CheckArgs {
       args.fix = true;
     } else if (arg === "--stamp") {
       args.stamp = true;
+    } else if (arg === "--format") {
+      index += 1;
+      const value = requireValue(argv, index, "--format", "a value: human or json");
+      if (!isCheckFormat(value)) {
+        throw new CliError(`--format must be one of human|json, got: ${value}`);
+      }
+      args.format = value;
     } else if (arg === "--config") {
       index += 1;
       args.configPath = requireValue(argv, index, "--config", "a path argument");

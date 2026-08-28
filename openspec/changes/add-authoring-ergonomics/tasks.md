@@ -48,7 +48,7 @@ which are read-only inputs to CI gates for other subsystems.
 
 ## 2. Output
 
-- [ ] 2.1 Split `runCheck` into collect and render; failure count and marker
+- [x] 2.1 Split `runCheck` into collect and render; failure count and marker
       floor computed from the collected structure; `failing` computed via
       `isFailure`, never by enumerating failing verdicts; `--format
       <human|json>` with the Decision 5 schema (`version: 1`, `foundLine`,

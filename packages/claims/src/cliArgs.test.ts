@@ -135,6 +135,30 @@ describe("parseCli — check", () => {
       requireMarkers: false,
     });
   });
+
+  it("defaults --format to human", () => {
+    expect(parse("check", "a.md")).toMatchObject({ format: "human" });
+  });
+
+  it("parses --format json and --format human", () => {
+    expect(parse("check", "--format", "json", "a.md")).toMatchObject({ format: "json", globs: ["a.md"] });
+    expect(parse("check", "a.md", "--format", "human")).toMatchObject({ format: "human", globs: ["a.md"] });
+  });
+
+  it("rejects any other --format value, naming the two it accepts", () => {
+    expect(() => parse("check", "--format", "xml", "a.md")).toThrow(/human.*json/);
+    expect(() => parse("check", "--format", "xml", "a.md")).toThrow(CliError);
+  });
+
+  it("refuses --format with nothing after it", () => {
+    expect(() => parse("check", "a.md", "--format")).toThrow(/--format requires/);
+  });
+
+  it("names check as the owner when --format lands on another command", () => {
+    expect(() => parse("audit", "doc.md", "--format", "json")).toThrow(
+      /--format is an option of `check`, not `audit`/,
+    );
+  });
 });
 
 describe("parseCli — audit", () => {

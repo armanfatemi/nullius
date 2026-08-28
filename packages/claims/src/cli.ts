@@ -11,9 +11,22 @@ import {
   checkClaims,
   isFailure,
   verifyAtRev,
+  type CheckDeps,
   type CheckOptions,
   type ClaimResult,
 } from "./checkClaims";
+import {
+  allResults,
+  citation,
+  countFailures,
+  describe,
+  exitCode,
+  label,
+  renderJson,
+  summarize,
+  type CheckedDocument,
+  type CheckRun,
+} from "./checkReport";
 import {
   canaryGuardResult,
   clearCanary,
@@ -21,6 +34,7 @@ import {
   normalizeRepoPath,
   plantCanary,
   verifyCanary,
+  type CanaryEntry,
 } from "./canary";
 import {
   buildAuditBrief,
@@ -42,8 +56,8 @@ import {
 import { parseConfig, type ClaimsConfig } from "./config";
 import { DEMO_DOC_PATH, demoResults, writeDemoFixture } from "./demo";
 import { buildEagerPrompt } from "./eagerPrompt";
-import { parseClaims, parsePresenceMarker, type PresenceClaim } from "./parseClaims";
-import { planRewrites, type Rewrite } from "./rewrite";
+import { parseClaims, parsePresenceMarker } from "./parseClaims";
+import { planRewrites, type Rewrite, type RewritePlan } from "./rewrite";
 import { fileLinesReader, headRev, revFileReader, searchRunner } from "./runners";
 import { checkRuleCoverage, isRuleCoverageFailure } from "./ruleCoverage";
 import { checkRule, isRuleFailure, parseRuleHeader, selectRules } from "./rules";
@@ -83,6 +97,9 @@ const CHECK_HELP = `nullius check [globs...]
     --stamp             add @<head> to unstamped anchors that hold at HEAD as
                         well as in the working tree; exits 2 when HEAD cannot
                         be resolved
+    --format <human|json>
+                        json: one version-tagged JSON document on stdout and
+                        nothing else; stderr and the exit code are unchanged
   example: nullius check 'docs/**/*.md' --require-markers`;
 
 const DEMO_HELP = `nullius demo
@@ -201,45 +218,12 @@ function loadConfig(explicitPath: string | undefined): ClaimsConfig {
   return parseConfig(JSON.parse(readFileSync(path, "utf8")), path);
 }
 
-/** The `path:line[@rev]` half of a presence citation, as the document states it. */
-function citation(claim: Pick<PresenceClaim, "path" | "line" | "rev">): string {
-  return `${claim.path}:${claim.line}${claim.rev === undefined ? "" : `@${claim.rev}`}`;
-}
-
-function describe(result: ClaimResult): string {
-  const { claim } = result;
-  switch (claim.kind) {
-    case "presence":
-      // The rev is shown: which commit an anchor was settled against is the
-      // difference between "this failed" and "this used to be true".
-      return citation(claim);
-    case "absence":
-      return `${claim.command} → ${claim.expectedCount}`;
-    case "moment":
-      return `binds at ${claim.moment}`;
-    case "canary":
-      return "registered canary";
-    case "malformed":
-      return claim.raw;
-  }
-}
-
 /**
- * `OK` on an absence claim is the tool over-claiming on the author's behalf: a
- * search that found nothing certifies the search, never the absence. The
- * verdict is the part a reader remembers, so it says what was actually
- * established.
+ * Prints one line per result, failures to stderr with their detail. Prints
+ * only: the failure count comes from the collected structure (`summarize`),
+ * so the exit code is decided once and no renderer re-derives it.
  */
-function label(result: ClaimResult): string {
-  if (result.verdict === "ok" && result.claim.kind === "absence") {
-    return "SEARCH-CLEAN";
-  }
-  return result.verdict.toUpperCase();
-}
-
-function report(results: ClaimResult[]): number {
-  let failures = 0;
-
+function report(results: readonly ClaimResult[]): void {
   for (const result of results) {
     const { source } = result.claim;
     const where = `${source.doc}:${source.line}`;
@@ -252,7 +236,6 @@ function report(results: ClaimResult[]): number {
 
     const line = `${label(result).padEnd(13)} ${where}  ${what}`;
     if (isFailure(result.verdict)) {
-      failures += 1;
       console.error(line);
       console.error(`              ! ${result.detail}`);
     } else {
@@ -260,8 +243,6 @@ function report(results: ClaimResult[]): number {
       console.log(`              ~ ${result.detail}`);
     }
   }
-
-  return failures;
 }
 
 /**
@@ -270,7 +251,7 @@ function report(results: ClaimResult[]): number {
  * "here is what was found; here is what was changed" — the exit code comes
  * from the first half and a rewrite never alters it.
  */
-function reportRewrites(doc: string, plan: ReturnType<typeof planRewrites>): void {
+function reportRewrites(doc: string, plan: RewritePlan): void {
   const before = (rewrite: Rewrite): string => {
     const marker = parsePresenceMarker(rewrite.before);
     return marker === null ? rewrite.before.trim() : citation(marker);
@@ -325,7 +306,9 @@ function runDemo(): number {
   console.log(`Fixture: ${root}`);
   console.log("");
   console.log(`--- ${DEMO_DOC_PATH}`);
-  const failures = report(demoResults(root, rev));
+  const results = demoResults(root, rev);
+  report(results);
+  const failures = countFailures(results);
 
   console.log("");
   console.log(
@@ -772,53 +755,14 @@ function runCheck(args: CheckArgs): number {
     process.cwd(),
   );
 
-  let failures = 0;
-  let checked = 0;
-  let presenceAnchors = 0;
-  let absenceAnchors = 0;
-  let guardFired = false;
-  const unanchored: { doc: string; lines: number }[] = [];
+  const run = collectCheck(docs, args, deps, options, activeCanary, head);
 
-  for (const doc of docs) {
-    const content = readFileSync(doc, "utf8");
-    const lines = content.split("\n").length;
-    const claims = parseClaims(doc, content);
-    const parsed = checkClaims(claims, deps, options);
-    const guard =
-      activeCanary !== null && !args.probing
-        ? canaryGuardResult(normalizeRepoPath(doc), content, activeCanary)
-        : null;
-    if (guard !== null) guardFired = true;
-    const results = guard === null ? parsed : [guard, ...parsed];
-
-    // The guard is not a grounding marker: density reports what the AUTHOR
-    // anchored, so a canary must not lift a document off the no-anchors list.
-    if (parsed.length === 0) {
-      unanchored.push({ doc, lines });
-    }
-    if (results.length === 0) continue;
-
-    checked += parsed.length;
-    presenceAnchors += claims.filter((claim) => claim.kind === "presence").length;
-    absenceAnchors += claims.filter((claim) => claim.kind === "absence").length;
-    console.log(`--- ${doc} — ${parsed.length} anchor(s) / ${lines} lines`);
-    failures += report(results);
-
-    // Rewrites are planned from `parsed`, never `results`: the canary guard is
-    // not a marker and must not reach the planner. The exit code was already
-    // counted above, from the pre-rewrite verdicts.
-    if (args.fix || head !== null) {
-      const rev = head;
-      const plan = planRewrites(content, parsed, {
-        fix: args.fix,
-        stamp:
-          rev === null
-            ? null
-            : { rev, verify: (claim) => verifyAtRev(claim, rev, deps, options) },
-      });
-      if (plan.applied.length > 0) writeAtomically(doc, plan.content);
-      reportRewrites(doc, plan);
-    }
+  if (args.format === "json") {
+    // stdout is the document and nothing else. Every diagnostic below keeps
+    // its stream, and the exit code is the same expression human mode uses.
+    process.stdout.write(renderJson(run));
+  } else {
+    renderHumanDocuments(run);
   }
 
   if (canaryWarning !== undefined) {
@@ -840,12 +784,84 @@ function runCheck(args: CheckArgs): number {
       console.error(
         `warning: the registered canary points at a document outside the matched set (${activeCanary.doc}) — not read; run \`canary status\``,
       );
-    } else if (!guardFired && !args.probing) {
+    } else if (!run.guardFired && !args.probing) {
       console.error(
         `warning: the registered canary is no longer present in ${activeCanary.doc} — stale registry; delete .git/nullius/canaries.json after restoring the document`,
       );
     }
   }
+
+  if (args.format === "human") renderHumanSummary(run);
+  return exitCode(run);
+}
+
+/**
+ * The collect phase: reads, parses and verifies every matched document,
+ * applies any `--fix` / `--stamp` rewrites, and returns the one structure
+ * both renderers and the exit code read. The reads and writes ARE the check,
+ * so they belong here; printing does not, and none happens.
+ */
+function collectCheck(
+  docs: readonly string[],
+  args: CheckArgs,
+  deps: CheckDeps,
+  options: CheckOptions,
+  activeCanary: CanaryEntry | null,
+  head: string | null,
+): CheckRun {
+  const documents: CheckedDocument[] = [];
+
+  for (const doc of docs) {
+    const content = readFileSync(doc, "utf8");
+    const lines = content.split("\n").length;
+    const claims = parseClaims(doc, content);
+    const results = checkClaims(claims, deps, options);
+    const guard =
+      activeCanary !== null && !args.probing
+        ? canaryGuardResult(normalizeRepoPath(doc), content, activeCanary)
+        : null;
+
+    // Rewrites are planned from the parsed results, never the guard: the
+    // canary is not a marker and must not reach the planner. The exit code
+    // is counted from these same pre-rewrite verdicts.
+    let plan: RewritePlan | null = null;
+    if (args.fix || head !== null) {
+      const rev = head;
+      plan = planRewrites(content, results, {
+        fix: args.fix,
+        stamp:
+          rev === null
+            ? null
+            : { rev, verify: (claim) => verifyAtRev(claim, rev, deps, options) },
+      });
+      if (plan.applied.length > 0) writeAtomically(doc, plan.content);
+    }
+
+    documents.push({ doc, lines, claims, results, guard, plan });
+  }
+
+  return summarize(documents, args.requireMarkers);
+}
+
+/** Human renderer, first half: one block per document that had anything to say. */
+function renderHumanDocuments(run: CheckRun): void {
+  for (const document of run.documents) {
+    const results = allResults(document);
+    if (results.length === 0) continue;
+
+    console.log(
+      `--- ${document.doc} — ${document.results.length} anchor(s) / ${document.lines} lines`,
+    );
+    report(results);
+    // AFTER the verdict report for the document, so the run reads "here is
+    // what was found; here is what was changed".
+    if (document.plan !== null) reportRewrites(document.doc, document.plan);
+  }
+}
+
+/** Human renderer, second half: density, counts, and the closing verdict. */
+function renderHumanSummary(run: CheckRun): void {
+  const { documents, unanchored } = run;
 
   // Anchor density is reported, never judged: the checker cannot know how
   // many claims a document OUGHT to carry, but a long document with zero
@@ -860,22 +876,19 @@ function runCheck(args: CheckArgs): number {
 
   console.log("");
   console.log(
-    `${docs.length - unanchored.length} of ${docs.length} matched document(s) carry grounding markers.`,
+    `${documents.length - unanchored.length} of ${documents.length} matched document(s) carry grounding markers.`,
   );
   // Presence and absence are counted apart because they are not the same
   // evidence. A presence anchor made the author open a file; an absence anchor
   // made them run one search. A proposal resting entirely on absence claims
   // should be visible as such at a glance.
-  if (checked > 0) {
+  if (run.checked > 0) {
     console.log(
-      `${presenceAnchors} presence anchor(s), ${absenceAnchors} search anchor(s).`,
+      `${run.presenceAnchors} presence anchor(s), ${run.absenceAnchors} search anchor(s).`,
     );
   }
 
-  // The floor is per DOCUMENT, not per run: one anchored document must never
-  // license every other document in the glob to carry none.
-  const markerFloorFailed = args.requireMarkers && unanchored.length > 0;
-  if (markerFloorFailed) {
+  if (run.markerFloorFailed) {
     console.error("");
     console.error(
       `${unanchored.length} document(s) carry no grounding markers — under --require-markers a document with no citations is not a pass.`,
@@ -888,21 +901,20 @@ function runCheck(args: CheckArgs): number {
   // Both failure modes are reported: a run can breach the marker floor AND
   // carry unverified claims, and silently dropping one of the two summaries
   // hides work the author still has to do.
-  if (failures > 0) {
+  if (run.failures > 0) {
     console.error("");
-    console.error(`${failures} unverified claim(s).`);
+    console.error(`${run.failures} unverified claim(s).`);
     console.error(
       'Open the cited file and correct the claim, or move it to "Open questions".',
     );
   }
 
-  if (markerFloorFailed || failures > 0) {
+  if (exitCode(run) !== 0) {
     console.error(`See ${SPEC_URL}.`);
-    return 1;
+    return;
   }
 
-  console.log(`All ${checked} grounding marker(s) verified.`);
-  return 0;
+  console.log(`All ${run.checked} grounding marker(s) verified.`);
 }
 
 /**
