@@ -192,12 +192,16 @@ original decision — the three ref shapes considered and why the commit chain w
 
 ## Decision 5 — git failure is never a recording failure
 
-The kit ships no process spawning at all today.
+This change gives the kit its first process spawn. It is confined to
+`identity.ts`, and in particular it stays off the locked write path — the two
+modules that run while the append lock is held spawn nothing:
 
-**Evidence:** `grep -rn --exclude='*.test.ts' 'child_process' packages/kit/src/` → 0 results
- Adding git touches the one
-constraint that has no exceptions: a hook that cannot run must never break the
-session.
+**Evidence:** `grep -rn --exclude='*.test.ts' 'child_process' packages/kit/src/journalFile.ts packages/kit/src/record.ts` → 0 results
+
+(Before this change the count was zero across the whole of `packages/kit/src/`,
+which is why the narrower absence is the one worth pinning: it is the half that
+has to keep holding.) Adding git touches the one constraint that has no
+exceptions: a hook that cannot run must never break the session.
 
 So every git read in this change is best-effort and every failure is silent in
 the journal and loud in `doctor`:
@@ -281,18 +285,27 @@ So the construction is specified rather than left to the implementer:
 - **Salt:** a random salt generated once, never committed. It makes the digest
   stable wherever the salt is stable — which is all `worktree` promises — while
   removing the preimage-guess path entirely, because the guesser does not have
-  the salt. **The salt is per-worktree, not per-clone**, because `.nullius/`
-  lives in the working tree; task 3.5b decides deliberately whether it should
-  move to the git common directory instead, and records the reason. Those two
-  placements are the whole decision, and this document names one unit
-  throughout: per-worktree, unless 3.5b changes it and changes this sentence
-  with it.
+  the salt.
+- **Placement — the salt is per-clone.** Task 3.5b required this to be decided
+  rather than inherited, and it was decided against the first draft's
+  per-worktree wording: the salt lives in the **git common directory**, shared
+  by every worktree of one clone. Two reasons. First, it cannot be committed by
+  construction — a salt in the working tree is safe only while a `.gitignore`
+  rule holds, and that rule is a per-repository ritual this change can perform
+  for exactly one repository, while the kit writes salts into every repository
+  it records in. Git tracks nothing inside the git directory, so here the
+  placement *is* the guarantee, and that matters because the failure is silent:
+  a committed salt makes every digest reproducible by anyone holding the repo,
+  and nothing reports it. Second, per-clone loses nothing — sibling worktrees
+  are told apart by their *paths*, not by the salt, so they still differ — and
+  it gains a comparison, making `worktree` values mutually meaningful across the
+  sixty-four sibling trees this schema is built for. This document names one
+  unit throughout: per-clone.
 - **Consequence, stated so nobody discovers it later:** `worktree` values are
-  *not* comparable across clones or across machines, and under the per-worktree
-  placement they are not comparable across sibling worktrees either — which is
-  harmless, since sibling worktrees are exactly the case the field is meant to
-  distinguish. That is the correct trade for this schema, whose only question is
-  "same tree?" within a corpus produced together.
+  *not* comparable across clones or across machines. That is the correct trade
+  for this schema, whose only question is "same tree?" within a corpus produced
+  together. Within one clone, including across its sibling worktrees, they are
+  comparable — which is the case the field exists for.
 
 ## Risks
 
@@ -325,15 +338,17 @@ So the construction is specified rather than left to the implementer:
   the digest a real redaction also makes it local to wherever the salt lives.
   Anything later trying to correlate worktrees across machines will find the
   field useless for that, by construction. Stated in Decision 6 so it is a
-  known boundary rather than a bug report. Note the unit is per-*worktree*
-  rather than per-clone as first written, because `.nullius/` is in the working
-  tree — task 3.5b decides deliberately whether the salt should move to the git
-  common directory instead, and records the reason either way.
+  known boundary rather than a bug report. The unit is per-*clone*: task 3.5b
+  put the salt in the git common directory rather than in the working tree, and
+  Decision 6 carries the reason.
 - **The salt is only a redaction if it is not committed.** `.gitignore` covers
   `.nullius/runs/` and `.nullius/probes/` and nothing else, so a salt written
-  beside them lands in the repository by default and the preimage argument
-  evaporates. Task 3.5a adds the ignore rule in the same commit that creates
-  the file; the two must not be separable.
+  beside them would land in the repository by default and the preimage argument
+  would evaporate — and an ignore rule protects only the one repository it is
+  written into, while the kit writes a salt wherever it records. Task 3.5a's
+  obligation is therefore discharged by placement instead: the git common
+  directory holds nothing git will track, so no ignore rule can be deleted out
+  from under the redaction.
 - **The rule this change writes down is prose, and prose is what failed.** It
   was misapplied by its own author in iteration 1 and restated with a missing
   clause in iteration 2. Nothing mechanically checks that a schema change and a

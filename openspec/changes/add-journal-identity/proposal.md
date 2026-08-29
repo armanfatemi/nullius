@@ -120,10 +120,12 @@ from aggregating verdicts, never from merging records. See Decision 1.
 
   So the "adds no verdict" claim is structurally safe rather than merely
   intended: a verdict added later fails safe by default.
-- **New dependency direction in the kit.** Nothing in the kit's shipping code
-  spawns a process today:
+- **New dependency direction in the kit.** This change gives the kit its first
+  process spawn. Nothing in the kit's shipping code spawned one before it, and
+  the spawn it adds stays off the locked write path — the two modules that run
+  while the append lock is held spawn nothing:
 
-  **Evidence:** `grep -rn --exclude='*.test.ts' 'child_process' packages/kit/src/` → 0 results
+  **Evidence:** `grep -rn --exclude='*.test.ts' 'child_process' packages/kit/src/journalFile.ts packages/kit/src/record.ts` → 0 results
 
   Reading `branch`/`head` needs git. This is a real widening of the kit's
   surface and it is governed by two rules, not one. The first is **git failure

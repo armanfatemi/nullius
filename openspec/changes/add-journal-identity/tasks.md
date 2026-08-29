@@ -151,21 +151,21 @@ it going wrong silently.
 
 ## 3. Kit — identity
 
-- [ ] 3.1 A git helper with one rule: every call best-effort, bounded, and
+- [x] 3.1 A git helper with one rule: every call best-effort, bounded, and
       never able to throw into the append path. The kernel's `revFileReader` is
       **not** the reuse candidate — it reads a file at a rev and cannot answer
       branch, head or worktree; `headRev` covers `head` only, and `branch` and
       `worktree` need new calls. Reuse the kernel's bounded-spawn discipline,
       not that function, and give this helper its own budget (see 3.2)
-- [ ] 3.2 The identity timeout is in the hundreds of milliseconds, strictly
+- [x] 3.2 The identity timeout is in the hundreds of milliseconds, strictly
       below the lock's `DEFAULT_WAIT_MS` of 2 000 — **not** the kernel's
       `DEFAULT_GIT_TIMEOUT_MS` of 10 000, which is five times the deadline at
       which a waiting hook's append is refused outright
-- [ ] 3.3 Resolve identity **before** the append lock is acquired and pass it
+- [x] 3.3 Resolve identity **before** the append lock is acquired and pass it
       to `headerRecord` as data. `headerRecord` stays a pure function of its
       draft and never spawns a process. Test that no git invocation occurs
       while the lock is held
-- [ ] 3.3a **Reconcile 3.3 with 3.4, which as first written contradict each
+- [x] 3.3a **Reconcile 3.3 with 3.4, which as first written contradict each
       other.** Whether a header is needed at all is decided under the lock, by
       testing the journal file's size — so "resolve before the lock" taken
       literally means resolving on *every* event, which 3.4 forbids. The
@@ -184,39 +184,57 @@ it going wrong silently.
       chance — the journal carries no identity for its whole life. Acceptable
       under "git failure is never a recording failure", but a real loss that
       must not be discovered later as a surprise
-- [ ] 3.4 `headerRecord` gains `branch` / `head` / `worktree`; all three
+- [x] 3.4 `headerRecord` gains `branch` / `head` / `worktree`; all three
       omitted when git cannot answer. One resolution per session — never per
       event; see 3.3a for how that is achieved without moving work under the
       lock
-- [ ] 3.5 `worktree` is SHA-256 of the absolute worktree path, hex, truncated
+- [x] 3.5 `worktree` is SHA-256 of the absolute worktree path, hex, truncated
       to 16 characters, salted with a random salt. Never the path itself, and
       never an unsalted digest — an absolute worktree path is low-entropy
       enough that an unsalted hash is confirmable by preimage guess, which is
       the disclosure the probe corpus redacted
-- [ ] 3.5a **Add the salt file to `.gitignore` in the same commit that creates
+- [x] 3.5a **Add the salt file to `.gitignore` in the same commit that creates
       it.** `.gitignore` covers `.nullius/runs/` and `.nullius/probes/` and
       nothing else, so a salt written beside the runs directory is committed by
       default — and a committed salt makes the digest reproducible by anyone
       with the repository, voiding the entire preimage argument 3.5 rests on.
       The ignore rule is not a tidiness step; it is the load-bearing half of
-      the redaction
-- [ ] 3.5b **The salt is per-worktree, not per-clone — say so and check the
-      consequence.** `.nullius/` lives in the working tree, so sibling
-      worktrees of one clone get different salts and therefore different
-      `worktree` values for genuinely different trees, which is correct. But it
-      also means the field cannot answer "same tree?" across a re-clone, and
-      the design's "per-clone" wording is wrong. Decide deliberately whether
-      the salt belongs in the git common directory instead — shared across
+      the redaction.
+      **Discharged by placement, not by an ignore rule — see 3.5b.** No salt is
+      written beside the runs directory, so there is nothing under `.nullius/`
+      to ignore and `.gitignore` is unchanged. The obligation this task states
+      is met more strongly: an ignore rule protects one repository and can be
+      deleted or overridden by `git add -f`, while the git common directory
+      holds nothing git will ever track, in every repository the kit records
+      in. If the salt is ever moved back into the working tree, this task
+      becomes live again and blocking
+- [x] 3.5b **Decide the salt's unit — per-worktree or per-clone — and name one
+      unit throughout.** As first drafted this task asserted per-worktree,
+      reasoning that `.nullius/` lives in the working tree so sibling worktrees
+      of one clone would get different salts. That framing assumed the salt had
+      to live beside the runs directory. Decide instead whether it belongs in
+      the git common directory — shared across
       every worktree of one clone, so a `worktree` value means the same thing
       everywhere that clone is checked out — and record the choice with its
       reason. The two placements are coupled to 3.5a: a salt in the git common
       directory sits outside the working tree and needs no `.gitignore` entry
-      at all. Do not leave two different units named in two documents
-- [ ] 3.6 Test: recording in a non-repository directory writes a valid journal
+      at all. Do not leave two different units named in two documents.
+      **Decided: per-clone — the salt lives in the git common directory as
+      `nullius-worktree-salt`.** Two reasons, both recorded in `identity.ts`
+      above `SALT_FILE` and in Decision 6. (a) It cannot be committed by
+      construction: an ignore rule is a per-repository ritual this change can
+      perform for exactly one repository, while the kit writes a salt into
+      every repository it records in, and git tracks nothing inside the git
+      directory. (b) Per-clone loses nothing and gains a comparison — sibling
+      worktrees are told apart by their differing *paths*, not by the salt, so
+      they still differ, while a shared salt makes `worktree` values mutually
+      meaningful across one clone's worktrees. 3.5a is therefore discharged by
+      placement, and `.gitignore` gains no entry
+- [x] 3.6 Test: recording in a non-repository directory writes a valid journal
       with no identity fields and exits 0
-- [ ] 3.7 Test: a git call that exceeds the identity timeout leaves the field
+- [x] 3.7 Test: a git call that exceeds the identity timeout leaves the field
       absent, the append succeeds, and the hook exits 0
-- [ ] 3.8 Leave `SCHEMA_VERSION` at `"0.2"`. The producer bump was scoped out
+- [x] 3.8 Leave `SCHEMA_VERSION` at `"0.2"`. The producer bump was scoped out
       of this change after review — see the proposal's Non-Goals. The identity
       fields are readable at any declared version, so they land and are read
       today; what does not happen is a journal declaring `0.4`. Do not "tidy"

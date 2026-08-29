@@ -58,6 +58,20 @@ export interface JournalHeaderDraft {
   origin: JournalOrigin;
   session: string | null;
   source: string | null;
+  /**
+   * Where the run began, already resolved.
+   *
+   * Data, never a callback. Resolving identity means spawning git, and this
+   * draft is consumed inside `writeRecords` — which runs while the append lock
+   * is held, where a hook that has to wait 2 000 ms is not delayed but
+   * REFUSED. Anything that could spawn a process must have finished before the
+   * lock was taken; see `identity.ts` and the pre-check in `cli.ts`.
+   *
+   * Each is `null`/absent when git could not answer. Absent is a valid header.
+   */
+  branch?: string | null;
+  head?: string | null;
+  worktree?: string | null;
 }
 
 export interface AppendOutcome {
@@ -297,6 +311,18 @@ function readLinks(linksFile: string): Record<string, string> {
   }
 }
 
+/**
+ * A pure function of its draft, and it stays one.
+ *
+ * It is called from `writeRecords`, under the append lock. Teaching it to
+ * resolve anything — to spawn git for a branch name, to read a config — would
+ * put that work on the one path where every other hook is counting down to
+ * being refused. Whatever the header needs, it is handed.
+ *
+ * A `null` identity field is omitted rather than written. `branch: ""` is a
+ * producer asserting it knows the branch and naming none, which is a different
+ * and worse fact than saying nothing; a `0.4` validator calls it MALFORMED.
+ */
 function headerRecord(header: JournalHeaderDraft): JournalDraft {
   return {
     kind: "journal",
@@ -304,7 +330,34 @@ function headerRecord(header: JournalHeaderDraft): JournalDraft {
     origin: header.origin,
     ...(header.session === null ? {} : { session: header.session }),
     ...(header.source === null ? {} : { source: header.source }),
+    ...identityFields(header),
   };
+}
+
+function identityFields(header: JournalHeaderDraft): Record<string, string> {
+  const fields: Record<string, string> = {};
+  for (const key of ["branch", "head", "worktree"] as const) {
+    const value = header[key];
+    if (typeof value === "string" && value.length > 0) fields[key] = value;
+  }
+  return fields;
+}
+
+/**
+ * Does this journal already hold something? Asked WITHOUT the lock.
+ *
+ * The authoritative "does this need a header" decision is the `needsHeader`
+ * test inside `writeRecords`, and it stays there. This is the unsynchronised
+ * pre-check that lets `cli.ts` skip resolving identity on every event without
+ * moving git under the lock — see the comment on `identityFor` in `cli.ts` for
+ * why the race it admits is the cheap kind.
+ */
+export function journalHasContent(file: string): boolean {
+  try {
+    return statSync(file).size > 0;
+  } catch {
+    return false;
+  }
 }
 
 /**
