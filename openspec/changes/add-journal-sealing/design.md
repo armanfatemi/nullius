@@ -28,64 +28,62 @@ session.
 ### 1. The seal is compare-and-swap, not read-modify-write
 
 **Chosen:** `update-ref refs/nullius/runs <new> <old>` — git's own compare-and-swap
-— inside a retry loop **bounded by the total git budget of Decision 3**, with an
-attempt ceiling as a secondary guard only. On exhaustion the journal is left
-unsealed, the exhaustion is announced on stderr, and `doctor` counts it; nothing
-is partially written.
+— inside a retry loop whose predicate is **the state of the ref, not the text of
+git's error message**, bounded by the total git budget of Decision 3. On
+exhaustion the journal is left unsealed, the exhaustion is announced on stderr,
+and `doctor` counts it; nothing is partially written.
 
-**The budget is the bound; the attempt ceiling is not.** An attempt count is the
-wrong primary bound because the number of attempts a seal needs is a function of
-how many other sealers are active, which the seal cannot know. A wall-clock
-budget is a function of what the session can afford to spend exiting, which it
-can. The ceiling exists for one case the budget does not cover: git failing
-*instantly* and repeatedly, where a budget alone would spin. Set it well above
-the contending population — the loop should reach it only when something is
-wrong, never in the course of ordinary contention.
+**The predicate reads the ref; it does not parse English.** When `update-ref`
+fails, re-read the tip and decide from what it says:
 
-**Retry on contention, which is not the same as retry on compare failure.** The
-ref can refuse a write for two reasons, and only one of them is a compare
-mismatch: another process may hold `refs/nullius/runs.lock` in the shared common
-directory. Git reports both the same way — exit 128, with a message opening
-`cannot lock ref 'refs/nullius/runs'`, differing only in the trailing clause
-(`is at <a> but expected <b>` versus `Unable to create '...lock': File exists`).
-A predicate written as "the compare failed" is therefore not implementable from
-an exit code, and a seal that abandons on a held lock loses journals through the
-guard rather than around it.
-
-So `attemptCas` reports three outcomes, not two: `landed`, `contended` (another
-sealer is touching this ref — retryable), and `unavailable` (anything else — not
-retryable, and the seal stops and says so).
-
-**`contended` is a positive match; everything unmatched is `unavailable`.** This
-is the load-bearing half of the decision, and the opposite of the natural
-implementation. `cannot lock ref` is not a sufficient discriminator: measured
-against real git, four distinct failures share it, and only two are transient.
-
-| trailing clause | cause | outcome |
+| after a failed `update-ref` | meaning | outcome |
 | --- | --- | --- |
-| `is at <a> but expected <b>` | compare mismatch | `contended` |
-| `Unable to create '...lock': File exists` | another process holds the lock | `contended` |
-| `Unable to create '...lock': Permission denied` | read-only refs directory | `unavailable` |
-| `unable to resolve reference '...': reference broken` | corrupt ref | `unavailable` |
+| tip unreadable | no git, no repository, corrupt ref | `unavailable` — stop |
+| tip readable and **moved** from the `<old>` we passed | another sealer landed | `contended` — retry against the new tip |
+| tip readable and **unchanged** | the write failed for something retrying will not fix | `blocked` — one bounded retry, then stop |
 
-Note that the two `Unable to create '...lock'` rows disagree, so the clause
-cannot be split at its opening either — the discrimination has to reach the
-final phrase.
+Three earlier drafts of this decision tried to classify git's error strings, and
+each was wrong in a new way — first by omitting the held-lock case, then by
+keying on a message prefix four distinct failures share, then by admitting a
+stale lockfile into a bucket labelled transient. Three locally-correct fixes each
+failing differently is a mechanism problem, not a parameter problem. The
+mechanism was string matching.
 
-Matching on failure text is brittle in one specific direction, and the direction
-is what matters. If the predicate is written as "retry unless it looks
-permanent", then every failure git learns to word differently becomes
-retryable, and a permanent fault — a broken ref, a read-only `.git` — burns the
-entire budget at **every session end, forever**, while `doctor` reports the
-journal unsealed and never says why. That is this repository's own failure mode
-manufactured by the guard meant to prevent it.
+Ref state answers the question string matching was being asked to answer, and
+answers it better:
 
-Written the other way round, an unrecognised failure is `unavailable`: the seal
-stops, announces itself on stderr, and leaves the journal for the sweep. The
-cost of misclassifying a transient failure as permanent is one deferred seal
-that the next sweep reclaims. The cost of the inverse is unbounded. So the
-predicate matches the two known-transient shapes and treats everything else,
-including anything git may word differently in future, as permanent.
+- **It cannot be broken by rewording.** Git's error text is not an interface;
+  the value of a ref is.
+- **A stale lockfile resolves correctly and for the right reason.** A lock left
+  by a crashed process is indistinguishable from a live one by message — that is
+  what defeated the previous draft — but the tip has not moved in either case,
+  so both take the `blocked` path and neither burns the budget.
+- **It needs no exhaustive table.** The earlier draft asserted "four distinct
+  failures" and review found a fifth (`reference already exists`) and a sixth (a
+  directory/file conflict). Enumeration was never going to close.
+
+**Why `blocked` gets one retry rather than none.** A live held lock is genuinely
+transient — a peer is mid-write and about to move the tip — and it presents
+exactly like a stale one: tip unchanged. One retry resolves the live case; the
+stale case costs one wasted attempt of roughly 40 ms rather than the whole
+budget. Stopping at zero retries would be safe but would abandon a seal in the
+ordinary collision this change exists to handle; retrying without bound is the
+defect that got us here. One is the number that separates them.
+
+**Retrying on `contended` is not a herd, and this is what makes Decision 5
+work.** Under a state predicate a retry happens only when the tip *moved*, which
+means some other sealer **succeeded**. Every retry is triggered by real progress
+by a peer, so with N contenders a seal retries at most N−1 times and the loop
+drains like a queue rather than colliding like a herd. That is a structural
+property of the predicate, not an empirical hope about contention rates.
+
+**The budget is the bound; there is no attempt ceiling.** An attempt count was
+the wrong bound because the number of attempts a seal needs is a function of how
+many peers are active, which the seal cannot know, while a wall-clock budget is a
+function of what the session can afford to spend exiting, which it can. The
+spin-guard the ceiling existed for is gone too: a `contended` retry requires a
+peer to have landed, so the loop cannot spin without the system making progress,
+and every other outcome stops after at most one retry.
 
 **Alternatives considered:**
 
@@ -107,7 +105,9 @@ including anything git may word differently in future, as permanent.
 inside the mechanism whose entire purpose is not losing the record. It is also
 not hypothetical here — concurrent sessions in one repository are the normal case
 for this tool, and the change that deferred sealing to this one is scaled for
-sixty-four of them:
+sixty-four concurrent *journals*. That is not the same quantity as sixty-four
+simultaneous session-end writes, and it is used here only as a conservative upper
+bound on the contending population:
 
 **Evidence:** `openspec/changes/add-journal-identity/design.md:58@a1a6a54` — `Across sixty-four concurrent journals, "fix the compiler errors in bun_runtime"`
 
@@ -204,18 +204,32 @@ deadline. The seal runs after the lock is released, so its budget answers to a
 different question — how long a session may spend exiting — and is therefore
 allowed to be larger than `IDENTITY_BUDGET_MS`. It is not allowed to be absent.
 
-**The numbers.** `SEAL_TIMEOUT_MS` is 500 per call and `SEAL_BUDGET_MS` is 3 000
-for the seal as a whole. Both are larger than identity's 250/600 because the
-seal writes and runs off the lock; both are chosen to be a fraction of any
-plausible hook timeout rather than to consume one.
+**The numbers, and this time they are measured.** `SEAL_TIMEOUT_MS` is 250 per
+call — the same as identity's, because a seal's individual git calls have no
+reason to be slower than a `rev-parse` — and `SEAL_BUDGET_MS` is 3 000 for the
+seal as a whole.
 
-3 000 ms does not buy sixty-four serialized attempts, and is not meant to. At
-six calls an attempt that is roughly five to ten attempts on a warm repository —
-enough that ordinary contention lands, and deliberately not enough that a losing
-seal holds a session open while it keeps trying. Past that the sweep is the
-right mechanism and the budget's job is to hand over to it. Sizing the budget to
-win at sixty-four contenders would be sizing the *session exit* to the worst
-case of a background durability mechanism, which inverts what matters.
+`spawnSync` git costs 8.6–9.2 ms on this machine, measured in both a scratch
+repository and this one. A first attempt is six calls, about 54 ms; a retry
+re-reads the tip and rebuilds, about 45 ms. So 3 000 ms buys roughly **sixty to
+seventy attempts** on a warm repository.
+
+That is deliberately more than the sixty-four-contender worst case, not less. An
+earlier draft claimed the same 3 000 ms bought "five to ten attempts" and argued
+the under-sizing was a virtue; the number had been chosen first and the argument
+written to fit it. With the state predicate of Decision 1 the generous figure is
+also the correct one: a `contended` retry only occurs after a peer has landed, so
+a seal that uses many attempts is one that watched many peers succeed, and
+cutting it off early would abandon the journal of whoever happened to arrive
+last.
+
+**The timeout and the budget do not collide.** Six calls at 250 ms is 1 500 ms,
+half the budget, so even an attempt in which *every* call times out leaves room
+for another. The earlier 500 ms figure made one all-timeouts attempt consume the
+entire budget exactly, which would have made the retry mechanism structurally
+unreachable in the case it most needed to survive. When git is hanging rather
+than failing, two attempts and out is the right behaviour and 3 000 ms is the
+bound on how long a session waits to discover it.
 
 That "different question" has a limit this design does not get to set. Nothing
 *local* waits on the seal: `cli.ts` returns as soon as `appendRecords` has
@@ -260,21 +274,31 @@ batching removes the *sweep's* self-contention and does nothing to the session-e
 population, which Decision 1 explicitly scales to sixty-four concurrent journals.
 A herd is exactly what this tool's normal case is.
 
-**The honest position is that no backoff is the starting point, not the answer.**
-What is actually known: git's `update-ref` failure is cheap and immediate, so a
-tight loop is not the CPU hazard it would be against a network service; the loop
-is bounded by wall clock rather than attempts (Decision 1), so an unlucky seal
-gives up on time rather than spinning; and the working file survives every
-outcome, so the worst case of losing every race is a deferred seal, not a lost
-journal. What is not known is the actual collision rate at sixty-four
-contenders, and nothing in this change measures it.
+**The third answer is the first one that is structural rather than empirical.**
+Backoff exists to break synchronised collision: contenders that retry in lockstep
+keep colliding, and a delay decorrelates them. Decision 1's state predicate makes
+that situation unreachable. A retry happens only when the tip has *moved*, which
+means a peer has already landed — so a retry is never a collision with a peer
+that is also retrying, it is a response to a completed write. N contenders
+produce at most N−1 retries in total across the system, and the loop drains.
 
-So: ship without backoff, and treat the retry-attempt counts the seal already
-has to observe as the measurement. If seals are routinely reaching their budget,
-the first change is backoff with an injectable clock; the seam from this decision
-makes that a local edit. Recording it this way, rather than as a decided
-question, is the point — a rationale that has now failed twice should not get a
-third confident restatement.
+There is nothing for backoff to decorrelate, and adding a delay would only make
+the drain slower while spending the budget on waiting.
+
+The two earlier attempts at this rationale both argued from things outside the
+mechanism — testability, then a claim about herd size that contradicted Decision
+1's own sixty-four-contender scale. This one argues from the predicate, and it
+holds for the same reason the predicate does. If it is ever wrong it will be
+because the predicate changed, and that is the right coupling.
+
+An earlier draft of this decision also promised that "retry-attempt counts the
+seal already has to observe" would serve as the measurement justifying a later
+revisit. **No such apparatus exists** — nothing in this change emits, records or
+surfaces a retry count, and stderr fires only on failure. The claim is withdrawn
+rather than backfilled with a counter nobody asked for: the argument above does
+not need measurement to stand, and inventing an observability surface to
+retroactively support a decision is how a design grows features that serve its
+own documentation.
 
 ### 6. The seal gets its own runner, in its own module
 

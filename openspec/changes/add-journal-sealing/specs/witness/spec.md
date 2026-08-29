@@ -36,18 +36,21 @@ in to recording has not opted in to that either.
 ### Requirement: Sealing is atomic against concurrent sessions
 
 The kit SHALL update `refs/nullius/runs` with a compare-and-swap against the ref
-value it read, and SHALL retry only when the failure positively matches a known
-transient shape — a compare mismatch, or a ref lock held by another process.
-Every other failure SHALL be treated as permanent: the seal stops, says so, and
-leaves the journal for a later sweep.
+value it read, and SHALL decide whether to retry by re-reading the ref rather
+than by interpreting git's error message. After a failed update: an unreadable
+tip SHALL stop the seal; a tip that moved from the value passed as `<old>` SHALL
+be retried against the new tip; a tip that is unchanged SHALL be retried at most
+once and then abandoned.
 
-The default direction is normative, not an implementation detail. Four distinct
-`update-ref` failures share the message prefix `cannot lock ref`, and two of them
-— a read-only refs directory and a corrupt ref — are permanent. A predicate that
-retries unless a failure looks permanent would make those faults consume the
-seal's entire budget at every session end indefinitely, while reporting only that
-the journal is unsealed. Retries SHALL be bounded by a total wall-clock budget
-rather than by an attempt count alone.
+Git's error text SHALL NOT be parsed to make this decision. It is not an
+interface, several distinct failures share a message prefix, and the set is not
+enumerable — a stale lock left by a crashed process is permanent and reads
+identically to a live one held by a running peer. Ref state separates them: in
+both cases the tip has not moved, so both take the bounded path and neither
+consumes the seal's budget.
+
+Retries SHALL be bounded by a total wall-clock budget rather than by an attempt
+count.
 
 An unguarded update SHALL NOT be used. Two sessions sealing concurrently both
 read the same tree, and a last-writer-wins update drops one journal from the ref
@@ -69,10 +72,18 @@ versions.
 - **WHEN** two sessions seal to `refs/nullius/runs` concurrently
 - **THEN** the ref carries both journals, and neither is dropped
 
-#### Scenario: a held ref lock is retried, not abandoned
+#### Scenario: a held ref lock is retried once, not abandoned outright
 
-- **WHEN** `update-ref` fails because another process holds the ref's lock
-- **THEN** the seal retries, and does not treat the failure as unrecoverable
+- **WHEN** `update-ref` fails because another process holds the ref's lock, and
+  that process then releases it
+- **THEN** the seal retries and the journal lands
+
+#### Scenario: a stale lock does not consume the budget
+
+- **WHEN** `update-ref` fails against a lockfile left by a crashed process, so
+  the tip never moves
+- **THEN** the seal stops after a single retry, names the reason on stderr, and
+  leaves its remaining budget unspent
 
 #### Scenario: exhausted retries leave the journal recoverable
 
@@ -81,9 +92,9 @@ versions.
   intact, the reason and the count are written to stderr, the exit code is 0,
   and `doctor` counts them unsealed
 
-#### Scenario: a permanent fault stops the seal instead of consuming its budget
+#### Scenario: an unreadable ref stops the seal on the first failure
 
-- **WHEN** `update-ref` fails for a reason outside the known transient shapes,
-  such as a corrupt ref or a read-only refs directory
+- **WHEN** the ref cannot be read at all, because it is corrupt or the
+  repository is unavailable
 - **THEN** the seal stops on the first failure, names the reason on stderr, and
   does not retry
