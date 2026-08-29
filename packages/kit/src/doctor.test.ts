@@ -234,6 +234,23 @@ describe("doctor — the harness payload probe", () => {
     expect(results[0]?.status).toBe("unknown");
   });
 
+  it("routes the reader through live capture to the corpus, naming both directories", () => {
+    // The old text said "capture some with NULLIUS_WITNESS_PROBE=1" while
+    // naming the committed corpus — but that variable writes to
+    // `.nullius/probes/`, so following the instruction populated a different
+    // directory than the one the message pointed at. That conflation is the
+    // misreading this change exists to prevent, so the corrected text is
+    // pinned here rather than left to drift back.
+    const dir = join(scratch(), "none");
+    const detail = probeChecks(dir)[0]?.detail ?? "";
+
+    expect(detail).toContain(dir);
+    expect(detail).toContain("committed corpus");
+    expect(detail).toContain(".nullius/probes/");
+    expect(detail).toContain("promoted");
+    expect(detail).not.toContain("capture some with NULLIUS_WITNESS_PROBE=1");
+  });
+
   it("fails when a payload no longer yields the record it should", () => {
     const dir = scratch();
     // A plausible harness change: the dispatch tool renamed again.

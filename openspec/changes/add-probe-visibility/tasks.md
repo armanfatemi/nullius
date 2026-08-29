@@ -97,7 +97,7 @@ A7 — the ordering assertion task 1.9 must not break:
 - [x] 1.6 The detail line names *which* probe directory it is describing — the
       live capture directory, not the committed corpus — since conflating them
       is the misreading this change exists to prevent
-- [ ] 1.7 Correct `probeChecks`' absent-corpus detail line, which currently
+- [x] 1.7 Correct `probeChecks`' absent-corpus detail line, which currently
       tells the reader to populate the committed corpus with a variable that
       writes to `.nullius/probes/`. Message only: the directory it reads, its
       status, and its returned shape are unchanged
@@ -113,9 +113,9 @@ A7 — the ordering assertion task 1.9 must not break:
 
 ## 2. Init
 
-- [ ] 2.1 `init` names probing: what it records, where it lands, that it is off
+- [x] 2.1 `init` names probing: what it records, where it lands, that it is off
       unless asked for
-- [ ] 2.2 `init` does not set `NULLIUS_WITNESS_PROBE` and does not offer to. A
+- [x] 2.2 `init` does not set `NULLIUS_WITNESS_PROBE` and does not offer to. A
       test asserts the written `nullius.kit.json` contains no probe key —
       scoped to that file by name, because `init` never writes
       `.claude/settings.json` and an assertion against it would be vacuous
@@ -152,13 +152,13 @@ A7 — the ordering assertion task 1.9 must not break:
 - [x] 4.1c The mixed case: one file unparseable, another setting `1`. Assert the
       status is `fact`, the determinate value is reported, and the unreadable
       file is named
-- [ ] 4.2 `init` writes no probe key into `nullius.kit.json`. Assert against the
+- [x] 4.2 `init` writes no probe key into `nullius.kit.json`. Assert against the
       in-memory output of `renderKitConfig` rather than round-tripping through
       disk — the same technique `packages/kit/src/init.test.ts` already uses for
       `renderConfig`. Note it is a *new* assertion, not an extension of an
       existing one: that file has no in-memory content assertions for
       `renderKitConfig` today
-- [ ] 4.3 A test at the **CLI seam** asserting `doctor` still points
+- [x] 4.3 A test at the **CLI seam** asserting `doctor` still points
       `probeChecks` at the committed corpus. A second direct call to
       `probeChecks` duplicates the existing coverage in
       `packages/kit/src/doctor.test.ts` and would still pass if someone
@@ -166,7 +166,7 @@ A7 — the ordering assertion task 1.9 must not break:
       `.nullius/probes/` — which is the exact regression design Decision 3
       exists to prevent. Drive it through the CLI against a scratch root so the
       wiring, not the pure function, is what is under test
-- [ ] 4.4 The corrected `probeChecks` detail line is asserted on its new text,
+- [x] 4.4 The corrected `probeChecks` detail line is asserted on its new text,
       so the old misleading instruction cannot come back unnoticed
 
 ## 5. Close-out

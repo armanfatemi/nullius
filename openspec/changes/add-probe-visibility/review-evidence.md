@@ -889,3 +889,72 @@ claim in a change proposal is therefore only safe if scoped to surfaces the
 change will not touch. Rescoped to `plugin spec .github` — where a precedence
 *specification* would live, and which this change does not modify — and the
 prose now says why the scope is what it is.
+
+## Coordinator correction during Stage 4 — contradictory dispatch brief
+
+The brief dispatched for tasks 1.7/4.3/4.4 contained an instruction that could
+not be satisfied alongside the task it was implementing.
+
+Asserted: "assert stdout contains `spec/fixtures/probes/claude-code` and does
+NOT contain `.nullius/probes` for that check's line."
+
+Actually true: task 1.7, in the same brief, requires the corrected detail line
+to name `.nullius/probes/` explicitly — that is the whole point of the
+correction, since conflating the live directory with the committed corpus is the
+misreading the task exists to prevent. The two instructions are mutually
+exclusive on the same line of output.
+
+Caught by the implementing agent, which said so rather than silently picking
+one. It scoped the assertion to the *substituted path* instead — capture
+`/no probe recordings at (\S+)/` and compare that argument to the corpus path —
+which distinguishes "the corpus is the directory being read" from "the message
+mentions the live directory". The whole-line form cannot make that distinction.
+
+What changed: nothing in the artefacts; the fix was in the test's shape. Worth
+recording because the coordinator wrote both halves of the contradiction in one
+brief, which is the same local-edit failure that produced blockers B8-B10, now
+appearing in a dispatch rather than in a document.
+
+Also recorded: the agent verified the new guard bites by patching the built
+`dist/cli.js` to point `probeDir` at `.nullius/probes` and confirming both CLI
+tests fail, then restoring and rebuilding. That is the check this repository's
+own doctrine asks for — a test you did not watch fail is a test you cannot
+trust — and it was done without being asked.
+
+## Coordinator corrections since last append
+
+- Covered above: a dispatch brief that contradicted the task it briefed.
+
+## Stage 5 — Verify chunk 2 (probeChecks message + init)
+
+build: pass
+type-check: pass
+test: pass — packages/kit 253/253 across 7 files (new file doctor.cli.test.ts);
+  packages/claims 765 passed, 6 failed, all six in src/flagConformance.test.ts
+  and all six the known ugrep baseline. Flag table untouched.
+dogfood gates: pass, both polarities — valid-run 0, broken-run 1, wiring-valid
+  0, wiring-broken 1, wiring . 0, check README+spec --require-markers 0,
+  check openspec 0.
+
+Verified beyond the subagents' own reports, because a subagent's verify is not
+evidence about this repository's gates:
+
+- The new tests actually execute rather than skipping behind
+  `built ? describe : describe.skip`. Ran init.test.ts, init.cli.test.ts and
+  doctor.cli.test.ts with --reporter=verbose: all six new probe-related tests
+  report as run and passing, none skipped.
+- The init notice appears in real CLI output, not just in a test fixture:
+  `node packages/kit/dist/cli.js init --dry-run` prints it.
+- No task tick was lost to the two agents writing tasks.md concurrently. 28
+  ticked, and the only unticked boxes are 5.1 and 5.2, which are close-out.
+
+Two guards were demonstrated to bite rather than assumed to:
+- Task 4.3's CLI-seam test: the implementing agent patched the built
+  `dist/cli.js` to point `probeDir` at `.nullius/probes`, confirmed both CLI
+  tests fail, then restored and rebuilt. This is the test whose whole purpose is
+  to catch a repoint that every pre-existing test would pass through.
+- Task 4.2's no-probe-key assertion is purely negative and therefore passed
+  vacuously on first run. The agent planted a probe key in `renderKitConfig`
+  twice — once as `NULLIUS_WITNESS_PROBE` and once under a different spelling,
+  `captureProbes` — and confirmed each arm fails, then restored render.ts
+  byte-identical. A negative assertion that has never failed is not yet a test.

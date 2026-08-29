@@ -551,7 +551,13 @@ export function probeChecks(probeDir: string): Check[] {
       {
         name: "harness payload probe",
         status: "unknown",
-        detail: `no probe recordings at ${probeDir} — capture some with NULLIUS_WITNESS_PROBE=1`,
+        // Both directories are named because the old text named only this
+        // one and then told the reader to fill it with a variable that writes
+        // to the other. Following that instruction populated `.nullius/probes/`
+        // and left this check reporting the same absence, which is how the
+        // corpus came to be read as a live-capture check pointed somewhere
+        // wrong. The corpus is fed by promotion, not by capture.
+        detail: `no probe recordings at ${probeDir} — that is the committed corpus, fed by hand: NULLIUS_WITNESS_PROBE=1 captures live payloads into .nullius/probes/, and recordings are promoted from there into ${probeDir}`,
       },
     ];
   }

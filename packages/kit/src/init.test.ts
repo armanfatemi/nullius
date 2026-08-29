@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import { detect, detectHarness, mayWriteHooks } from "./detect";
 import { findProfile, PROFILE_NAMES } from "./profiles";
-import { applyPlan, buildPlan, renderConfig, renderWorkflow } from "./render";
+import { applyPlan, buildPlan, renderConfig, renderKitConfig, renderWorkflow } from "./render";
 
 function scratch(): string {
   return mkdtempSync(join(tmpdir(), "nullius-init-"));
@@ -212,6 +212,30 @@ describe("what init writes stays readable by the kernel", () => {
       "openspec/**/*.md",
     ]);
   });
+});
+
+describe("init does not enable payload capture", () => {
+  /**
+   * Scoped to `nullius.kit.json` BY NAME, and asserted against the renderer's
+   * in-memory output rather than a file on disk. `init` never writes
+   * `.claude/settings.json` — the file the harness actually reads env from —
+   * so an assertion scoped to THAT file would be vacuously true and would
+   * prove nothing about whether init had enabled capture.
+   */
+  for (const name of PROFILE_NAMES) {
+    it(`writes no probe key for the ${name} profile`, () => {
+      const profile = findProfile(name);
+      if (profile === null) throw new Error(`no profile ${name}`);
+
+      const rendered = renderKitConfig(profile, "0.0.0-test");
+
+      expect(rendered).not.toContain("NULLIUS_WITNESS_PROBE");
+      // Not only the current spelling: any key naming a probe at all, so a
+      // future addition under a different name is caught by this test too.
+      const keys = Object.keys(JSON.parse(rendered) as Record<string, unknown>);
+      expect(keys.filter((key) => /probe/i.test(key))).toEqual([]);
+    });
+  }
 });
 
 describe("the generated workflow", () => {
