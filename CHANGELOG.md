@@ -4,7 +4,13 @@ Bare version headings are the kernel — `@nullius-inverba/claims` and its
 unscoped alias `evidence-anchors`, which ship together. Headings prefixed with
 a package name are that package's own release; the kit versions independently.
 
-## Unreleased
+## 0.8.0
+
+Deterministic rule compliance and a journal check for it, a review-layer
+canary, wiring validation, and a round of authoring ergonomics for `check`
+itself. `@nullius-inverba/kit` moves 0.2.0 → 0.3.0 alongside it — its own
+bullets are folded into `### Added` below rather than a separate heading,
+following the first-release precedent.
 
 ### Added
 
@@ -68,6 +74,85 @@ a package name are that package's own release; the kit versions independently.
   `declaredList` are now exported from the package root, alongside their
   `ArtifactKind` / `HarnessArtifact` / `WiringDeps` / `WiringFinding` /
   `WiringReport` / `WiringVerdict` / `Frontmatter` / `Located` types.
+
+- **`nullius rules select`/`rules check`, and `/comply` — rule compliance
+  stops being model-judged.** Every rule under `.claude/rules/` already
+  carries a flat frontmatter (`id`, `applies_to`, `severity`) and, by
+  convention, an incident anchor in the body; nothing parsed it as a closed
+  schema before this. `rules select --paths <path...>` is the deterministic
+  half — no model, just glob matching against `applies_to` — and emits
+  exactly the rule ids that bind to what a plan or diff touches, in a
+  stable order, with the excluded count printed alongside. `rules check
+  [root]` verifies every rule file the way `check` verifies any other
+  document: a required `id`, a known `severity`, closed frontmatter keys,
+  and the incident anchor re-verified against the working tree. Three
+  verdicts, two of them advisory: `ungrounded-rule` (no incident anchor —
+  folklore, flagged rather than failed), `rule-rot` (the anchor no longer
+  verifies — computed from the anchor's own `Verdict` through `isFailure`,
+  never a bare inequality, because ordinary line drift reports the passing
+  `stale` and a naive check would have misreported several of this
+  repository's own rules as rotted from day one), and `malformed-rule-header`,
+  which fails closed like any other schema violation in this tool.
+
+  `/comply` is the plugin-side consumer: one rule per starved subagent
+  dispatch, the same discipline `audit`'s briefs already use
+  (`buildComplianceBrief`, mirroring `buildAuditBrief`). Both verdicts a
+  dispatch can return — `COMPLIANT` and `VIOLATION` — require an Evidence
+  Anchor that `check` re-verifies; `COMPLIANT` is not trusted on a lighter
+  gate than `VIOLATION`, closing a model-in-the-verification-path gap that
+  would otherwise have survived everywhere else this changed. Only
+  `NOT-APPLICABLE` goes unanchored, since it asserts nothing about the plan
+  for an anchor to bind to. `routeAgents` (kit) now calls `rules select` to
+  pre-filter before dispatching `rule-auditor`, so a change earns that
+  reviewer only when a rule's `applies_to` genuinely matches something it
+  touches, closing a gap the pipeline's own comment used to name.
+
+  `RuleVerdict` is its own union, following the `WiringVerdict` precedent —
+  the kernel's exported `Verdict` union is unchanged.
+
+- **`SILENT-RULE` — a rule `rules select` named can no longer go unchecked
+  without it showing.** Reaching a terminal journal record is not the same
+  as delivering a verdict: a dispatch can complete, report, and never
+  actually assert `COMPLIANT` / `VIOLATION` / `NOT-APPLICABLE` for the rule
+  it was sent to check. `witness validate <journal> --expect-rules
+  <rule-id...>` cross-references the ids named for a run against that run's
+  own journal and reports `silent-rule` for any that never landed a
+  verdict. Its own union, `RuleCoverageVerdict` (`ok` | `silent-rule`), not
+  a new member of the 13-member `JournalVerdict` — every existing member is
+  determinable from a journal's own content, and this one needs an
+  externally-sourced expected list no other member takes. Skipped, not
+  misreported, when the journal itself is `unsupported-version`: nothing
+  past the header was read, so nothing here can be asserted either.
+
+- **`check --stamp` and `check --fix` — repoint citations without
+  re-arguing the claim.** `--stamp` adds `@<head>` to every unstamped
+  anchor that verifies both in the working tree and, independently, at HEAD
+  as resolved once per run — an anchor that only holds locally is left
+  untouched rather than stamped into a false immutable claim; it exits 2
+  when HEAD cannot be resolved. `--fix` repoints the line number on
+  `DRIFT` and `WRONG-LINE` verdicts, the two where the quote still uniquely
+  identifies real code and only the coordinate went stale; it never
+  touches `FABRICATED`, `UNPINNED`, or any already-`@rev`-stamped anchor,
+  and never rewrites the quoted text — the tool fixes citations, not
+  claims. The two compose in one pass, one atomic write per document.
+
+- **`check --format json`** — a versioned, machine-readable report (one
+  object per claim result, plus summary counts: anchor density, unanchored
+  documents by name, per-verdict counts, failures) on stdout; diagnostics
+  and the exit code are unchanged and stay on stderr. Human output is
+  byte-identical to before and stays the default.
+
+- **Per-command `--help`, and a funnel for the zero-marker case.** Every
+  command takes its own `--help` with one example invocation. When `check`
+  matches documents and finds no grounding markers at all, the closing
+  line now names the next command — `nullius audit <doc> --propose` —
+  instead of only a spec URL.
+
+- **kit: `routeAgents` pre-filters through `rules select`.**
+  `packages/kit/src/pipeline.ts` now imports `selectRules` from
+  `@nullius-inverba/claims` directly — the same pattern `doctor.ts` already
+  uses, not a subprocess — and dispatches `rule-auditor` only when
+  `selectRules` finds at least one applicable rule.
 
 - **kit: `doctor` reports what the settings files say about payload capture.**
   The recorder can save every raw hook payload behind `NULLIUS_WITNESS_PROBE=1`,
