@@ -105,42 +105,43 @@ None.
 | Risk                           | MEDIUM                                       |
 | Expected sessions to implement | 1                                            |
 
-MEDIUM, not LOW: the kit gains process spawning it does not have today, and the
-seal is a concurrent write to shared state. Neither is exotic, and both are
-places where a wrong answer is silent.
+MEDIUM, not LOW: the kit gains *write-capable* git — it already spawns git to
+read, but never to change anything — and the seal is a concurrent write to
+shared state. Neither is exotic, and both are places where a wrong answer is
+silent.
 
-## Open questions
+## Resolved during pre-review
 
-- **Compare-and-swap or a lock?** `update-ref <ref> <new> <old>` gives CAS
-  directly and retry-on-mismatch is a loop. The alternative is extending the
-  advisory lock the append path already uses. CAS is preferred because it is
-  git's own mechanism and needs no new lock discipline, but the retry bound and
-  what happens when it is exhausted are unresolved. A seal that gives up must
-  leave the journal unsealed and visible to `doctor`, never partially written.
-- **Where does the kit's bounded-git helper live?** The kernel already has one:
+Two questions this proposal opened were settled before implementation began.
+Both are argued in `design.md`; recorded here so the proposal does not read as
+though they are still live.
 
-  **Evidence:** `packages/claims/src/runners.ts:149@a717cc4` — `export function revFileReader(root?: string, timeoutMs = DEFAULT_GIT_TIMEOUT_MS) {`
+- **Compare-and-swap or a lock?** CAS, bounded at five attempts and by a total
+  git budget, announcing exhaustion on stderr and leaving the journal for the
+  sweep — `design.md` Decisions 1 and 3. The advisory lock was rejected because
+  it is per-journal and per-worktree and so guards the wrong resource.
+- **Where does the kit's write-capable git live?** With the kit's existing
+  bounded-git discipline, under its own budget constants — `design.md` Decision
+  6. This was never a choice between two helpers that fit: the kernel's reader
+  cannot express `hash-object`, `mktree`, `commit-tree` or `update-ref`, and
+  `add-journal-identity` recorded that rejection in the code rather than only in
+  its proposal.
 
-  and the kit's own locked write path spawns nothing, which the seal must not
-  change:
+  **Evidence:** `packages/kit/src/identity.ts:30@5b7f9f2` — `* `revFileReader` in the kernel is not the reuse candidate for any of this: it`
+
+  What remains true, and is the constraint the seal must respect, is that the
+  locked append path itself spawns nothing:
 
   **Evidence:** `grep -rn --exclude='*.test.ts' 'child_process' packages/kit/src/journalFile.ts packages/kit/src/record.ts` → 0 results
 
-  Inherited from `add-journal-identity`, which deferred the question here and
-  has since answered half of it: the kit now has a bounded-git helper of its
-  own, on a budget in the hundreds of milliseconds rather than the kernel's ten
-  seconds.
+## Open questions
 
-  Note the kernel's helper is a weaker candidate than it looks. `revFileReader`
-  reads *a file at a rev*; a seal needs `hash-object`, `mktree`, `commit-tree`
-  and `update-ref`, none of which it can express — `add-journal-identity`
-  rejected it as a reuse candidate for exactly that reason. So this is not a
-  choice between two helpers that both fit. The real question is whether the
-  kit's helper should grow write-capable git, or whether sealing needs its own
-  spawn path with a longer budget than an append-path read can justify, and
-  "avoid two implementations of one discipline" argues for extending the kit's
-  rather than reaching across to the kernel's.
 - **How large does the ref get, and when does that matter?** Measured on this
   repo: seven journals totalling 256K, the largest 228K. One commit per sealed
   session is cheap and the ref is prunable by deletion, but no threshold is
   defined at which a project should care.
+- **Does the sealing race also deserve a real-process CI gate?** `design.md`
+  Decision 5 makes the deterministic unit test genuinely load-bearing, which is
+  what this change needs to ship. A real-process gate modelled on the existing
+  parallel-append step would additionally cover the spawn boundary the seam test
+  steps around. Carried as an open concern, not scoped here.

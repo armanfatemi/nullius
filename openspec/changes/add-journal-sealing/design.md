@@ -10,17 +10,36 @@ at once and survives deletion of any one of them. That makes the durability
 problem and the cross-worktree-visibility problem the same problem, with one
 mechanism.
 
-The kit has never spawned a process. Every constraint below follows from that:
-the append path is fast, holds an advisory lock, runs on every hook event, and
-must never break a session.
+The kit already spawns git. `add-journal-identity` gave it a bounded-git
+helper, and the constraints below are inherited from that precedent rather than
+invented here. The helper carries two budgets, not one:
+
+**Evidence:** `packages/kit/src/identity.ts:48@5b7f9f2` — `export const IDENTITY_TIMEOUT_MS = 250;`
+
+**Evidence:** `packages/kit/src/identity.ts:58@5b7f9f2` — `export const IDENTITY_BUDGET_MS = 600;`
+
+What the kit has never done is spawn a process that *writes*. The constraints
+that bind therefore come from the append path, not from the package: it is
+fast, holds an advisory lock, runs on every hook event, and must never break a
+session.
 
 ## Decisions
 
 ### 1. The seal is compare-and-swap, not read-modify-write
 
 **Chosen:** `update-ref refs/nullius/runs <new> <old>` — git's own compare-and-swap
-— inside a bounded retry loop. On exhaustion the journal is left unsealed and
-reported by `doctor`, never partially written.
+— inside a retry loop bounded at **five attempts** and by the total budget of
+Decision 3, whichever is reached first. On exhaustion the journal is left
+unsealed, the exhaustion is announced on stderr, and `doctor` counts it; nothing
+is partially written.
+
+Five is chosen against the shape of the contention, not as a round number. Each
+loss costs one lost race against another *session ending* — an event that occurs
+once per session, not once per hook — so five consecutive losses means five
+other sessions ended inside this one's seal window. At that point the retry is
+no longer the mechanism that will fix it, and the sweep is: the working file is
+still on disk and `witness seal` reclaims it later at no cost. The bound exists
+to hand the problem to the recovery path, not to eventually win.
 
 **Alternatives considered:**
 
@@ -85,15 +104,85 @@ is local evidence until someone chooses otherwise.
 an advisory lock and runs on every hook event, and adding git invocations inside
 that lock trades a fast local write for a slow one under contention.
 
-### 3. Git failure is never a recording failure
+### 3. Git failure is never a recording failure — but it is never silent either
 
-**Chosen:** every git call is best-effort, bounded by a timeout, and never throws
-into the append path. A failed seal leaves the working file and ends the session
-normally; `doctor` counts it unsealed.
+**Chosen:** every git call is best-effort, bounded by a per-call timeout *and* a
+total budget for the seal as a whole, and never throws into the append path. A
+failed or abandoned seal leaves the working file, **writes one line to stderr
+saying so**, and ends the session normally; `doctor` counts it unsealed.
 
 **Rationale:** hooks fail open. That constraint does not bend for durability, and
 a durability mechanism that can break a session is worse than no durability.
-`doctor` is where the silence gets a voice, which is what it is for.
+
+Failing open is not the same as failing quietly, and the distinction is already
+settled in this codebase. The recorder hook swallows nothing:
+
+**Evidence:** `plugin/hooks/witness-record.sh:44@5b7f9f2` — `# confusion this tool exists to prevent. So: still exit 0, but say so.`
+
+The reason given there transfers exactly: a swallowed failure makes a broken
+install and a session in which nothing happened look identical. An unsealed
+journal that announced itself is a fact someone can act on; one that did not is
+discoverable only by whoever independently thinks to run `doctor`, which is the
+shape of absence this project is named after.
+
+**Two budgets, not one.** The per-call timeout bounds one `update-ref`; the seal
+is four calls per attempt times N retries, and contention is the expected case
+rather than the exceptional one. The precedent states the reason a per-call
+bound alone is insufficient:
+
+**Evidence:** `packages/kit/src/identity.ts:53@5b7f9f2` — `* The per-call timeout bounds one `rev-parse`; without a total, resolution`
+
+Identity resolution runs before the lock and so its total must clear the lock
+deadline. The seal runs after the lock is released, so its budget answers to a
+different question — how long a session may spend exiting — and is therefore
+allowed to be larger than `IDENTITY_BUDGET_MS`. It is not allowed to be absent.
+
+### 5. The seal is two separable steps, because the concurrency test needs a seam
+
+**Chosen:** the seal exposes `readRefTip()` and `attemptCas(newCommit, oldTip)`
+as separately callable units, with the retry loop composed from them. Retries do
+not back off.
+
+**Rationale:** this is a testability constraint that determines implementation
+shape, so it is recorded as a decision rather than left to the implementer.
+
+The load-bearing test for this whole change is "two seals racing the same ref
+both land," and it is only load-bearing if it *fails* against a bare unguarded
+`update-ref`. Two real processes racing on a local filesystem rarely collide in
+the read-tip→write window, so the obvious two-subprocess test passes whether or
+not the compare-and-swap is there — a test that certifies the defect it was
+written to catch. With the seam, one test process interleaves two logical
+sealers deterministically: A reads the tip, B seals completely, A's now-stale
+`oldTip` goes to a *real* `update-ref`, git rejects it, A retries and lands.
+Nothing is mocked; the CAS under test is git's.
+
+Written as one opaque function, that test cannot be written at all, which is why
+the shape is fixed here and not discovered in Stage 4.
+
+**No backoff** keeps retry-exhaustion testable without an injectable clock or a
+sleep. Contention here is a handful of concurrent sessions, not a thundering
+herd, and the total budget from Decision 3 is the backstop that a backoff would
+otherwise provide.
+
+### 6. Write-capable git extends the kit's own helper
+
+**Chosen:** the seal's git calls live with the kit's existing bounded-git
+discipline in `packages/kit/src/identity.ts`, under their own timeout and
+budget constants — not the kernel's reader, and not a third spawn path.
+
+**Rationale:** the alternative was never live. The kernel's `revFileReader`
+reads *a file at a rev* and cannot express `hash-object`, `mktree`,
+`commit-tree` or `update-ref`; `add-journal-identity` recorded that rejection in
+the code itself rather than only in its proposal:
+
+**Evidence:** `packages/kit/src/identity.ts:30@5b7f9f2` — `* `revFileReader` in the kernel is not the reuse candidate for any of this: it`
+
+So the real question is whether a module named for identity resolution should
+own a write path. It should: what is being reused is the discipline — `shell:
+false`, an argument vector, a timeout, a `SIGKILL`, every error folded into one
+"no answer" — and two implementations of that discipline is the thing worth
+avoiding. The seal gets its own budget constants because it answers to a
+different deadline (Decision 3), not its own spawn helper.
 
 ### 4. `doctor` reports unsealed journals as a fact
 
@@ -122,8 +211,17 @@ definition across versions.
 
 ## Open questions
 
-- The retry bound for Decision 1's CAS loop, and the behaviour on exhaustion
-  beyond "leave it unsealed".
-- Whether the kit reuses the kernel's bounded-git reader or builds its own.
-  Inherited from `add-journal-identity`.
-- No threshold is defined at which ref growth should concern a project.
+- No threshold is defined at which ref growth should concern a project. Measured
+  on this repository: seven journals totalling 256K, the largest 228K. One commit
+  per sealed session is cheap and the ref is prunable by deletion, so this is a
+  question for a later change rather than a gap in this one.
+- Whether the sealing race deserves a real-process CI gate alongside the
+  deterministic seam test, modelled on the parallel-append step already in
+  `ci.yml`. Decision 5 makes the unit test genuinely load-bearing, which is what
+  the change needs to ship; a real-process gate would additionally cover the
+  spawn boundary the seam test steps around. Carried as an open concern on the
+  PR, not scoped here.
+
+Resolved during pre-review, and recorded above rather than here: the retry bound
+and exhaustion behaviour (Decisions 1, 3 and 5), and where the kit's
+write-capable git lives (Decision 6).

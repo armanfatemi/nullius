@@ -16,6 +16,10 @@ The kit SHALL provide `witness seal`, which seals journals present in
 `.nullius/runs/` that the ref does not yet carry, so a session that crashed
 before its terminal hook is recoverable.
 
+Sealing SHALL inherit the `.nullius` opt-in. Writing to `refs/nullius/runs`
+creates a namespace in the user's repository, and a project that has not opted
+in to recording has not opted in to that either.
+
 #### Scenario: a sealed journal survives its worktree
 
 - **WHEN** a session records a journal, seals it, and the worktree is deleted
@@ -38,7 +42,10 @@ while leaving no error and no finding — a silent write loss in the mechanism
 whose purpose is not losing the record.
 
 When the retry bound is exhausted the journal SHALL be left unsealed with its
-working file intact, and SHALL NOT be partially written.
+working file intact, SHALL NOT be partially written, and the kit SHALL write one
+line to stderr naming the journal and the reason it was not sealed. Exiting
+without an error is not the same as exiting without a word: a silently skipped
+seal is discoverable only by someone who independently runs `doctor`.
 
 The tree entry SHALL be named `<session>.jsonl`, so that the sweep's
 "does the ref already carry this journal" test has one definition across
@@ -52,5 +59,5 @@ versions.
 #### Scenario: exhausted retries leave the journal recoverable
 
 - **WHEN** the compare-and-swap fails more times than the retry bound allows
-- **THEN** the journal is left unsealed, its working file is intact, and
-  `doctor` counts it unsealed
+- **THEN** the journal is left unsealed, its working file is intact, the reason
+  is written to stderr, the exit code is 0, and `doctor` counts it unsealed
