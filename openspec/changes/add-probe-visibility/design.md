@@ -49,9 +49,16 @@ was wrong. The variable is read in the **hook subprocess**:
 
 **Evidence:** `packages/kit/src/cli.ts:436@12cde11` — `  if (process.env["NULLIUS_WITNESS_PROBE"] === "1") probe(root, event, payload);`
 
-and that subprocess takes its environment from the settings `env` block — the
-same mechanism that delivers `NULLIUS_KIT_BIN`. `doctor` runs in the operator's
-shell, and its only use of its own environment is the `PATH` lookup:
+That subprocess does not get its environment from any single place. It
+*inherits* the environment of the harness process, which the settings `env`
+block augments — which is how `NULLIUS_KIT_BIN` reaches it, but not the only way
+a variable can. The recorder's own help text lists the probe variable alongside
+two others as ordinary environment variables:
+
+**Evidence:** `packages/kit/src/cli.ts:73@12cde11` — `env: NULLIUS_WITNESS_ROOT, NULLIUS_WITNESS_ORIGIN, NULLIUS_WITNESS_PROBE`
+
+What matters for this design is narrower and still true: `doctor` runs in the
+operator's shell, and its only use of its own environment is the `PATH` lookup:
 
 **Evidence:** `packages/kit/src/doctor.ts:105@12cde11` — `  const dirs = (process.env["PATH"] ?? "").split(":").filter((dir) => dir.length > 0);`
 
@@ -61,13 +68,40 @@ capture configured in settings and actually running would report "off", and
 never saw it. Reading the settings block makes the check answer the question it
 claims to answer.
 
-**Alternative considered:** report `??` for the environment half and only the
-filesystem half as fact — rejected, because the state is genuinely readable and
-declining to read it is the checker being lazy rather than honest.
+**Alternative considered:** report `??` whenever the project settings file is
+silent — rejected, because silence is the common case and the report would then
+say "I don't know" about precisely the thing this change exists to surface.
 
 **Second alternative considered:** drop the environment half and report only the
 directory contents — rejected, because "is capture on right now" is the question
 that motivated the change, and a directory listing does not answer it.
+
+### 1c. Read the whole precedence chain, and name what is still not visible
+
+**Chosen:** read project-local, project-shared and user settings in precedence
+order; the first that sets the variable decides, and the report names that file.
+Where none set it, report what was read and say that the launching environment
+is not visible from here — never that capture is off.
+
+**This decision exists because 1a as first written was wrong in the same way
+the thing it fixed was wrong.** The first revision required capture state be
+read from *the* settings `env` block and permitted `unknown` only for an
+unreadable file. But `NULLIUS_WITNESS_PROBE=1 claude`, `.claude/settings.local.json`
+and `~/.claude/settings.json` each enable capture while the project file is
+silent, so that rule would have produced a confident `fact` reading "capture is
+off" while capture was on — the exact confident-wrong-answer failure 1b rejects,
+re-created one layer out. Narrowing a source of truth is not the same as
+checking the narrowed source is complete.
+
+The residue is real and is named rather than closed over: a variable exported
+in the shell that launched the harness is invisible to `doctor`, and no amount
+of file reading recovers it. That is why the silent case reports what it read
+instead of what it concluded.
+
+**Alternative considered:** report the effective value by merging all files —
+rejected. Precedence is what the harness applies, so a merge that ignored it
+would answer a question nobody asked. Naming the deciding file also gives the
+reader the one thing they need in order to act.
 
 ### 1b. The predicate is `=== "1"`, not "is set"
 
@@ -133,9 +167,21 @@ that is already free-form per check.
 
 One existing check's *text* changes: `probeChecks`' absent-corpus detail line is
 corrected, as argued in Decision 3. Its status, its input directory and its
-returned shape are untouched. Any test asserting on that exact string will need
-updating, and that is the intended blast radius — a test pinning the old string
-is pinning the instruction that caused the misreading.
+returned shape are untouched. No existing test pins that string, so the blast
+radius is empty; task 4.4 adds the assertion that was missing.
+
+One ordering constraint does bind. `runChecks` appends the live-proof check
+last:
+
+**Evidence:** `packages/kit/src/doctor.ts:551@12cde11` — `  checks.push(...probeChecks(probeDir));`
+
+and a test asserts that it stays last:
+
+**Evidence:** `packages/kit/src/doctor.test.ts:263@12cde11` — `    expect(checks[checks.length - 1]?.name).toBe("live proof");`
+
+So the capture-state check is inserted *before* `liveProof()`, not appended.
+That test is correct and stays as it is — live proof is the report's closing
+statement and should remain so.
 
 ## Open questions
 

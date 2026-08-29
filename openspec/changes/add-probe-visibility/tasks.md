@@ -12,18 +12,32 @@ Decision 3.
 
 ## 1. Doctor
 
+- [ ] 1.0 A settings-`env` reader. None exists: `readManagedHooks`
+      (`packages/kit/src/doctor.ts:74`) parses `.claude/settings.json` but
+      extracts only `hooks`, and collapses absent-versus-unparseable into
+      `unreadable: false`. The new reader must keep those two apart, or one
+      report will say `fact` for hooks and `unknown` for capture off the same
+      missing file
 - [ ] 1.1 A check reporting live-capture state: whether `NULLIUS_WITNESS_PROBE`
-      is set to exactly `1` in the harness settings `env` block, and whether
-      `.nullius/probes/` holds anything. Read the value from the settings file,
-      never from `doctor`'s own `process.env` — the variable governs the hook
-      subprocess, and `doctor` runs in the operator's shell (design 1a)
+      is set to exactly `1` anywhere in the settings precedence chain
+      (`.claude/settings.local.json`, then `.claude/settings.json`, then
+      `~/.claude/settings.json`), and whether `.nullius/probes/` holds anything.
+      Never read `doctor`'s own `process.env` — `doctor` runs in the operator's
+      shell, not the hook subprocess (design 1a)
 - [ ] 1.2 The predicate is `=== "1"`, matching the recorder. `NULLIUS_WITNESS_PROBE=0`
       is set and does not capture, and must report as not capturing (design 1b)
-- [ ] 1.3 Status is `fact` in every branch where the settings file is readable —
-      capturing, not capturing, directory absent, directory stale. Never `fail`
-- [ ] 1.4 Status is `unknown` in exactly one branch: the settings file is
-      absent, unreadable, or does not parse. The detail names the file it could
-      not read
+- [ ] 1.2a First file in precedence order that sets the variable wins, and the
+      detail names that file. A user setting of `1` overridden by a
+      project-local `0` reports off, naming the project-local file (design 1c)
+- [ ] 1.2b Where no file sets it, the detail names the files read and states
+      that the launching environment is not visible from `doctor`. It must NOT
+      say capture is off — that would be a claim about sources it did not read
+- [ ] 1.3 Status is `fact` in every branch where the settings files parse —
+      capturing, explicitly disabled, unset, directory absent, directory stale.
+      Never `fail`
+- [ ] 1.4 Status is `unknown` in exactly one branch: a settings file that exists
+      and does not parse. An absent file is skipped as an observation and does
+      not make the report unknown. The detail names the file it could not parse
 - [ ] 1.5 The detail line names the environment variable, so the report says how
       to change what it just reported
 - [ ] 1.6 The detail line names *which* probe directory it is describing — the
@@ -33,6 +47,9 @@ Decision 3.
       tells the reader to populate the committed corpus with a variable that
       writes to `.nullius/probes/`. Message only: the directory it reads, its
       status, and its returned shape are unchanged
+- [ ] 1.8 Insert the new check *before* `liveProof()` in `runChecks`, not after.
+      `packages/kit/src/doctor.test.ts:263` asserts live proof is the last check
+      doctor runs; that test is correct and stays as written
 
 ## 2. Init
 
@@ -52,11 +69,20 @@ Decision 3.
 
 ## 4. Tests
 
-- [ ] 4.1 Doctor's branches asserted on the message, not only the status, across
-      the full matrix: `{settings sets 1 | sets other value | sets nothing |
-      unreadable}` x `{live dir absent | empty | non-empty}`. The branch that
-      must not be dropped is *capture off with payloads present* — stale
-      recordings that look like coverage
+- [ ] 4.1 Doctor's branches asserted on the message, not only the status. The
+      settings axis is `{sets 1 | sets another value | sets nothing |
+      exists but does not parse}`; the directory axis is
+      `{absent | empty | non-empty}`. Two collapses are expected and should be
+      asserted once rather than nine times:
+      - the `does not parse` row is directory-invariant, since status and detail
+        are tied to settings readability alone — one case, not three
+      - `absent` and `empty` produce identical output in every row (zero
+        payloads held), so they need one shared assertion plus one test that
+        they really are identical
+      The branch that must not be dropped is *no file enables capture, payloads
+      present* — stale recordings that look like coverage
+- [ ] 4.1a Precedence is asserted directly: user file sets `1`, project-local
+      sets `0`, report says off and names the project-local file
 - [ ] 4.2 `init` writes no probe key into `nullius.kit.json`. Extend the
       existing in-memory render assertions in `packages/kit/src/init.test.ts`
       rather than round-tripping through disk
