@@ -27,7 +27,7 @@ reported, so that a journal from a newer producer stays readable.
 
 #### Scenario: identity fields are optional
 
-- **WHEN** a `0.3` header carries `origin` and `version` and none of `branch`,
+- **WHEN** a `0.4` header carries `origin` and `version` and none of `branch`,
   `head`, or `worktree`
 - **THEN** validation reports no finding for their absence
 
@@ -47,7 +47,18 @@ schema documentation rather than only in implementation comments.
 detached. `worktree` SHALL be a stable identifier derived from the worktree,
 not an absolute filesystem path, so that a journal carries no machine detail.
 
-None of the three SHALL produce a verdict.
+None of the three SHALL produce a verdict when absent, and none of the three
+SHALL be read by any verdict as evidence about the run.
+
+A present identity field SHALL be a non-empty string. An empty string is
+`MALFORMED`: it is a producer asserting it knows the branch and naming none,
+which is a different and worse fact than omitting the key. Omission is the
+supported way to say "git could not answer".
+
+#### Scenario: an empty identity field is malformed
+
+- **WHEN** a header carries `branch: ""`
+- **THEN** the header record is `MALFORMED`, and the finding names `branch`
 
 #### Scenario: a detached HEAD omits the branch
 
@@ -63,8 +74,14 @@ None of the three SHALL produce a verdict.
 ### Requirement: Verification records may pin a revision
 
 A `verification` record MAY carry `rev`, which SHALL be lower-case hexadecimal
-of 7 to 40 characters when present, matching the revision grammar Evidence
-Anchors already accept.
+of 7 to 40 characters when present.
+
+This is the *stamp* shape an Evidence Anchor is rewritten into, not the shape
+an anchor is parsed with. Anchor markers accept mixed case and fold it to
+lower on the way in, so "the grammar anchors accept" is deliberately not the
+rule here: a journal is written by a machine and has no author to be lenient
+toward, and one canonical spelling keeps `rev` values comparable by string
+equality.
 
 A `mutation` SHALL NOT carry `rev`: its hash is the identity of what changed,
 and a mutation asserts nothing intended to be checked again.
@@ -87,19 +104,46 @@ the field is a new verdict and takes a version bump with it.
 
 ### Requirement: Schema version bumps track the set of valid records
 
-The schema version SHALL be bumped when the set of valid records changes — a
-new kind, a new member of a closed vocabulary, or a new verdict — and SHALL NOT
-be bumped for additive optional metadata that no verdict reads.
+The schema version SHALL be bumped when the set of valid records changes: a new
+kind, a new member of a closed vocabulary, or a tightening that makes a record
+invalid which a previous version accepted. It SHALL NOT be bumped for additive
+optional metadata that no verdict reads.
+
+A field being optional SHALL NOT by itself exempt a change from the bump.
+Optionality is a property of a field; validity is a property of a record, and
+rejecting a key that was previously ignored changes the latter.
 
 An older validator reading a newer journal stops at `UNSUPPORTED-VERSION` and
 reports nothing, so a bump that buys no diagnostic power costs real coverage.
+That cost is the reason the criterion is the set of valid records rather than
+the presence of new fields.
 
-#### Scenario: identity fields do not bump the schema
+Where a verdict is gated on the declared schema version, the gate SHALL be a
+floor rather than an equality, so that a later version inherits every verdict
+its predecessor earned. A verdict silently ungated by a version bump is
+indistinguishable from a verdict that was never reached.
 
-- **WHEN** a producer emits `branch`, `head`, `worktree`, and
-  `verification.rev`
-- **THEN** the header still declares `0.3`, and a validator built before those
-  fields existed validates the journal with identical findings
+#### Scenario: rejecting a previously-ignored key bumps the schema
+
+- **WHEN** a change makes a `mutation` carrying `rev` `MALFORMED`, where that
+  record validated clean under `0.3`
+- **THEN** the schema is bumped to `0.4`, because a record that was valid has
+  become invalid
+
+#### Scenario: a bumped schema keeps the verdicts of its predecessor
+
+- **WHEN** a `0.4` journal contains a blocker finding that no resolution
+  discharges
+- **THEN** validation reports the same ledger verdict it would report for an
+  otherwise identical `0.4` journal, and the gate does not test the version for
+  equality with `0.3`
+
+#### Scenario: identity fields alone would not have bumped the schema
+
+- **WHEN** a producer emits `branch`, `head`, and `worktree` and nothing is
+  newly rejected
+- **THEN** no bump is required on their account, and a validator built before
+  those fields existed validates the journal with identical findings
 
 ### Requirement: Survey aggregates verdicts and never merges journals
 
@@ -144,8 +188,30 @@ In those cases the header identity fields SHALL be absent. No git failure SHALL
 produce a journal finding, block an append, or return a non-zero exit from a
 hook.
 
+Recording SHALL also survive git *succeeding slowly*, which is the costlier
+case: no git invocation SHALL run while the journal's append lock is held, and
+every git invocation SHALL be bounded by a timeout strictly below the lock's
+wait deadline. Identity SHALL be resolved before the lock is acquired and passed
+to the header as data.
+
+A git call that exceeds its timeout SHALL be treated exactly as a git failure —
+the field is absent and the append proceeds.
+
 #### Scenario: recording outside a repository
 
 - **WHEN** `witness record` runs in a directory that is not a git repository
 - **THEN** the journal is written with a header carrying no `branch`, `head`,
   or `worktree`, and the hook exits 0
+
+#### Scenario: a slow git call cannot cost another hook its records
+
+- **WHEN** one hook is resolving identity and a second hook appends
+  concurrently
+- **THEN** the second hook's append is not refused on account of the first,
+  because no git call is made while the lock is held
+
+#### Scenario: a git call that exceeds its budget is absent, not fatal
+
+- **WHEN** resolving `branch` exceeds the identity timeout
+- **THEN** `branch` is absent from the header, the append succeeds, and the
+  hook exits 0
