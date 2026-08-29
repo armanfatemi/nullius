@@ -126,14 +126,20 @@ places where a wrong answer is silent.
 
   **Evidence:** `grep -rn --exclude='*.test.ts' 'child_process' packages/kit/src/journalFile.ts packages/kit/src/record.ts` → 0 results
 
-  The dependency direction is already kit → kernel, so the kernel's bounded
-  reader is available. Inherited from `add-journal-identity`, which deferred it
-  here — but that change has since given the kit a bounded-git helper of its
-  own, with a budget in the hundreds of milliseconds rather than the kernel's
-  ten seconds. So the question is no longer whether the kit has one: it is
-  which of the two the seal reuses, and "avoid two implementations of one
-  discipline" now argues for the kit's own helper rather than for the
-  kernel's.
+  Inherited from `add-journal-identity`, which deferred the question here and
+  has since answered half of it: the kit now has a bounded-git helper of its
+  own, on a budget in the hundreds of milliseconds rather than the kernel's ten
+  seconds.
+
+  Note the kernel's helper is a weaker candidate than it looks. `revFileReader`
+  reads *a file at a rev*; a seal needs `hash-object`, `mktree`, `commit-tree`
+  and `update-ref`, none of which it can express — `add-journal-identity`
+  rejected it as a reuse candidate for exactly that reason. So this is not a
+  choice between two helpers that both fit. The real question is whether the
+  kit's helper should grow write-capable git, or whether sealing needs its own
+  spawn path with a longer budget than an append-path read can justify, and
+  "avoid two implementations of one discipline" argues for extending the kit's
+  rather than reaching across to the kernel's.
 - **How large does the ref get, and when does that matter?** Measured on this
   repo: seven journals totalling 256K, the largest 228K. One commit per sealed
   session is cheap and the ref is prunable by deletion, but no threshold is

@@ -35,8 +35,8 @@
 
 import { spawnSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { readFileSync, writeFileSync } from "node:fs";
-import { isAbsolute, join, resolve, sep } from "node:path";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { isAbsolute, join, resolve } from "node:path";
 
 /**
  * Wall-clock budget for ONE git call while resolving identity.
@@ -140,7 +140,7 @@ export function resolveIdentity(
     // A repository with no commits yet answers nothing here, and that is a
     // header with `branch` and `worktree` and no `head` — which is true.
     head: git("rev-parse", "HEAD"),
-    worktree: worktreeId(resolveGitDir(root, commonDir, toplevel), toplevel),
+    worktree: worktreeId(resolveGitDir(root, commonDir), toplevel),
   };
 }
 
@@ -174,30 +174,31 @@ export function worktreeId(gitCommonDir: string | null, toplevel: string): strin
 }
 
 /** Where the salt is looked for. See the placement decision above `SALT_FILE`. */
-function resolveGitDir(
-  root: string,
-  commonDir: string | undefined,
-  toplevel: string,
-): string | null {
+function resolveGitDir(root: string, commonDir: string | undefined): string | null {
   if (commonDir === undefined || commonDir.length === 0) return null;
-  // `rev-parse` echoes an argument it does not understand rather than failing,
-  // and `--git-common-dir` only arrived in git 2.5. On anything older the
-  // "path" we get back is the literal flag.
-  if (commonDir.startsWith("--")) return null;
 
   // `--git-common-dir` answers relative to git's own cwd, which is the `-C`
   // directory we handed it, not the toplevel.
   const dir = isAbsolute(commonDir) ? commonDir : resolve(root, commonDir);
 
-  // The salt is uncommittable *by construction* only because it lives outside
-  // the working tree — git tracks nothing inside the git directory. That is a
-  // claim about a path, so it is checked rather than assumed: anything
-  // resolving back inside the worktree gets no salt, and `worktree` is simply
-  // absent. Losing one descriptive field beats writing a secret somewhere it
-  // could be committed.
-  const inside = resolve(dir);
-  const tree = resolve(toplevel);
-  if (inside === tree || inside.startsWith(`${tree}${sep}`)) return null;
+  // The salt is uncommittable *by construction* because it lives in the git
+  // directory, and git tracks nothing inside its own directory. That holds
+  // wherever the git directory sits — `<toplevel>/.git` is the ordinary case
+  // and is exactly as untrackable as a linked worktree's.
+  //
+  // So the check is not "is this outside the working tree", which would reject
+  // every ordinary repository. It is "is this really a git directory at all",
+  // which is what the claim actually rests on. `git rev-parse` echoes an
+  // argument it does not understand rather than failing, and
+  // `--git-common-dir` only arrived in git 2.5 — on anything older the answer
+  // is the literal flag, and resolving it would name a path in the working
+  // tree that git would happily track. Every git directory contains `HEAD`;
+  // an echoed flag names a directory that does not exist, let alone contain
+  // one.
+  //
+  // Failing this test costs the `worktree` field and nothing else. One absent
+  // descriptive key beats a secret written where `git add` can reach it.
+  if (!existsSync(join(dir, "HEAD"))) return null;
   return dir;
 }
 

@@ -1,6 +1,8 @@
 import { spawnSync } from "node:child_process";
 import {
   existsSync,
+  chmodSync,
+  copyFileSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -780,21 +782,53 @@ suite("CLI characterization — --format json on a no-match run", () => {
 describe("witness survey — post-review fixes", () => {
   const FIXTURE = "spec/fixtures/valid-run.jsonl";
 
+  // Every aggregate line, not just the count. A dedupe that fixed the
+  // denominator and left the sums would pass a count-only assertion, and the
+  // sums are the reason the verb exists.
+  const aggregates = (r: { output: string }) =>
+    r.output
+      .split("\n")
+      .filter(
+        (line) =>
+          line.includes("journal(s) surveyed") ||
+          line.includes("record(s) read across") ||
+          line.includes("Outcomes across"),
+      );
+
   it("counts one file once when reached by two spellings", () => {
-    // The same journal as an absolute path and a relative one. Deduping on the
-    // raw glob output counted it twice, which inflated every total INCLUDING
-    // the journal count printed beside them — so the number a reader would use
-    // to sanity-check the totals was wrong in the same direction as the totals.
-    const both = run("witness", "survey", resolve(REPO_ROOT, FIXTURE), FIXTURE);
+    // Deduping on raw glob output counted one file once per spelling, which
+    // inflated every total INCLUDING the journal count printed beside them —
+    // so the number a reader would use to sanity-check the totals was wrong in
+    // the same direction as the totals.
     const one = run("witness", "survey", FIXTURE);
 
-    expect(both.output).toContain("1 journal(s) surveyed");
-    expect(both.code).toBe(one.code);
-    // Not just the count: the whole aggregate block must match the single-path
-    // run, or a future dedupe could fix the denominator and leave the sums.
-    const totals = (r: { output: string }) =>
-      r.output.split("\n").filter((line) => line.includes("record(s) read across"));
-    expect(totals(both)).toEqual(totals(one));
+    for (const other of [resolve(REPO_ROOT, FIXTURE), FIXTURE.toUpperCase()]) {
+      const both = run("witness", "survey", other, FIXTURE);
+      expect(both.output).toContain("1 journal(s) surveyed");
+      expect(both.code).toBe(one.code);
+      expect(aggregates(both)).toEqual(aggregates(one));
+    }
+  });
+
+  it("refuses an unreadable file with exit 2, like a directory", () => {
+    // isFile() is not readability: a mode-000 regular file passed the earlier
+    // stat guard and then threw EACCES uncaught, exiting 1 — the same code a
+    // failing journal returns, which is the confusion the guard existed to
+    // close while its message claimed it had.
+    const dir = mkdtempSync(join(tmpdir(), "nullius-survey-"));
+    const file = join(dir, "x.jsonl");
+    try {
+      copyFileSync(join(REPO_ROOT, FIXTURE), file);
+      chmodSync(file, 0o000);
+      const result = run("witness", "survey", file);
+
+      expect(result.code).toBe(2);
+      expect(result.stderr).toContain("cannot read journal");
+      expect(result.output).not.toMatch(/at .*\.js:\d+/);
+    } finally {
+      chmodSync(file, 0o644);
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("refuses a glob that matched a directory with exit 2, not a crash", () => {
@@ -804,8 +838,10 @@ describe("witness survey — post-review fixes", () => {
     const result = run("witness", "survey", "spec/fixtures");
 
     expect(result.code).toBe(2);
-    expect(result.stderr).toContain("not a readable file");
-    expect(result.output).not.toContain("EISDIR");
+    expect(result.stderr).toContain("cannot read journal");
+    // The cause is named rather than swallowed — the operator needs to know it
+    // was a directory — but it arrives as a message, not a stack.
+    expect(result.stderr).toContain("EISDIR");
     expect(result.output).not.toMatch(/at .*\.js:\d+/);
   });
 });

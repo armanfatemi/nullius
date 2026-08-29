@@ -307,11 +307,16 @@ describe("the salt cannot be written where it could be committed", () => {
     expect(existsSync(join(root, "--git-common-dir"))).toBe(false);
   });
 
-  it("writes no salt when the git dir resolves inside the worktree", () => {
+  it("writes no salt in a directory that is not a git directory", () => {
+    // The claim is "git tracks nothing inside its own directory", so the check
+    // is whether this IS a git directory — not whether it sits outside the
+    // worktree. `<toplevel>/.git` is inside the toplevel and is the ordinary
+    // case; an earlier version of this guard rejected containment and killed
+    // the field in every ordinary repository.
     repoAt(root);
-    const inside = join(root, "not-really-git");
-    mkdirSync(inside, { recursive: true });
-    const shim = gitDirOnPath(root, inside);
+    const notGit = join(root, "not-really-git");
+    mkdirSync(notGit, { recursive: true });
+    const shim = gitDirOnPath(root, notGit);
     let identity: JournalIdentity;
     try {
       identity = resolveIdentity(root);
@@ -320,7 +325,21 @@ describe("the salt cannot be written where it could be committed", () => {
     }
 
     expect(identity.worktree).toBeNull();
-    expect(existsSync(join(inside, SALT_FILE))).toBe(false);
+    expect(identity.branch).toBe("main");
+    expect(existsSync(join(notGit, SALT_FILE))).toBe(false);
+  });
+
+  it("still salts the ordinary repository, whose git dir IS inside the toplevel", () => {
+    // The regression guard for the above. `git rev-parse --git-common-dir`
+    // answers `.git` here, which resolves inside the worktree — so a
+    // containment test would reject it and `worktree` would be null in every
+    // normal repo, with the suite passing only where tmpdir happens to be a
+    // symlink.
+    repoAt(root);
+    const identity = resolveIdentity(root);
+
+    expect(identity.worktree).toMatch(/^[0-9a-f]{16}$/);
+    expect(existsSync(join(root, ".git", SALT_FILE))).toBe(true);
   });
 });
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /* eslint-disable no-console -- this is a CLI tool; console output is its user-facing surface */
 
-import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -528,14 +528,28 @@ function runWitnessSurvey(args: WitnessArgs): number {
     return 2;
   }
 
-  // Deduped by RESOLVED path, not by the string the glob produced. The same
-  // file reached by two spellings — an absolute path and a relative one, say —
-  // is two distinct strings and would otherwise be surveyed twice, inflating
-  // every total including the journal count printed beside them. A survey
-  // whose denominator is wrong is worse than no survey.
+  // Deduped by the path the filesystem agrees on, not by the string the glob
+  // produced. One file reached by two spellings — absolute against relative,
+  // `SPEC/` against `spec/` on a case-insensitive volume, a symlink against
+  // its target — is several distinct strings and would otherwise be surveyed
+  // once per spelling, inflating every total INCLUDING the journal count
+  // printed beside them. A survey whose denominator is wrong is worse than no
+  // survey, because the number a reader would check the sums against is wrong
+  // the same way the sums are.
+  //
+  // `realpathSync` rather than `resolve`: the latter normalises `..` and makes
+  // a path absolute but neither case-folds nor follows links, so it closes the
+  // spelling case and leaves the other two open. Where it cannot answer — a
+  // broken link, a file that vanished between glob and here — fall back to
+  // `resolve`, and let the read below report it.
   const seen = new Map<string, string>();
   for (const match of patterns.flatMap((pattern) => globSync(pattern))) {
-    const key = resolve(match);
+    let key: string;
+    try {
+      key = realpathSync.native(match);
+    } catch {
+      key = resolve(match);
+    }
     if (!seen.has(key)) seen.set(key, match);
   }
   const paths = [...seen.values()].sort();
@@ -546,15 +560,26 @@ function runWitnessSurvey(args: WitnessArgs): number {
 
   const journals: { path: string; content: string }[] = [];
   for (const path of paths) {
-    // A glob that matches a directory is a mistyped glob, not a corrupt
-    // journal. Reading it would throw EISDIR and exit 1 — the same code a
-    // genuinely failing journal returns — so the mistake would be
-    // indistinguishable from a finding. Named and refused with 2 instead.
-    if (!statSync(path, { throwIfNoEntry: false })?.isFile()) {
-      console.error(`not a readable file: ${path}`);
+    // Every way a match can fail to be a readable journal is reported the same
+    // way, because they are the same mistake: a glob that named something this
+    // command cannot read. A directory throws EISDIR, an unreadable file
+    // EACCES, one deleted between the glob and here ENOENT — and an uncaught
+    // throw exits 1, which is the code a genuinely FAILING journal returns. A
+    // mistyped glob would then be indistinguishable from a finding, and the
+    // operator would get a stack trace either way.
+    //
+    // Catching the read rather than stat-ing first is deliberate: a stat can
+    // only predict what the read will do, and the gap between them is one more
+    // place for the two to disagree.
+    let content: string;
+    try {
+      content = readFileSync(path, "utf8");
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      console.error(`cannot read journal: ${reason}`);
       return 2;
     }
-    journals.push({ path, content: readFileSync(path, "utf8") });
+    journals.push({ path, content });
   }
 
   const survey = surveyJournals(journals);

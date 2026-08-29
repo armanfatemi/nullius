@@ -1065,3 +1065,113 @@ test: pass — claims 816 passed (+2 survey regression tests), kit 281 passed
   the unchanged environmental baseline.
 dogfood gates: pass, both polarities, all seven.
 canary status: no active canary.
+
+## Stage 6 — Post-review re-run (Stage 7 fixes)
+
+Focused re-review of the Stage 7 commit (3940f91), dispatched because those
+fixes touched the kernel CLI and a spec-family document. It found a blocker in
+the fix itself.
+
+## Blocker — the coordinator's own guard killed the feature
+
+**[blocker] [corrected-coordinator] `resolveGitDir`'s containment check
+rejected every ordinary repository.** `git rev-parse --git-common-dir` answers
+`.git`, which resolves to `<toplevel>/.git` — inside the toplevel — so the
+guard fired on the normal case and `worktree` was permanently `null`.
+Reproduced by the reviewer on a fresh `git init` and on this repository, and
+confirmed by the coordinator: `resolveIdentity` here returned
+`worktree: null`. The field this change exists to add was dead in its own repo.
+
+The reasoning error is worth naming precisely, because the guard *looked*
+conservative. I conflated "inside the toplevel directory" with "trackable by
+git". They are not the same thing: `.git` lives inside the toplevel and git
+tracks nothing inside it, which is the entire basis of the by-construction
+claim. I wrote a check that rejected exactly the case the guarantee rests on.
+
+**[blocker] The kit suite hid it, and CI would not have.**
+`identity.test.ts` asserts `worktree` matches 16 hex and passed anyway — only
+because `os.tmpdir()` is `/var/folders/…` on macOS while git reports the
+realpath `/private/var/folders/…`, so the two sides were never in the same form
+and the containment test could not fire. CI runs `ubuntu-latest`, where they
+match: the suite would have gone red there, on a defect a green local run
+reported as fixed. architecture-reviewer.
+
+**Fixed** by replacing containment with the check the claim actually rests on:
+is this a real git directory? Every git directory contains `HEAD`; an echoed
+`--git-common-dir` names a directory that does not exist. That closes the
+git-2.5 case which motivated the guard, without rejecting the ordinary
+repository. A regression test now asserts the ordinary repo IS salted, so the
+mistake cannot recur silently, and `worktree` is verified to be a real
+identifier in this repository with the salt present at `.git/nullius-worktree-salt`
+and invisible to `git status`.
+
+## Concerns fixed
+
+- **[concern → fixed] The `not a readable file` message asserted a check that
+  was not implemented.** `statSync().isFile()` passes for a mode-000 file,
+  which then threw EACCES uncaught and exited 1 — the same code a failing
+  journal returns, which is the exact confusion the guard was written to close
+  while its message claimed it had. Reproduced. Replaced the stat guard with a
+  try/catch around the read, so EISDIR, EACCES and a TOCTOU ENOENT are all
+  reported identically with exit 2 and the cause named. Catching the read
+  rather than predicting it also removes the stat/read gap where the two could
+  disagree. checker-engineer.
+- **[concern → fixed] `resolve()` does not case-fold or follow symlinks**, so
+  `SPEC/…` against `spec/…` still double-counted on this volume — reproduced.
+  Now keyed on `realpathSync.native`, falling back to `resolve` when the path
+  cannot be canonicalised. checker-engineer.
+- **[concern → fixed] [corrected-coordinator] My test's comment claimed "the
+  whole aggregate block must match" while the helper filtered one line.**
+  checker-engineer. The comment overclaimed what the assertion did — the same
+  defect class as the message above, in a test I wrote to prove a fix. The
+  helper now compares the journal count, the record totals and the outcome
+  line, and the test loops over both spellings.
+- **[concern → fixed] `add-journal-sealing` framed the reuse question as a
+  choice between two helpers.** architecture-reviewer. `revFileReader` reads a
+  file at a rev and cannot express `hash-object`/`mktree`/`commit-tree`/
+  `update-ref`; `identity.ts` already rejects it for that reason, so one of the
+  two candidates was never real. Rewritten to ask the question that is actually
+  open: whether the kit's helper grows write-capable git, or sealing needs its
+  own spawn path.
+
+## Concerns carried, not fixed
+
+- **[concern] `runGit` inherits `process.env`,** so `GIT_DIR` /
+  `GIT_COMMON_DIR` / `GIT_WORK_TREE` steer both answers.
+  architecture-reviewer. Not fixed: an operator who sets those is telling git
+  where the repository is, and the `HEAD` check still confirms the destination
+  is a real git directory. Listed in the PR body as an open concern rather than
+  resolved silently.
+
+## Looks good
+
+- `identity.ts` is throw-free on the append path — whole module re-audited, not
+  just the moved line. architecture-reviewer.
+- The PATH shim is correct and both salt tests are non-vacuous: `shift 2` drops
+  `-C <root>`, the case arms match all three real call shapes, and
+  `branch === "main"` proves the shim answered. architecture-reviewer.
+- The CHANGELOG's reader-vs-constructor correction is accurate and complete.
+  architecture-reviewer.
+- The survey aggregation path is untouched, `paths` is still deterministically
+  sorted, and the retained spelling stays actionable for the
+  `witness validate <path>` the output suggests. checker-engineer.
+- Both original Stage 7 tests do fail against the pre-fix code.
+  checker-engineer.
+
+## Coordinator corrections since last append
+
+- **I shipped a fix that broke the feature, and my own verification did not
+  catch it.** I ran the full suite and all seven gates after Stage 7 and
+  reported them green. They were green, and `worktree` was null in every
+  repository. The gates do not exercise the kit's identity path, and the one
+  test that would have caught it passed for an unrelated platform reason. A
+  green run over checks that cannot see the change is the failure this
+  repository is named after, and I produced one.
+- **I did not sanity-check the feature by hand after changing it.** One
+  command — resolving identity in this repo and looking at the output — would
+  have shown `worktree: null` immediately. I ran it only after a reviewer told
+  me what to look for.
+- **My "not a readable file" message and my test comment both asserted more
+  than the code did.** Two instances in one commit of the same defect: text
+  describing an intent rather than the implementation, in a repository whose
+  whole subject is that gap.
