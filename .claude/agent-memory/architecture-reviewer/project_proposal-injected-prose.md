@@ -71,3 +71,10 @@ fails the run. Also read paragraphs for coherence, not just anchors. Flag it
 instruction was not treated as an instruction. See
 [[feedback-verify-counts-not-just-anchors]] for the related habit of
 re-computing count claims the checker cannot see.
+
+- 2026-08-28/29 — `add-probe-visibility/proposal.md:8`, wedged mid-Problem
+  between the lead sentence and its Evidence Anchor. Same
+  `spec/fixtures/rules-valid/src/example.ts` path. `canary status` +
+  `check '<dir>/**/*.md'` in one call confirmed it again (planted
+  2026-08-29T00:43:37Z) — that pairing is now 3-for-3 as the fastest opener.
+
