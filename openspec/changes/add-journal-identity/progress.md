@@ -2,73 +2,77 @@
 
 _Started 2026-08-28; last updated 2026-08-29_
 
+## Status: PAUSED at the refinement cap
+
+Three pre-review iterations completed (the default `--max-refine`). One blocker
+remains open, and it needs a scope decision rather than another edit.
+
 ## Phases completed
 
-- [x] Stage 1: Load — done 2026-08-28
-- [x] Stage 2: Pre-review iteration 1 — 3 blockers, 3 false premises
-- [x] Stage 3: Refine iteration 1 — all addressed; schema bumped to 0.4
-- [x] Stage 2: Pre-review iteration 2 — 6 blockers, 2 false premises. More
-      blockers than iteration 1: the bump introduced its own surface, and two
-      blockers were defects in the repair rather than in the original design.
-- [x] Stage 3: Refine iteration 2 — all 6 blockers and both false premises
-      addressed; producer bump added by user decision
+- [x] Stage 1: Load
+- [x] Stage 2/3: iteration 1 — 3 blockers, 3 false premises; schema bumped to 0.4
+- [x] Stage 2/3: iteration 2 — 6 blockers, 2 false premises; version-gating added,
+      producer bump added by user decision
+- [x] Stage 2: iteration 3 — 5 blockers. Four fixed; one is a scope decision.
 
-## Current phase
+## The open blocker
 
-**Stage 2 (Pre-review)**, iteration 3 — final re-review before implementation
+**The producer bump (tasks 3.8–3.10) cannot land as specified.** This is
+measured, not argued:
 
-## Next 3 actions
+- The kit emits `dispatch` / `report` / `append` / `mutation` and never
+  `finding`.
+- 18 live journals under `.nullius/runs/`: 254 reports with `outcome: "found"`,
+  0 `finding` records.
+- Headers left at the real `0.2`: **0** SILENT-REVIEWER findings.
+- Headers rewritten to `0.3`: **255** SILENT-REVIEWER findings.
 
-1. Re-dispatch the reviewer set against the iteration-2 repairs
-2. Synthesize; if zero blockers and zero false premises, advance to Stage 4
-3. If blockers remain, the default --max-refine cap of 3 is reached and the
-   run pauses for the user rather than looping again
+So SUPPRESSED-FINDING is unreachable (the ledger is always empty) and
+SILENT-REVIEWER fires on 100% of `found` reports. The version gate is acting as
+a producer-capability claim: it reads "declares 0.3" as "can emit findings",
+which has never been true of the hook pack.
 
-## What changed in Stage 3 iteration 2
+This is task 3.9's third outcome, whose written instruction is to pause.
 
-- **Version-gating added (1.2a).** The record loop had no version predicate, so
-  the new rejections would have fired on 0.3 journals — making the change's
-  whole backward-compatibility claim false. One shared "declares 0.4+"
-  predicate now gates all three.
-- **Task 1.11 rewritten.** It must assert BOTH verdicts the gate guards
-  (SUPPRESSED-FINDING and SILENT-REVIEWER), plus the lower boundary, and
-  compare by index into VERSIONS rather than by string.
-- **Task 1.5 corrected** to use nonEmptyString, not optionalString — the latter
-  would have made the new verdict unreachable while the fixture still exited 1.
-- **Salt tasks split out (3.5a/3.5b):** gitignore entry in the same commit, and
-  a deliberate decision on per-worktree vs git-common-dir placement.
-- **Tasks 3.3/3.4 reconciled (3.3a)** via an unsynchronised pre-check outside
-  the lock, with the reasoning written down so it is not "fixed" later.
-- **The dropped fourth clause restored** to the spec's version-bump rule; the
-  rule now states that restatements must carry all four.
-- **Producer bump added (3.8-3.10)** by user decision: kit SCHEMA_VERSION
-  0.2 -> 0.4, with 3.9 measuring what that switches on across the existing
-  runs corpus before it lands.
-- `KINDS_BY_VERSION` corrected to `VOCABULARY` in 5 files — coordinator error.
-- Task count 31 -> 40.
+## Options for the user
 
-## Integration points the next session needs to read on resume
+1. Split 3.8–3.10 into a separate change, on the same "not about identity" test
+   Decision 4 used to split sealing out. Sections 1–2 and 3.1–3.7 ship as a
+   coherent identity change.
+2. Keep the bump and separate schema version from producer capability — a
+   larger kernel change, and arguably the right long-term fix.
+3. Keep the bump and accept 255 findings on the live corpus. Not recommended:
+   it trains people to ignore the verdict.
 
-- packages/claims/src/witness.ts:147,154,445,1077 — VERSIONS, VOCABULARY, the
-  kinds-only version gate, and the ledger gate that becomes a floor
-- packages/claims/src/witness.ts:275,309 — nonEmptyString vs optionalString;
-  task 1.5 must use the former
-- packages/kit/src/cli.ts:41 — SCHEMA_VERSION, bumped 0.2 -> 0.4 by task 3.8
-- packages/kit/src/journalFile.ts:49,196-204 — DEFAULT_WAIT_MS and the lock
-  scope identity resolution must stay outside of
-- .gitignore — covers .nullius/runs/ and .nullius/probes/ only; task 3.5a adds
-  the salt
+## Fixed in iteration 3 (committed)
 
-## Pending user decisions
+- Identity-field rejections version-qualified to 0.4 in the spec, with a 0.3
+  scenario — they were tightening 0.3 as written
+- `v0.3-compat-run.jsonl` fixture added (1.12): the only test in the change that
+  can fail if the version predicate is written backwards. Neither existing 0.3
+  fixture contains a verification or mutation at all
+- VERSIONS ascending-order assertion (1.13) — 1.11's index floor makes ordering
+  load-bearing and nothing pinned it
+- Task 3.9 now requires a published artifact, not a ticked box
+- doctor.ts:711's second hardcoded 0.2 header added to 3.8
+- The asymmetry argument narrowed so it no longer implies four more rejections
+- Decision 6's per-clone/per-worktree self-contradiction resolved
+- Two coordinator false premises corrected (a fabricated worktree-collision
+  cost; a miscounted "exactly three places")
 
-- None open. Three answered: bump to 0.4 keeping the rejections; git outside
-  the lock with a sub-second bound; bump the producer to 0.4 in this change.
-- Recorded but not blocking: whether the header key should be `head` or a
-  self-describing `head_at_start`.
+## Integration points on resume
 
-## Process note for whoever resumes this
+- packages/kit/src/record.ts — the four kinds the kit can emit; `finding` is
+  not one, which is the whole producer-bump problem
+- packages/claims/src/witness.ts:147,154,356,445,1077 — VERSIONS, VOCABULARY,
+  the supported-version check, the kinds gate, the ledger gate
+- packages/kit/src/cli.ts:41 and packages/kit/src/doctor.ts:711 — both producers
+- packages/claims/src/witness.ts:275,309 — nonEmptyString vs optionalString
+
+## Probe history
+
+iter 1 TAINTED (registry leak) · iter 2 TAINTED (coordinator disclosed the
+plant in this committed file) · iter 3 CAUGHT.
 
 Do not write probe or canary planning into this file. It is committed and
-travels in the PR diff, so reviewers read it — writing a plant location here
-disclosed iteration 2's probe before any reviewer was dispatched and made that
-round's score meaningless. Keep instrumentation plans in the state file.
+travels in the PR diff.

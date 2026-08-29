@@ -50,15 +50,26 @@ not an absolute filesystem path, so that a journal carries no machine detail.
 None of the three SHALL produce a verdict when absent, and none of the three
 SHALL be read by any verdict as evidence about the run.
 
-A present identity field SHALL be a non-empty string. An empty string is
-`MALFORMED`: it is a producer asserting it knows the branch and naming none,
-which is a different and worse fact than omitting the key. Omission is the
-supported way to say "git could not answer".
+On a journal declaring `0.4` or later, a present identity field SHALL be a
+non-empty string, and an empty string SHALL be `MALFORMED`: it is a producer
+asserting it knows the branch and naming none, which is a different and worse
+fact than omitting the key. Omission is the supported way to say "git could not
+answer".
 
-#### Scenario: an empty identity field is malformed
+This rejection SHALL NOT apply to journals declaring an earlier schema, for the
+same reason the `rev` rejections do not: a record that validated clean under
+`0.3` SHALL NOT become invalid because the validator learned a newer schema.
 
-- **WHEN** a header carries `branch: ""`
+#### Scenario: an empty identity field is malformed at 0.4
+
+- **WHEN** a `0.4` header carries `branch: ""`
 - **THEN** the header record is `MALFORMED`, and the finding names `branch`
+
+#### Scenario: an empty identity field is ignored at 0.3
+
+- **WHEN** a `0.3` header carries `branch: ""`
+- **THEN** validation reports no finding for it, because the rejection is `0.4`
+  semantics
 
 #### Scenario: a detached HEAD omits the branch
 
@@ -88,18 +99,23 @@ A `mutation` SHALL NOT carry `rev`, and a `mutation` carrying it SHALL be
 
 This is the only place the schema hard-fails a well-formed extra key, and it is
 deliberately asymmetric with the header's rule that unrecognised keys are
-ignored. The asymmetry is argued rather than assumed. An unrecognised *header*
-key is a message from a producer this validator does not know, and ignoring it
-is forward compatibility. `rev` on a `mutation` is different: `rev` is a key
-this schema defines, with a meaning this schema assigns, placed on a record the
-schema says cannot carry it. That is not an unknown key from the future — it is
-a known key used wrongly, and the most likely producer of one is code that
-believes a mutation records something re-checkable. Ignoring it would let that
-belief persist silently in a producer, which is precisely the misunderstanding
-the restriction exists to prevent.
+ignored. The asymmetry is argued rather than assumed, and the argument is
+deliberately narrow.
 
-"A mutation does not *need* `rev`" would argue only for ignoring it. The reason
-to reject is that a mutation asserting a rev is evidence of a producer bug.
+The criterion is **not** "a known key on a record that cannot carry it". That
+would prove far too much — `target` on a `dispatch`, `severity` on a `check`,
+`merges_into` on a non-merge `resolution` are all ignored today, and nothing
+here proposes to change them. A future author must not derive further
+rejections from this clause.
+
+The criterion is the specific false belief the key encodes. `rev` means *this
+claim can be checked again*. A `mutation` asserts that something changed, which
+is the opposite of a claim to re-check, so a producer emitting `mutation.rev`
+is not merely using a key in the wrong place — it holds a wrong model of what a
+mutation is, and every record it writes is suspect for the same reason.
+Ignoring the key would let that model persist silently. No other misplacement
+in this schema carries a comparable implication about its producer, which is
+why no other misplacement is rejected.
 
 Absence of `rev` SHALL NOT be a finding under this schema. A verdict that reads
 the field is a new verdict and takes a version bump with it.

@@ -507,3 +507,235 @@ Actions this produces, both for the retro:
 
 iteration 1 verdict for comparison: TAINTED (registry leak, no coordinator
 disclosure).
+
+## Stage 2 — Pre-review iteration 3
+
+Iteration 3, the final round under the default `--max-refine` cap of 3. Same
+four reviewers, briefed on the iteration-2 repairs.
+
+## Decision
+
+**Refinement cap reached with blockers outstanding.** One of them is not a
+document defect at all — it is a measured fact about the repository that
+invalidates a scope decision taken earlier in this run on incomplete
+information. The pipeline pauses rather than looping a fourth time.
+
+## The finding that changes the change
+
+**[blocker] The producer bump (tasks 3.8–3.10) cannot land as specified, and
+this is now measured rather than argued.**
+
+The kit emits exactly four record kinds and `finding` is not among them:
+
+**Evidence:** `grep -rn '"finding"' packages/kit/src/ --include='*.ts' --exclude='*.test.ts'` → 0 results
+
+So under any schema at `0.3` or later, the two verdicts behind the ledger gate
+behave structurally, not statistically: `SUPPRESSED-FINDING` is unreachable
+because the ledger is always empty, and `SILENT-REVIEWER` fires on every
+`report` whose outcome is `found`, because none of them can ever carry a
+finding to discharge it.
+
+architecture-reviewer ran the measurement task 3.9 asks for. The coordinator
+re-ran it independently and got a slightly higher count:
+
+- 18 live journals under `.nullius/runs/`
+- 254 reports with `outcome: "found"`, 0 `finding` records
+- Header left at its real `0.2`: **0** `SILENT-REVIEWER` findings
+- Header rewritten to `0.3`: **255** `SILENT-REVIEWER` findings
+
+That is task 3.9's third outcome — "they fire pervasively on well-formed runs"
+— whose written instruction is to pause rather than relax a verdict. The gate
+fired on its first use, which is the gate working.
+
+The important part is *why*, because it is not calibration. The version gate is
+doing double duty as a **producer-capability claim**: it reads "this journal
+declares 0.3" and acts as though that meant "this producer can emit findings".
+For the hook pack that has never been true. A producer bump therefore does not
+merely switch verdicts on for live data; it asserts a capability the producer
+does not have, and 255 findings is the schema telling the truth about a claim
+the bump would make falsely.
+
+architecture-reviewer's proposed seam is the same test Decision 4 used to split
+sealing out: sections 1–2 plus 3.1–3.7 are one coherent change about identity;
+3.8–3.10 is a producer migration that is not about identity and whose real
+prerequisite is either a producer that emits findings or a gate that separates
+schema version from producer capability.
+
+## Other blockers
+
+- **[blocker] The identity-field rules carry no version qualifier in the
+  spec.** Task 1.5 was amended to say "on a `0.4` journal", but the spec
+  requirement text and its scenario were not. As the spec reads, a `0.3` header
+  with `branch: ""` must be rejected — a tightening on `0.3`, which is exactly
+  what tasks 1.2a and 1.12 exist to prevent. The `rev` rejections got their
+  compat scenario; the identity fields did not. checker-engineer.
+- **[blocker] The 0.3-compat guarantee has no fixture that could ever go red.**
+  Neither existing `0.3` fixture contains a `verification` or a `mutation` at
+  all — coordinator confirmed: 0 of each in both files. So task 1.12's
+  "confirm the 0.3 fixtures still validate identically" is satisfiable by
+  running the unchanged suite, and would stay green if 1.2a's predicate were
+  written backwards. The single most important backward-compatibility claim in
+  the change is unasserted. test-engineer.
+- **[blocker] [corrected-coordinator] Decision 6 contradicts itself inside one
+  document.** `design.md:281` still says "a **per-clone** random salt" in the
+  normative text while the Risks section says per-clone "as first written is
+  wrong". Task 3.5b's own instruction is "do not leave two different units
+  named in two documents", and the coordinator left them in one.
+  architecture-reviewer.
+- **[blocker] Task 3.9 has no required artifact.** Its three outcomes are to be
+  "chosen in writing" with no named destination, so a reviewer cannot tell from
+  the ticked box whether it ran. Given that it is the gate protecting live
+  journals, the measurement's count and a sample must land somewhere a reviewer
+  reads. test-engineer. (Note the irony recorded honestly: the task did run
+  this round, by a reviewer rather than an implementer, and it is the reason
+  this change is pausing.)
+
+## False premises
+
+- **[false-premise] `openspec/changes/add-journal-identity/tasks.md:4`** — the
+  `retry` sentence, false as in both prior iterations. Flagged by
+  architecture-reviewer, checker-engineer and rule-auditor.
+- **[false-premise] [corrected-coordinator] `tasks.md:189`** — the coordinator
+  wrote that a git-common-directory salt would make "identical paths in sibling
+  worktrees collide". That state is impossible: `git worktree add` requires
+  distinct directories, so sibling worktrees never share an absolute path. Task
+  3.5b's deferred decision was being weighed against a fabricated cost.
+  architecture-reviewer.
+- **[false-premise] [corrected-coordinator] `tasks.md` 1.2a** — the coordinator
+  wrote "the declared version selects behaviour in exactly three places",
+  carrying forward a count from iteration 2's review without re-deriving it.
+  checker-engineer corrected its own earlier figure: the `?? KINDS_V01` fallback
+  is unreachable, and the `VERSIONS.some` gate at `witness.ts:356` was omitted.
+  The conclusion (one shared predicate) is unaffected.
+
+## Concerns
+
+- **[concern] A second producer site is missed.** `packages/kit/src/doctor.ts:711`
+  hardcodes its own `version: "0.2"` header for the live-proof journal, and
+  task 3.8 names only `cli.ts:41`. Three more sit in `journalFile.test.ts`.
+  Coordinator confirmed all four. checker-engineer.
+- **[concern] The asymmetry argument proves too much.** "A known key used
+  wrongly on a record that cannot carry it" also covers `target` on a
+  `dispatch`, `severity` on a `check`, and `merges_into` on a non-merge
+  resolution — all ignored today. The defensible criterion is the specific
+  false belief (that a mutation is re-checkable), not misplacement in general.
+  Restate, or a future author derives four more rejections from it.
+  checker-engineer.
+- **[concern] `VERSIONS`'s ordering becomes load-bearing and nothing pins it.**
+  Task 1.11's index floor assumes ascending order; the constant's comment only
+  says "schemas this build can read". A future `"0.5"` inserted out of order
+  silently ungates the ledger — the same defect 1.11 exists to prevent.
+  checker-engineer.
+- **[concern] 3.3a's race is benign for header count but its cost is
+  understated.** No interleaving yields zero or two headers. But if two first-
+  appends race and the winner's git call timed out, the header is written with
+  no identity fields and the loser's successfully-resolved identity is
+  discarded permanently — one resolution per session, so there is no second
+  chance. architecture-reviewer.
+- **[concern] Five anchors are stamped to `f1b8211`**, a branch-only commit. A
+  squash would send them to advisory `UNVERIFIABLE-REV`. Correct fail-open, not
+  a defect, but `review-evidence.md` carries several of them and ships in the
+  PR. rule-auditor.
+
+## Looks good
+
+- Not circular: `scanHeader` validates `version` at `witness.ts:356` and returns
+  before constructing header fields at `:396`, so one predicate over a version
+  string serves all four sites. checker-engineer; coordinator reached the same
+  conclusion independently.
+- The index floor is safe: `VERSIONS` is ascending today, no unknown version
+  reaches the gate, and `indexOf` returning -1 fails closed. checker-engineer.
+- The kit emits no kind valid at 0.4 but not 0.2, so the bump adds no
+  vocabulary obligation and `KIND_INTRODUCED` stays correct across a skipped
+  0.3. checker-engineer.
+- Three new `MALFORMED` conditions each have a fixture and a named-verdict unit
+  test; task 3.9 correctly falls outside `verdict-needs-fixture-and-test`
+  because it measures an existing gate rather than adding a verdict.
+  rule-auditor.
+- All new anchors verified byte-accurate against their stamped commits via
+  `git show`; none are repoints — line numbers moved together with fresh
+  hashes. rule-auditor.
+- `witness.ts` still has zero `node:fs`; no kernel→kit dependency added; the new
+  failure conditions are byte-equality rather than fuzzy. architecture-reviewer.
+- 3.10 is not understated: `journalFile.test.ts` already writes real journals to
+  temp dirs and `kit/src/cli.ts` already imports `validateJournal`, so the
+  write-then-validate path exists. test-engineer.
+- Nothing in the change touches `flagConformance`. test-engineer.
+
+## Probe integrity note
+
+Plant landed in `tasks.md`. Two of the two in-scope agents flagged it, and
+checker-engineer — which declares no false-premise pass and looked only because
+the brief carried the question — again caught it cleanly on the merits, with no
+reference to instrumentation. That is the third clean catch from the same agent
+across three rounds.
+
+architecture-reviewer again confirmed via the registry rather than by reading,
+and reported the plant timestamp. Under the taint rule its report is void, and
+the round is recorded accordingly. rule-auditor flagged the sentence on its own
+terms while noting it was reasoning independently of any probe framing.
+
+Unlike iteration 2, the coordinator did not disclose the plant: `progress.md`
+was rewritten to carry an explicit instruction never to record instrumentation
+plans in a committed artefact, and it named no document this round.
+
+## Coordinator corrections since last append
+
+- **I left Decision 6 self-contradictory.** I corrected "per-clone" to
+  "per-worktree" in the Risks section and in the tasks, and did not correct the
+  normative sentence in Decision 6 itself. The instruction I wrote into task
+  3.5b — do not leave two different units named in two documents — was violated
+  by me inside one document, in the same edit that wrote it.
+- **I invented a cost that cannot exist.** Task 3.5b weighed the
+  git-common-directory salt against "identical paths in sibling worktrees
+  collide". `git worktree add` requires distinct directories, so that collision
+  is impossible and the option was being argued against a phantom.
+- **I carried forward a count instead of re-deriving it.** "Exactly three
+  places" in task 1.2a came from iteration 2's review, not from my own reading;
+  checker-engineer has since corrected its own figure. The lesson is the one
+  this pipeline keeps relearning — a number quoted from a report is a claim,
+  and claims about existing code get re-checked.
+- **My earlier framing of the producer bump was too confident.** I escalated it
+  to a blocker, put the question to the user, and described the risk as "a
+  verdict meeting live data for the first time" — which sounded like a tuning
+  question. It is not. It is structural: the kit cannot emit findings at all, so
+  `SILENT-REVIEWER` fires on 100% of `found` reports. Had I measured before
+  asking rather than after, the question I put to the user would have offered
+  materially different options, and I am recording that the decision they made
+  was made on my incomplete framing.
+
+## Probe — stage 2
+
+verdict: CAUGHT (iteration 3), with one report void for taint
+planted: openspec/changes/add-journal-identity/tasks.md:4, in the opening
+  paragraph (rotated off proposal.md at iteration 1 and design.md at
+  iteration 2; the harvested sentence is identical every round, as the
+  harvest is deterministic)
+in scope of: architecture-reviewer (openspec/ path; declares a false-premise
+  pass), rule-auditor (proposal mode; declares a false-premise pass)
+dispatched: architecture-reviewer, checker-engineer, rule-auditor, test-engineer
+scored: exit 0 from `canary verify` on the Stage 2 iteration-3 synthesis
+
+Both in-scope agents flagged it. architecture-reviewer confirmed via the
+registry rather than by reading and reported the plant timestamp, so under the
+taint rule that report is void; rule-auditor flagged it on its own terms.
+
+The result worth carrying: checker-engineer caught the plant cleanly on the
+merits for the THIRD consecutive round, and it declares no false-premise pass
+in its own agent file — it looked only because the brief carried the
+descriptive question verbatim. Across three rounds the agents that declare the
+pass leaked to the registry twice and dismissed the finding as orthogonal once,
+while the agent that does not declare it produced three clean catches. That is
+a finding about the agent definitions, not about this change.
+
+test-engineer did not flag it, correctly: it declares no false-premise pass and
+is not counted in scope, even though the plant landed in tasks.md, which it
+reads more closely than anyone.
+
+Coordinator disclosure: none this round. progress.md was rewritten after
+iteration 2 to carry an explicit instruction never to record instrumentation
+plans in a committed artefact, and it named no document this round. That
+repaired the specific leak that made iteration 2's score meaningless.
+
+Verdict history: iter 1 TAINTED (registry leak), iter 2 TAINTED (coordinator
+disclosed the plant in a committed file), iter 3 CAUGHT.

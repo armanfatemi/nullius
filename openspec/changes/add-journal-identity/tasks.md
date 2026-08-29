@@ -25,10 +25,10 @@ it going wrong silently.
       grammar: that one accepts mixed case and folds it, which is the wrong
       rule for a machine-written field
 - [ ] 1.2a **Add the version predicate the record loop does not have.** Today
-      the declared version selects behaviour in exactly three places —
-      `VOCABULARY.get(scan.version)`, its `?? KINDS_V01` fallback, and the
-      ledger gate — and none of them is reachable from the `verification`,
-      `mutation` or header cases. So tasks 1.2, 1.3 and 1.5 as stated would
+      the declared version selects behaviour only in `scanHeader`'s
+      supported-version check, in `VOCABULARY.get(scan.version)`, and in the
+      ledger gate — none of them reachable from the `verification`, `mutation`
+      or identity-field checks. So tasks 1.2, 1.3 and 1.5 as stated would
       fire on `0.3` journals too, which is the opposite of what 1.12 and the
       spec promise. Introduce one shared "declares 0.4 or later" predicate,
       derived from the same ordered `VERSIONS` list the ledger floor uses, and
@@ -105,9 +105,24 @@ it going wrong silently.
         comparison. `"0.10" >= "0.3"` is false, and a floor that mis-orders a
         future version is the same silent-ungating defect this task exists to
         prevent, deferred
-- [ ] 1.12 Confirm the `0.3` fixtures still validate identically — a `0.3`
-      journal carrying `rev` keeps passing, because the new rejections are
-      `0.4` semantics
+- [ ] 1.12 **Add the `0.3`-compat fixture the guarantee actually needs.**
+      Neither existing `0.3` fixture contains a `verification` or a `mutation`
+      at all, so "confirm the `0.3` fixtures still validate identically" is
+      satisfiable by running the unchanged suite and would stay green if
+      1.2a's predicate were written backwards. Add `v0.3-compat-run.jsonl`: a
+      `0.3` journal carrying a `verification` with `rev: "main"`, a `mutation`
+      carrying `rev`, and a header with `branch: ""` — every one of the three
+      new rejections — asserted to produce **none** of them, in a named unit
+      test. This is the only test in the change that can fail if the version
+      predicate is written backwards, which makes it the one that matters most
+- [ ] 1.12a Give that fixture its own must-pass line in
+      `.github/workflows/ci.yml`, for the same reason 4.3a exists
+- [ ] 1.13 Assert `VERSIONS` is in ascending order, in a unit test. Task 1.11's
+      floor compares by index into it, so the ordering is load-bearing from
+      that point on — and the constant's own comment describes it only as
+      "schemas this build can read", which does not warn a future author
+      inserting `"0.5"` that order matters. An out-of-order insert silently
+      ungates the ledger: the exact defect 1.11 exists to prevent, deferred
 
 ## 2. Kernel — survey
 
@@ -161,7 +176,14 @@ it going wrong silently.
       authoritative `needsHeader` decision stays under the lock, and a race
       costs at most one wasted resolution on a session's first appends, never a
       wrong header. Write that reasoning down; a future reader will otherwise
-      "fix" the race and reintroduce the per-event git call
+      "fix" the race and reintroduce the per-event git call.
+      Record the one real cost too, which is not header count: if two first
+      appends race and the winner's git call timed out, the header is written
+      with no identity fields and the loser's successfully-resolved identity is
+      discarded. Identity is resolved once per session, so there is no second
+      chance — the journal carries no identity for its whole life. Acceptable
+      under "git failure is never a recording failure", but a real loss that
+      must not be discovered later as a surprise
 - [ ] 3.4 `headerRecord` gains `branch` / `head` / `worktree`; all three
       omitted when git cannot answer. One resolution per session — never per
       event; see 3.3a for how that is achieved without moving work under the
@@ -185,15 +207,21 @@ it going wrong silently.
       also means the field cannot answer "same tree?" across a re-clone, and
       the design's "per-clone" wording is wrong. Decide deliberately whether
       the salt belongs in the git common directory instead — shared across
-      worktrees, which would make identical paths in sibling worktrees collide
-      — and record the choice with its reason. Do not leave two different units
-      named in two documents
+      every worktree of one clone, so a `worktree` value means the same thing
+      everywhere that clone is checked out — and record the choice with its
+      reason. The two placements are coupled to 3.5a: a salt in the git common
+      directory sits outside the working tree and needs no `.gitignore` entry
+      at all. Do not leave two different units named in two documents
 - [ ] 3.6 Test: recording in a non-repository directory writes a valid journal
       with no identity fields and exits 0
 - [ ] 3.7 Test: a git call that exceeds the identity timeout leaves the field
       absent, the append succeeds, and the hook exits 0
-- [ ] 3.8 **Bump the producer.** `SCHEMA_VERSION` in `packages/kit/src/cli.ts`
-      goes from `"0.2"` to `"0.4"`. Without this the hook pack keeps stamping
+- [ ] 3.8 **Bump the producer — all of it.** `SCHEMA_VERSION` in
+      `packages/kit/src/cli.ts` goes from `"0.2"` to `"0.4"`, and so does the
+      second hardcoded header at `packages/kit/src/doctor.ts:711`, which writes
+      the live-proof journal and which a bump of the constant alone would leave
+      behind. Three more literals in `packages/kit/src/journalFile.test.ts`
+      move with them. Without this the hook pack keeps stamping
       `0.2` while writing `0.4`-era identity fields, and every gate this change
       adds fires on no real journal — a schema with no producer, shipped
       alongside the producer that should have emitted it
@@ -209,9 +237,14 @@ it going wrong silently.
       - `SUPPRESSED-FINDING` / `SILENT-REVIEWER` fire at a rate that reflects
         real recording gaps → ship, and say so in the PR body, because that is
         the verdict doing its job on data it never previously saw
-      - They fire pervasively on well-formed runs → the verdicts were tuned
-        against a corpus that excluded live hook output, and the bump must not
-        land until that is understood. Pause rather than relaxing a verdict
+      - They fire pervasively on well-formed runs → the bump must not land
+        until that is understood. Pause rather than relaxing a verdict
+
+      **The measurement must produce an artifact, not a ticked box.** Record
+      the journal count, the per-verdict counts at the old and new versions,
+      and a sample finding, in the PR body. A task whose pass condition is "a
+      decision was made in writing", with no named destination, cannot be
+      distinguished later from a task that was skipped
 - [ ] 3.10 Test: a journal written by the kit declares `0.4` and validates
       clean, so the producer bump is pinned by something other than a constant
       nobody reads

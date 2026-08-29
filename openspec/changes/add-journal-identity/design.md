@@ -278,15 +278,21 @@ So the construction is specified rather than left to the implementer:
 - **Algorithm and length:** SHA-256, hex, truncated to 16 characters. Long
   enough that collisions between the worktrees of one machine are not a
   practical concern; short enough to read in a header.
-- **Salt:** a per-clone random salt generated once and stored beside the
-  runs directory, never committed. It makes the digest stable within a clone —
-  which is all `worktree` promises — while removing the preimage-guess path
-  entirely, because the guesser does not have the salt.
+- **Salt:** a random salt generated once, never committed. It makes the digest
+  stable wherever the salt is stable — which is all `worktree` promises — while
+  removing the preimage-guess path entirely, because the guesser does not have
+  the salt. **The salt is per-worktree, not per-clone**, because `.nullius/`
+  lives in the working tree; task 3.5b decides deliberately whether it should
+  move to the git common directory instead, and records the reason. Those two
+  placements are the whole decision, and this document names one unit
+  throughout: per-worktree, unless 3.5b changes it and changes this sentence
+  with it.
 - **Consequence, stated so nobody discovers it later:** `worktree` values are
-  *not* comparable across clones or across machines. Two journals from
-  different clones of the same worktree path get different identifiers. That is
-  the correct trade for this schema, whose only question is "same tree?" within
-  a corpus that was produced together.
+  *not* comparable across clones or across machines, and under the per-worktree
+  placement they are not comparable across sibling worktrees either — which is
+  harmless, since sibling worktrees are exactly the case the field is meant to
+  distinguish. That is the correct trade for this schema, whose only question is
+  "same tree?" within a corpus produced together.
 
 ## Risks
 
