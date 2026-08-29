@@ -241,19 +241,19 @@ it going wrong silently.
       this constant while implementing section 3
 ## 4. Close-out
 
-- [ ] 4.1 `node packages/claims/dist/cli.js check 'openspec/**/*.md'` clean
-- [ ] 4.2 `node packages/claims/dist/cli.js check 'README.md' 'spec/**/*.md' --require-markers` clean
-- [ ] 4.3 Every fixture in `spec/witness-journal.md`'s table still exits as the
+- [x] 4.1 `node packages/claims/dist/cli.js check 'openspec/**/*.md'` clean
+- [x] 4.2 `node packages/claims/dist/cli.js check 'README.md' 'spec/**/*.md' --require-markers` clean
+- [x] 4.3 Every fixture in `spec/witness-journal.md`'s table still exits as the
       table says, including the ones that must fail
-- [ ] 4.3a Give `v0.4-identity-run.jsonl` its own must-pass line in
+- [x] 4.3a Give `v0.4-identity-run.jsonl` its own must-pass line in
       `.github/workflows/ci.yml`, alongside the existing v0.3 pair. A fixture
       checked only by 4.3's manual re-read is a fixture that stops being
       checked the first time someone trusts the table instead of running it
-- [ ] 4.4 CHANGELOG entry: the `0.4` bump and why it was required despite every
+- [x] 4.4 CHANGELOG entry: the `0.4` bump and why it was required despite every
       new field being optional; the public-surface change to `JournalHeader`;
       and the ledger-gate conversion, which is the part a reader would
       otherwise not know to look for
-- [ ] 4.5 Re-point `add-oracle-conservation`'s citation of the version-bump
+- [x] 4.5 Re-point `add-oracle-conservation`'s citation of the version-bump
       rule at `spec/witness-journal.md` rather than this change's `design.md`,
       and re-stamp it. Its current anchor names a file that moves under
       `openspec/changes/archive/` on archive, and the rule's wording has

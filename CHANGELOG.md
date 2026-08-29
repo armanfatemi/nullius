@@ -4,6 +4,102 @@ Bare version headings are the kernel — `@nullius-inverba/claims` and its
 unscoped alias `evidence-anchors`, which ship together. Headings prefixed with
 a package name are that package's own release; the kit versions independently.
 
+## Unreleased
+
+### Added
+
+- **Journal schema `0.4` — a journal that knows where it came from.** The
+  header may now carry `branch`, `head`, and `worktree`, and a `verification`
+  may carry `rev`, the commit its claim was checked against. `head` is defined
+  narrowly as *the commit the session started from* — not the tree any later
+  record was written against — because HEAD moves during a session and a field
+  silently meaning something else is a lie by staleness. The definition is in
+  the schema text rather than a comment, since a caveat that lives only in a
+  comment gets read as absent.
+
+  `worktree` is a salted SHA-256 of the absolute worktree path, truncated to
+  16 hex characters — never the path, and never an unsalted digest, because an
+  absolute worktree path is low-entropy enough that an unsalted hash is
+  confirmable by guessing. The salt lives in the git common directory, which
+  makes it uncommittable by construction rather than by an ignore rule that
+  only covers one repository.
+
+- **`0.4` is a bump rather than an additive change, and the reason is worth
+  stating.** Every new field is optional, which is what made the first draft of
+  this work claim no bump was needed. That was wrong: `verification.rev` must
+  now be a stamp and a `mutation` may not carry `rev` at all, and both records
+  validated clean under `0.3`. Making a previously-valid record invalid is a
+  tightening, and optionality of a *field* does not rescue the validity of a
+  *record*.
+
+  All three new rejections are gated behind a version predicate that compares
+  by index into the ordered version list, never by string — `"0.10" >= "0.3"`
+  is false. A `0.3` journal validates exactly as it did before. That guarantee
+  is carried by a fixture pair, `v0.3-compat-run.jsonl` and
+  `v0.4-broken-run.jsonl`, which are byte-identical apart from the declared
+  version and exit 0 and 1 respectively; either one alone would pass with the
+  predicate written backwards.
+
+- **The version-bump rule is now written down in `spec/witness-journal.md`**,
+  with all four of its triggers: a new kind, a new member of a closed
+  vocabulary, a tightening that invalidates a previously-accepted record, and a
+  new verdict that can fail a record. It lives in the schema doc rather than in
+  a change proposal because proposals archive and a citation into one rots.
+
+- **`nullius witness survey <glob...>`** validates every matched journal
+  **independently** and adds up the reports. It never merges records into one
+  timeline, and that is the point rather than an implementation detail: two
+  journals are two worktrees, both containing `src/parser.rs`, and a merged
+  timeline would let one worktree's mutation invalidate another's verification
+  — a `STALE-VERIFICATION` for an event that never happened. A validator that
+  invents failures is worse than one that misses them, because the invented
+  ones teach people to pass `continue-on-error`.
+
+  Output keeps the three terminal outcomes as three numbers and names the
+  journal count in the same block, so a summed total cannot be misread as one
+  validated run. Journals that reached no terminal record are listed by name;
+  journals whose schema this build cannot read are listed separately, because
+  their zero counts mean "nothing was read", not "nothing happened".
+
+- **kit: the hook recorder writes repository identity into the header.** The
+  governing constraint turned out not to be "git might fail" but *git
+  succeeding slowly*: the header is written under the journal's advisory lock,
+  and a hook that waits past that lock's deadline has its append refused —
+  records lost, not deferred. So identity is resolved before the lock is taken
+  and passed in as data, on its own sub-second budget rather than the kernel's
+  ten-second file-reading default. A detached HEAD writes `head` and omits
+  `branch` rather than inventing a sentinel nobody can check. No git failure,
+  and no git slowness, can cost a hook its records.
+
+### Changed
+
+- **Public surface.** `JournalHeader` gains three optional fields, and
+  `surveyJournals` / `JournalSurvey` / `SurveyedJournal` are newly exported.
+  Both are additive — no consumer that does not read them can break — but they
+  cross the package boundary and are recorded here rather than passing as an
+  internal detail.
+- **The ledger gate is a floor, not an equality.** `SUPPRESSED-FINDING` and
+  `SILENT-REVIEWER` were gated on a journal declaring exactly `0.3`. Left
+  alone, a `0.4` journal would have been silently ungated for both while every
+  fixture still exited as its table said and CI stayed green — a checker going
+  quiet behind a passing build. A test asserts both verdicts by name at `0.4`
+  and asserts the lower boundary at `0.2`, since an upper-boundary test alone
+  passes against a floor wrongly written as "not 0.1".
+
+### Known limitation
+
+- **The hook recorder still declares `0.2`.** Bumping the producer was scoped
+  into this work and then measured and scoped back out. The kit cannot emit a
+  `finding` record at all, so under any schema at `0.3` or later every `found`
+  report earns `SILENT-REVIEWER`: on this repository's own corpus, 0 findings
+  at `0.2` and 255 at `0.3`, from a producer whose behaviour had not changed.
+  The cause is one level below the gate — for a hook journal `outcome: "found"`
+  means only that the subagent's final message was non-empty, so a reviewer
+  semantic is being read into a harness-derived field. That is a question about
+  the outcome vocabulary rather than about identity, and it is deferred with
+  its measurements recorded rather than patched over. The identity fields are
+  readable at any declared version, so they are written and read today.
+
 ## 0.8.0
 
 Deterministic rule compliance and a journal check for it, a review-layer
