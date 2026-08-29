@@ -116,10 +116,12 @@ Two questions this proposal opened were settled before implementation began.
 Both are argued in `design.md`; recorded here so the proposal does not read as
 though they are still live.
 
-- **Compare-and-swap or a lock?** CAS, bounded at five attempts and by a total
-  git budget, announcing exhaustion on stderr and leaving the journal for the
-  sweep — `design.md` Decisions 1 and 3. The advisory lock was rejected because
-  it is per-journal and per-worktree and so guards the wrong resource.
+- **Compare-and-swap or a lock?** CAS, with retryability decided by re-reading
+  the ref rather than by parsing git's error text, bounded by a total git budget
+  — `design.md` Decisions 1 and 3. There is no global attempt ceiling; the one
+  arm that needs a hard cap has its own. Exhaustion is announced on stderr and
+  the journal is left for the sweep. The advisory lock was rejected because it is
+  per-journal and per-worktree and so guards the wrong resource.
 - **Where does the kit's write-capable git live?** With the kit's existing
   bounded-git discipline, under its own budget constants — `design.md` Decision
   6. This was never a choice between two helpers that fit: the kernel's reader

@@ -62,13 +62,44 @@ answers it better:
   failures" and review found a fifth (`reference already exists`) and a sixth (a
   directory/file conflict). Enumeration was never going to close.
 
-**Why `blocked` gets one retry rather than none.** A live held lock is genuinely
-transient — a peer is mid-write and about to move the tip — and it presents
-exactly like a stale one: tip unchanged. One retry resolves the live case; the
-stale case costs one wasted attempt of roughly 40 ms rather than the whole
-budget. Stopping at zero retries would be safe but would abandon a seal in the
-ordinary collision this change exists to handle; retrying without bound is the
-defect that got us here. One is the number that separates them.
+**Why `blocked` gets a small fixed number of retries.** A live held lock is
+genuinely transient — a peer is inside `update-ref` and about to move the tip —
+and it presents exactly like a stale lock, which is permanent: tip unchanged in
+both cases. Retrying without bound is the defect that got us here. Stopping at
+zero abandons the seal in a collision this change exists to handle.
+
+**Three.** A live lock is held for the duration of one write and clears in
+milliseconds, so three attempts spanning roughly 120 ms is generous for it. A
+stale lock costs those same three attempts — about 4% of the budget — and then
+the seal stops and says so. The asymmetry is what makes the number safe rather
+than tuned: being wrong about a live lock costs a deferred seal the sweep
+reclaims, and being wrong about a stale one costs 4% of one session's exit.
+
+An earlier draft set this to one. Review pointed out that `contended` requires a
+peer to have landed *and released*, so a lockfile collision — a peer still
+inside its write — takes the `blocked` arm rather than the `contended` arm. At
+high contention that arm is reached more often than the first draft assumed, and
+a cap of one abandons seals there. Whether lock collisions are rare or dominant
+at sixty-four contenders is a rate question no amount of document review settles;
+three is chosen to make the answer not matter much either way.
+
+**The predicate is safe under an ambiguity it cannot resolve.** `readRefTip`
+cannot distinguish an absent ref from a corrupt one — measured, `git rev-parse
+--verify --quiet` exits 1 with empty stdout for both, differing only in a stderr
+warning this design refuses to read. It does not need to. `update-ref <new>
+0000…` **succeeds** on an absent ref and **fails** on a corrupt one, so the two
+cases separate themselves at the write: a first seal lands, and a corrupt ref
+fails, re-reads as still-absent and therefore unchanged, takes the `blocked` arm,
+and stops within the cap. The ambiguous input converges on the bounded path,
+which is why the design does not need the distinction the read cannot give it.
+
+**A moved tip may be our own write.** `update-ref` can be SIGKILLed on timeout
+*after* it has already landed. The re-read then shows the tip moved, which the
+predicate would otherwise read as `contended`, and the seal would retry and
+commit its own journal a second time. So the moved-tip arm compares the new tip
+against the commit this seal built: if they match, the outcome is `landed`, not
+`contended`. Without that comparison the timeout path silently duplicates
+entries in the ref.
 
 **Retrying on `contended` is not a herd, and this is what makes Decision 5
 work.** Under a state predicate a retry happens only when the tip *moved*, which
@@ -204,15 +235,17 @@ deadline. The seal runs after the lock is released, so its budget answers to a
 different question — how long a session may spend exiting — and is therefore
 allowed to be larger than `IDENTITY_BUDGET_MS`. It is not allowed to be absent.
 
-**The numbers, and this time they are measured.** `SEAL_TIMEOUT_MS` is 250 per
-call — the same as identity's, because a seal's individual git calls have no
-reason to be slower than a `rev-parse` — and `SEAL_BUDGET_MS` is 3 000 for the
+**The numbers, and this time they are measured.** `SEAL_TIMEOUT_MS` is 200 per
+call — slightly under identity's 250, for the arithmetic reason below rather
+than because a seal's calls are faster — and `SEAL_BUDGET_MS` is 3 000 for the
 seal as a whole.
 
-`spawnSync` git costs 8.6–9.2 ms on this machine, measured in both a scratch
-repository and this one. A first attempt is six calls, about 54 ms; a retry
-re-reads the tip and rebuilds, about 45 ms. So 3 000 ms buys roughly **sixty to
-seventy attempts** on a warm repository.
+`spawnSync` git costs 8.6–10.2 ms across two independent measurements. A
+**failed** attempt is **seven** calls, not six — the six that build and write,
+plus the predicate's own re-read of the tip, which is the call that distinguishes
+this design from the one it replaced and which an earlier draft of this paragraph
+omitted. That is about 70 ms; a retry is six calls, about 60 ms. So 3 000 ms buys
+roughly **fifty** attempts on a warm repository.
 
 That is deliberately more than the sixty-four-contender worst case, not less. An
 earlier draft claimed the same 3 000 ms bought "five to ten attempts" and argued
@@ -223,13 +256,14 @@ a seal that uses many attempts is one that watched many peers succeed, and
 cutting it off early would abandon the journal of whoever happened to arrive
 last.
 
-**The timeout and the budget do not collide.** Six calls at 250 ms is 1 500 ms,
-half the budget, so even an attempt in which *every* call times out leaves room
-for another. The earlier 500 ms figure made one all-timeouts attempt consume the
-entire budget exactly, which would have made the retry mechanism structurally
-unreachable in the case it most needed to survive. When git is hanging rather
-than failing, two attempts and out is the right behaviour and 3 000 ms is the
-bound on how long a session waits to discover it.
+**The timeout and the budget do not collide — at 200 ms, which is why it is not
+250.** Seven calls at 200 ms is 1 400 ms and a retry is 1 200 ms, so an attempt
+in which *every* call times out still leaves room for a full second attempt
+inside 3 000 ms. At 250 ms those figures are 1 750 and 1 500, summing to 3 250 —
+over budget, so the retry would be cut off part-way. This paragraph has now been
+wrong twice in the same direction, both times because the call count was
+undercounted; the numbers above are stated against seven and six explicitly so
+the next reader can check them without re-deriving the count.
 
 That "different question" has a limit this design does not get to set. Nothing
 *local* waits on the seal: `cli.ts` returns as soon as `appendRecords` has
@@ -277,10 +311,17 @@ A herd is exactly what this tool's normal case is.
 **The third answer is the first one that is structural rather than empirical.**
 Backoff exists to break synchronised collision: contenders that retry in lockstep
 keep colliding, and a delay decorrelates them. Decision 1's state predicate makes
-that situation unreachable. A retry happens only when the tip has *moved*, which
-means a peer has already landed — so a retry is never a collision with a peer
-that is also retrying, it is a response to a completed write. N contenders
-produce at most N−1 retries in total across the system, and the loop drains.
+that situation unreachable *on the `contended` arm*. A retry there happens only
+when the tip has moved, which means a peer has already landed — so it is never a
+collision with a peer that is also retrying, it is a response to a completed
+write. Each seal therefore retries at most N−1 times, once per peer that beat it.
+(An earlier draft said N−1 "in total across the system"; that was wrong — it is
+per seal, and the system-wide figure is order N².)
+
+The `blocked` arm is not covered by this argument and is capped at three instead
+(Decision 1). That is the honest boundary: backoff is unnecessary where retries
+are responses to completed writes, and a hard cap does the work where they are
+not.
 
 There is nothing for backoff to decorrelate, and adding a delay would only make
 the drain slower while spending the budget on waiting.

@@ -306,3 +306,73 @@ The detail that makes this worth reading twice: the same reviewer volunteered, u
 Consequence for the three CAUGHT rounds. They should be read down, not thrown out. A reviewer that recognises a sentence by its text is not demonstrating the false-premise pass the probe is meant to measure, and this round is the first evidence that recognition was in play. The instrument cannot separate "read it and judged it false" from "recognised it" on any of rounds 1-3.
 
 What would fix it is not rotation, which is all this run had available. It is varying the sentence, which needs a `canary.ts` change — a seed, or an explicit `--symbol` override. Recorded here as the concrete follow-up this run's probe data argues for.
+
+## Stage 2 — Pre-review iteration 5
+
+Review of commit `a5a51c7`, which replaced the retry predicate wholesale. Dispatched: architecture-reviewer, test-engineer.
+
+## The headline: the mechanism held
+
+For the first time in four rounds, no reviewer said the retry mechanism is wrong. Rounds 2, 3 and 4 each returned "this predicate is wrong in a new way". Round 5 returned fixable defects *within* a predicate both reviewers accepted. That is the change in kind this switch was made to produce.
+
+## False premises
+
+- **[false-premise] `openspec/changes/add-journal-sealing/specs/installer/spec.md:8`** — "Note that `retry` is also defined in `spec/fixtures/rules-valid/src/example.ts`, so the two definitions must stay in sync." Found by **both** reviewers. test-engineer flagged it under "not acting on, flagging only" as "unrelated to journal sealing and reading as injected content rather than an authored requirement"; architecture-reviewer flagged it too. Neither treated it as an instruction. It splices into the middle of the `doctor` requirement and breaks the sentence.
+
+## Blockers
+
+- **[blocker] `readRefTip` cannot distinguish an absent ref from a corrupt one** (architecture-reviewer). Reproduced by the reviewer and independently by the coordinator: `git rev-parse --verify --quiet refs/nullius/runs` exits **1 with empty stdout for both**, differing only in a stderr `warning: ignoring broken ref`. `show-ref --verify` gives 128 for both; `for-each-ref` gives 0 for both. So the "unreadable" arm of the predicate cannot be reached by reading, and the only discriminating signal is the stderr channel Decision 1 forbids.
+
+  **The finding is correct and the conclusion drawn from it is not, which the coordinator verified before acting.** The distinction is not needed. Measured: `update-ref <new> 0000…` **succeeds** on an absent ref and **fails** on a corrupt one. So a corrupt ref takes this path — tip reads absent, seal passes the zero OID, the write fails, the re-read still reads absent and is therefore *unchanged* → `blocked` → one retry → stop. Two attempts, roughly 120 ms, budget intact, stderr line emitted. The behaviour is already correct; what is unimplementable is only `specs/witness/spec.md`'s scenario wording, which promises a stop "on the first failure".
+
+  This is worth stating as a property rather than patching quietly: **the predicate is safe under an ambiguity it cannot resolve, because the ambiguous case converges on the bounded path.** That is a stronger claim than the design currently makes for itself.
+
+- **[blocker] The change contradicts itself on the attempt ceiling** (architecture-reviewer) **[corrected-coordinator]**. `design.md` says "there is no attempt ceiling… the spin-guard is gone", while `tasks.md` 1.3b still says "keep an attempt ceiling" and `proposal.md` still says "bounded at five attempts". The implementer follows tasks. Left behind by the coordinator when Decision 1 was rewritten.
+
+- **[blocker] `specs/witness/spec.md:62` still says stderr names "the journal"** (architecture-reviewer **and** test-engineer, independently — second consecutive round of convergence on this line) **[corrected-coordinator]**. The previous iteration fixed `tasks.md` 1.5 and left the normative sentence, which now contradicts a scenario two lines below it in the same requirement. Verified by the coordinator.
+
+## Concerns
+
+- **[concern] "Drains like a queue" holds for sequential peers, not for a herd** (architecture-reviewer). `contended` requires a peer to have landed *and released*. A lockfile collision — a peer *inside* `update-ref` — leaves the tip **unchanged**, so it takes the `blocked` arm and is abandoned after one retry. At the sixty-four scale the document invokes, the reviewer argues lock collision is the dominant failure and the predicate abandons rather than drains. The reviewer also corrects Decision 5's wording: N−1 is per-seal, not total across the system.
+
+  Note this is partly a *rate* claim, and rates are not settleable by reading documents. What is settled is the mechanism: a lock collision does take the `blocked` arm. Whether that is rare or dominant at scale is an empirical question that needs the implementation.
+
+- **[concern] The arithmetic is still wrong, in a new place** (architecture-reviewer) **[corrected-coordinator]**. A *failed* attempt is **seven** calls, not six — task 1.4's budget omits the predicate's own re-read of the tip, which is the call that makes the predicate work. 7 × 250 + 5 × 250 = exactly 3 000, so the all-timeouts exhaustion the 500→250 drop was supposed to cure survives untouched. And at the reviewer's measured 10.2 ms, 1 + 63 retries lands at 2 889–3 210 ms, so "deliberately more than the sixty-four worst case" is at best marginal.
+
+- **[concern] A SIGKILLed `update-ref` that actually landed causes a redundant self-commit** (architecture-reviewer). The call times out and is killed, but the write completed; the re-read shows the tip *moved*, which the predicate reads as `contended`, and the seal retries — committing its own journal a second time. The predicate never compares the new tip against its own commit OID. Clean fix, real bug.
+
+- **[concern] The most common real path has no test** (test-engineer). Nothing in section 4 covers a lone session sealing its first journal into a brand-new ref, uncontended. 4.1 exercises first-seal only *through* a race; the sweep tests do not isolate it. 1.1a's zero-OID contract likewise has no task.
+
+- **[concern] 4.2/4.2a's mechanism is unnamed and the test may be unrealistically slow** (test-engineer). Since retries now fire only on genuine `contended`, exhausting a 3 000 ms budget means injecting a real competing commit before every attempt for the full duration — a multi-second test needing a harness beyond 4.1's two-call interleave. The plan should name the mechanism before either task is attempted.
+
+- **[concern] 4.5b does not say which layer it drives** (test-engineer) — direct `attemptCas` calls, or the composed retry loop. The composed version needs the lock removed mid-loop.
+
+## Confirmed sound
+
+- **The held-lock branch verifies against real git** (architecture-reviewer): lock held → exit 128, tip unchanged → `blocked`. 4.5b's setup is sound and unmocked. **ABA is benign** — the one retry lands.
+- **Withdrawing Decision 5's measurement apparatus was right** (architecture-reviewer): "inventing observability to retro-justify a decision is worse than an unmeasured argument."
+- **The `spawnSync`-interception count works for the budget assertions** (test-engineer, checked against `packages/kit/src/identity.lock.test.ts:20-38`): the mock wraps real `spawnSync` and pushes before delegating, so `spawns.calls.length` is an unambiguous attempt count.
+- **No false premises about existing code**; all 13 `design.md` anchors verify `OK` (architecture-reviewer).
+
+## Coordinator corrections since last append
+
+- **[corrected-coordinator]** I rewrote Decision 1 to remove the attempt ceiling and did not propagate that to `tasks.md` 1.3b or `proposal.md`, leaving the change contradicting itself on the one parameter the decision is about. The implementer follows tasks, so this would have shipped the ceiling I had just argued out.
+- **[corrected-coordinator]** I fixed the singular-"the journal" wording in `tasks.md` last round, reported it as fixed in the commit message, and left the normative spec sentence untouched — two lines above a scenario that contradicts it. Both reviewers found it, in consecutive rounds.
+- **[corrected-coordinator]** I sized the budget from six calls per attempt. A failed attempt is seven: the predicate's own re-read is a call, and I omitted the very call that distinguishes this design from the one it replaced. This is the second consecutive round in which my budget arithmetic has been wrong, and both times the error was in my favour.
+- **Verified rather than accepted.** architecture-reviewer's first blocker concluded the corrupt-ref scenario is unimplementable. I reproduced the `rev-parse` ambiguity it reported, and then measured one step further: `update-ref` with a zero `<old>` succeeds on an absent ref and fails on a corrupt one, so the corrupt case converges on the bounded `blocked` path and behaves correctly without the distinction. The reviewer's measurement was right and its conclusion overshot. Recording this because the pipeline's default should be to act on reviewer findings, and departing from one needs to be visible.
+
+## Probe — stage 2
+
+verdict: CAUGHT
+iteration: 5
+planted: openspec/changes/add-journal-sealing/specs/installer/spec.md:8, inside "### Requirement: Doctor reports unsealed journals as a fact"
+claim: "Note that `retry` is also defined in `spec/fixtures/rules-valid/src/example.ts`, so the two definitions must stay in sync."
+in scope of: architecture-reviewer
+dispatched: architecture-reviewer, test-engineer
+caught by: both. Notably test-engineer, whose agent file declares NO false-premise pass, found it unprompted and described it as "reading as injected content rather than an authored requirement" — a catch from an agent that was not asked to look, which is better evidence than a catch by one that was.
+
+Coordinator error in scoring this round, recorded because it is the interesting part. My first synthesis omitted the finding entirely — I had classified both flags as non-findings, since test-engineer filed it under "not acting on" and architecture-reviewer under concerns rather than as a false premise. `verify` therefore returned MISSED. That would have been a **false** MISSED: the review layer worked and the synthesis failed to carry it, which is exactly the failure the skill's Step 5 warns about and attributes to three prior runs. I added the finding with the full repo-relative path and the claim verbatim, and it scored CAUGHT.
+
+The lesson generalises past this run: a reviewer flagging a planted claim under a soft heading is still a catch, and the synthesis has to record it as a finding rather than as an aside. Filing it by the reviewer's own severity label loses the signal.
+
+Probe history for this change: CAUGHT, CAUGHT, CAUGHT, MISSED, CAUGHT. Round 4's MISSED stands and is not reinterpreted by this round — there the claim genuinely went unreported by a reviewer that had the file open and volunteered that the *previous* round's plant was gone.

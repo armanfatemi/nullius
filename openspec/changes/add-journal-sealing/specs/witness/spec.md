@@ -39,8 +39,9 @@ The kit SHALL update `refs/nullius/runs` with a compare-and-swap against the ref
 value it read, and SHALL decide whether to retry by re-reading the ref rather
 than by interpreting git's error message. After a failed update: an unreadable
 tip SHALL stop the seal; a tip that moved from the value passed as `<old>` SHALL
-be retried against the new tip; a tip that is unchanged SHALL be retried at most
-once and then abandoned.
+be retried against the new tip; a tip that is unchanged SHALL be retried a small bounded
+number of times and then abandoned. A tip that has moved to the commit this seal
+itself built SHALL be treated as a success, not as contention.
 
 Git's error text SHALL NOT be parsed to make this decision. It is not an
 interface, several distinct failures share a message prefix, and the set is not
@@ -59,7 +60,7 @@ whose purpose is not losing the record.
 
 When the retry bound is exhausted the journal SHALL be left unsealed with its
 working file intact, SHALL NOT be partially written, and the kit SHALL write one
-line to stderr naming the journal and the reason it was not sealed. Exiting
+line to stderr naming how many journals were not sealed and why. Exiting
 without an error is not the same as exiting without a word: a silently skipped
 seal is discoverable only by someone who independently runs `doctor`.
 
@@ -92,9 +93,13 @@ versions.
   intact, the reason and the count are written to stderr, the exit code is 0,
   and `doctor` counts them unsealed
 
-#### Scenario: an unreadable ref stops the seal on the first failure
+#### Scenario: a corrupt ref stops the seal without consuming its budget
 
-- **WHEN** the ref cannot be read at all, because it is corrupt or the
-  repository is unavailable
-- **THEN** the seal stops on the first failure, names the reason on stderr, and
-  does not retry
+- **WHEN** the ref is corrupt, which reads identically to an absent ref
+- **THEN** the seal stops within its bounded retry count, names the reason on
+  stderr, and leaves its remaining budget unspent
+
+#### Scenario: a write that landed before being killed is not committed twice
+
+- **WHEN** `update-ref` is killed on timeout after the write has already landed
+- **THEN** the seal recognises the new tip as its own commit and does not retry

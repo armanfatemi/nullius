@@ -43,24 +43,31 @@ extends and whose journals it seals.
       closed (review found a fifth and sixth shape after the table claimed
       four). A stale lockfile — which is permanent and reads identically to a
       live one — falls out correctly here because the tip has not moved
-- [ ] 1.3a-i **`blocked` gets exactly one retry.** A live held lock is transient
-      and presents as `blocked`; a stale one is permanent and presents the same
-      way. One retry resolves the live case and costs the stale case ~40 ms
-      instead of the whole budget. Not zero (that abandons the ordinary
-      collision), not unbounded (that is the defect this replaced)
-- [ ] 1.3b **The total git budget is the bound**, not an attempt count. Keep an
-      attempt ceiling only as a guard against git failing instantly in a loop,
-      and set it well above the contending population so ordinary contention
-      never reaches it. **No backoff** (Decision 5)
+- [ ] 1.3a-i **`blocked` is capped at three attempts.** A live held lock is
+      transient and presents as `blocked`; a stale one is permanent and presents
+      identically. Three covers the live case generously (~120 ms) and costs the
+      stale case ~4% of the budget. Not one — a lockfile collision takes this arm
+      rather than `contended`, because `contended` requires a peer to have landed
+      *and released*, so at high contention a cap of one abandons seals
+- [ ] 1.3a-ii **On a moved tip, compare it against the commit this seal built.**
+      If they match, the outcome is `landed`, not `contended`: `update-ref` can be
+      SIGKILLed on timeout *after* the write landed, and without this comparison
+      the seal retries and commits its own journal twice
+- [ ] 1.3b **The total git budget is the bound. There is no global attempt
+      ceiling** — a `contended` retry requires a peer to have landed, so the loop
+      cannot spin without the system making progress, and the `blocked` arm has
+      its own cap of three from 1.3a-i. **No backoff** (Decision 5)
 - [ ] 1.4 **Two budgets, not one** (Decision 3): a per-call timeout *and* a total
       for the seal as a whole, as constants in `seal.ts` mirroring
       `IDENTITY_TIMEOUT_MS` / `IDENTITY_BUDGET_MS`. The seal's total may exceed
       `IDENTITY_BUDGET_MS` — it runs after the lock is released and answers to
       how long a session may spend exiting, not to the lock deadline — but it
       may not be absent, and it must sit under the harness's own `SessionEnd`
-      timeout. `SEAL_TIMEOUT_MS` 250, `SEAL_BUDGET_MS` 3 000 (Decision 3) — 250 so
-      that six timed-out calls consume half the budget rather than all of it,
-      leaving the retry path reachable in the case it most needs to be. Budget for **six** calls per attempt (`readRefTip`,
+      timeout. `SEAL_TIMEOUT_MS` 200, `SEAL_BUDGET_MS` 3 000 (Decision 3). Budget for
+      **seven** calls on a failed attempt — the six that build and write, plus the
+      predicate's own re-read — and six on a retry. At 200 ms that is 1 400 + 1 200,
+      inside 3 000 even when every call times out; at 250 ms it is 3 250 and the
+      retry gets cut off. Budget for **six** calls per attempt (`readRefTip`,
       `hash-object`, the tip's tree read, `mktree`, `commit-tree`,
       `update-ref`), four of which repeat on every retry
 - [ ] 1.5 On exhaustion or any git failure: leave the journal unsealed and the
@@ -130,12 +137,16 @@ extends and whose journals it seals.
       tree-contents assertion in 4.1 is what closes this; keep it explicit here
       so it is not dropped as redundant
 - [ ] 4.2 Budget exhaustion leaves the journal unsealed and the file intact, and
-      says so on stderr. Force it **through the seam with real git** — advance
-      the ref out from under each attempt so every one returns `contended`. Do
-      **not** reach for `identity.lock.test.ts`'s `spawnSync` interception: that
-      technique only observes and passes every call through to real `spawnSync`,
-      never faking an outcome, so it cannot force a CAS failure
-- [ ] 4.2a **Batched exhaustion**: seed N≥2 journals, exhaust the sweep's budget,
+      says so on stderr. **Drive it by side-effecting the 1.2 seam**: wrap
+      `readRefTip` so each call lands a real competing commit before returning,
+      making every attempt return `contended` against real git. Inject a reduced
+      `SEAL_BUDGET_MS` for this test rather than burning the real 3 000 ms —
+      the property under test is "budget exhausted → unsealed, intact, announced",
+      and it is the same property at 300 ms. Do **not** reach for
+      `identity.lock.test.ts`'s `spawnSync` interception: it only observes and
+      never fakes, so it cannot force a failure
+- [ ] 4.2a **Batched exhaustion**: seed N≥2 journals, exhaust the sweep's budget
+      by the same reduced-budget technique as 4.2,
       and assert **all N** stay unsealed with their working files intact and the
       **count** named on stderr. 4.2 alone cannot catch this — it is 4.5a's
       argument applied to the failure side, and the spec now makes the plural
@@ -155,24 +166,36 @@ extends and whose journals it seals.
       single-journal test cannot detect the violation 2.2 exists to prevent.
       Count commits on `refs/nullius/runs` before and after, assert the
       difference is 1, and assert that commit's tree carries both entries
-- [ ] 4.5b **The held-lock branch**: write `<gitdir>/refs/nullius/runs.lock`
-      directly, call `attemptCas`, assert it returns `blocked` (tip unchanged) —
-      **not** `contended` and not `unavailable`. Remove the lock and assert the
-      single retry lands. Writing the lockfile is git's own documented
-      mechanism, not a mock
+- [ ] 4.5b **The held-lock branch, at the `attemptCas` layer**: write
+      `<gitdir>/refs/nullius/runs.lock` directly, call `attemptCas`, assert it
+      returns `blocked` (tip unchanged) — **not** `contended` and not
+      `unavailable`. Remove the lock, call again, assert it lands. This drives
+      `attemptCas` directly with the test toggling the lock between two calls;
+      it does **not** exercise the composed retry loop, which 4.5b-i covers.
+      Writing the lockfile is git's own documented mechanism, not a mock
 - [ ] 4.5b-i **The stale-lock branch is the same setup with the opposite
       outcome**: leave the lock in place, assert the seal stops after exactly one
       retry, says so on stderr, and does **not** consume its budget. Assert the
       attempt count via the `spawnSync`-interception *observation* pattern in
       `packages/kit/src/identity.lock.test.ts`, which counts calls without faking
       them — a wall-clock assertion would work too but is flakier
-- [ ] 4.5c **A permanent fault is not retried**: corrupt the ref (write a
-      non-OID into it) and assert the seal returns `unavailable` and stops on the
-      first failure. Note this exercises `readRefTip()`'s failure contract, not
-      `attemptCas`'s — 1.x must state what `readRefTip` returns when the tip is
-      unreadable, because that is what the predicate keys on. Assert the call
-      count, not just the verdict, so "does not consume its budget" is checked
-      rather than assumed
+- [ ] 4.5c **A corrupt ref stops the seal without consuming the budget**: write
+      a non-OID into the ref and assert the seal stops within the `blocked` cap
+      and announces itself. Note what this does **not** assert: `readRefTip`
+      cannot tell a corrupt ref from an absent one (`rev-parse --verify --quiet`
+      exits 1 with empty stdout for both), so the corrupt case is *expected* to
+      present as `blocked` rather than `unavailable`. Assert the call count, not
+      just the verdict, so "does not consume its budget" is checked rather than
+      assumed
+- [ ] 4.5d **The first seal, uncontended** — the most common real path, and
+      currently untested. A brand-new repository with no `refs/nullius/runs`:
+      assert `readRefTip` reports the no-ref sentinel, the seal passes the zero
+      OID, `update-ref` succeeds on the first attempt, and the ref's tree carries
+      the journal. 4.1 exercises first-seal only *through* a race and the sweep
+      tests do not isolate it
+- [ ] 4.5e **`readRefTip`'s no-ref sentinel is distinct from its failure value**
+      (task 1.1a): assert the fresh-repo case returns the sentinel and that it is
+      not the same value the unreadable case returns
 - [ ] 4.6 **`doctor`'s positive count**: three journals in `.nullius/runs/`, the
       ref carrying one → `doctor` reports two unsealed and does not fail. This
       is `specs/installer/spec.md`'s "unsealed journals are counted, not failed"
