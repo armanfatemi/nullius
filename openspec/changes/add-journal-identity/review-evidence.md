@@ -892,3 +892,176 @@ different distance.
   wrong in a way that mattered: the problem is genuinely unsolved, it is
   larger than this change, and a follow-up that owns it is the correct home
   rather than a deferral.
+
+## Stage 5 — Verify (all sections)
+
+build: pass
+type-check: pass
+test: pass — claims 814 passed / 92 skipped, kit 279 passed. 6 failures, all in
+  packages/claims/src/flagConformance.test.ts, all ugrep flag-arity: the known
+  environmental baseline, unchanged from the pre-implementation measurement
+  taken at the start of Stage 4 (765 passed / 6 failed then; the 6 are the same
+  six by name).
+dogfood gates: pass, both polarities —
+  witness validate valid-run (0), broken-run (1)
+  wiring wiring-valid (0), wiring-broken (1), wiring . (0)
+  check 'README.md' 'spec/**/*.md' --require-markers (0)
+  check 'openspec/**/*.md' (0)
+fixture table: every fixture exits as spec/witness-journal.md says, checked
+  individually rather than by running the suite — 7 must-pass, 4 must-fail,
+  including the three this change adds.
+tests added: claims 765 -> 814 (+49), kit 258 -> 279 (+21).
+
+## Stage 6 — Post-review
+
+Four reviewers dispatched in parallel, routed off `git diff --name-only
+main...HEAD` rather than off the proposal. All four returned.
+
+## Decision
+
+**Zero blockers from all four reviewers.** Eight concerns, of which six were
+fixed rather than listed, because each was either a defect in code this diff
+introduced or a false claim in a document this diff published. Two were
+declined with reasons, one of them after measurement contradicted the reviewer.
+
+## Blockers
+
+None, from any reviewer.
+
+## Concerns fixed (Stage 7)
+
+- **[concern → fixed] `survey` deduped on raw glob strings, so one file reached
+  by two spellings was surveyed twice.** checker-engineer. The coordinator's
+  first reproduction attempt used `./x` vs `x` and did *not* reproduce, because
+  `globSync` normalises that pair; testing an absolute path against a relative
+  one showed `2 journal(s) surveyed` for a single file. Every total inflated,
+  including the journal count printed beside them — so the denominator a reader
+  would use to sanity-check the sums was wrong in the same direction as the
+  sums. Now deduped by resolved path, with a CLI test asserting the whole
+  aggregate block matches a single-path run rather than only the count.
+
+- **[concern → fixed] A glob matching a directory crashed with an uncaught
+  EISDIR and exit 1.** checker-engineer. Exit 1 is the code a genuinely failing
+  journal returns, so a mistyped glob was indistinguishable from a finding, and
+  the operator got a Node stack trace either way. Now `statSync`-guarded:
+  `not a readable file: <path>` and exit 2, with a test asserting no stack
+  frame reaches the output.
+
+- **[concern → fixed] `randomBytes(32)` sat outside the `try` in
+  `readOrCreateSalt`.** architecture-reviewer. It throws when the platform
+  entropy pool cannot be read, propagating through `resolveIdentity` into the
+  append path and falsifying the module header's own "nothing here throws" —
+  with only the hook wrapper's unconditional `exit 0` keeping it fail-open.
+  Moved inside the `try`.
+
+- **[concern → fixed] "Uncommittable by construction" rested on an unstated git
+  version floor.** architecture-reviewer, and this is the sharpest finding of
+  the round. `git rev-parse` echoes an argument it does not understand rather
+  than failing, and `--git-common-dir` only arrived in git 2.5. On anything
+  older the returned "path" is the literal flag, which resolves *inside the
+  working tree* — no leak today only because the write then hits ENOENT. The
+  claim was about a path, so it is now checked rather than asserted:
+  `resolveGitDir` refuses a value beginning `--`, and refuses any directory
+  that resolves inside the toplevel. Two tests, both non-vacuous — they assert
+  `branch` still resolves, so a null `worktree` is the guard firing rather than
+  git failing wholesale.
+
+- **[concern → fixed] [corrected-coordinator] The CHANGELOG claimed "no
+  consumer that does not read them can break".** checker-engineer observed that
+  `JournalHeader`'s three new fields are declared required (`string | null`),
+  matching `session` and `source`, so any code *constructing* a `JournalHeader`
+  literal now fails to compile. The claim is true of readers and false of
+  constructors. The coordinator wrote it, and it is corrected in the CHANGELOG
+  rather than defended: the distinction is now stated explicitly.
+
+- **[concern → fixed] The `add-journal-sealing` edit left a stale clause
+  mid-sentence.** architecture-reviewer. The earlier minimal edit kept "avoids
+  two implementations of one discipline" while the sentence added three lines
+  below says the kit now has its own helper — the surviving clause argued for
+  the kernel's reader while the new text argued the question was open. Rewritten
+  so the phrase now argues for the kit's own helper, which is what it actually
+  implies post-change.
+
+- **[concern → fixed] Explicit JSON `null` on an identity field was
+  MALFORMED at 0.4 but the spec covered only omitted vs `""`.**
+  checker-engineer. Defensible but unstated. Now stated, with the reason: both
+  are a producer writing the key and declining to answer it.
+
+## Concerns declined, with reasons
+
+- **[declined] `readOrCreateSalt`'s file I/O is unbounded, after the budget
+  check.** architecture-reviewer, and correct on the facts — the budget covers
+  `runGit` only. Declined because it is off the lock path entirely (identity
+  resolves before the lock is taken), so the failure it protects against is a
+  slow first hook rather than another hook losing records. Worth a follow-up,
+  not worth widening this diff.
+
+- **[declined, disputed] rule-auditor counted 5 anchors exposed to a squash;
+  the correct count is 12.** The coordinator recounted: `f1b8211`×4,
+  `bcf228f`×5, `554c3ac`×2, `172cb41`×1, across four files. The undercount
+  comes from matching only line-start anchors and missing the indented ones
+  inside list items in `review-evidence.md` and `proposal.md`. rule-auditor
+  concluded from 5 that "standard merge instruction is sufficient"; from 12,
+  spanning a permanent spec document and a sibling change's design, the PR body
+  carries a quantified instruction naming the files instead.
+
+## Looks good — the load-bearing confirmations
+
+- `versionAtLeast` has exactly four call sites (`witness.ts:482, 770, 860,
+  1224`), each gating one new rejection or the ledger floor; grep finds no
+  ungated 0.4 rejection. Unknown versions cannot reach any of them because
+  `scanHeader` returns `stop` first. `0.3` ledger behaviour is unchanged.
+  checker-engineer.
+- The `rev` fall-throughs add **zero** state — `verified.set`/`hashes.set` are
+  unmoved context lines. checker-engineer.
+- Merging in `survey` is prevented structurally rather than by policy: one
+  `validateJournal` per input, no module-level mutable state, and
+  `unsupported-version` journals return hard zeros so unconditional summation
+  cannot over-count. checker-engineer.
+- One definition of failure (`isJournalFailure`) in both `runWitness` and
+  `surveyJournals`. No verdict union grew; `PASSING` untouched.
+  checker-engineer.
+- The compat fixture pair's **byte-identity is asserted in the test**
+  (`witness.test.ts:1373`), not merely the two exit codes, so the pair cannot
+  silently drift apart. test-engineer.
+- `v0.3-broken-run.jsonl` is byte-unchanged by this diff, so its 26-finding
+  invariant is intact. `flagConformance.test.ts` untouched. test-engineer.
+- `identity.lock.test.ts` is non-vacuous: it asserts git actually ran before
+  asserting no spawn saw the lock held. test-engineer.
+- All three new fixtures have CI lines at the correct polarity, matching the
+  fixture table. test-engineer.
+- Both sibling-change edits are justified, minimal, and verify; the replacement
+  anchor in `add-oracle-conservation` checks OK. architecture-reviewer and
+  rule-auditor independently.
+- Every anchor the diff introduced or moved verifies against its stamp,
+  including the two re-stamped `6f2428f`→`554c3ac`, which rule-auditor
+  confirmed were genuine re-reads rather than line-number tidy-ups.
+- The CHANGELOG's "Known limitation" section is accurate and does not
+  overclaim. architecture-reviewer.
+
+## Coordinator corrections since last append
+
+- **I published a false claim in the CHANGELOG** — that the public-surface
+  addition could break no consumer. It cannot break a *reader*; it breaks a
+  *constructor*, because the new fields are required. I had read the type
+  definition when reviewing section 1 and still wrote the general claim.
+  Corrected in the artefact, not just here.
+- **My first attempt to reproduce the dedupe bug failed, and I nearly declined
+  the concern on that basis.** `./x` vs `x` normalises; absolute vs relative
+  does not. One weak test case away from dismissing a real defect in the verb
+  this change exists to add — and the reviewer had given me the mechanism, not
+  just the symptom, which is what made the second attempt obvious.
+- **I disagreed with rule-auditor's squash count and acted on my own number.**
+  Recorded here because the disagreement is load-bearing: it changes what the
+  PR body tells the human to do, and if my count is the wrong one then the
+  instruction is over-strong rather than absent.
+
+## Stage 5 — Verify (after Stage 7 fixes)
+
+build: pass
+type-check: pass
+test: pass — claims 816 passed (+2 survey regression tests), kit 281 passed
+  (+2 salt-guard tests), 92 skipped. 6 failures, all flagConformance/ugrep,
+  the unchanged environmental baseline.
+dogfood gates: pass, both polarities, all seven.
+canary status: no active canary.

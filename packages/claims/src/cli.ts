@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /* eslint-disable no-console -- this is a CLI tool; console output is its user-facing surface */
 
-import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 import { globSync } from "glob";
 
@@ -528,15 +528,36 @@ function runWitnessSurvey(args: WitnessArgs): number {
     return 2;
   }
 
-  const paths = [...new Set(patterns.flatMap((pattern) => globSync(pattern)))].sort();
+  // Deduped by RESOLVED path, not by the string the glob produced. The same
+  // file reached by two spellings — an absolute path and a relative one, say —
+  // is two distinct strings and would otherwise be surveyed twice, inflating
+  // every total including the journal count printed beside them. A survey
+  // whose denominator is wrong is worse than no survey.
+  const seen = new Map<string, string>();
+  for (const match of patterns.flatMap((pattern) => globSync(pattern))) {
+    const key = resolve(match);
+    if (!seen.has(key)) seen.set(key, match);
+  }
+  const paths = [...seen.values()].sort();
   if (paths.length === 0) {
     console.error(`no journals matched: ${patterns.join(" ")}`);
     return 2;
   }
 
-  const survey = surveyJournals(
-    paths.map((path) => ({ path, content: readFileSync(path, "utf8") })),
-  );
+  const journals: { path: string; content: string }[] = [];
+  for (const path of paths) {
+    // A glob that matches a directory is a mistyped glob, not a corrupt
+    // journal. Reading it would throw EISDIR and exit 1 — the same code a
+    // genuinely failing journal returns — so the mistake would be
+    // indistinguishable from a finding. Named and refused with 2 instead.
+    if (!statSync(path, { throwIfNoEntry: false })?.isFile()) {
+      console.error(`not a readable file: ${path}`);
+      return 2;
+    }
+    journals.push({ path, content: readFileSync(path, "utf8") });
+  }
+
+  const survey = surveyJournals(journals);
 
   for (const journal of survey.journals) {
     const status = journal.failures > 0 ? "FAIL" : "ok";

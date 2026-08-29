@@ -10,7 +10,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 import { afterAll, describe, expect, it } from "vitest";
 
@@ -774,5 +774,38 @@ suite("CLI characterization — --format json on a no-match run", () => {
     const result = run("check", "no/such/dir/**/*.md");
     expect(result.code).toBe(0);
     expect(result.stdout).toBe("");
+  });
+});
+
+describe("witness survey — post-review fixes", () => {
+  const FIXTURE = "spec/fixtures/valid-run.jsonl";
+
+  it("counts one file once when reached by two spellings", () => {
+    // The same journal as an absolute path and a relative one. Deduping on the
+    // raw glob output counted it twice, which inflated every total INCLUDING
+    // the journal count printed beside them — so the number a reader would use
+    // to sanity-check the totals was wrong in the same direction as the totals.
+    const both = run("witness", "survey", resolve(REPO_ROOT, FIXTURE), FIXTURE);
+    const one = run("witness", "survey", FIXTURE);
+
+    expect(both.output).toContain("1 journal(s) surveyed");
+    expect(both.code).toBe(one.code);
+    // Not just the count: the whole aggregate block must match the single-path
+    // run, or a future dedupe could fix the denominator and leave the sums.
+    const totals = (r: { output: string }) =>
+      r.output.split("\n").filter((line) => line.includes("record(s) read across"));
+    expect(totals(both)).toEqual(totals(one));
+  });
+
+  it("refuses a glob that matched a directory with exit 2, not a crash", () => {
+    // Reading a directory throws EISDIR, which exited 1 — the same code a
+    // genuinely failing journal returns. A mistyped glob was indistinguishable
+    // from a finding, and the operator saw a Node stack trace either way.
+    const result = run("witness", "survey", "spec/fixtures");
+
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain("not a readable file");
+    expect(result.output).not.toContain("EISDIR");
+    expect(result.output).not.toMatch(/at .*\.js:\d+/);
   });
 });

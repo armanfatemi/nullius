@@ -36,7 +36,7 @@
 import { spawnSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
-import { isAbsolute, join, resolve } from "node:path";
+import { isAbsolute, join, resolve, sep } from "node:path";
 
 /**
  * Wall-clock budget for ONE git call while resolving identity.
@@ -140,7 +140,7 @@ export function resolveIdentity(
     // A repository with no commits yet answers nothing here, and that is a
     // header with `branch` and `worktree` and no `head` — which is true.
     head: git("rev-parse", "HEAD"),
-    worktree: worktreeId(resolveGitDir(root, commonDir), toplevel),
+    worktree: worktreeId(resolveGitDir(root, commonDir, toplevel), toplevel),
   };
 }
 
@@ -174,11 +174,31 @@ export function worktreeId(gitCommonDir: string | null, toplevel: string): strin
 }
 
 /** Where the salt is looked for. See the placement decision above `SALT_FILE`. */
-function resolveGitDir(root: string, commonDir: string | undefined): string | null {
+function resolveGitDir(
+  root: string,
+  commonDir: string | undefined,
+  toplevel: string,
+): string | null {
   if (commonDir === undefined || commonDir.length === 0) return null;
+  // `rev-parse` echoes an argument it does not understand rather than failing,
+  // and `--git-common-dir` only arrived in git 2.5. On anything older the
+  // "path" we get back is the literal flag.
+  if (commonDir.startsWith("--")) return null;
+
   // `--git-common-dir` answers relative to git's own cwd, which is the `-C`
   // directory we handed it, not the toplevel.
-  return isAbsolute(commonDir) ? commonDir : resolve(root, commonDir);
+  const dir = isAbsolute(commonDir) ? commonDir : resolve(root, commonDir);
+
+  // The salt is uncommittable *by construction* only because it lives outside
+  // the working tree — git tracks nothing inside the git directory. That is a
+  // claim about a path, so it is checked rather than assumed: anything
+  // resolving back inside the worktree gets no salt, and `worktree` is simply
+  // absent. Losing one descriptive field beats writing a secret somewhere it
+  // could be committed.
+  const inside = resolve(dir);
+  const tree = resolve(toplevel);
+  if (inside === tree || inside.startsWith(`${tree}${sep}`)) return null;
+  return dir;
 }
 
 /**
@@ -193,8 +213,12 @@ function readOrCreateSalt(file: string): string | null {
   const existing = readSalt(file);
   if (existing !== null) return existing;
 
-  const candidate = randomBytes(32).toString("hex");
   try {
+    // Inside the try, not above it. `randomBytes` throws if the platform
+    // entropy pool cannot be read, and this module's contract is that nothing
+    // here throws into the append path — a promise the hook wrapper's
+    // unconditional `exit 0` should not be the only thing keeping.
+    const candidate = randomBytes(32).toString("hex");
     writeFileSync(file, `${candidate}\n`, { encoding: "utf8", flag: "wx" });
     return candidate;
   } catch {

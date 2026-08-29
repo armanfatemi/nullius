@@ -73,11 +73,17 @@ a package name are that package's own release; the kit versions independently.
 
 ### Changed
 
-- **Public surface.** `JournalHeader` gains three optional fields, and
-  `surveyJournals` / `JournalSurvey` / `SurveyedJournal` are newly exported.
-  Both are additive — no consumer that does not read them can break — but they
-  cross the package boundary and are recorded here rather than passing as an
-  internal detail.
+- **Public surface.** `JournalHeader` gains three fields, and `surveyJournals`
+  / `JournalSurvey` / `SurveyedJournal` are newly exported. Reading is
+  unaffected: code that consumes a `JournalReport` and ignores the new fields
+  compiles and behaves exactly as before.
+
+  One nuance worth stating rather than glossing. The three fields are declared
+  `string | null` and required, matching `session` and `source` beside them, so
+  any code that *constructs* a `JournalHeader` literal — a test double, a mock
+  — must now supply them. `JournalHeader` is a type the validator produces
+  rather than one callers build, so this is unlikely to bite, but "additive"
+  is true of readers and not of constructors and the difference belongs here.
 - **The ledger gate is a floor, not an equality.** `SUPPRESSED-FINDING` and
   `SILENT-REVIEWER` were gated on a journal declaring exactly `0.3`. Left
   alone, a `0.4` journal would have been silently ungated for both while every

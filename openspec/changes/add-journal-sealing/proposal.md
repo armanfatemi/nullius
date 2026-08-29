@@ -126,13 +126,14 @@ places where a wrong answer is silent.
 
   **Evidence:** `grep -rn --exclude='*.test.ts' 'child_process' packages/kit/src/journalFile.ts packages/kit/src/record.ts` → 0 results
 
-  The dependency direction is already kit → kernel, so reusing the kernel's
-  bounded reader is available and avoids two implementations of one discipline.
-  Inherited from `add-journal-identity`, which defers it here — though note
-  that change has since given the kit a bounded-git helper of its own, with a
-  budget in the hundreds of milliseconds rather than the kernel's ten seconds,
-  so the question is now which of the two the seal reuses rather than whether
-  the kit has one.
+  The dependency direction is already kit → kernel, so the kernel's bounded
+  reader is available. Inherited from `add-journal-identity`, which deferred it
+  here — but that change has since given the kit a bounded-git helper of its
+  own, with a budget in the hundreds of milliseconds rather than the kernel's
+  ten seconds. So the question is no longer whether the kit has one: it is
+  which of the two the seal reuses, and "avoid two implementations of one
+  discipline" now argues for the kit's own helper rather than for the
+  kernel's.
 - **How large does the ref get, and when does that matter?** Measured on this
   repo: seven journals totalling 256K, the largest 228K. One commit per sealed
   session is cheap and the ref is prunable by deletion, but no threshold is

@@ -56,6 +56,11 @@ asserting it knows the branch and naming none, which is a different and worse
 fact than omitting the key. Omission is the supported way to say "git could not
 answer".
 
+An explicit JSON `null` SHALL be treated as `MALFORMED` on the same terms as an
+empty string, and for the same reason: both are a producer writing the key and
+declining to answer it, where omitting the key is the supported way to say git
+could not answer.
+
 This rejection SHALL NOT apply to journals declaring an earlier schema, for the
 same reason the `rev` rejections do not: a record that validated clean under
 `0.3` SHALL NOT become invalid because the validator learned a newer schema.

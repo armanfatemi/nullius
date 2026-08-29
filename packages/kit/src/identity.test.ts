@@ -280,3 +280,84 @@ function slowGitOnPath(): { restore: () => void } {
     },
   };
 }
+
+describe("the salt cannot be written where it could be committed", () => {
+  // `git rev-parse` echoes an argument it does not understand instead of
+  // failing, and `--git-common-dir` only arrived in git 2.5. On anything older
+  // the "path" comes back as the literal flag, which resolves relative to the
+  // root — i.e. INSIDE the working tree. "Uncommittable by construction" is a
+  // claim about a path, so it is checked here rather than assumed.
+  it("writes no salt when git does not understand --git-common-dir", () => {
+    repoAt(root);
+    const shim = oldGitOnPath(root);
+    let identity: JournalIdentity;
+    try {
+      identity = resolveIdentity(root);
+    } finally {
+      shim.restore();
+    }
+
+    // The descriptive field is lost. That is the correct trade: one absent
+    // header key beats a secret written somewhere `git add` can reach.
+    expect(identity.worktree).toBeNull();
+    // And it is lost for the right reason — the rest of the identity still
+    // resolved, so this is the guard firing rather than git failing wholesale.
+    expect(identity.branch).toBe("main");
+    expect(existsSync(join(root, SALT_FILE))).toBe(false);
+    expect(existsSync(join(root, "--git-common-dir"))).toBe(false);
+  });
+
+  it("writes no salt when the git dir resolves inside the worktree", () => {
+    repoAt(root);
+    const inside = join(root, "not-really-git");
+    mkdirSync(inside, { recursive: true });
+    const shim = gitDirOnPath(root, inside);
+    let identity: JournalIdentity;
+    try {
+      identity = resolveIdentity(root);
+    } finally {
+      shim.restore();
+    }
+
+    expect(identity.worktree).toBeNull();
+    expect(existsSync(join(inside, SALT_FILE))).toBe(false);
+  });
+});
+
+/** A git that predates `--git-common-dir` and echoes the flag back. */
+function oldGitOnPath(toplevel: string): { restore: () => void } {
+  return fakeGitOnPath(`${toplevel}\n--git-common-dir`);
+}
+
+/** A git that reports a common dir living inside the worktree. */
+function gitDirOnPath(toplevel: string, commonDir: string): { restore: () => void } {
+  return fakeGitOnPath(`${toplevel}\n${commonDir}`);
+}
+
+function fakeGitOnPath(revParsePaths: string): { restore: () => void } {
+  const bin = mkdtempSync(join(tmpdir(), "nullius-fakegit-"));
+  writeFileSync(
+    join(bin, "git"),
+    [
+      "#!/bin/sh",
+      "# Drop the leading `-C <root>` the caller always passes.",
+      "shift 2",
+      'case "$1 $2" in',
+      '  "rev-parse --show-toplevel")',
+      `    printf '%s\\n' "${revParsePaths.replace(/\n/g, '" "')}"; exit 0 ;;`,
+      '  "symbolic-ref --quiet")  printf "main\\n"; exit 0 ;;',
+      '  "rev-parse HEAD")        printf "0123456789abcdef0123456789abcdef01234567\\n"; exit 0 ;;',
+      "esac",
+      "exit 1",
+    ].join("\n"),
+    { mode: 0o755 },
+  );
+  const saved = process.env["PATH"];
+  process.env["PATH"] = `${bin}:${saved ?? ""}`;
+  return {
+    restore: () => {
+      process.env["PATH"] = saved;
+      rmSync(bin, { recursive: true, force: true });
+    },
+  };
+}
