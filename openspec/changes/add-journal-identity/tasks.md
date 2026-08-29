@@ -117,6 +117,21 @@ it going wrong silently.
       predicate is written backwards, which makes it the one that matters most
 - [ ] 1.12a Give that fixture its own must-pass line in
       `.github/workflows/ci.yml`, for the same reason 4.3a exists
+- [ ] 1.12b **Gate the ledger verdicts on producer capability, not just schema
+      version.** `SUPPRESSED-FINDING` and `SILENT-REVIEWER` require BOTH the
+      schema floor from 1.11 AND `origin: "self-reported"`. An unrecognised
+      `origin` does not satisfy it. Without this the producer bump (3.8) makes
+      every hooks-written journal earn `SILENT-REVIEWER` on every `found`
+      report, because the hook recorder cannot emit a `finding` at all —
+      measured on this repository: 0 findings at `0.2`, 255 at `0.3`, from a
+      producer whose behaviour did not change. See Decision 7
+- [ ] 1.12c Fixtures and named tests for 1.12b, in both directions, because a
+      gate that only ever suppresses is indistinguishable from a deleted gate:
+      - a `0.4` `origin: "hooks"` journal with a `found` report and no finding
+        earns **no** `SILENT-REVIEWER`
+      - the byte-identical journal with `origin: "self-reported"` **does** earn
+        it, asserted by verdict name
+      The pair is the test. Either one alone passes against a broken gate
 - [ ] 1.13 Assert `VERSIONS` is in ascending order, in a unit test. Task 1.11's
       floor compares by index into it, so the ordering is load-bearing from
       that point on — and the constant's own comment describes it only as
@@ -225,7 +240,13 @@ it going wrong silently.
       `0.2` while writing `0.4`-era identity fields, and every gate this change
       adds fires on no real journal — a schema with no producer, shipped
       alongside the producer that should have emitted it
-- [ ] 3.9 **Measure what the producer bump switches on before shipping it.**
+- [ ] 3.9 **Measure what the producer bump switches on, and confirm 1.12b
+      actually neutralised it.** This measurement has already been run once
+      against the un-gated build and is the reason Decision 7 exists: 18 live
+      journals, 254 `found` reports, 0 findings, 0 `SILENT-REVIEWER` at `0.2`
+      and 255 at `0.3`. Re-run it against the build that includes 1.12b; the
+      expected result is 0, and anything else means the origin gate is not
+      wired. Treat a non-zero count as a failing test, not as a judgement call.
       This is the task with the real risk in it. Today the kit writes `0.2`, so
       the ledger verdicts — gated at `0.3` and later — fire on **no journal the
       hook pack has ever produced**. Bumping the producer to `0.4` switches
@@ -233,18 +254,15 @@ it going wrong silently.
       the existing `.nullius/runs/*.jsonl` corpus with the header rewritten to
       `0.4`, count what newly fires, and read a sample. Three outcomes, and the
       task is not done until one is chosen in writing:
-      - Nothing new fires → record the count and ship
-      - `SUPPRESSED-FINDING` / `SILENT-REVIEWER` fire at a rate that reflects
-        real recording gaps → ship, and say so in the PR body, because that is
-        the verdict doing its job on data it never previously saw
-      - They fire pervasively on well-formed runs → the bump must not land
-        until that is understood. Pause rather than relaxing a verdict
-
       **The measurement must produce an artifact, not a ticked box.** Record
-      the journal count, the per-verdict counts at the old and new versions,
-      and a sample finding, in the PR body. A task whose pass condition is "a
-      decision was made in writing", with no named destination, cannot be
-      distinguished later from a task that was skipped
+      the journal count and the per-verdict counts at `0.2`, at `0.3` without
+      the origin gate, and at `0.4` with it, in the PR body. A task whose pass
+      condition is "a decision was made in writing", with no named destination,
+      cannot be distinguished later from a task that was skipped.
+
+      If a verdict still fires on a hooks journal after 1.12b, stop: that is
+      the origin gate not working, and relaxing the verdict instead would be
+      the move this whole decision exists to refuse
 - [ ] 3.10 Test: a journal written by the kit declares `0.4` and validates
       clean, so the producer bump is pinned by something other than a constant
       nobody reads

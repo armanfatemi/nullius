@@ -739,3 +739,62 @@ repaired the specific leak that made iteration 2's score meaningless.
 
 Verdict history: iter 1 TAINTED (registry leak), iter 2 TAINTED (coordinator
 disclosed the plant in a committed file), iter 3 CAUGHT.
+
+## Decision 7 — ledger gate reads origin (out-of-band)
+
+Out-of-band append: the coordinator's Decision 7, added between review rounds
+on the user's decision, and recorded here at the moment of the change rather
+than at the next stage boundary.
+
+## What changed
+
+The iteration-3 blocker — the producer bump cannot land because it would earn
+255 `SILENT-REVIEWER` findings on the live corpus — was resolved by the user as
+**fix the gate, not the scope**.
+
+The gate at `witness.ts:1077` was using `scan.version === "0.3"` as a proxy for
+"can this producer file findings?". Its own comment gives the proxy away: it
+explains the condition in terms of what a producer can emit, not in terms of
+schema. The schema has carried the real discriminator since v0.2 — `origin`,
+which distinguishes `hooks` (records the agent had no opportunity to decline)
+from `self-reported`.
+
+Decision 7 requires both the schema floor and `origin: "self-reported"` for the
+ledger verdicts. An unrecognised origin does not satisfy it. Tasks 1.12b and
+1.12c implement and cover it, in both directions — a hooks journal earning
+nothing and a byte-identical self-reported journal earning the verdict — since
+a gate that only ever suppresses is indistinguishable from a deleted gate.
+
+## Why this is not scope creep
+
+It is the smallest change that makes the approved producer bump correct. The
+alternative considered and rejected was splitting the producer bump out, which
+would have deferred the same defect to a follow-up change with no new
+information. The defect is not caused by this change; it is exposed by it, and
+it has been latent for as long as the kit has been pinned below the gate.
+
+It is also a loosening — the verdicts fire less often — so under Decision 3's
+rule it requires no version bump of its own.
+
+## Status
+
+This has not been reviewed. It is a kernel semantics change written by the
+coordinator between review rounds, which is exactly the class of edit this
+pipeline does not get to wave through. A focused Stage 2 round follows,
+briefed on Decision 7 specifically.
+
+## Coordinator corrections since last append
+
+- **I twice framed this as a scope question when it was a defect question.** At
+  iteration 2 I escalated the producer gap to a blocker and asked the user
+  whether to bump; at iteration 3 I recommended splitting the bump out. Both
+  framings accepted the gate as correct and argued about what to do around it.
+  The gate was wrong, its own comment said so, and the discriminator needed to
+  fix it had been in the schema since v0.2. Neither I nor any of the four
+  reviewers proposed reading `origin` until the third round of measurement made
+  the shape obvious.
+- **I asked the user to decide the producer bump before measuring it.** The
+  options I offered at iteration 2 described the risk as a verdict "meeting
+  live data for the first time", which reads as calibration. It was structural.
+  The measurement that settled it cost one command and was available the whole
+  time.

@@ -146,9 +146,19 @@ from aggregating verdicts, never from merging records. See Decision 1.
   So the ledger verdicts, gated at `0.3` and later, currently fire on no
   journal this repository has ever produced. Task 3.8 bumps the producer to
   `0.4` — without it this change ships a schema nothing emits, next to the
-  producer that should emit it — and task 3.9 measures what that switches on
-  across the existing `.nullius/runs/` corpus before it lands. A verdict meeting
-  live data for the first time is exactly where a tuning error surfaces.
+  producer that should emit it.
+- **Bumping the producer exposed a latent defect in the ledger gate, and this
+  change fixes it.** Measured before assuming: with the producer at `0.4` and
+  nothing else changed, the 18 live journals under `.nullius/runs/` go from 0
+  `SILENT-REVIEWER` findings to 255 — every `found` report, from a producer
+  whose behaviour did not change by one line. The cause is that
+  `scan.version === "0.3"` was standing in for *"can this producer file
+  findings?"*, and the hook recorder never could. Decision 7 replaces the proxy
+  with the discriminator the schema has carried since v0.2: the ledger verdicts
+  require `origin: "self-reported"` as well as the schema floor. That is a
+  loosening, so it takes no bump of its own — but it is what makes the bump
+  shippable, and without it this change would have made a working verdict into
+  255 lines of noise.
 - **The version-support table and the ledger gate both move.** `VERSIONS`
   gains `0.4`, `VOCABULARY` maps it to the unchanged `KINDS_V03`, and the
   exact-equality ledger gate becomes a floor so `0.4` keeps every verdict `0.3`
@@ -215,7 +225,7 @@ is archived and the hook pack writes journals today.
 
 |                                |                                                     |
 | ------------------------------ | --------------------------------------------------- |
-| Estimated tasks                | 40                                                  |
+| Estimated tasks                | 44                                                  |
 | Packages or surfaces touched   | 3 (packages/claims, packages/kit, spec/)            |
 | Risk                           | MEDIUM                                              |
 | Expected sessions to implement | 1                                                   |

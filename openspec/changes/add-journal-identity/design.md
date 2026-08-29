@@ -175,6 +175,67 @@ so the bump carries three obligations, not one:
 The moment `witness replay` makes *absence* of `rev` meaningful, that is a new
 verdict, and it takes its own bump with it.
 
+## Decision 7 — the ledger gate tests producer capability, not schema version
+
+This decision was added after the producer bump was measured rather than
+assumed, and it is the reason the bump can land at all.
+
+`SILENT-REVIEWER` fires on a dispatch whose terminal reports `outcome: "found"`
+and which filed no `finding`. `finding` is a self-reported kind: an agent
+volunteers it. The hook recorder cannot emit one — it writes only what the
+harness hands it, and the kit's source contains no `finding` at all:
+
+**Evidence:** `grep -rn '"finding"' packages/kit/src/ --include='*.ts' --exclude='*.test.ts'` → 0 results
+
+So a hooks-written journal has `found` reports and structurally cannot have
+findings to discharge them. Every one of them earns `SILENT-REVIEWER`, forever,
+for a defect that is not theirs.
+
+The existing gate already knows this. It says so in its own comment:
+
+**Evidence:** `packages/claims/src/witness.ts:1075@c931d34` — ` // gate every v0.2 journal in existence would acquire SILENT-REVIEWER on its`
+
+That is the tell. The condition reads `scan.version === "0.3"`, but the
+sentence explaining it is about what a *producer can emit*. The version number
+was standing in for producer capability, and it worked only because the one
+producer that cannot file findings happened to be pinned below the gate. Bump
+that producer and the proxy stops tracking the thing it was proxying — measured
+on this repository's own corpus, 0 findings at `0.2` and 255 at `0.3`, from a
+producer whose behaviour did not change by one line.
+
+The schema already carries the real discriminator, and has since v0.2:
+
+**Evidence:** `packages/claims/src/witness.ts:81@c931d34` — `export type JournalOrigin = "hooks" | "self-reported";`
+
+`hooks` means records the agent had no opportunity to decline. A journal of
+those is a transcript, not a testimony — nothing in it was volunteered, so
+"you reported found and filed nothing" is not a claim about the agent at all.
+`self-reported` is the origin where the ledger verdicts have someone to
+address.
+
+**So the ledger verdicts require both conditions: the schema floor AND
+`origin: "self-reported"`.** The floor stays because the ledger *kinds* are
+only valid from `0.3`, and dropping it would newly fire `SILENT-REVIEWER` on
+any `0.2` self-reported journal — a tightening, and the thing this change has
+now twice had to be stopped from doing by accident.
+
+An unrecognised `origin` does **not** satisfy the second condition. That is
+deliberate and it is the conservative direction here: the cost of not firing is
+a missed finding on a malformed journal that already earns a header
+`MALFORMED`; the cost of firing is the 255-finding failure mode above. A
+verdict people learn to scroll past is worse than one that occasionally stays
+quiet.
+
+**Rejected:** exempting only `SILENT-REVIEWER` and leaving `SUPPRESSED-FINDING`
+on the version gate alone. `SUPPRESSED-FINDING` is vacuous on a hooks journal
+anyway — no findings, nothing to suppress — so the exemption costs it nothing,
+and two gating rules for two verdicts sharing one block is how the next reader
+concludes the difference is meaningful.
+
+**Note this is a loosening, not a tightening.** It makes a verdict fire less
+often, so by the rule in Decision 3 it takes no version bump of its own. It
+travels with `0.4` because it is what makes `0.4` shippable.
+
 ## Decision 4 — sealing moved to `add-journal-sealing`
 
 Ref-backed durability was scoped here originally. Review found the seal path as
