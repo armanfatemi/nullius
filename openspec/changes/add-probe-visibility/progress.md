@@ -4,69 +4,32 @@ _Started 2026-08-28; last updated 2026-08-28_
 
 ## Phases completed
 
-- [x] Stage 1: Load — build green, `openspec validate` clean, no dependencies
-- [x] Stage 2 iteration 1 — CAUGHT; 2 false premises, 2 blockers
-- [x] Stage 3 refinement 1 — 39d215d
-- [x] Stage 2 iteration 2 — CAUGHT; 1 blocker (the refinement itself)
-- [x] Stage 3 refinement 2 — f95772e
-- [x] Stage 2 iteration 3 — CAUGHT; 4 blockers, 2 false premises
-- [x] Stage 3 refinement 3 — a8704b1 (operator authorised continuing past cap)
-- [x] Stage 2 iteration 4 — CAUGHT; 3 blockers, 8 concerns
-- [x] Stage 3 refinement 4 — 73703da
-- [ ] Stage 2 iteration 5 — in flight, briefed as an exhaustive sweep
+- [x] Stage 1 Load; Stages 2/3 x5 (pre-review + refine); Stage 4 Implement;
+      Stage 5 Verify; Stage 6 Post-review; Stage 7 Address must-fixes x2;
+      Stage 8 PR opened — https://github.com/armanfatemi/nullius/pull/43
 
 ## Current phase
 
-**Stage 2 (Pre-review), iteration 5.** Canary planted at `proposal.md:8`. All
-three reviewers dispatched with sweep briefs rather than spot-check briefs,
-because the recurring failure across four rounds was a local edit where a
-document-wide sweep was needed: every fix was correct and every fix left a
-sibling sentence making the same claim untouched.
+**Stage 9 (Retro).** PR is open. All 30 tasks ticked, kit 258/258, all seven
+dogfood gates green both polarities.
 
-The briefs ask for exhaustive enumeration with file:line and require the
-reviewer to say how an empty result was established, so a skim cannot be
-mistaken for a clean sweep.
+## Outcome
 
-## Next 3 actions
+Five pre-review iterations, two post-review passes, five refinements. The plan
+was wrong four times in the same way — each fix applied to the quoted sentence
+while a sibling making the identical claim survived — and the sweep-framed fifth
+round found five at once. Post-review then found two blockers in the code, both
+in the branch where the forbidding-phrase tests cannot fire.
 
-1. Synthesize iteration 5; score and clear the canary
-2. Zero blockers → Stage 4 (implement). No code exists yet
-3. If blockers remain, report to the operator rather than refining a fifth time
-   — the cap was passed two rounds ago by explicit instruction
+## Merge facts the human needs
 
-## Integration points the next session needs to read on resume
-
-- packages/kit/src/doctor.ts — `DoctorOptions` at **516-520** (not 518-521; that
-  wrong citation survived a review round); `readManagedHooks` 74-93;
-  `runChecks` 551-552, insert the new check before `liveProof`
-- packages/kit/src/doctor.test.ts — `check()` helper at :25 with defaulted
-  params, ~20 call sites unaffected by a third; :263 ordering assertion
-- packages/kit/src/cli.ts — `runInit` :193, `probeDir` call site :363, recorder
-  predicate :436, live writer :591
-- packages/kit/src/init.test.ts — :189-204, seam for the no-probe-key test
-- openspec/changes/add-probe-visibility/tasks.md — opens with a column-0 anchor
-  block (A4-A7). Anchors indented inside a list item are invisible to `check`
+- Merge with a **merge commit**. 19 anchors are stamped `@12cde11`, an ancestor
+  of this branch but not of `main`. A squash or rebase orphans them into
+  advisory UNVERIFIABLE-REV: checker fails open, CI green, gate gone.
+- The branch carries one unrelated pre-existing commit (`retro`) because it was
+  cut from `12cde11` rather than `main`. A reviewer suggested rebasing to drop
+  it; declined for the reason above, and recorded in review-evidence.md.
 
 ## Pending user decisions
 
-- None. Both design questions resolved; the operator authorised iterations 4
-  and 5 past the declared refinement cap.
-
-## Branch and merge facts
-
-- `feat/add-probe-visibility` branched from `12cde11`, not `main`, so thirteen
-  anchors stamped `@12cde11` stay resolvable. Carries one pre-existing unrelated
-  commit (`retro`).
-- **Merge with a merge commit.** A squash orphans `12cde11` and every `@12cde11`
-  anchor fails open with the advisory UNVERIFIABLE-REV — CI green, hard gate
-  gone.
-
-## Instrumentation note for the retro
-
-- Probe CAUGHT 4/4 and the aggregate is nearly uninformative. It decomposes
-  into: architecture-reviewer catches it every time (twice via the registry
-  side channel, twice by reading); test-engineer has missed it four times
-  across four different host documents while reporting "no false premises" from
-  an anchor pass; rule-auditor caught it both rounds it was dispatched, by
-  `git blame` plus grep. A single per-run verdict cannot express that, and the
-  per-run verdict is what the PR body carries.
+- None. Merge is the human's call, per the pipeline's terminal state.
