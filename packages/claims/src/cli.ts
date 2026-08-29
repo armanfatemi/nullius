@@ -64,7 +64,12 @@ import { checkRule, isRuleFailure, parseRuleHeader, selectRules } from "./rules"
 import { scanRules } from "./rulesScan";
 import { checkWiring, isWiringFailure } from "./wiring";
 import { fsWiringDeps, scanHarnessRoot } from "./wiringScan";
-import { isJournalFailure, validateJournal, type JournalReport } from "./witness";
+import {
+  isJournalFailure,
+  surveyJournals,
+  validateJournal,
+  type JournalReport,
+} from "./witness";
 
 const SPEC_URL =
   "https://github.com/armanfatemi/nullius/blob/main/spec/evidence-anchors.md";
@@ -125,16 +130,25 @@ const AUDIT_HELP = `nullius audit <doc>
                         support finds support, so prefer the default
   example: nullius audit docs/design.md --emit-brief c1`;
 
-const WITNESS_HELP = `nullius witness validate <journal.jsonl>
-  verify that a run's own record holds up — every dispatch terminated, no
-  verification cited after the thing it verified changed, no omitted
-  corrections.
+const WITNESS_HELP = `nullius witness <validate|survey>
+  validate <journal.jsonl>
+                        verify that a run's own record holds up — every
+                        dispatch terminated, no verification cited after the
+                        thing it verified changed, no omitted corrections.
+                        Exactly one journal path.
+  survey <glob...>      validate every matched journal INDEPENDENTLY and add up
+                        the reports — \`nullius witness survey '.nullius/runs/*.jsonl'\`.
+                        Records are never merged into one timeline: two
+                        journals are two worktrees, and a mutation in one must
+                        not stale a verification in the other. Quote the glob
+                        to let the checker expand it. Exits non-zero if any
+                        surveyed journal fails.
   options:
     --expect-rules <rule-id...>
-                        fail the run if any named rule id never reached a
-                        delivered verdict in this journal (SILENT-RULE
-                        otherwise) — the ids \`rules select\` named for this
-                        run. Skipped when the journal itself is
+                        (validate only) fail the run if any named rule id never
+                        reached a delivered verdict in this journal
+                        (SILENT-RULE otherwise) — the ids \`rules select\`
+                        named for this run. Skipped when the journal itself is
                         UNSUPPORTED-VERSION: nothing past its header was read.
                         Comes AFTER the journal path.
   example: nullius witness validate spec/fixtures/valid-run.jsonl --expect-rules build-before-cli`;
@@ -375,10 +389,20 @@ function runAudit(args: AuditArgs): number {
   return 0;
 }
 
+const WITNESS_USAGE =
+  "usage: nullius witness validate <journal.jsonl> [--expect-rules <rule-id...>]\n" +
+  "       nullius witness survey <glob...>";
+
 function runWitness(args: WitnessArgs): number {
   const [sub, journal] = args.operands;
+  if (sub === "survey") return runWitnessSurvey(args);
+  // `validate` still takes EXACTLY one journal path, and `survey` above is the
+  // reason it can keep doing so. Teaching `validate` to accept globs was
+  // rejected in design.md Decision 1: it is a CI gate people have already
+  // wired, and a verb that sometimes-aggregates invites the merge semantics
+  // that decision forbids.
   if (sub !== "validate" || journal === undefined || args.operands.length > 2) {
-    console.error("usage: nullius witness validate <journal.jsonl> [--expect-rules <rule-id...>]");
+    console.error(WITNESS_USAGE);
     return 2;
   }
   if (!existsSync(journal)) {
@@ -469,6 +493,105 @@ function runWitness(args: WitnessArgs): number {
   }
 
   console.log("Journal valid.");
+  return 0;
+}
+
+/**
+ * `witness survey <glob...>` — sixty-four journals, one number, still
+ * sixty-four journals.
+ *
+ * Everything filesystem-shaped lives here, exactly as `validate`'s does:
+ * globbing and reading in the CLI, aggregation in a pure function that is
+ * handed content it never opened. `witness.ts` has no `node:fs` and keeps
+ * none.
+ *
+ * The counting rule is not a new one. A journal fails iff one of its findings
+ * fails `isJournalFailure`, which is the identical test `runWitness` applies
+ * above; the survey exits non-zero iff at least one journal does. There is no
+ * survey-level verdict, and inventing one would be a second place for pass and
+ * fail to disagree.
+ */
+function runWitnessSurvey(args: WitnessArgs): number {
+  const patterns = args.operands.slice(1);
+  if (patterns.length === 0) {
+    console.error(WITNESS_USAGE);
+    return 2;
+  }
+  if (args.expectRules !== undefined) {
+    // Refused, not ignored. Rule coverage asks whether the rules selected for
+    // ONE run reached a delivered verdict in that run's journal; a survey has
+    // no single run to ask it of, and silently dropping the flag would report
+    // a coverage check that never ran.
+    console.error(
+      "--expect-rules belongs to `witness validate`: rule coverage is a question about one run, and a survey has no single run to ask it of.",
+    );
+    return 2;
+  }
+
+  const paths = [...new Set(patterns.flatMap((pattern) => globSync(pattern)))].sort();
+  if (paths.length === 0) {
+    console.error(`no journals matched: ${patterns.join(" ")}`);
+    return 2;
+  }
+
+  const survey = surveyJournals(
+    paths.map((path) => ({ path, content: readFileSync(path, "utf8") })),
+  );
+
+  for (const journal of survey.journals) {
+    const status = journal.failures > 0 ? "FAIL" : "ok";
+    const detail =
+      journal.failures > 0
+        ? `${journal.failures} failing finding(s): ${journal.verdicts.join(", ")}`
+        : `${journal.report.records} record(s), ${journal.terminals} terminal(s)`;
+    const line = `${status.padEnd(6)}${journal.path}  ${detail}`;
+    if (journal.failures > 0) console.error(line);
+    else console.log(line);
+  }
+
+  console.log("");
+  // The journal count sits in this block, on every line that carries a total.
+  // A summed outcome triple with no denominator reads as one validated run,
+  // which is the misreading the whole verb has to survive.
+  console.log(
+    `${survey.count} journal(s) surveyed, ${survey.failed} failing, ${survey.count - survey.failed} valid.`,
+  );
+  console.log(
+    `${survey.records} record(s) read across ${survey.count} journal(s): ${survey.dispatches} dispatch(es), ${survey.verifications} verification(s), ${survey.mutations} mutation(s).`,
+  );
+  // Three numbers here for the same reason one journal keeps them three: a run
+  // that dropped agents on the floor and one where every agent reported
+  // nothing summarise identically the moment these are added together. And
+  // "independently validated" is the other half — these totals are a sum of
+  // per-journal reports, never a validation of one merged timeline.
+  console.log(
+    `Outcomes across ${survey.count} independently validated journal(s): ${survey.outcomes.found} found, ${survey.outcomes.empty} explicitly empty, ${survey.outcomes.noReport} never reported.`,
+  );
+  if (survey.silent.length > 0) {
+    // Named, not merely counted: "3 journals reached no terminal" tells you a
+    // number, and the thing you need is which files to go and look at.
+    console.log(
+      `No terminal record at all (${survey.silent.length}): ${survey.silent.join(", ")}`,
+    );
+  }
+  if (survey.unreadable.length > 0) {
+    // Held apart from the line above. These journals contribute zeroes because
+    // nothing below their header was read, not because nothing happened, and
+    // filing them under "no terminal record" would be a summary standing in
+    // for work not done.
+    console.error(
+      `Not read — this build does not know that schema (${survey.unreadable.length}): ${survey.unreadable.join(", ")}`,
+    );
+  }
+
+  if (survey.failed > 0) {
+    console.error("");
+    console.error(
+      `${survey.failed} of ${survey.count} surveyed journal(s) do not hold up — run \`nullius witness validate <path>\` on one for its findings.`,
+    );
+    return 1;
+  }
+  console.log(`All ${survey.count} surveyed journal(s) valid.`);
   return 0;
 }
 

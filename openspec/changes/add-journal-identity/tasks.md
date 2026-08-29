@@ -126,26 +126,26 @@ it going wrong silently.
 
 ## 2. Kernel — survey
 
-- [ ] 2.1 `witness survey <glob>`: validate each journal independently, collect
+- [x] 2.1 `witness survey <glob>`: validate each journal independently, collect
       reports, never concatenate records. Glob expansion and file reads live in
       `cli.ts`, as `validate`'s do — `witness.ts` has no `node:fs` today and
       keeps none
-- [ ] 2.2 Output — three outcome counts kept three, journal count in the same
+- [x] 2.2 Output — three outcome counts kept three, journal count in the same
       block as the totals, per-journal pass/fail, journals with zero terminals
       listed by name
-- [ ] 2.3 Exit code: non-zero when any surveyed journal fails, so it is usable
+- [x] 2.3 Exit code: non-zero when any surveyed journal fails, so it is usable
       as a CI gate. `runWitness` already derives this from `isJournalFailure`
       per finding; reuse it per journal rather than inventing a second rule
-- [ ] 2.4 Per-command `--help` with one example invocation, matching the
+- [x] 2.4 Per-command `--help` with one example invocation, matching the
       `options:` / `example:` funnel convention already in `WITNESS_HELP`
-- [ ] 2.5 Test: journal A verifies `src/parser.rs` **and relies on it**; journal
+- [x] 2.5 Test: journal A verifies `src/parser.rs` **and relies on it**; journal
       B mutates it. Surveying both reports no `STALE-VERIFICATION`. Two things
       make this test real rather than decorative: `STALE-VERIFICATION` is only
       reachable from the `reliance` branch, so A needs both records; and B's
       mutation must fall **chronologically between** A's verification and A's
       reliance, or a naive concatenation that preserves per-journal order would
       pass without being correct. This is the regression test for Decision 1
-- [ ] 2.6 Characterization test: `witness validate` still takes exactly one
+- [x] 2.6 Characterization test: `witness validate` still takes exactly one
       path. Use the existing `cli.characterization.test.ts` pattern, which
       already spawns `dist/cli.js`; no CLI refactor is needed
 

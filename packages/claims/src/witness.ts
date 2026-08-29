@@ -1312,3 +1312,150 @@ export function validateJournal(content: string): JournalReport {
 function short(hash: string): string {
   return hash.length > 12 ? `${hash.slice(0, 12)}…` : hash;
 }
+
+/**
+ * One journal's place in a survey: its own report, plus the two facts the
+ * roll-up needs that a `JournalReport` does not state directly — did it fail,
+ * and did it reach a terminal record at all.
+ */
+export interface SurveyedJournal {
+  /** The path the caller read this journal from. `surveyJournals` never opens it. */
+  path: string;
+  report: JournalReport;
+  /**
+   * Findings this journal earned that fail, counted by `isJournalFailure` —
+   * the same rule one journal is judged by, applied per journal rather than
+   * re-derived. A survey has no verdict of its own.
+   */
+  failures: number;
+  /** The distinct failing verdicts, in the order they first appeared. */
+  verdicts: JournalVerdict[];
+  /** Terminal records read: `found` + `empty` + `no-report`. */
+  terminals: number;
+  /**
+   * True when the journal declares a schema this build cannot read. Its counts
+   * are all zero because nothing below its header was looked at, so it is held
+   * apart from the journals that were read and genuinely reached no terminal.
+   */
+  unreadable: boolean;
+}
+
+/** The roll-up `witness survey` prints. */
+export interface JournalSurvey {
+  journals: SurveyedJournal[];
+  /**
+   * Journals aggregated. Printed beside the totals, always: a summed outcome
+   * count with no denominator reads as one validated run.
+   */
+  count: number;
+  /** Journals carrying at least one failing finding. */
+  failed: number;
+  records: number;
+  dispatches: number;
+  /** Three numbers, summed three times — never added together. See invariant 1. */
+  outcomes: { found: number; empty: number; noReport: number };
+  verifications: number;
+  mutations: number;
+  /** Paths of journals that were read and reached no terminal record at all. */
+  silent: string[];
+  /** Paths of journals whose schema this build cannot read. Nothing of theirs is in the totals. */
+  unreadable: string[];
+}
+
+/**
+ * Validate each journal on its own and add up the *reports*.
+ *
+ * The records are never combined into one timeline, and that is the whole
+ * reason this function exists rather than a caller concatenating the files and
+ * calling `validateJournal` once. A `verification` and a `mutation` are
+ * correlated by `target.path`; four worktrees each hold a different file under
+ * `src/parser.rs`. Merge those timelines and one worktree's mutation invalidates
+ * another's verification — a STALE-VERIFICATION for an event that never
+ * happened. A validator that invents failures is worse than one that misses
+ * them, because the invented ones teach people to pass `continue-on-error`.
+ *
+ * The same argument settles ids: where the harness omits `tool_use_id` the
+ * recorder falls back to a content hash of the dispatch input, and across
+ * sixty-four concurrent journals one repeated task string collides far more
+ * often than it does inside one session. Merged, that is a DUPLICATE-ID
+ * between two runs that never met.
+ *
+ * And there is a property worth keeping for its own sake: `validate` returns
+ * the same verdict for a journal no matter what else was validated in the same
+ * run. Aggregating reports preserves it; merging records destroys it.
+ *
+ * Pure by construction: it takes content already read by the caller. This
+ * module has no `node:fs`, so globbing and reading stay in the CLI where
+ * `validate`'s already are.
+ */
+export function surveyJournals(
+  inputs: readonly { path: string; content: string }[],
+): JournalSurvey {
+  const journals: SurveyedJournal[] = [];
+  const outcomes = { found: 0, empty: 0, noReport: 0 };
+  let records = 0;
+  let dispatches = 0;
+  let verifications = 0;
+  let mutations = 0;
+  let failed = 0;
+  const silent: string[] = [];
+  const unreadable: string[] = [];
+
+  for (const input of inputs) {
+    // One journal, one validation, one report. Nothing from a previous
+    // iteration is in scope here, which is the invariant this loop exists to
+    // make structural rather than remembered.
+    const report = validateJournal(input.content);
+
+    let failures = 0;
+    const verdicts: JournalVerdict[] = [];
+    let unsupported = false;
+    for (const finding of report.findings) {
+      if (finding.verdict === "unsupported-version") unsupported = true;
+      if (!isJournalFailure(finding.verdict)) continue;
+      failures += 1;
+      if (!verdicts.includes(finding.verdict)) verdicts.push(finding.verdict);
+    }
+
+    const terminals = report.outcomes.found + report.outcomes.empty + report.outcomes.noReport;
+    journals.push({
+      path: input.path,
+      report,
+      failures,
+      verdicts,
+      terminals,
+      unreadable: unsupported,
+    });
+
+    if (failures > 0) failed += 1;
+    if (unsupported) {
+      // Its counts are zero because nothing was read, not because nothing
+      // happened. Summing them is honest; calling it "no terminal records"
+      // would not be, so it is named on its own line instead.
+      unreadable.push(input.path);
+    } else if (terminals === 0) {
+      silent.push(input.path);
+    }
+
+    records += report.records;
+    dispatches += report.dispatches;
+    verifications += report.verifications;
+    mutations += report.mutations;
+    outcomes.found += report.outcomes.found;
+    outcomes.empty += report.outcomes.empty;
+    outcomes.noReport += report.outcomes.noReport;
+  }
+
+  return {
+    journals,
+    count: journals.length,
+    failed,
+    records,
+    dispatches,
+    outcomes,
+    verifications,
+    mutations,
+    silent,
+    unreadable,
+  };
+}

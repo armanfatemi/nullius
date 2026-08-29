@@ -3,7 +3,13 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { VERSIONS, isJournalFailure, validateJournal, type JournalVerdict } from "./witness";
+import {
+  VERSIONS,
+  isJournalFailure,
+  surveyJournals,
+  validateJournal,
+  type JournalVerdict,
+} from "./witness";
 
 // fileURLToPath, not URL.pathname: the latter is a URL component, and on a
 // path containing a space it is not a filesystem path.
@@ -1499,5 +1505,169 @@ describe("the v0.4 fixtures", () => {
     expect(report.findings[1]?.detail).toContain('"rev" is "main"');
     expect(report.findings[2]?.detail).toContain('must not carry "rev"');
     expect(report.findings.every((f) => isJournalFailure(f.verdict))).toBe(true);
+  });
+});
+
+describe("survey — aggregates reports, never merges journals", () => {
+  /*
+   * Two worktrees, one path. `src/parser.rs` in journal A and `src/parser.rs`
+   * in journal B are two different files, so B's mutation says nothing about
+   * A's verification. Merge the timelines and A earns a STALE-VERIFICATION for
+   * an event that never happened — design.md Decision 1, and the reason this
+   * verb exists rather than a caller concatenating files.
+   *
+   * The chronology is the load-bearing part of the fixture. B's mutation at
+   * t2 falls BETWEEN A's verification at t1 and A's reliance at t3, so a merge
+   * that orders the union by time does produce the false verdict. Without that
+   * interleaving this test would pass against the very implementation it
+   * exists to forbid, and the assertion below on `merged` is what keeps that
+   * honest: it fails if the fixture ever stops being able to trip the bug.
+   */
+  const A_VERIFICATION = {
+    kind: "verification",
+    id: "a-v1",
+    ts: "2026-08-29T10:00:00Z",
+    target: { path: "src/parser.rs", hash: "aaaa1111" },
+    verdict: "safe",
+  };
+  const B_MUTATION = {
+    kind: "mutation",
+    id: "b-m1",
+    ts: "2026-08-29T10:01:00Z",
+    target: { path: "src/parser.rs", hash: "bbbb2222" },
+  };
+  const A_RELIANCE = {
+    kind: "reliance",
+    id: "a-c1",
+    ts: "2026-08-29T10:02:00Z",
+    relies_on: "a-v1",
+  };
+
+  const HEADER = { kind: "journal", version: "0.2", origin: "hooks" };
+  const journalA = journal(HEADER, A_VERIFICATION, A_RELIANCE);
+  const journalB = journal(HEADER, B_MUTATION);
+
+  it("reports no STALE-VERIFICATION when another journal mutated the same path", () => {
+    const survey = surveyJournals([
+      { path: "a.jsonl", content: journalA },
+      { path: "b.jsonl", content: journalB },
+    ]);
+
+    expect(survey.journals.flatMap((entry) => entry.verdicts)).toEqual([]);
+    expect(survey.failed).toBe(0);
+    expect(survey.count).toBe(2);
+  });
+
+  it("would report one if the records were merged — the fixture can trip the bug", () => {
+    // Not a test of `surveyJournals`. It pins that the test above is
+    // discriminating: a merged timeline of these same three records, in time
+    // order, really does invent the failure. If this ever stops being true the
+    // fixture has gone decorative and the test above proves nothing.
+    const merged = journal(HEADER, A_VERIFICATION, B_MUTATION, A_RELIANCE);
+
+    expect(verdicts(merged)).toEqual(["stale-verification"]);
+  });
+
+  it("keeps each journal's verdict independent of what else was surveyed", () => {
+    const alone = validateJournal(journalA);
+    const surveyed = surveyJournals([
+      { path: "a.jsonl", content: journalA },
+      { path: "b.jsonl", content: journalB },
+    ]).journals[0];
+
+    expect(surveyed?.report.findings).toEqual(alone.findings);
+  });
+
+  it("keeps the three outcomes three numbers and counts the journals", () => {
+    // One journal per terminal state. Summed, they stay three numbers for the
+    // same reason one journal keeps them three: a run that dropped its agents
+    // and a run where every agent reported nothing summarise identically the
+    // moment these are added together — and across sixty-four journals that
+    // collapse is easier to miss, not harder.
+    const terminated = (outcome: string, extra: object): string =>
+      journal(HEADER, { kind: "dispatch", id: "d1" }, {
+        kind: "report",
+        id: "r1",
+        dispatch: "d1",
+        outcome,
+        ...extra,
+      });
+
+    const survey = surveyJournals([
+      { path: "found.jsonl", content: terminated("found", { findings: ["something"] }) },
+      { path: "empty.jsonl", content: terminated("empty", { statement: "None." }) },
+      {
+        path: "no-report.jsonl",
+        content: terminated("no-report", { statement: "The agent never came back." }),
+      },
+    ]);
+
+    expect(survey.outcomes).toEqual({ found: 1, empty: 1, noReport: 1 });
+    expect(survey.count).toBe(3);
+    expect(survey.failed).toBe(0);
+    expect(survey.silent).toEqual([]);
+  });
+
+  it("names the journals that reached no terminal record at all", () => {
+    const survey = surveyJournals([
+      { path: "silent.jsonl", content: journal(HEADER, { kind: "dispatch", id: "d1" }) },
+      {
+        path: "terminated.jsonl",
+        content: journal(HEADER, { kind: "dispatch", id: "d1" }, {
+          kind: "report",
+          id: "r1",
+          dispatch: "d1",
+          outcome: "empty",
+          statement: "None.",
+        }),
+      },
+    ]);
+
+    // A dispatch with no report is a journal that reached no terminal, and the
+    // survey has to say WHICH — a count alone tells you a number when what you
+    // need is the file to open.
+    expect(survey.silent).toEqual(["silent.jsonl"]);
+    expect(survey.unreadable).toEqual([]);
+  });
+
+  it("holds an unreadable schema apart from a journal that simply went quiet", () => {
+    // Its counts are zero because nothing below the header was read, not
+    // because nothing happened. Filing it under "no terminal record" would be
+    // a summary standing in for work the validator declined to do.
+    const survey = surveyJournals([
+      { path: "future.jsonl", content: fixture("future-run.jsonl") },
+    ]);
+
+    expect(survey.unreadable).toEqual(["future.jsonl"]);
+    expect(survey.silent).toEqual([]);
+    expect(survey.failed).toBe(1);
+    expect(survey.journals[0]?.verdicts).toEqual(["unsupported-version"]);
+  });
+
+  it("fails a survey exactly when a journal in it fails", () => {
+    const survey = surveyJournals([
+      { path: "valid.jsonl", content: fixture("valid-run.jsonl") },
+      { path: "broken.jsonl", content: fixture("broken-run.jsonl") },
+    ]);
+
+    // The same rule one journal is judged by, applied per journal — not a
+    // second, survey-level notion of failure.
+    expect(survey.journals[0]?.failures).toBe(0);
+    expect(survey.journals[1]?.failures).toBeGreaterThan(0);
+    expect(
+      survey.journals[1]?.verdicts.every((verdict) => isJournalFailure(verdict)),
+    ).toBe(true);
+    expect(survey.failed).toBe(1);
+  });
+
+  it("surveys nothing without inventing a number", () => {
+    expect(surveyJournals([])).toMatchObject({
+      count: 0,
+      failed: 0,
+      records: 0,
+      outcomes: { found: 0, empty: 0, noReport: 0 },
+      silent: [],
+      unreadable: [],
+    });
   });
 });

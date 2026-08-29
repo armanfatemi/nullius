@@ -409,6 +409,97 @@ suite("CLI characterization — witness", () => {
 });
 
 /**
+ * `witness survey` — add-journal-identity tasks 2.1-2.6. Through the built
+ * binary like the rest of this suite: `runWitnessSurvey` is not exported.
+ */
+suite("CLI characterization — witness survey", () => {
+  it("still takes exactly one path for `validate`, which is why `survey` exists", () => {
+    // Task 2.6. Teaching `validate` to accept globs was rejected in design.md
+    // Decision 1 — it is a CI gate people have already wired, and a verb that
+    // sometimes-aggregates invites the merge semantics that decision forbids.
+    // So this refusal is a feature with a reason, and it gets pinned.
+    const two = run(
+      "witness",
+      "validate",
+      "spec/fixtures/valid-run.jsonl",
+      "spec/fixtures/v0.3-run.jsonl",
+    );
+
+    expect(two.code).toBe(2);
+    expect(two.output).toContain("usage: nullius witness validate");
+
+    // And a glob is not expanded by `validate` either: quoted, it reaches the
+    // CLI as a literal path that does not exist.
+    const glob = run("witness", "validate", "spec/fixtures/*.jsonl");
+    expect(glob.code).toBe(2);
+    expect(glob.output).toContain("no such file:");
+  });
+
+  it("prints usage when survey is given no glob", () => {
+    const result = run("witness", "survey");
+
+    expect(result.code).toBe(2);
+    expect(result.output).toContain("nullius witness survey");
+  });
+
+  it("reports an unmatched glob with exit 2 rather than an empty survey", () => {
+    const result = run("witness", "survey", "spec/fixtures/no-such-*.jsonl");
+
+    expect(result.code).toBe(2);
+    expect(result.output).toContain("no journals matched:");
+  });
+
+  it("surveys a glob of valid journals with exit 0", () => {
+    const result = run("witness", "survey", "spec/fixtures/valid-run.jsonl");
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("1 journal(s) surveyed, 0 failing");
+  });
+
+  it("exits 1 when any surveyed journal fails", () => {
+    const result = run("witness", "survey", "spec/fixtures/*.jsonl");
+
+    expect(result.code).toBe(1);
+    expect(result.output).toContain("do not hold up");
+  });
+
+  it("prints the journal count in the same block as the totals", () => {
+    const result = run("witness", "survey", "spec/fixtures/*.jsonl");
+
+    // A summed outcome triple with no denominator reads as one validated run.
+    expect(result.stdout).toMatch(
+      /Outcomes across \d+ independently validated journal\(s\): \d+ found, \d+ explicitly empty, \d+ never reported\./,
+    );
+    expect(result.stdout).toMatch(/\d+ journal\(s\) surveyed, \d+ failing, \d+ valid\./);
+  });
+
+  it("documents survey in the witness help block, one example line still", () => {
+    const result = run("witness", "--help");
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("survey <glob...>");
+    // One `example:` line per command block, still — the overview is composed
+    // from these blocks and the funnel suite counts one per command.
+    expect(
+      result.stdout.split("\n").filter((line) => line.trimStart().startsWith("example:")),
+    ).toHaveLength(1);
+  });
+
+  it("refuses --expect-rules on a survey rather than ignoring it", () => {
+    const result = run(
+      "witness",
+      "survey",
+      "spec/fixtures/valid-run.jsonl",
+      "--expect-rules",
+      "build-before-cli",
+    );
+
+    expect(result.code).toBe(2);
+    expect(result.output).toContain("--expect-rules belongs to `witness validate`");
+  });
+});
+
+/**
  * `--expect-rules` — add-silent-rule-check tasks 3.2-3.4. Exercised through
  * the built CLI, same as the rest of this suite: `runWitness` is not exported
  * (cli.ts ends in `process.exit(main())`), so the observable contract is
