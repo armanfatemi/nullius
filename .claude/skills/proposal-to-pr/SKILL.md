@@ -1148,16 +1148,30 @@ artefacts. The whole reason it is a separate agent is that your account of the
 run — at the end of a long session, with the early mistakes compacted away — is
 the least reliable input available.
 
-Commit the retro on the feature branch so it travels with the PR:
+Commit the retro on the feature branch so it travels with the PR, and verify
+the push actually landed before declaring the run done — a push fails (stale
+ref, network, auth) exactly as easily as any other git command, and nothing
+else in this stage would notice a silent failure:
 
 ```bash
 git add .claude/retrospectives/<the-one-file-it-named>
-git commit -m "docs: retrospective for <change>" && git push
+git commit -m "docs: retrospective for <change>"
+git push
 ```
 
 Stage the single path the agent returned, never the directory and never `-A`.
 The working tree holds untracked local scratch, and a directory add sweeps it
 into a commit that then has to be amended.
+
+**Check `git push`'s exit code before transitioning to `done`.** A non-zero
+exit means the retro is committed locally but not on the PR's branch — the
+run is not actually finished, whatever the commit says. Retry once with
+`git pull --rebase origin feat/<change> && git push`; if that also fails,
+save `paused=true`, `pause_reason=retro_push_failed`, and stop. Do not mark
+`done` on an unverified push: a retro that never reached the remote is the
+same failure this stage's opening paragraph names for a failed dispatch ("a
+missing retro is a missing data point"), except worse — here the run reports
+success while the artefact that success depends on never left the machine.
 
 Print its three-line return (path, severity, headline). If `severity` is
 `notable` or `blocking`, say so in one line — that is the signal worth
@@ -1190,6 +1204,10 @@ you what to do:
   decision.
 - `base_branch_not_on_remote` — re-check `git ls-remote`. Present now → clear and
   resume Stage 8 step 3. Still absent → confirm the user's decision and act.
+- `retro_push_failed` — the retro commit exists locally but `git push` did not
+  land it. Re-run `git push` on the feature branch. Succeeds → clear and
+  resume `stage: retro` → `stage: done`. Fails again → surface the error and
+  stay paused; do not retry silently a second time.
 
 If no state exists, start at Stage 1. If a canary is still registered on resume
 (`canary status` exits 1), clear it before running any `check`.
