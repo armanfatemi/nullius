@@ -138,31 +138,20 @@ from aggregating verdicts, never from merging records. See Decision 1.
 
   Hooks fail open; that constraint does not bend for provenance, and it does
   not bend for a git call that merely takes its time. See Decision 5.
-- **The producer moves too, and that is the part with live consequences.** The
-  hook pack stamps `0.2` today:
+- **The producer does not move, and that is a deliberate scope line.** The hook
+  pack stamps `0.2` and keeps stamping it:
 
-  **Evidence:** `packages/kit/src/cli.ts:41@f1b8211` — `const SCHEMA_VERSION = "0.2";`
+  **Evidence:** `packages/kit/src/cli.ts:41@bcf228f` — `const SCHEMA_VERSION = "0.2";`
 
-  So the ledger verdicts, gated at `0.3` and later, currently fire on no
-  journal this repository has ever produced. Task 3.8 bumps the producer to
-  `0.4` — without it this change ships a schema nothing emits, next to the
-  producer that should emit it.
-- **Bumping the producer exposed a latent defect in the ledger gate, and this
-  change fixes it.** Measured before assuming: with the producer at `0.4` and
-  nothing else changed, the 18 live journals under `.nullius/runs/` go from 0
-  `SILENT-REVIEWER` findings to 255 — every `found` report, from a producer
-  whose behaviour did not change by one line. The cause is that
-  `scan.version === "0.3"` was standing in for *"can this producer file
-  findings?"*, and the hook recorder never could. Decision 7 replaces the proxy
-  with the discriminator the schema has carried since v0.2: the ledger verdicts
-  require `origin: "self-reported"` as well as the schema floor. That is a
-  loosening, so it takes no bump of its own — but it is what makes the bump
-  shippable, and without it this change would have made a working verdict into
-  255 lines of noise.
+  Bumping it was scoped in during review and scoped back out when the bump was
+  measured — see Non-Goals. The identity fields are readable at any declared
+  version, so section 3's work lands and is read; what does not happen is a
+  journal declaring `0.4`.
 - **The version-support table and the ledger gate both move.** `VERSIONS`
   gains `0.4`, `VOCABULARY` maps it to the unchanged `KINDS_V03`, and the
   exact-equality ledger gate becomes a floor so `0.4` keeps every verdict `0.3`
-  has. That last one is the whole risk of the bump and it carries its own test.
+  has. The floor is correct on its own terms and is worth landing regardless of
+  who declares `0.4`; it carries its own test.
 - No existing `0.3` journal changes verdict. Every field added here is
   optional, the header scan already ignores keys it does not know, and a `0.3`
   journal carrying `rev` keeps validating exactly as it does today — the new
@@ -183,6 +172,42 @@ from aggregating verdicts, never from merging records. See Decision 1.
 - **A producer for `verification`.** It still has none. `rev` is a field on a
   record nothing emits, which is the same bet v0.2 made on `mutation` and v0.3
   made on the ledger kinds — and the reason the field has to be right now.
+- **Bumping the producer to `0.4`.** Scoped in during review and scoped back
+  out when it was measured. The kit stamps `0.2`, so the ledger verdicts — gated
+  at `0.3` and later — fire on no journal this repository has ever produced.
+  Bumping the producer switches them on, and the result is not a calibration
+  question:
+
+  | corpus | header | `SILENT-REVIEWER` findings |
+  | ------ | ------ | -------------------------- |
+  | 18 live journals, 254 `found` reports, 0 `finding` records | `0.2` (real) | 0 |
+  | the same 18 journals | rewritten to `0.3` | 255 |
+
+  CI is unaffected — its journal's terminals are all `no-report`, and the
+  verdict needs `found`. Three gate designs were tried and all three failed.
+  Gating on schema version is what already exists and is a proxy for producer
+  capability. Gating on `origin` makes a verdict depend on a producer's
+  self-declaration, since `origin` is a CLI flag and an environment variable —
+  that breaks `model-proposes-code-verifies` and was withdrawn. Gating on the
+  presence of a `finding` record deletes the verdict, which exists precisely to
+  fire when no finding was filed.
+
+  The reason none of them work is one level down. For a hook journal
+  `outcome: "found"` means only that the subagent's final message was
+  non-empty:
+
+  **Evidence:** `packages/kit/src/record.ts:298@bcf228f` — `          "the subagent stopped without a final message recorded by the harness — it returned, and returned nothing",`
+
+  So every returning subagent is `found`, including implementers and search
+  agents, and `SILENT-REVIEWER` is reading a self-reported reviewer semantic
+  into a harness-derived field. Two producers write one field name with two
+  meanings, and no placement of the gate repairs that.
+
+  That is a real design question about the outcome vocabulary, and it is not
+  what this change is about. It moves to a follow-up, which inherits the
+  measurements above and the three rejected designs rather than rediscovering
+  them. The same test Decision 4 used to move sealing out applies: it is not
+  about identity.
 - **Ref-backed sealing.** Split out to `add-journal-sealing` after review found
   an unresolved concurrency defect in the seal path: the specified
   `hash-object` → `mktree` → `commit-tree` → `update-ref` sequence is a
@@ -225,12 +250,13 @@ is archived and the hook pack writes journals today.
 
 |                                |                                                     |
 | ------------------------------ | --------------------------------------------------- |
-| Estimated tasks                | 44                                                  |
+| Estimated tasks                | 40                                                  |
 | Packages or surfaces touched   | 3 (packages/claims, packages/kit, spec/)            |
 | Risk                           | MEDIUM                                              |
 | Expected sessions to implement | 1                                                   |
 
-MEDIUM rather than LOW, revised after pre-review. The first estimate assumed a
+MEDIUM rather than LOW, revised after pre-review and held there after the
+producer bump was scoped back out. The first estimate assumed a
 purely additive change and was wrong on its own terms: this change tightens
 record validity and therefore bumps the schema, and the bump drags in a gate
 that is written as exact string equality against `"0.3"`. Getting that gate

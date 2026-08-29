@@ -798,3 +798,97 @@ briefed on Decision 7 specifically.
   live data for the first time", which reads as calibration. It was structural.
   The measurement that settled it cost one command and was available the whole
   time.
+
+## Stage 2 — Pre-review iteration 4 (Decision 7 focused)
+
+Focused round on Decision 7 (checker-engineer, test-engineer). Decision 7 does
+not survive it. Recorded here at the moment of the correction.
+
+## Decision 7 is withdrawn
+
+**[blocker] `origin` is producer-declared, so gating a verdict on it makes a
+self-declaration load-bearing.** It is a CLI flag and an environment variable:
+
+**Evidence:** `packages/kit/src/cli.ts:111@bcf228f` — `    origin: envOrigin(process.env["NULLIUS_WITNESS_ORIGIN"]),`
+
+So `NULLIUS_WITNESS_ORIGIN=self-reported` on the hook pack restores all 255
+findings, and `--origin hooks` is a permanent one-flag exemption from
+`SILENT-REVIEWER` — set by the same actor the verdict judges. That is
+`model-proposes-code-verifies` inverted at the gate: the condition would read
+what a producer says about itself instead of re-deriving from the artefact.
+checker-engineer. The coordinator wrote this decision, and it violated the
+repository's central rule.
+
+## The proposed replacement does not survive either
+
+checker-engineer's alternative — gate on "this journal contains at least one
+ledger-kind record", which is computed from parsed records and cannot be set by
+a header line — is the right *shape*. But taken as "contains a `finding`" it
+deletes the verdict: `SILENT-REVIEWER` exists precisely to fire on a journal
+with no finding records, and the canonical test asserts exactly that shape:
+
+**Evidence:** `packages/claims/src/witness.test.ts:827@bcf228f` — `    const report = validateJournal(journal(V03, DISPATCH, FOUND));`
+
+Broadened to any ledger kind (`stage`/`finding`/`resolution`/`check`/
+`decision`) it survives, but then a genuinely silent reviewer — one that writes
+no ledger records at all — escapes, which is the case the verdict most wants to
+catch.
+
+## What is actually wrong, underneath both
+
+For a hook-written journal, `outcome: "found"` does not mean a reviewer found
+something. It means the subagent's final message was non-empty:
+
+**Evidence:** `packages/kit/src/record.ts:298@bcf228f` — `          "the subagent stopped without a final message recorded by the harness — it returned, and returned nothing",`
+
+The branch above it emits `empty` when the text is zero-length, so *any*
+returning subagent — an implementer, a search agent — is `found`. Demanding a
+filed finding from an implementation subagent is meaningless.
+
+So `SILENT-REVIEWER` reads a self-reported reviewer semantic into a field the
+harness derives from "was the text non-empty". The two producers write the same
+field name with different meanings. Neither a version check, nor an origin
+check, nor a ledger-presence check repairs that; each patches over it at a
+different distance.
+
+## Other findings from this round
+
+- **[blocker] Task 1.12c drops the both-verdicts rule** that task 1.11 states
+  explicitly, naming only `SILENT-REVIEWER`. test-engineer.
+- **[blocker] The specified test pair cannot distinguish one miswiring** —
+  origin-check-correct-but-floor-dropped — because both fixtures sit at `0.4`.
+  A third case is needed: a self-reported journal below the floor earning
+  neither verdict. test-engineer.
+- **[concern] Two existing tests would start failing** and no task says so:
+  `witness.test.ts:817` and `:1035` build `SILENT-REVIEWER` fixtures with
+  `origin: "hooks"`. Under any of these gates they break, and during
+  implementation they would read as unrelated failures rather than as the
+  behaviour change in scope. test-engineer.
+- **[looks-good] Retaining the schema floor is necessary, not redundant.** A
+  `0.2` journal declaring `self-reported` is constructible, and `finding` is
+  absent from `KINDS_V02`, so dropping the floor would newly fail it.
+  checker-engineer.
+- **[looks-good] "Loosening, so no bump" holds** against Decision 3's four
+  triggers. checker-engineer.
+- **[looks-good] Task 3.9 is correctly scoped** as a one-time PR-body
+  measurement against a gitignored machine-local corpus, not a CI gate. The
+  durable protection is the unit tests. test-engineer.
+
+## Coordinator corrections since last append
+
+- **I wrote a decision that violates this repository's central rule, and
+  shipped it to review rather than catching it myself.** Decision 7 made a
+  producer's self-declaration the condition for a verdict. The rule against
+  exactly this is the first one in `CLAUDE.md` and has its own file in
+  `.claude/rules/`. I checked that `origin` was present on all 18 live journals
+  and did not check whether it was *derived* or *declared* — one `grep` in the
+  kit CLI, which I had already read twice this run for `SCHEMA_VERSION`.
+- **I recommended this fix to the user as "reuses what's already there" and
+  "small".** It was neither. The user chose it on that framing. This is the
+  second time in this run I have framed a producer-side question confidently
+  before measuring it, and the second time the measurement reversed me.
+- **I described the alternative I did not take — splitting the producer bump
+  out — as leaving "the same unsolved problem" to a follow-up.** That was
+  wrong in a way that mattered: the problem is genuinely unsolved, it is
+  larger than this change, and a follow-up that owns it is the correct home
+  rather than a deferral.

@@ -199,46 +199,6 @@ indistinguishable from a verdict that was never reached.
 - **THEN** no bump is required on their account, and a validator built before
   those fields existed validates the journal with identical findings
 
-### Requirement: Ledger verdicts apply only where findings can be filed
-
-The ledger verdicts — `SUPPRESSED-FINDING` and `SILENT-REVIEWER` — SHALL apply
-only to a journal whose header declares `origin: "self-reported"` and a schema
-of `0.3` or later. Both conditions SHALL be required.
-
-A journal declaring `origin: "hooks"` records what the harness emitted, which
-the agent had no opportunity to decline. Nothing in it was volunteered, and its
-producer cannot emit a `finding` record at all, so a verdict demanding that a
-finding be filed addresses nobody. Firing it on every such journal would make
-the verdict noise, and a verdict read as noise is a gate that has stopped
-working while still appearing to run.
-
-An unrecognised `origin` SHALL NOT satisfy the origin condition. Where the
-producer's capability is unknown, the verdicts SHALL stay silent.
-
-The schema floor SHALL be retained alongside the origin condition, because the
-ledger record kinds are valid only from `0.3`, and applying these verdicts to
-an earlier self-reported journal would newly fail records that a previous
-validator accepted.
-
-#### Scenario: a hooks journal never earns SILENT-REVIEWER
-
-- **WHEN** a `0.4` journal declaring `origin: "hooks"` contains a dispatch whose
-  terminal reports `outcome: "found"` and no `finding` record
-- **THEN** validation reports no `SILENT-REVIEWER`
-
-#### Scenario: a self-reported journal still earns it
-
-- **WHEN** an otherwise identical `0.4` journal declares
-  `origin: "self-reported"`
-- **THEN** validation reports `SILENT-REVIEWER` for that dispatch
-
-#### Scenario: an unknown origin stays silent
-
-- **WHEN** a `0.4` journal's header carries an `origin` this schema does not
-  recognise, and a dispatch reports `found` with no finding
-- **THEN** validation reports the header `MALFORMED` and reports no
-  `SILENT-REVIEWER`
-
 ### Requirement: Survey aggregates verdicts and never merges journals
 
 The kernel SHALL provide `witness survey <glob>`, which validates each matched
