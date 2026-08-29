@@ -164,6 +164,12 @@ function stateOf(read: SettingsRead): string {
   if (read.notSupplied) return "not supplied";
   if (read.unreadable) return "could not be parsed";
   if (read.absent) return "absent";
+  // Only reached today where no file sets the variable, so this arm is
+  // unreachable in practice — but that invariant lives in the caller, not in
+  // the type. A caller that changed would otherwise render a file that sets
+  // the variable as "sets nothing", which is the falsehood this whole check
+  // exists to avoid making.
+  if (read.value !== null) return `sets ${CAPTURE_VAR}=${read.value}`;
   return "sets nothing";
 }
 
@@ -267,7 +273,7 @@ export function captureChecks(
       {
         name: CAPTURE_CHECK,
         status: "unknown",
-        detail: `could not parse ${unreadable.map((read) => read.label).join(", ")} — ${CAPTURE_VAR} not determined there, and no settings file this check read sets it; ${checkedAndResidue(reads)}. ${describeLiveCaptures(root)}`,
+        detail: `could not parse ${unreadable.map((read) => read.label).join(", ")} — ${CAPTURE_VAR} not determined there, and no settings file this check could parse sets it; ${checkedAndResidue(reads)}. ${describeLiveCaptures(root)}`,
       },
     ];
   }
@@ -277,7 +283,7 @@ export function captureChecks(
       ? // Scoped to what was read. "No settings file sets it" leads with a
         // quantifier over every settings file that exists, which three
         // `existsSync` calls do not entitle this check to make.
-        `no settings file this check read sets ${CAPTURE_VAR} — ${checkedAndResidue(reads)}`
+        `no settings file this check could parse sets ${CAPTURE_VAR} — ${checkedAndResidue(reads)}`
       : [
           setters
             .map(

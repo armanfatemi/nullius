@@ -1105,3 +1105,59 @@ enumeration rendered only `absent` and `sets nothing`. Once the `unknown` branch
 began sharing that enumeration, an unparseable file would have been labelled
 "sets nothing" — a false statement about a file the check had just said it could
 not read. Found by the implementer, not by review.
+
+## Stage 7 second pass — two concerns fixed, one proven by sabotage
+
+Re-review after the must-fixes returned zero blockers from both reviewers.
+architecture-reviewer enumerated all three reachable branches of `captureChecks`
+and confirmed B16/B17 closed with no surviving sibling — the payload clause now
+sits on the return itself rather than per-branch, so no branch can drop it.
+test-engineer confirmed the previously defect-pinning test now asserts count and
+ISO timestamp, named a breaking production edit for every new test, found no
+stale pins, and confirmed no assertion was weakened to accommodate the fix.
+
+Two concerns were fixed rather than carried to the PR, because both are the same
+class of defect this change exists to eliminate.
+
+**The quantifier included what it could not read.** The `unknown` branch said
+"no settings file this check *read* sets it", quantifying over a set that
+includes the file the same sentence had just called unparseable — asserting a
+value for the one file it declared undetermined. The enumeration that follows
+corrected it, so it was self-contradictory rather than false, but that is
+precisely B16's shape: the sentence overclaims and the surrounding clauses
+rescue it. Now "no settings file this check *could parse* sets it", which is
+accurate in both the `fact` and `unknown` branches that share the wording.
+
+**`stateOf` was correct by caller, not by construction.** It had no arm for a
+read carrying a value, so a file that sets the variable would have rendered as
+"sets nothing". It was unreachable only because the sole caller runs where
+`setters.length === 0` — an invariant living in the caller rather than the type,
+which is the same latent-falsehood shape the previous commit had already tripped
+over once with the two-state renderer.
+
+This one was proven rather than argued. The `setters.length === 0` guard was
+temporarily relaxed so setters flowed through `stateOf`, and the check printed:
+
+  checked .claude/settings.local.json (absent), .claude/settings.json (sets
+  nothing), ...
+
+about a file containing `NULLIUS_WITNESS_PROBE=1`. A flatly false statement, in
+the one check whose entire purpose is not making claims it cannot support. After
+adding the value arm, the same sabotage printed `.claude/settings.json (sets
+NULLIUS_WITNESS_PROBE=1)`. Sabotage then reverted and confirmed removed by
+grep before committing.
+
+Recording the method because the accompanying test passes vacuously today: it is
+a regression guard, and a guard that has never been observed to fail is not yet
+evidence of anything. The sabotage is what made it evidence.
+
+## Coordinator corrections since last append
+
+- **A shell loop reported all five dogfood gates as failing.** The gates were
+  fine; `$cmd` unquoted does not word-split in zsh, so every invocation received
+  a single malformed argument and exited 2. This is the second time this run
+  that zsh word-splitting produced a false result from a coordinator-written
+  loop — the first was the Stage 1 `state-set` batch. Re-run explicitly, all
+  seven pass. Worth noting that the failure mode was a *false alarm* rather than
+  a false pass; the same bug in the other direction would have reported gates
+  green without running them.

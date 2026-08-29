@@ -561,7 +561,7 @@ describe("doctor — what the settings files say about payload capture", () => {
     // Scoped to what this check read. A bare "no settings file sets it" leads
     // with a quantifier over every settings file that exists, which is not a
     // claim three `existsSync` calls entitle it to make.
-    expect(result?.detail).toContain("no settings file this check read sets");
+    expect(result?.detail).toContain("no settings file this check could parse sets");
     expect(result?.detail).toContain("capture may still be enabled by sources this check does not read");
     expect(result?.detail).toContain("launched the harness");
     // "capture is off" is not a checkable claim for the same reason "capture
@@ -725,7 +725,7 @@ describe("doctor — what the settings files say about payload capture", () => {
       const result = captureCheck(scratch());
 
       expect(result?.detail).toContain(
-        "no settings file this check read sets NULLIUS_WITNESS_PROBE",
+        "no settings file this check could parse sets NULLIUS_WITNESS_PROBE",
       );
       expect(result?.detail).not.toContain("enables capture");
     } finally {
@@ -746,5 +746,38 @@ describe("doctor — what the settings files say about payload capture", () => {
     expect(captureAt).toBeGreaterThanOrEqual(0);
     expect(proofAt).toBeGreaterThanOrEqual(0);
     expect(captureAt).toBeLessThan(proofAt);
+  });
+});
+
+describe("captureChecks — the quantifier does not include what it could not read", () => {
+  it("does not claim over a file it just said it could not parse", () => {
+    const root = scratch();
+    mkdirSync(join(root, ".claude"), { recursive: true });
+    writeFileSync(join(root, ".claude", "settings.local.json"), "{ not json");
+
+    const detail = find(check(root).checks, "payload capture")?.detail ?? "";
+
+    // "no settings file this check READ sets it" quantifies over a set that
+    // includes the unparseable file — asserting a value for the one file the
+    // same sentence calls undetermined. "could parse" excludes it.
+    expect(detail).toContain("no settings file this check could parse sets it");
+    expect(detail).not.toContain("this check read sets");
+  });
+
+  it("never renders a file that sets the variable as setting nothing", () => {
+    const root = scratch();
+    mkdirSync(join(root, ".claude"), { recursive: true });
+    writeFileSync(
+      join(root, ".claude", "settings.json"),
+      JSON.stringify({ env: { NULLIUS_WITNESS_PROBE: "1" } }),
+    );
+
+    const detail = find(check(root).checks, "payload capture")?.detail ?? "";
+
+    // stateOf() is only ever called where no file sets the variable. That
+    // invariant lives in the caller, not the type, so assert the safe
+    // rendering directly rather than trusting the call site to stay put.
+    expect(detail).toContain("enables capture");
+    expect(detail).not.toContain(".claude/settings.json (sets nothing)");
   });
 });
