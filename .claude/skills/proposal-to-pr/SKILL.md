@@ -687,6 +687,17 @@ For each unchecked task:
      task integrates against and quote the real signature. A dispatch that says
      "wire X into Y" without quoting Y's contract frequently produces an
      intermediate that turns out to be dead code.
+   - **When two tasks implement opposite sides of a contract that doesn't
+     exist yet** (neither side has committed code to "read" the way the
+     bullet above assumes), write the shared shape into `tasks.md` itself —
+     not only into one side's brief, and not only into one side's source
+     comment. Every brief touching either side must be built by reading
+     `tasks.md`'s copy. A real run split into two streams that each
+     independently chose a different wire-format convention for the same
+     dispatch, because the shape lived only in one implementer's own code
+     comment and the other implementer had no reason to read it; the
+     mismatch became a Stage 6 blocker, and every real invocation of the
+     shipped feature would have silently failed until then.
 4. **If the task is trivial** (one line in a config file), do it inline.
 5. **If the task needs a human-only command**, pause: save `paused=true`,
    `pause_reason=human_command:<task_id>`, surface the command, and **do not run
@@ -1108,6 +1119,16 @@ State transition: `stage: retro` → `stage: done`.
 ---
 
 ## Resume semantics
+
+**The reasons below are the complete set of conditions under which this
+pipeline stops for human input.** If none of them apply, the run does not
+pause — it proceeds. The per-stage banner in the next section and the
+"never run silent for more than five actions" cadence are informational
+prints, not checkpoints; do not read either as license to stop and ask
+"shall I continue?" A design call that genuinely needs human judgement gets
+a named `pause_reason` from this list (or, if it truly matches none of
+them, gets added as a new one here — it does not get an ad-hoc question
+outside this mechanism).
 
 On re-invocation after a pause, read state. `paused=true` and the reason tells
 you what to do:
