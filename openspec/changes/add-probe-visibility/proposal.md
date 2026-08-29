@@ -36,8 +36,17 @@ nor any of the modules it composes to decide what to write:
 **Evidence:** `grep -rn 'PROBE' packages/kit/src/profiles.ts packages/kit/src/render.ts packages/kit/src/detect.ts` → 0 results
 
 So the loop has no entry point. The corpus is fed by live capture; live capture
-is off by default; nothing ever says so; and a `doctor` run reports the corpus
-check green while capture is off, which is true and reads as "probing is fine."
+is off by default; and a `doctor` run reports the corpus check green while
+capture is off, which is true and reads as "probing is fine."
+
+The variable is not wholly undocumented — `record --help` describes it:
+
+**Evidence:** `packages/kit/src/cli.ts:68@12cde11` — `Set NULLIUS_WITNESS_PROBE=1 to also save each raw payload to`
+
+But that is a help text for a subcommand the operator has no reason to run, and
+nothing in the *installer* or in *`doctor`'s report* — the two surfaces a person
+actually reads — mentions it. The gap is in the surfaces that report state, not
+in the reference documentation.
 
 The cost is paid retroactively and only once it is too late. Capture cannot be
 performed after the fact, so the first time a payload anomaly needs explaining
@@ -46,17 +55,26 @@ is exactly the moment the explaining data is discovered not to exist.
 ## Why now
 
 This was found by running `doctor` against this repo during a real session, then
-needing the live probe corpus to explain an anomaly and finding
-`.nullius/probes/` empty with nothing having said so. The failure mode is not
-theoretical and it is silent, which is the class of failure this project exists
-to make loud.
+needing live probe payloads to explain an anomaly and having no report anywhere
+that said whether capture was on. The failure mode is not theoretical and it is
+silent, which is the class of failure this project exists to make loud.
+
+The state of `.nullius/probes/` at that moment is not re-checkable now — capture
+has since been enabled on this machine and the directory holds payloads — which
+is itself the point. Capture state is not recoverable after the fact, so a claim
+about it has to be reported when it is true or not at all.
 
 ## What changes
 
 - **A `doctor` check for live capture state** (kit): reports whether
-  `NULLIUS_WITNESS_PROBE` is set and whether `.nullius/probes/` holds anything,
-  as a `fact` — never a `fail`. Not capturing is a legitimate choice, not a
-  defect.
+  `NULLIUS_WITNESS_PROBE` is set to exactly `1` in the harness settings `env`
+  block, and whether `.nullius/probes/` holds anything, as a `fact` — never a
+  `fail`. Not capturing is a legitimate choice, not a defect. The value is read
+  from settings rather than from `doctor`'s own environment, because the
+  variable governs the hook subprocess and not `doctor`; see design Decision 1a.
+- **A corrected `probeChecks` detail line** (kit): when the committed corpus is
+  absent, the current message tells the reader to fill it with a variable that
+  writes to a different directory. The message changes; the check does not.
 - **`init` names the option** (kit): the installer states that probing exists,
   what it records, and that it is off unless asked for. It does not silently
   turn it on.
@@ -108,10 +126,10 @@ verdict.
 
 ## Open questions
 
-- **Should `init` offer to enable capture, or only mention it?** Offering is more
-  useful and makes the installer ask a privacy question it may not be the right
-  place to ask. Mentioning is safer and more easily ignored. Resolve before
-  implementing; the difference is one prompt.
+- ~~**Should `init` offer to enable capture, or only mention it?**~~
+  **Resolved 2026-08-28: only mention it.** The installer is not the right place
+  to ask a privacy question, and an `init` that may write a probe key turns an
+  unconditional test assertion into a conditional one. See design Decision 2.
 - **Does the live directory deserve its own staleness signal?** A
   `.nullius/probes/` captured against a harness version that has since been
   upgraded is worse than an empty one, because it looks like coverage. Naming
