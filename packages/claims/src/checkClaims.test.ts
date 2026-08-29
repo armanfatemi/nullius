@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { checkClaims, isFailure, type CheckDeps } from "./checkClaims";
-import { parseClaims, type Claim } from "./parseClaims";
+import {
+  checkClaims,
+  isFailure,
+  verifyAtRev,
+  type CheckDeps,
+  type RevRead,
+} from "./checkClaims";
+import { parseClaims, type Claim, type PresenceClaim } from "./parseClaims";
 
 const FILE = [
   "extend schema",
@@ -572,5 +578,251 @@ describe("checkClaims — the two axes of a citation", () => {
     );
 
     expect(result?.verdict).toBe("unpinned");
+  });
+});
+
+describe("foundLine", () => {
+  // The line `locate` identified, surfaced as a number so a fixer can move a
+  // citation without parsing the checker's own English. It is set only on the
+  // two verdicts where the quote matched exactly ONE place off its cited line.
+  const distinctive = "status: ProcessorTaskStatus! @shareable";
+
+  it("names the found line on drift", () => {
+    // Text is on line 9; cited at 11 — inside the default window of 3.
+    const [result] = checkClaims([presence("schema.graphqls", 11, distinctive)], deps());
+
+    expect(result?.verdict).toBe("drift");
+    expect(result?.foundLine).toBe(9);
+    expect(result?.detail).toContain("line 9");
+  });
+
+  it("names the found line on wrong-line", () => {
+    const [result] = checkClaims([presence("schema.graphqls", 1, distinctive)], deps());
+
+    expect(result?.verdict).toBe("wrong-line");
+    expect(result?.foundLine).toBe(9);
+    expect(result?.detail).toContain("line 9");
+  });
+
+  it("is absent on ok", () => {
+    const [result] = checkClaims([presence("schema.graphqls", 9, distinctive)], deps());
+
+    expect(result?.verdict).toBe("ok");
+    expect(result).not.toHaveProperty("foundLine");
+  });
+
+  it("is absent on fabricated", () => {
+    const [result] = checkClaims(
+      [presence("schema.graphqls", 4, "enum ProcessorTaskStatus @shareable {")],
+      deps(),
+    );
+
+    expect(result?.verdict).toBe("fabricated");
+    expect(result).not.toHaveProperty("foundLine");
+  });
+
+  it("is absent on unpinned", () => {
+    const [result] = checkClaims([presence("schema.graphqls", 1, "}")], deps());
+
+    expect(result?.verdict).toBe("unpinned");
+    expect(result).not.toHaveProperty("foundLine");
+  });
+
+  it("is absent on weak-anchor", () => {
+    const [result] = checkClaims([presence("schema.graphqls", 5, "PENDING")], deps());
+
+    expect(result?.verdict).toBe("weak-anchor");
+    expect(result).not.toHaveProperty("foundLine");
+  });
+
+  it("prefers the exact match outside the window over a substring match inside it", () => {
+    // Edge shape 1 (design Decision 2). Line 2 CONTAINS the quote and sits
+    // inside the window; line 10 IS the quote and sits outside it. `locate`
+    // pins the exact line, so the verdict is measured from line 10 and the
+    // number a fixer would move to agrees with the uniqueness survey. Before
+    // this change the window scan reported `drift` naming line 2.
+    const lines = [
+      "// 1",
+      "const x = 1; // trailing note",
+      "// 3",
+      "// 4",
+      "// 5",
+      "// 6",
+      "// 7",
+      "// 8",
+      "// 9",
+      "const x = 1;",
+    ];
+    const [result] = checkClaims(
+      [presence("src/app.ts", 1, "const x = 1;")],
+      deps({ readFileLines: () => lines }),
+    );
+
+    expect(result?.verdict).toBe("wrong-line");
+    expect(result?.foundLine).toBe(10);
+    expect(result?.detail).toContain("line 10");
+  });
+
+  it("names the exact line when a nearer line inside the window merely contains the quote", () => {
+    // Edge shape 2 (design Decision 2). Both lines are inside the window, the
+    // substring line is nearer, and the verdict stays `drift` — but the number
+    // is the exact line, not whichever the old scan reached first.
+    const lines = [
+      "// 1",
+      "const x = 1; // trailing note",
+      "// 3",
+      "const x = 1;",
+    ];
+    const [result] = checkClaims(
+      [presence("src/app.ts", 1, "const x = 1;")],
+      deps({ readFileLines: () => lines }),
+    );
+
+    expect(result?.verdict).toBe("drift");
+    expect(result?.foundLine).toBe(4);
+    expect(result?.detail).toContain("line 4");
+  });
+
+  it("is absent on the stamped path — a drifted stamped anchor is stale, with no line", () => {
+    const atRev = ["export function retry() {", "  const attempts = 5;", "}"];
+    const current = ["// header", ...atRev];
+    const claim: Claim = {
+      kind: "presence",
+      path: "src/app.ts",
+      line: 2,
+      text: "  const attempts = 5;",
+      rev: "a1b2c3d",
+      source: { doc: "design.md", line: 1 },
+    };
+    const [result] = checkClaims([claim], {
+      readFileLines: () => current,
+      readFileAtRev: () => ({ status: "ok", lines: atRev }),
+      runSearch: () => ({ ok: true, count: 0 }),
+    });
+
+    expect(result?.verdict).toBe("stale");
+    expect(result).not.toHaveProperty("foundLine");
+  });
+
+  it("is absent on the stamped path's fail-open branch — an unreadable rev softens to drift, with no line", () => {
+    // The commit cannot be read, so the stamped path falls open to the
+    // working tree and keeps the unstamped `drift`. The verdict may be
+    // borrowed; the repoint target must not be — a stamped anchor never
+    // carries a line `--fix` could act on.
+    const current = ["// 1", "// 2", "export function retry() {", "  const attempts = 5;", "}"];
+    const claim: Claim = {
+      kind: "presence",
+      path: "src/app.ts",
+      line: 2,
+      text: "  const attempts = 5;",
+      rev: "abcdef1",
+      source: { doc: "design.md", line: 1 },
+    };
+    const [result] = checkClaims([claim], {
+      readFileLines: () => current,
+      readFileAtRev: () => ({ status: "unknown-rev" }),
+      runSearch: () => ({ ok: true, count: 0 }),
+    });
+
+    expect(result?.verdict).toBe("drift");
+    expect(result?.claim).toMatchObject({ rev: "abcdef1" });
+    expect(result).not.toHaveProperty("foundLine");
+  });
+});
+
+describe("verifyAtRev", () => {
+  const AT_REV = [
+    "export function retry() {",
+    "  const attempts = 5;",
+    "  return attempts;",
+    "}",
+  ];
+
+  function claim(line: number, text: string, path = "src/app.ts"): PresenceClaim {
+    return { kind: "presence", path, line, text, source: { doc: "design.md", line: 1 } };
+  }
+
+  function revDeps(atRev: RevRead | undefined): CheckDeps & { calls: number } {
+    const d: CheckDeps & { calls: number } = {
+      calls: 0,
+      // The working tree is deliberately DIFFERENT from `rev`, so that any
+      // answer that came from `readFileLines` is distinguishable.
+      readFileLines: () => ["nothing here matches"],
+      runSearch: () => ({ ok: true, count: 0 }),
+    };
+    if (atRev !== undefined) {
+      d.readFileAtRev = () => {
+        d.calls += 1;
+        return atRev;
+      };
+    }
+    return d;
+  }
+
+  const okRead: RevRead = { status: "ok", lines: AT_REV };
+
+  it("is ok when the quote is at the cited line at rev", () => {
+    expect(verifyAtRev(claim(2, "  const attempts = 5;"), "a1b2c3d", revDeps(okRead))).toBe("ok");
+  });
+
+  it("is weak-anchor when the quote is at the line but too short to be distinctive", () => {
+    expect(verifyAtRev(claim(3, "return"), "a1b2c3d", revDeps(okRead))).toBe("weak-anchor");
+  });
+
+  it("is not-at-rev when the text is at rev but on another line", () => {
+    expect(verifyAtRev(claim(1, "  const attempts = 5;"), "a1b2c3d", revDeps(okRead))).toBe(
+      "not-at-rev",
+    );
+  });
+
+  it("is not-at-rev when the text is absent at rev", () => {
+    expect(verifyAtRev(claim(2, "  const attempts = 500;"), "a1b2c3d", revDeps(okRead))).toBe(
+      "not-at-rev",
+    );
+  });
+
+  it("is rev-unreadable when there is no reader at all", () => {
+    expect(verifyAtRev(claim(2, "  const attempts = 5;"), "a1b2c3d", revDeps(undefined))).toBe(
+      "rev-unreadable",
+    );
+  });
+
+  it.each<RevRead>([
+    { status: "unknown-rev" },
+    { status: "no-file" },
+    { status: "unavailable", reason: "x" },
+  ])("is rev-unreadable on a $status read, never a claim about the text", (read) => {
+    expect(verifyAtRev(claim(2, "  const attempts = 5;"), "a1b2c3d", revDeps(read))).toBe(
+      "rev-unreadable",
+    );
+  });
+
+  it("resolves minAnchorChars from options exactly as checkClaims does", () => {
+    const short = claim(2, "= 5");
+    expect(verifyAtRev(short, "a1b2c3d", revDeps(okRead))).toBe("weak-anchor");
+    expect(verifyAtRev(short, "a1b2c3d", revDeps(okRead), { minAnchorChars: 1 })).toBe("ok");
+  });
+
+  it("resolves driftWindow from options exactly as checkClaims does", () => {
+    const drifted = claim(1, "  const attempts = 5;");
+    expect(verifyAtRev(drifted, "a1b2c3d", revDeps(okRead), { driftWindow: 0 })).toBe(
+      "not-at-rev",
+    );
+    expect(verifyAtRev(drifted, "a1b2c3d", revDeps(okRead), { driftWindow: 3 })).toBe(
+      "not-at-rev",
+    );
+  });
+
+  it("ignores claim.rev — the argument is the commit being asked about", () => {
+    const stampedElsewhere = { ...claim(2, "  const attempts = 5;"), rev: "ffffffff" };
+    expect(verifyAtRev(stampedElsewhere, "a1b2c3d", revDeps(okRead))).toBe("ok");
+  });
+
+  it("refuses an unsafe path without ever calling the reader", () => {
+    const d = revDeps(okRead);
+    expect(verifyAtRev(claim(2, "  const attempts = 5;", "../x"), "a1b2c3d", d)).toBe(
+      "rev-unreadable",
+    );
+    expect(d.calls).toBe(0);
   });
 });

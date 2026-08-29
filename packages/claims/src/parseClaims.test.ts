@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseClaims } from "./parseClaims";
+import { parseClaims, rewriteMarker } from "./parseClaims";
 
 describe("parseClaims", () => {
   it("parses a presence citation", () => {
@@ -477,4 +477,111 @@ describe("markers written as list items", () => {
 
     expect(claims[0]).toMatchObject({ kind: "malformed" });
   });
+});
+
+describe("rewriteMarker", () => {
+  /**
+   * Asserts that `after` differs from `before` only inside the first backtick
+   * span, and that the span differs only after `path:`. Slicing, not quote
+   * equality: the prefix and the separator must survive byte-for-byte.
+   */
+  function expectSpliced(before: string, after: string | null, span: string): void {
+    expect(after).not.toBeNull();
+    if (after === null) return;
+    const open = before.indexOf("`") + 1;
+    const close = before.indexOf("`", open);
+    expect(after.slice(0, open)).toBe(before.slice(0, open));
+    expect(after.slice(open, open + span.length)).toBe(span);
+    expect(after.slice(open + span.length)).toBe(before.slice(close));
+  }
+
+  it("repoints the line of an inline single-backtick marker", () => {
+    const before = "**Evidence:** `src/app.ts:12` — `const x = 1;`";
+    const after = rewriteMarker(before, { line: 40 });
+
+    expect(after).toBe("**Evidence:** `src/app.ts:40` — `const x = 1;`");
+    expectSpliced(before, after, "src/app.ts:40");
+  });
+
+  it("repoints a double-backtick marker whose quote contains a backtick", () => {
+    const before = "**Evidence:** `src/app.ts:12` — ``const s = `a${b}`;``";
+    const after = rewriteMarker(before, { line: 7 });
+
+    expect(after).toBe("**Evidence:** `src/app.ts:7` — ``const s = `a${b}`;``");
+    expectSpliced(before, after, "src/app.ts:7");
+  });
+
+  it("repoints a block-head marker, trailing whitespace included", () => {
+    const before = "**Evidence:** `src/app.ts:12`  ";
+    const after = rewriteMarker(before, { line: 13 });
+
+    expect(after).toBe("**Evidence:** `src/app.ts:13`  ");
+    expectSpliced(before, after, "src/app.ts:13");
+  });
+
+  it("adds a stamp to an unstamped marker", () => {
+    const before = "- **Evidence:** `src/app.ts:12` — `const x = 1;`";
+    const after = rewriteMarker(before, { rev: "a1b2c3d" });
+
+    expect(after).toBe("- **Evidence:** `src/app.ts:12@a1b2c3d` — `const x = 1;`");
+    expectSpliced(before, after, "src/app.ts:12@a1b2c3d");
+  });
+
+  it("replaces an existing stamp, whatever its case", () => {
+    const before = "1. **Evidence:** `src/app.ts:12@ABCDEF0` — ``x`y``";
+    const after = rewriteMarker(before, { rev: "0123456789abcdef0123456789abcdef01234567" });
+
+    expectSpliced(before, after, "src/app.ts:12@0123456789abcdef0123456789abcdef01234567");
+  });
+
+  it("keeps an existing stamp when only the line is patched", () => {
+    const before = "**Evidence:** `src/app.ts:12@a1b2c3d`";
+    const after = rewriteMarker(before, { line: 99 });
+
+    expect(after).toBe("**Evidence:** `src/app.ts:99@a1b2c3d`");
+  });
+
+  it("patches line and stamp together", () => {
+    const before = "  - **Evidence:** `src/app.ts:12` – `const x = 1;`";
+    const after = rewriteMarker(before, { line: 3, rev: "deadbee" });
+
+    expect(after).toBe("  - **Evidence:** `src/app.ts:3@deadbee` – `const x = 1;`");
+    expectSpliced(before, after, "src/app.ts:3@deadbee");
+  });
+
+  it.each([
+    ["em-dash", "—"],
+    ["en-dash", "–"],
+    ["hyphen", "-"],
+    ["double hyphen", "--"],
+  ])("copies a %s separator through verbatim", (_name, dash) => {
+    const before = `**Evidence:** \`src/app.ts:12\`   ${dash}   \`const x = 1;\``;
+    const after = rewriteMarker(before, { line: 2, rev: "abcdef1" });
+
+    expect(after).toContain(`   ${dash}   `);
+    expectSpliced(before, after, "src/app.ts:2@abcdef1");
+  });
+
+  it("returns the line unchanged for an empty patch", () => {
+    const before = "**Evidence:** `src/app.ts:12` — `const x = 1;`";
+
+    expect(rewriteMarker(before, {})).toBe(before);
+  });
+
+  it("returns null for anything that is not a presence marker", () => {
+    expect(rewriteMarker("plain prose", { line: 1 })).toBeNull();
+    expect(rewriteMarker("**Evidence:** `grep -rn 'x' src/` → 0 results", { line: 1 })).toBeNull();
+    expect(rewriteMarker("**Binds at:** `rollout-window`", { line: 1 })).toBeNull();
+    expect(rewriteMarker("**Evidence:** `src/app.ts` — `no line`", { line: 1 })).toBeNull();
+    expect(rewriteMarker("**Evidence:** it's in there somewhere", { line: 1 })).toBeNull();
+  });
+
+  it.each(["ABCDEF1", "abc", "", "main", "0123456789abcdef0123456789abcdef012345678"])(
+    "throws RangeError for the rev %j",
+    (rev) => {
+      expect(() =>
+        rewriteMarker("**Evidence:** `src/app.ts:12` — `x`", { rev }),
+      ).toThrow(RangeError);
+    },
+  );
 });

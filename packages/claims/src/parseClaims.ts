@@ -116,14 +116,17 @@ const EVIDENCE_PREFIX = /^\s*(?:[-*+]\s+|\d+[.)]\s+)?\*\*Evidence:\*\*/;
 // (a TS template literal, say) must use a double-backtick span, so we try that
 // form FIRST — the single-backtick pattern would also match a double-delimited
 // line and capture the inner delimiters as part of the text.
+//
+// All three carry the `d` (hasIndices) flag so `rewriteMarker` can splice by
+// the capture groups' character offsets instead of rebuilding the line.
 const PRESENCE_DOUBLE =
-  /^\s*(?:[-*+]\s+|\d+[.)]\s+)?\*\*Evidence:\*\*\s*`(.+):(\d+)(@[0-9a-fA-F]{7,40})?`\s*[—–-]+\s*``(.+)``\s*$/;
+  /^\s*(?:[-*+]\s+|\d+[.)]\s+)?\*\*Evidence:\*\*\s*`(.+):(\d+)(@[0-9a-fA-F]{7,40})?`\s*[—–-]+\s*``(.+)``\s*$/d;
 const PRESENCE_SINGLE =
-  /^\s*(?:[-*+]\s+|\d+[.)]\s+)?\*\*Evidence:\*\*\s*`(.+):(\d+)(@[0-9a-fA-F]{7,40})?`\s*[—–-]+\s*`(.+)`\s*$/;
+  /^\s*(?:[-*+]\s+|\d+[.)]\s+)?\*\*Evidence:\*\*\s*`(.+):(\d+)(@[0-9a-fA-F]{7,40})?`\s*[—–-]+\s*`(.+)`\s*$/d;
 
 // **Evidence:** `path:LINE`   — the quote follows in a fenced block.
 const PRESENCE_BLOCK_HEAD =
-  /^\s*(?:[-*+]\s+|\d+[.)]\s+)?\*\*Evidence:\*\*\s*`(.+):(\d+)(@[0-9a-fA-F]{7,40})?`\s*$/;
+  /^\s*(?:[-*+]\s+|\d+[.)]\s+)?\*\*Evidence:\*\*\s*`(.+):(\d+)(@[0-9a-fA-F]{7,40})?`\s*$/d;
 
 // **Evidence:** `grep ...` → N results
 const ABSENCE =
@@ -223,6 +226,94 @@ const LIST_MARKER = /^(\s*)([-*+]|\d+[.)])(\s+)/;
 function revField(captured: string | undefined): { rev?: string } {
   if (captured === undefined) return {};
   return { rev: captured.slice(1).toLowerCase() };
+}
+
+/**
+ * The citation a presence marker line carries — the `path:LINE[@rev]` token
+ * of its first code span — plus where that token's `:LINE@rev` tail sits in
+ * the line, as character offsets.
+ *
+ * This is the one place the three presence shapes are matched outside
+ * `parseClaims`, and it matches them in the same order for the same reason:
+ * the single-backtick pattern would also accept a double-delimited line.
+ */
+export interface PresenceMarker {
+  path: string;
+  line: number;
+  rev?: string;
+  /** Offset of the `:` that starts the `:LINE` span. */
+  spanStart: number;
+  /** Offset one past the last character of `LINE` or `@rev`, whichever is later. */
+  spanEnd: number;
+  /** The `@rev` text exactly as written, or undefined when unstamped. */
+  revText?: string;
+}
+
+/**
+ * Parses one line as a presence marker head, or returns null. Unlike
+ * `parseClaims` this does not need the fenced block that a block-form marker
+ * cites, and it does not know whether the line sits inside a fence — it
+ * answers only "what citation is written here?", which is the question a
+ * rewriter has to ask of a line before it touches it.
+ */
+export function parsePresenceMarker(line: string): PresenceMarker | null {
+  const match =
+    PRESENCE_DOUBLE.exec(line) ??
+    PRESENCE_SINGLE.exec(line) ??
+    PRESENCE_BLOCK_HEAD.exec(line);
+  const path = match?.[1];
+  const digits = match?.[2];
+  const lineIndices = match?.indices?.[2];
+  if (match === null || match === undefined || path === undefined || digits === undefined || lineIndices === undefined) {
+    return null;
+  }
+  const revText = match[3];
+  const revIndices = match.indices?.[3];
+  // `:` sits one character before the digits; the span ends after the rev when
+  // there is one, after the digits otherwise.
+  const spanStart = lineIndices[0] - 1;
+  const spanEnd = revIndices === undefined ? lineIndices[1] : revIndices[1];
+  return {
+    path,
+    line: Number.parseInt(digits, 10),
+    ...revField(revText),
+    spanStart,
+    spanEnd,
+    ...(revText === undefined ? {} : { revText }),
+  };
+}
+
+const STAMP_SHAPE = /^[0-9a-f]{7,40}$/;
+
+/**
+ * Returns `line` with only its `:LINE` and `@rev` characters changed, or null
+ * when the line is not a presence marker.
+ *
+ * The rewrite is a splice at the match offsets, never a rebuild from capture
+ * groups: the list prefix, the separator (an em-dash, en-dash or hyphen that
+ * sits outside every group), the quote and any trailing whitespace are copied
+ * through byte-for-byte. Rebuilding would silently normalise the separator,
+ * and a tool that edits a citation has no business editing its prose.
+ *
+ * `patch.rev` must already be what the parser would read back — lower-case
+ * hex, 7 to 40 characters — because a stamp is written once and then checked
+ * against an immutable commit; a caller passing anything else has a bug, and
+ * the RangeError says so at the call site rather than in the next CI run.
+ */
+export function rewriteMarker(
+  line: string,
+  patch: { line?: number; rev?: string },
+): string | null {
+  if (patch.rev !== undefined && !STAMP_SHAPE.test(patch.rev)) {
+    throw new RangeError(
+      `rev must be lower-case hex of 7-40 characters, got ${JSON.stringify(patch.rev)}`,
+    );
+  }
+  const marker = parsePresenceMarker(line);
+  if (marker === null) return null;
+  const newLine = patch.line ?? marker.line;
+  const newRev = patch.rev !== undefined ? `@${patch.rev}` : (marker.revText ?? "");
+  return `${line.slice(0, marker.spanStart)}:${newLine}${newRev}${line.slice(marker.spanEnd)}`;
 }
 
 export function parseClaims(doc: string, content: string): Claim[] {

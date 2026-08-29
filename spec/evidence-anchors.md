@@ -237,7 +237,7 @@ past the anchors.
 | `SEARCH-CLEAN`   | An absence search re-ran and found what was claimed — see the caveat below            | ✅      |
 | `ADVISORY`       | Verified, but worth a human glance (see detail)                                      | ✅      |
 | `WEAK-ANCHOR`    | True, but the quote is too short or too repeated to identify the cited line          | ✅      |
-| `DRIFT`          | Text found within the drift window (default ±3 lines) — the file moved under the doc | ✅      |
+| `DRIFT`          | The quote's unique match is within the drift window (default ±3 lines) — file moved  | ✅      |
 | `WRONG-LINE`     | Distinctive text exists in the file, but not near the cited line — stale, not wrong  | ✅      |
 | `STALE`          | Rev-stamped: true at the commit it names, and the working tree has moved since       | ✅      |
 | `UNVERIFIABLE-REV` | Rev-stamped, and that commit is not in this clone — fails open, see below           | ✅      |

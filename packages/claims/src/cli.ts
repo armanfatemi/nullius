@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /* eslint-disable no-console -- this is a CLI tool; console output is its user-facing surface */
 
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -10,9 +10,23 @@ import { globSync } from "glob";
 import {
   checkClaims,
   isFailure,
+  verifyAtRev,
+  type CheckDeps,
   type CheckOptions,
   type ClaimResult,
 } from "./checkClaims";
+import {
+  allResults,
+  citation,
+  countFailures,
+  describe,
+  exitCode,
+  label,
+  renderJson,
+  summarize,
+  type CheckedDocument,
+  type CheckRun,
+} from "./checkReport";
 import {
   canaryGuardResult,
   clearCanary,
@@ -20,6 +34,7 @@ import {
   normalizeRepoPath,
   plantCanary,
   verifyCanary,
+  type CanaryEntry,
 } from "./canary";
 import {
   buildAuditBrief,
@@ -41,8 +56,9 @@ import {
 import { parseConfig, type ClaimsConfig } from "./config";
 import { DEMO_DOC_PATH, demoResults, writeDemoFixture } from "./demo";
 import { buildEagerPrompt } from "./eagerPrompt";
-import { parseClaims } from "./parseClaims";
-import { fileLinesReader, revFileReader, searchRunner } from "./runners";
+import { parseClaims, parsePresenceMarker } from "./parseClaims";
+import { planRewrites, type Rewrite, type RewritePlan } from "./rewrite";
+import { fileLinesReader, headRev, revFileReader, searchRunner } from "./runners";
 import { checkRuleCoverage, isRuleCoverageFailure } from "./ruleCoverage";
 import { checkRule, isRuleFailure, parseRuleHeader, selectRules } from "./rules";
 import { scanRules } from "./rulesScan";
@@ -55,90 +71,141 @@ const SPEC_URL =
 
 const DEFAULT_CONFIG_PATH = "nullius.config.json";
 
+/*
+ * Help is one block per command. `nullius <command> --help` prints that block
+ * alone; `nullius --help` prints every block, so there is exactly one copy of
+ * each command's text and the overview cannot drift from the per-command
+ * page. Each block carries the command's purpose, its options, and exactly
+ * one `example:` line showing a real invocation — the characterization suite
+ * counts them. The essays live in spec/; a block gets one sentence of why.
+ */
+
+const CHECK_HELP = `nullius check [globs...]
+  verify every Evidence Anchor in the matched markdown documents against the
+  working tree. Run from the repo root (citations are repo-relative). Globs
+  come from the command line, or from the "docs" key of ${DEFAULT_CONFIG_PATH}
+  when none are given.
+  options:
+    --config <path>     config file (default: ${DEFAULT_CONFIG_PATH} if present)
+    --require-markers   fail when any matched document carries no grounding
+                        markers (the floor is per document, not per run)
+    --probing           suppress the CANARY-PRESENT merge guard, for the one run
+                        that is deliberately checking a planted document
+    --fix               repoint DRIFT / WRONG-LINE anchors that carry no @rev to
+                        the line their quote uniquely matches; stamped anchors
+                        are never moved
+    --stamp             add @<head> to unstamped anchors that hold at HEAD as
+                        well as in the working tree; exits 2 when HEAD cannot
+                        be resolved
+    --format <human|json>
+                        json: one version-tagged JSON document on stdout and
+                        nothing else; stderr and the exit code are unchanged
+  example: nullius check 'docs/**/*.md' --require-markers`;
+
+const DEMO_HELP = `nullius demo
+  build a sandbox fixture and check it — one claim per verdict class, no
+  adoption required. The ten-second tour.
+  example: nullius demo`;
+
+const AUDIT_HELP = `nullius audit <doc>
+  list the document's claims as one dispatch each, for a model to try to
+  REFUTE. check asks whether the author looked; audit asks whether the claim
+  is true. Refutations come back as anchors, which \`check\` re-verifies.
+  \`eager-prompt <doc>\` is a deprecated alias for \`audit <doc> --propose\`.
+  options:
+    --config <path>     config file (default: ${DEFAULT_CONFIG_PATH} if present)
+    --emit-brief <id>   print the starved brief for one claim — one claim per
+                        agent, with no siblings and no surrounding document, so
+                        the model has no narrative to steelman
+    --extract           print the brief that pulls UNANCHORED claims out of the
+                        prose (extraction only; it may not judge them)
+    --propose           the older confirmation-shaped mode: hunt evidence FOR the
+                        document and propose anchors. Kept because retrofitting an
+                        unanchored document needs it — but a model sent to find
+                        support finds support, so prefer the default
+  example: nullius audit docs/design.md --emit-brief c1`;
+
+const WITNESS_HELP = `nullius witness validate <journal.jsonl>
+  verify that a run's own record holds up — every dispatch terminated, no
+  verification cited after the thing it verified changed, no omitted
+  corrections.
+  options:
+    --expect-rules <rule-id...>
+                        fail the run if any named rule id never reached a
+                        delivered verdict in this journal (SILENT-RULE
+                        otherwise) — the ids \`rules select\` named for this
+                        run. Skipped when the journal itself is
+                        UNSUPPORTED-VERSION: nothing past its header was read.
+                        Comes AFTER the journal path.
+  example: nullius witness validate spec/fixtures/valid-run.jsonl --expect-rules build-before-cli`;
+
+const WIRING_HELP = `nullius wiring [root]
+  verify that harness artifacts reference things that exist — agents, skills,
+  read paths, applies_to globs, hook commands. A dispatch naming an agent with
+  no definition file does not error at runtime; it no-ops.
+  example: nullius wiring .`;
+
+const RULES_HELP = `nullius rules <select|check>
+  select --paths <path...>
+                        deterministic rule selection, no model involved: emit
+                        the id of every rule under .claude/rules/ whose
+                        applies_to matches at least one given path, in a
+                        stable order, then print the excluded count.
+  check [root]          verify every rule's frontmatter (closed keys, a
+                        required id, a known severity) and its incident
+                        anchor, the same way \`check\` verifies any other
+                        document's Evidence Anchors. UNGROUNDED-RULE and
+                        RULE-ROT are advisory; a malformed header fails.
+  options:
+    --emit-brief <rule-id>
+                        (select only) print the starved compliance brief for
+                        one selected rule instead — one rule per agent, with
+                        no sibling rules and no plan rationale
+  example: nullius rules select --paths packages/claims/src/cli.ts`;
+
+const CANARY_HELP = `nullius canary <plant|verify|status|clear>
+  plant <doc>           insert a registered, plausibly-false claim, then run
+                        your review against the document. A pipeline that
+                        flags it is demonstrably alive; one that misses it has
+                        been measured dead rather than assumed alive.
+  verify <report>       exit 0 CANARY-CAUGHT, 1 CANARY-MISSED, 3 CANARY-TAINTED
+                        (the report named the probe machinery, so the probe is
+                        invalid rather than passed), 2 when it could not run.
+  status                show the active canary; exit 1 when one is planted
+  clear                 remove the planted claim, restoring the document
+  example: nullius canary plant docs/design.md`;
+
+/** Overview order. Keyed by the command word `parseCli` reports on help. */
+const COMMAND_HELP: ReadonlyMap<string, string> = new Map([
+  ["check", CHECK_HELP],
+  ["demo", DEMO_HELP],
+  ["audit", AUDIT_HELP],
+  ["witness", WITNESS_HELP],
+  ["wiring", WIRING_HELP],
+  ["rules", RULES_HELP],
+  ["canary", CANARY_HELP],
+]);
+
 const USAGE = `usage: nullius <command>
 
-commands:
-  check [globs...]    verify every Evidence Anchor in the matched markdown
-                      documents against the working tree. Run from the repo
-                      root (citations are repo-relative). Globs come from the
-                      command line, or from the "docs" key of
-                      ${DEFAULT_CONFIG_PATH} when none are given.
-  demo                build a sandbox fixture and check it — one claim per
-                      verdict class, no adoption required. The ten-second tour.
-  audit <doc>         list the document's claims as one dispatch each, for a
-                      model to try to REFUTE. check asks whether the author
-                      looked; audit asks whether the claim is true. Refutations
-                      come back as anchors, so check re-verifies them: the model
-                      proposes, the checker disposes.
-  witness validate <journal.jsonl>
-                      verify that a run's own record holds up — every dispatch
-                      terminated, no verification cited after the thing it
-                      verified changed, no omitted corrections.
-                      --expect-rules <rule-id...> additionally checks that
-                      every named rule id reached a delivered verdict in this
-                      journal (SILENT-RULE otherwise) — the ids \`rules
-                      select\` named for this run. Skipped when the journal
-                      itself is UNSUPPORTED-VERSION: nothing past its header
-                      was read.
-  wiring [root]       verify that harness artifacts reference things that
-                      exist — agents, skills, read paths, applies_to globs,
-                      hook commands. A dispatch naming an agent with no
-                      definition file does not error at runtime; it no-ops.
-  rules select --paths <path...>
-                      deterministic rule selection, no model involved: emit
-                      the id of every rule under .claude/rules/ whose
-                      applies_to matches at least one given path, in a
-                      stable order, then print the excluded count.
-                      --emit-brief <rule-id> prints the starved compliance
-                      brief for one selected rule instead — one rule per
-                      agent, with no sibling rules and no plan rationale.
-  rules check [root]  verify every rule's frontmatter (closed keys, a
-                      required id, a known severity) and its incident
-                      anchor, the same way \`check\` verifies any other
-                      document's Evidence Anchors. UNGROUNDED-RULE and
-                      RULE-ROT are advisory; a malformed header fails.
-  canary plant <doc>  insert a registered, plausibly-false claim, then run
-                      your review against the document. A pipeline that flags
-                      it is demonstrably alive; one that misses it has been
-                      measured dead rather than assumed alive.
-  canary verify <report>
-                      exit 0 CANARY-CAUGHT, 1 CANARY-MISSED, 3 CANARY-TAINTED
-                      (the report named the probe machinery, so the probe is
-                      invalid rather than passed), 2 when it could not run.
-  canary status       show the active canary; exit 1 when one is planted
-  canary clear        remove the planted claim, restoring the document
-  eager-prompt <doc>  deprecated alias for \`audit <doc> --propose\`.
+${[...COMMAND_HELP.values()].join("\n\n")}
 
-check options:
-  --config <path>     config file (default: ${DEFAULT_CONFIG_PATH} if present)
-  --require-markers   fail when any matched document carries no grounding
-                      markers (the floor is per document, not per run)
-  --probing           suppress the CANARY-PRESENT merge guard, for the one run
-                      that is deliberately checking a planted document
-  --help              show this message
+global options:
+  --help, -h          show this message; \`nullius <command> --help\` shows
+                      one command
   --version           print the package version
-
-witness options:
-  --expect-rules <rule-id...>
-                      fail the run if any named rule id never reached a
-                      delivered verdict (see \`witness validate\` above)
-
-audit options:
-  --emit-brief <id>   print the starved brief for one claim — one claim per
-                      agent, with no siblings and no surrounding document, so
-                      the model has no narrative to steelman
-  --extract           print the brief that pulls UNANCHORED claims out of the
-                      prose (extraction only; it may not judge them)
-  --propose           the older confirmation-shaped mode: hunt evidence FOR the
-                      document and propose anchors. Kept because retrofitting an
-                      unanchored document needs it — but a model sent to find
-                      support finds support, so prefer the default
 
 The checker verifies a convention: on a repo with no anchors, \`check\` has
 nothing to verify. Adoption starts with the authoring rule (one paste into
 your agents' instructions) — see the spec.
 
 spec: ${SPEC_URL}`;
+
+/** One command's block when the parser named one; the overview otherwise. */
+function helpFor(command: string | undefined): string {
+  const block = command === undefined ? undefined : COMMAND_HELP.get(command);
+  return block === undefined ? USAGE : `${block}\n\nspec: ${SPEC_URL}`;
+}
 
 function loadConfig(explicitPath: string | undefined): ClaimsConfig {
   const path = explicitPath ?? DEFAULT_CONFIG_PATH;
@@ -151,40 +218,12 @@ function loadConfig(explicitPath: string | undefined): ClaimsConfig {
   return parseConfig(JSON.parse(readFileSync(path, "utf8")), path);
 }
 
-function describe(result: ClaimResult): string {
-  const { claim } = result;
-  switch (claim.kind) {
-    case "presence":
-      // The rev is shown: which commit an anchor was settled against is the
-      // difference between "this failed" and "this used to be true".
-      return `${claim.path}:${claim.line}${claim.rev === undefined ? "" : `@${claim.rev}`}`;
-    case "absence":
-      return `${claim.command} → ${claim.expectedCount}`;
-    case "moment":
-      return `binds at ${claim.moment}`;
-    case "canary":
-      return "registered canary";
-    case "malformed":
-      return claim.raw;
-  }
-}
-
 /**
- * `OK` on an absence claim is the tool over-claiming on the author's behalf: a
- * search that found nothing certifies the search, never the absence. The
- * verdict is the part a reader remembers, so it says what was actually
- * established.
+ * Prints one line per result, failures to stderr with their detail. Prints
+ * only: the failure count comes from the collected structure (`summarize`),
+ * so the exit code is decided once and no renderer re-derives it.
  */
-function label(result: ClaimResult): string {
-  if (result.verdict === "ok" && result.claim.kind === "absence") {
-    return "SEARCH-CLEAN";
-  }
-  return result.verdict.toUpperCase();
-}
-
-function report(results: ClaimResult[]): number {
-  let failures = 0;
-
+function report(results: readonly ClaimResult[]): void {
   for (const result of results) {
     const { source } = result.claim;
     const where = `${source.doc}:${source.line}`;
@@ -197,7 +236,6 @@ function report(results: ClaimResult[]): number {
 
     const line = `${label(result).padEnd(13)} ${where}  ${what}`;
     if (isFailure(result.verdict)) {
-      failures += 1;
       console.error(line);
       console.error(`              ! ${result.detail}`);
     } else {
@@ -205,8 +243,48 @@ function report(results: ClaimResult[]): number {
       console.log(`              ~ ${result.detail}`);
     }
   }
+}
 
-  return failures;
+/**
+ * One line per marker `--fix` / `--stamp` changed or declined to change, then
+ * a count. Printed AFTER the verdict report for the document, so the run reads
+ * "here is what was found; here is what was changed" — the exit code comes
+ * from the first half and a rewrite never alters it.
+ */
+function reportRewrites(doc: string, plan: RewritePlan): void {
+  const before = (rewrite: Rewrite): string => {
+    const marker = parsePresenceMarker(rewrite.before);
+    return marker === null ? rewrite.before.trim() : citation(marker);
+  };
+  for (const rewrite of plan.applied) {
+    console.log(
+      `rewrote  ${doc}:${rewrite.source.line}  ${before(rewrite)} -> ${citation(rewrite.claim)}`,
+    );
+  }
+  for (const skip of plan.skipped) {
+    console.log(`skipped  ${doc}:${skip.source.line}  ${skip.reason}`);
+  }
+  const fixed = plan.applied.filter((rewrite) => rewrite.kind === "fix").length;
+  const stamped = plan.applied.length - fixed;
+  if (fixed + stamped + plan.skipped.length > 0) {
+    console.log(`${doc}: ${fixed} fixed, ${stamped} stamped, ${plan.skipped.length} skipped`);
+  }
+}
+
+/**
+ * Write via a sibling temp file and rename, so a document is either the old
+ * bytes or the new ones — never a truncated file, which a crash mid-write
+ * would otherwise leave a checker to read as a document with no anchors.
+ */
+function writeAtomically(path: string, content: string): void {
+  const tmp = `${path}.nullius-tmp-${process.pid}`;
+  try {
+    writeFileSync(tmp, content);
+    renameSync(tmp, path);
+  } catch (error) {
+    rmSync(tmp, { force: true });
+    throw error;
+  }
 }
 
 function packageVersion(): string {
@@ -228,7 +306,9 @@ function runDemo(): number {
   console.log(`Fixture: ${root}`);
   console.log("");
   console.log(`--- ${DEMO_DOC_PATH}`);
-  const failures = report(demoResults(root, rev));
+  const results = demoResults(root, rev);
+  report(results);
+  const failures = countFailures(results);
 
   console.log("");
   console.log(
@@ -628,7 +708,17 @@ function runCheck(args: CheckArgs): number {
   ].sort();
 
   if (docs.length === 0) {
-    console.error(`no files matched: ${globs.join(" ")}`);
+    const message = `no files matched: ${globs.join(" ")}`;
+    console.error(message);
+    // stdout is still one JSON document under --format json: an empty run,
+    // with the diagnostic that explains the exit code. A consumer piping to
+    // jq must never see a parse error on a legitimate result.
+    if (args.format === "json") {
+      // Nothing matched, so nothing was anchored: under --require-markers that
+      // is the floor failing, and the report says so in its own field.
+      const empty = { ...summarize([], args.requireMarkers), markerFloorFailed: args.requireMarkers };
+      process.stdout.write(renderJson(empty, [message]));
+    }
     return args.requireMarkers ? 1 : 0;
   }
 
@@ -655,53 +745,51 @@ function runCheck(args: CheckArgs): number {
     runSearch: searchRunner(undefined, config.searchTimeoutMs),
   };
 
+  // A stamp is a claim about a commit, so HEAD is resolved once, up front, and
+  // no document is read — let alone written — when there is no commit to
+  // claim. Resolved after the glob so an empty match keeps its own exit code.
+  let head: string | null = null;
+  if (args.stamp) {
+    head = headRev();
+    if (head === null) {
+      console.error(
+        "cannot stamp: HEAD could not be resolved — not a git repository, or git is unavailable",
+      );
+      return 2;
+    }
+  }
+
   // The canary merge guard: registry content is untrusted and read once; the
   // guard never opens a file — it only inspects documents already matched.
   const { entry: activeCanary, warning: canaryWarning } = loadActiveCanary(
     process.cwd(),
   );
 
-  let failures = 0;
-  let checked = 0;
-  let presenceAnchors = 0;
-  let absenceAnchors = 0;
-  let guardFired = false;
-  const unanchored: { doc: string; lines: number }[] = [];
+  const run = collectCheck(docs, args, deps, options, activeCanary, head);
 
-  for (const doc of docs) {
-    const content = readFileSync(doc, "utf8");
-    const lines = content.split("\n").length;
-    const claims = parseClaims(doc, content);
-    const parsed = checkClaims(claims, deps, options);
-    const guard =
-      activeCanary !== null && !args.probing
-        ? canaryGuardResult(normalizeRepoPath(doc), content, activeCanary)
-        : null;
-    if (guard !== null) guardFired = true;
-    const results = guard === null ? parsed : [guard, ...parsed];
+  // An unreadable registry fails closed below; the JSON report must carry the
+  // same reason, so it is known before the document is written.
+  const registryFailure =
+    canaryWarning === undefined
+      ? []
+      : [
+          canaryWarning,
+          "canary state cannot be determined — restore or delete .git/nullius/canaries.json, then re-run",
+        ];
 
-    // The guard is not a grounding marker: density reports what the AUTHOR
-    // anchored, so a canary must not lift a document off the no-anchors list.
-    if (parsed.length === 0) {
-      unanchored.push({ doc, lines });
-    }
-    if (results.length === 0) continue;
-
-    checked += parsed.length;
-    presenceAnchors += claims.filter((claim) => claim.kind === "presence").length;
-    absenceAnchors += claims.filter((claim) => claim.kind === "absence").length;
-    console.log(`--- ${doc} — ${parsed.length} anchor(s) / ${lines} lines`);
-    failures += report(results);
+  if (args.format === "json") {
+    // stdout is the document and nothing else. Every diagnostic below keeps
+    // its stream, and the exit code is the same expression human mode uses.
+    process.stdout.write(renderJson(run, registryFailure));
+  } else {
+    renderHumanDocuments(run);
   }
 
   if (canaryWarning !== undefined) {
     // Fail closed: an unreadable registry means canary state is unknown, and
     // a guard that silently stands down is the failure mode this tool exists
     // to prevent. Advisory would collapse "guarded" and "unguarded" again.
-    console.error(canaryWarning);
-    console.error(
-      "canary state cannot be determined — restore or delete .git/nullius/canaries.json, then re-run",
-    );
+    for (const line of registryFailure) console.error(line);
     return 1;
   }
 
@@ -713,12 +801,84 @@ function runCheck(args: CheckArgs): number {
       console.error(
         `warning: the registered canary points at a document outside the matched set (${activeCanary.doc}) — not read; run \`canary status\``,
       );
-    } else if (!guardFired && !args.probing) {
+    } else if (!run.guardFired && !args.probing) {
       console.error(
         `warning: the registered canary is no longer present in ${activeCanary.doc} — stale registry; delete .git/nullius/canaries.json after restoring the document`,
       );
     }
   }
+
+  if (args.format === "human") renderHumanSummary(run);
+  return exitCode(run);
+}
+
+/**
+ * The collect phase: reads, parses and verifies every matched document,
+ * applies any `--fix` / `--stamp` rewrites, and returns the one structure
+ * both renderers and the exit code read. The reads and writes ARE the check,
+ * so they belong here; printing does not, and none happens.
+ */
+function collectCheck(
+  docs: readonly string[],
+  args: CheckArgs,
+  deps: CheckDeps,
+  options: CheckOptions,
+  activeCanary: CanaryEntry | null,
+  head: string | null,
+): CheckRun {
+  const documents: CheckedDocument[] = [];
+
+  for (const doc of docs) {
+    const content = readFileSync(doc, "utf8");
+    const lines = content.split("\n").length;
+    const claims = parseClaims(doc, content);
+    const results = checkClaims(claims, deps, options);
+    const guard =
+      activeCanary !== null && !args.probing
+        ? canaryGuardResult(normalizeRepoPath(doc), content, activeCanary)
+        : null;
+
+    // Rewrites are planned from the parsed results, never the guard: the
+    // canary is not a marker and must not reach the planner. The exit code
+    // is counted from these same pre-rewrite verdicts.
+    let plan: RewritePlan | null = null;
+    if (args.fix || head !== null) {
+      const rev = head;
+      plan = planRewrites(content, results, {
+        fix: args.fix,
+        stamp:
+          rev === null
+            ? null
+            : { rev, verify: (claim) => verifyAtRev(claim, rev, deps, options) },
+      });
+      if (plan.applied.length > 0) writeAtomically(doc, plan.content);
+    }
+
+    documents.push({ doc, lines, claims, results, guard, plan });
+  }
+
+  return summarize(documents, args.requireMarkers);
+}
+
+/** Human renderer, first half: one block per document that had anything to say. */
+function renderHumanDocuments(run: CheckRun): void {
+  for (const document of run.documents) {
+    const results = allResults(document);
+    if (results.length === 0) continue;
+
+    console.log(
+      `--- ${document.doc} — ${document.results.length} anchor(s) / ${document.lines} lines`,
+    );
+    report(results);
+    // AFTER the verdict report for the document, so the run reads "here is
+    // what was found; here is what was changed".
+    if (document.plan !== null) reportRewrites(document.doc, document.plan);
+  }
+}
+
+/** Human renderer, second half: density, counts, and the closing verdict. */
+function renderHumanSummary(run: CheckRun): void {
+  const { documents, unanchored } = run;
 
   // Anchor density is reported, never judged: the checker cannot know how
   // many claims a document OUGHT to carry, but a long document with zero
@@ -733,22 +893,19 @@ function runCheck(args: CheckArgs): number {
 
   console.log("");
   console.log(
-    `${docs.length - unanchored.length} of ${docs.length} matched document(s) carry grounding markers.`,
+    `${documents.length - unanchored.length} of ${documents.length} matched document(s) carry grounding markers.`,
   );
   // Presence and absence are counted apart because they are not the same
   // evidence. A presence anchor made the author open a file; an absence anchor
   // made them run one search. A proposal resting entirely on absence claims
   // should be visible as such at a glance.
-  if (checked > 0) {
+  if (run.checked > 0) {
     console.log(
-      `${presenceAnchors} presence anchor(s), ${absenceAnchors} search anchor(s).`,
+      `${run.presenceAnchors} presence anchor(s), ${run.absenceAnchors} search anchor(s).`,
     );
   }
 
-  // The floor is per DOCUMENT, not per run: one anchored document must never
-  // license every other document in the glob to carry none.
-  const markerFloorFailed = args.requireMarkers && unanchored.length > 0;
-  if (markerFloorFailed) {
+  if (run.markerFloorFailed) {
     console.error("");
     console.error(
       `${unanchored.length} document(s) carry no grounding markers — under --require-markers a document with no citations is not a pass.`,
@@ -761,21 +918,26 @@ function runCheck(args: CheckArgs): number {
   // Both failure modes are reported: a run can breach the marker floor AND
   // carry unverified claims, and silently dropping one of the two summaries
   // hides work the author still has to do.
-  if (failures > 0) {
+  if (run.failures > 0) {
     console.error("");
-    console.error(`${failures} unverified claim(s).`);
+    console.error(`${run.failures} unverified claim(s).`);
     console.error(
       'Open the cited file and correct the claim, or move it to "Open questions".',
     );
   }
 
-  if (markerFloorFailed || failures > 0) {
-    console.error(`See ${SPEC_URL}.`);
-    return 1;
-  }
+  if (exitCode(run) !== 0) console.error(`See ${SPEC_URL}.`);
 
-  console.log(`All ${checked} grounding marker(s) verified.`);
-  return 0;
+  // The funnel REPLACES the closing line rather than following it: on a
+  // zero-marker run "All 0 grounding marker(s) verified." reads as a pass on
+  // a repository the tool has not examined. It prints on stdout whatever the
+  // exit code — under --require-markers the floor's stderr block above says
+  // why the run failed; this says what to do about it.
+  if (run.next !== null) {
+    console.log(`next: ${run.next}`);
+  } else if (exitCode(run) === 0) {
+    console.log(`All ${run.checked} grounding marker(s) verified.`);
+  }
 }
 
 /**
@@ -903,7 +1065,7 @@ function main(): number {
       console.log(packageVersion());
       return 0;
     case "help":
-      console.log(USAGE);
+      console.log(helpFor(command.command));
       // No arguments is not the same request as `--help`, and the exit code
       // is where the difference is visible to a script.
       return command.requested ? 0 : 2;

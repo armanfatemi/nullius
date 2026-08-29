@@ -1,18 +1,31 @@
 export {
   parseClaims,
+  parsePresenceMarker,
+  rewriteMarker,
   type AbsenceClaim,
   type CanaryClaim,
   type Claim,
   type MalformedClaim,
   type MomentClaim,
   type PresenceClaim,
+  type PresenceMarker,
   type SourceLocation,
 } from "./parseClaims";
+export {
+  planRewrites,
+  type Rewrite,
+  type RewriteIntent,
+  type RewritePlan,
+  type Skipped,
+  type StampCheck,
+} from "./rewrite";
 export {
   checkClaims,
   isFailure,
   normalize,
+  verifyAtRev,
   DEFAULT_BINDING_MOMENTS,
+  type RevVerification,
   type CheckDeps,
   type CheckOptions,
   type ClaimResult,
@@ -72,6 +85,7 @@ export {
 } from "./commandSafety";
 export {
   fileLinesReader,
+  headRev,
   revFileReader,
   searchRunner,
   containPath,

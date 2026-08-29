@@ -36,6 +36,36 @@ describe("parseCli — top level", () => {
   });
 });
 
+describe("parseCli — per-command help", () => {
+  it("names the command when --help follows a command word", () => {
+    expect(parse("check", "--help")).toEqual({ kind: "help", requested: true, command: "check" });
+    expect(parse("witness", "--help")).toEqual({ kind: "help", requested: true, command: "witness" });
+    expect(parse("canary", "-h")).toEqual({ kind: "help", requested: true, command: "canary" });
+  });
+
+  it("still answers when the rest of the line is nonsense", () => {
+    expect(parse("check", "--bogus", "--help")).toEqual({
+      kind: "help",
+      requested: true,
+      command: "check",
+    });
+  });
+
+  it("maps the deprecated alias onto the command it aliases", () => {
+    expect(parse("eager-prompt", "--help")).toEqual({ kind: "help", requested: true, command: "audit" });
+  });
+
+  it("leaves the overview shape alone when no command word leads", () => {
+    expect(parse("--help")).toEqual({ kind: "help", requested: true });
+    expect(parse("--help", "check")).toEqual({ kind: "help", requested: true });
+    expect(parse("--help")).not.toHaveProperty("command");
+  });
+
+  it("lets --version win over a command-scoped --help", () => {
+    expect(parse("check", "--help", "--version")).toEqual({ kind: "version" });
+  });
+});
+
 describe("parseCli — flags belong to commands", () => {
   it("points a misplaced flag at its owning command", () => {
     expect(() => parse("check", "doc.md", "--extract")).toThrow(
@@ -66,6 +96,25 @@ describe("parseCli — check", () => {
     expect(args).toMatchObject({ kind: "check", globs: ["a.md", "b.md"] });
   });
 
+  it("defaults --fix and --stamp to off", () => {
+    expect(parse("check", "a.md")).toMatchObject({ fix: false, stamp: false });
+  });
+
+  it("parses --fix and --stamp, together or apart", () => {
+    expect(parse("check", "--fix", "a.md")).toMatchObject({ fix: true, stamp: false, globs: ["a.md"] });
+    expect(parse("check", "a.md", "--stamp")).toMatchObject({ fix: false, stamp: true, globs: ["a.md"] });
+    expect(parse("check", "--fix", "--stamp", "a.md")).toMatchObject({ fix: true, stamp: true });
+  });
+
+  it("names check as the owner when --fix or --stamp lands on another command", () => {
+    expect(() => parse("audit", "doc.md", "--fix")).toThrow(
+      /--fix is an option of `check`, not `audit`/,
+    );
+    expect(() => parse("audit", "doc.md", "--stamp")).toThrow(
+      /--stamp is an option of `check`, not `audit`/,
+    );
+  });
+
   it("consumes the value after --config", () => {
     expect(parse("check", "--config", "custom.json", "a.md")).toMatchObject({
       configPath: "custom.json",
@@ -85,6 +134,30 @@ describe("parseCli — check", () => {
       configPath: "--require-markers",
       requireMarkers: false,
     });
+  });
+
+  it("defaults --format to human", () => {
+    expect(parse("check", "a.md")).toMatchObject({ format: "human" });
+  });
+
+  it("parses --format json and --format human", () => {
+    expect(parse("check", "--format", "json", "a.md")).toMatchObject({ format: "json", globs: ["a.md"] });
+    expect(parse("check", "a.md", "--format", "human")).toMatchObject({ format: "human", globs: ["a.md"] });
+  });
+
+  it("rejects any other --format value, naming the two it accepts", () => {
+    expect(() => parse("check", "--format", "xml", "a.md")).toThrow(/human.*json/);
+    expect(() => parse("check", "--format", "xml", "a.md")).toThrow(CliError);
+  });
+
+  it("refuses --format with nothing after it", () => {
+    expect(() => parse("check", "a.md", "--format")).toThrow(/--format requires/);
+  });
+
+  it("names check as the owner when --format lands on another command", () => {
+    expect(() => parse("audit", "doc.md", "--format", "json")).toThrow(
+      /--format is an option of `check`, not `audit`/,
+    );
   });
 });
 

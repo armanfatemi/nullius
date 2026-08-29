@@ -16,17 +16,41 @@
  * `process.exit(main())` and therefore cannot be imported by a test.
  */
 
+export type CheckFormat = "human" | "json";
+
+const CHECK_FORMATS: ReadonlySet<string> = new Set<CheckFormat>(["human", "json"]);
+
+function isCheckFormat(value: string): value is CheckFormat {
+  return CHECK_FORMATS.has(value);
+}
+
 export interface CheckArgs {
   kind: "check";
   globs: string[];
   configPath: string | undefined;
   requireMarkers: boolean;
   /**
+   * Which renderer reads the collected results. `json` puts exactly one
+   * version-tagged document on stdout and nothing else; stderr diagnostics
+   * and the exit code are the same as `human`.
+   */
+  format: CheckFormat;
+  /**
    * Suppress the CANARY-PRESENT merge guard. Set only by the probe run that
    * deliberately checks a document with a planted canary in it; every other
    * run wants the guard, which is why the default is off.
    */
   probing: boolean;
+  /**
+   * Repoint `drift` / `wrong-line` anchors that carry no `@rev` to the line
+   * their quote uniquely matches. Never touches a stamped anchor.
+   */
+  fix: boolean;
+  /**
+   * Add `@<head>` to unstamped anchors that verify at HEAD as well as in the
+   * working tree. Exits 2 when HEAD cannot be resolved.
+   */
+  stamp: boolean;
 }
 
 export interface AuditArgs {
@@ -70,7 +94,12 @@ export interface RulesArgs {
 }
 
 export type Command =
-  | { kind: "help"; requested: boolean }
+  /**
+   * `command` is set when a command word led the line (`nullius check
+   * --help`), so the CLI can print that command's block alone instead of the
+   * whole overview. Absent for `nullius --help` and for bare `nullius`.
+   */
+  | { kind: "help"; requested: boolean; command?: string }
   | { kind: "version" }
   | { kind: "demo" }
   | CheckArgs
@@ -84,6 +113,9 @@ export type Command =
 const FLAG_OWNERS: ReadonlyMap<string, string> = new Map([
   ["--require-markers", "check"],
   ["--probing", "check"],
+  ["--fix", "check"],
+  ["--stamp", "check"],
+  ["--format", "check"],
   ["--emit-brief", "audit"],
   ["--extract", "audit"],
   ["--propose", "audit"],
@@ -138,7 +170,7 @@ function rejectMisplaced(flag: string, command: string): never {
 /**
  * `--help` and `--version` belong to no command and to every command.
  * `nullius check --help` is the most-typed help form there is, and the USAGE
- * text lists both under "check options:" — so scoping them to argv[0] made the
+ * text advertises both as global options — so scoping them to argv[0] made the
  * CLI reject a flag its own help advertises.
  */
 const GLOBAL_FLAGS: ReadonlySet<string> = new Set(["--help", "-h", "--version"]);
@@ -146,6 +178,14 @@ const GLOBAL_FLAGS: ReadonlySet<string> = new Set(["--help", "-h", "--version"])
 function globalFlag(argv: readonly string[]): Command | null {
   if (argv.some((arg) => arg === "--version")) return { kind: "version" };
   if (argv.some((arg) => arg === "--help" || arg === "-h")) {
+    // Only a LEADING command word scopes the help. `--help check` is someone
+    // asking for the overview with a stray word after it, not for check's
+    // block; and the alias gets the block of the command it aliases, since
+    // the alias has no options of its own to document.
+    const first = argv[0];
+    if (first !== undefined && COMMANDS.has(first)) {
+      return { kind: "help", requested: true, command: first === "eager-prompt" ? "audit" : first };
+    }
     return { kind: "help", requested: true };
   }
   return null;
@@ -205,7 +245,10 @@ function parseCheck(rawArgv: readonly string[]): CheckArgs {
     globs: [...literal],
     configPath: undefined,
     requireMarkers: false,
+    format: "human",
     probing: false,
+    fix: false,
+    stamp: false,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -215,6 +258,17 @@ function parseCheck(rawArgv: readonly string[]): CheckArgs {
       args.requireMarkers = true;
     } else if (arg === "--probing") {
       args.probing = true;
+    } else if (arg === "--fix") {
+      args.fix = true;
+    } else if (arg === "--stamp") {
+      args.stamp = true;
+    } else if (arg === "--format") {
+      index += 1;
+      const value = requireValue(argv, index, "--format", "a value: human or json");
+      if (!isCheckFormat(value)) {
+        throw new CliError(`--format must be one of human|json, got: ${value}`);
+      }
+      args.format = value;
     } else if (arg === "--config") {
       index += 1;
       args.configPath = requireValue(argv, index, "--config", "a path argument");
