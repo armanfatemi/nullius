@@ -83,6 +83,12 @@ file that sets the variable and the value it carries; do not assert which one
 wins. Where none set it, report what was read and say that capture may still be
 enabled by sources this check does not read — never that capture is off.
 
+Both directions are scoped to the file. "This file enables capture" and "this
+file disables capture" are checkable; "capture is on" and "capture is off" are
+not, and they are not asymmetric — an earlier draft forbade the negative global
+claim while still permitting the positive one, which is the same error wearing
+the other sign.
+
 **This decision exists because 1a as first written was wrong in the same way
 the thing it fixed was wrong.** The first revision required capture state be
 read from *the* settings `env` block and permitted `unknown` only for an
@@ -122,7 +128,12 @@ Reporting every setter is strictly more informative than reporting a winner. A
 reader who sees two files disagree learns something a resolved answer would have
 hidden, and the resolution belongs to the component that actually performs it.
 
-**Alternative considered:** vendor the precedence order as a documented
+**Alternative considered:** merge the files and report a single effective value
+— rejected for the same reason as naming a deciding file. A merge has to apply
+precedence to produce one answer, so it makes the same ungrounded claim with the
+evidence hidden instead of shown.
+
+**Second alternative considered:** vendor the precedence order as a documented
 assumption and check it — rejected. It is external behaviour that can change
 without notice, and this repository has one rule already
 (`openspec-shall-first-line.md`) that exists precisely because a tool's
@@ -147,14 +158,17 @@ finding. The capture check's subject is the configuration, which is fully read
 even when it configures nothing. The distinction is between "I could not perform
 my check" and "I performed it and the answer is none".
 
-This is written down because three treatments of absence in adjacent lines of
+A fourth case follows from the first two and is worth stating, because the first
+draft of the spec got it wrong: when one settings file fails to parse *and*
+another sets the variable determinately, the report gives the determinate
+reading as a fact and names the unreadable file alongside it. `unknown` is for
+when nothing could be established, not for when something could be established
+and something else could not. Discarding a good read because a neighbour was
+unreadable would be the checker throwing away evidence it holds.
+
+This is written down because four treatments of absence in adjacent lines of
 one report will read as an accident to the next person, and the honest response
 to that is an argument rather than a forced consistency.
-
-**Alternative considered:** report the effective value by merging all files —
-rejected. Precedence is what the harness applies, so a merge that ignored it
-would answer a question nobody asked. Naming the deciding file also gives the
-reader the one thing they need in order to act.
 
 ### 1b. The predicate is `=== "1"`, not "is set"
 

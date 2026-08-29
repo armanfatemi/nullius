@@ -2,11 +2,13 @@
 
 ## ADDED Requirements
 
-### Requirement: Doctor reports whether harness payload capture is on
+### Requirement: Doctor reports what the settings files say about payload capture
 
-`doctor` SHALL report whether live harness-payload capture is currently enabled
-and whether any captures are present, and SHALL report it as a fact rather than
-a fault.
+`doctor` SHALL report what each harness settings file says about live
+payload capture, and whether any captures are present, as a fact rather than a
+fault. It reports what it read, not a conclusion about whether capture is
+running — sources it cannot read can enable capture, so the running state is not
+a claim this check is entitled to make.
 
 Not capturing SHALL NOT be a failure. Capture records raw payloads carrying
 prompt text and absolute paths, so declining it is a legitimate configuration
@@ -26,8 +28,11 @@ asserting external behaviour it cannot ground. Reporting every setter and its
 value gives the reader what they need to act, and leaves the resolution to the
 component that actually performs it.
 
-The variable SHALL be treated as enabling capture only when its value is exactly
-`1`. Any other value, including `0`, is reported as not capturing.
+A file SHALL be reported as enabling capture only when the value it carries is
+exactly `1`. Any other value, including `0`, is reported as that file disabling
+capture. Both readings SHALL be scoped to the file they came from: "this file
+enables capture" is checkable, "capture is on" is not, for the same reason
+"capture is off" is not.
 
 Where no settings file sets the variable, the report SHALL state which files
 were read and SHALL state that capture may still be enabled by sources this
@@ -45,10 +50,12 @@ cannot be parsed is a failure to determine.
 The report SHALL name the environment variable that controls capture, so that a
 reader can act on what was reported without consulting documentation.
 
-The location of the user settings file SHALL be injectable rather than derived
-from the process's home directory at the point of use. A requirement whose test
-would have to mutate the developer's real home directory is not testable, and an
-untestable requirement is worse than an absent one.
+The check SHALL read a user settings file whose location is not fixed to the
+invoking user's home directory. Stated observably because it is a capability
+requirement, not an implementation note: a check hard-wired to the real home
+directory cannot be exercised against a fixture, and a requirement whose test
+would have to mutate the developer's own configuration is not testable. The
+seam this implies is named in `tasks.md` 1.0a.
 
 The report SHALL distinguish the live capture directory from the committed probe
 corpus, naming which of the two it is describing, because a reader who conflates
@@ -59,14 +66,16 @@ them will read a green corpus check as evidence that capture is on.
 - **WHEN** `doctor` runs and no settings file in the precedence chain sets the
   capture variable
 - **THEN** the report names the files it read, names the variable, states that
-  the launching environment is not visible from here, and does not fail
+  capture may still be enabled by sources this check does not read — including
+  the launching environment — and does not fail
 
 #### Scenario: capture is on with recordings present
 
 - **WHEN** exactly one settings file sets the capture variable, to `1`, and the
   live probe directory holds payloads
-- **THEN** the report states that capture is on, names that file and how many
-  event types are held, as a fact
+- **THEN** the report names that file as enabling capture, and states how many
+  event types are held, as a fact. It does not assert that capture is on
+  globally, for the same reason it may not assert that capture is off
 
 #### Scenario: capture is explicitly disabled
 
@@ -93,9 +102,18 @@ them will read a green corpus check as evidence that capture is on.
 
 #### Scenario: a settings file does not parse
 
-- **WHEN** a settings file in the chain exists and is not valid JSON
+- **WHEN** a settings file in the chain exists and is not valid JSON, and no
+  other file sets the capture variable
 - **THEN** the capture-state report is unknown rather than assumed off, and
   names the file it could not parse
+
+#### Scenario: one file does not parse while another sets the variable
+
+- **WHEN** one settings file is not valid JSON and another sets the capture
+  variable to `1`
+- **THEN** the report states what the readable file says, as a fact, and also
+  names the file it could not parse. A determinate read is not discarded because
+  a different file was unreadable
 
 #### Scenario: a settings file is absent
 

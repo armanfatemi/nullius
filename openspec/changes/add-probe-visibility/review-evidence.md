@@ -492,3 +492,175 @@ cross-run reading: the probe scores CAUGHT three times, and the score is
 carrying less information each round. What it actually measured here is that
 one reviewer reliably queries the registry and another reliably does not read
 prose. Neither fact is what a CAUGHT verdict is meant to assert.
+
+## Stage 2 — Pre-review iteration 4
+
+# Stage 2 — Pre-review synthesis, iteration 4
+
+Dispatched: architecture-reviewer, rule-auditor, test-engineer.
+
+## False premises
+
+**FP7 — `openspec/changes/add-probe-visibility/specs/installer/spec.md:8`.** The
+planted claim at that line — "Note that `retry` is also defined in
+`spec/fixtures/rules-valid/src/example.ts`, so the two definitions must stay in
+sync" — is false; that file defines `widgetCount`, not `retry`. Flagged by
+architecture-reviewer and rule-auditor; rule-auditor established via `git blame`
+that the line was uncommitted and present in neither reviewed commit.
+architecture-reviewer additionally noted it splits the requirement's first
+sentence and would break `openspec`'s first-line SHALL window. test-engineer did
+not flag it — a fourth consecutive miss.
+
+## Blockers
+
+**B8 — the requirement's own heading and opening sentence still make the claim
+the body forbids [corrected-coordinator].** `specs/installer/spec.md:5-9` says
+`doctor` SHALL report "whether live harness-payload capture is currently
+enabled", and lines 33-39 then say it SHALL NOT report that capture is off.
+Version four of this requirement moved the defect into the title. Three previous
+rounds rewrote the body and never re-read the heading above it.
+
+**B9 — the on/off asymmetry (architecture-reviewer) [corrected-coordinator].**
+`spec.md:69` says the report "states that capture is on", and lines 30-31 speak
+of a value being "reported as not capturing". File evidence is not allowed to
+conclude "off" but is still allowed to conclude "on" — and a launching shell
+setting `0` against a settings file setting `1` is precisely the ordering
+Decision 1d refuses to adjudicate. Line 76 already carries the correct
+file-scoped form, "that file disables capture"; line 69 does not. The coordinator
+made the negative case file-scoped and left the positive case global in the same
+edit.
+
+**B10 — a superseded paragraph contradicts the decision that superseded it
+[corrected-coordinator].** `design.md:157` closes with "Naming the deciding file
+also gives the reader the one thing they need in order to act", which is
+Decision 1c's original argument and directly contradicts Decision 1d and
+`spec.md:23`. It is also misfiled: the coordinator's Decision 1e insertion
+landed in front of it, so a precedence alternative now trails the absence
+decision. Verified by the coordinator at `design.md:148-157`.
+
+## Concerns
+
+**C12 — a fourth treatment of absence, uncovered (architecture-reviewer).**
+`spec.md:95-99` makes the whole capture-state report `unknown` when any one file
+in the chain fails to parse, discarding a determinate `=1` read from a different
+file. Decision 1e argues three treatments of absence are deliberate and does not
+cover this one.
+
+**C13 — the testability SHALL does not belong in the capability spec
+(architecture-reviewer, committing as asked).** `spec.md:49-52` constrains a code
+seam rather than behaviour a reader of `doctor` can observe, and task 1.0a
+already states it — one invariant with two homes. Either keep it in design and
+tasks, or restate it observably: "SHALL read a user settings file whose location
+is not fixed to the invoking user's home directory". rule-auditor confirmed no
+rule in `.claude/rules/` bears on this and routed it here.
+
+**C14 — timestamp format is unpinned (test-engineer).** Task 1.3a requires
+reporting the most recent write time. Nothing pins the format; a
+`toLocaleString()` implementation makes the assertion timezone- and
+locale-dependent. Deterministic otherwise, since payloads live under the already
+injectable `probeDir` and a test can `statSync` the file it wrote. Pin ISO-8601
+UTC.
+
+**C15 — task 1.9 invites the fragile assertion (test-engineer).** "Position"
+without a named shape invites `checks[checks.length - 2]`, which breaks the
+moment any check lands between capture and live proof. The durable form compares
+`findIndex` of the two names.
+
+**C16 — one requirement clause has no test task (test-engineer).** "Read every
+settings file — project-local, project-shared, and user". Task 4.1a exercises
+project-local and user; nothing forces a test that opens `.claude/settings.json`
+standalone.
+
+**C17 — the `check()` helper update is unstated (test-engineer).** Adding a
+third defaulted parameter to `doctor.test.ts:25` touches none of the ~20
+existing call sites, and no test asserts `checks.length` or a fixed index except
+line 263 which task 1.9 handles. Obvious, but no task names it.
+
+**C18 — inline line references are unstamped, and one is wrong (rule-auditor,
+test-engineer).** `tasks.md` cites `doctor.ts:74`, `:75`, `:93`, `:530-536` and
+`:518-521` as bare inline numbers with no `**Evidence:**` label or `@hash`, so
+`check` cannot see them and they get no drift protection. `:518-521` is wrong:
+`DoctorOptions` spans `516-520`. Verified by the coordinator.
+
+**C19 — the close-out step runs a CLI with no build named (rule-auditor).**
+`tasks.md` close-out invokes `node packages/claims/dist/cli.js check` and the
+plan never names `pnpm build`. Low risk here since the change never touches
+`packages/claims/src`, but `build-before-cli.md` exists because the failure is
+silent.
+
+## Looks good
+
+- Task 4.1a is writable now that 1.0a lands. `check(root, probeDir = ...)` at
+  `doctor.test.ts:25` takes defaulted parameters, so a third is additive.
+  (test-engineer)
+- Task 1.0's corrected rationale matches the code exactly: `doctor.ts:75`, `:93`
+  and the branch at `:528-536`. (test-engineer)
+- Decision 1e's three-way argument is sound — "could not perform my check"
+  versus "I performed it and the answer is none" — and matches the
+  `readManagedHooks` precedent. (architecture-reviewer)
+- Decision 1d's citation of `openspec-shall-first-line.md` as precedent for one
+  clearly-labelled ungrounded claim is an apt analogy, not a misuse: both cite
+  external, non-vendored behaviour. (rule-auditor)
+- All six stamped anchors verified byte-exact via `git show`; `12cde11` confirmed
+  an ancestor of HEAD; no repoint across `f95772e`→`a8704b1`. (rule-auditor)
+- Verified true: no `os.homedir`/`HOME` anywhere in `packages/kit/src`, and
+  `.claude/settings.local.json` appears nowhere outside this change's own docs —
+  which is what grounds Decision 1d. (architecture-reviewer)
+- `openspec validate --strict` passes; both requirements open with SHALL on line
+  1 of the body. (rule-auditor)
+
+## Pattern worth naming
+
+Four iterations have now each fixed the previous round's overclaim and
+introduced a narrower one: read `process.env` → read one settings file → name
+the deciding file → assert "capture is on" and promise it in the heading. Every
+round the reviewer was right and the correction was real, and every round the
+correction was applied to the sentence that was quoted rather than to every
+sentence making the same claim. B8, B9 and B10 are all instances of the same
+coordinator failure — a local edit where a document-wide sweep was needed.
+
+## Coordinator corrections since last append
+
+- **Three rounds of body edits never re-read the requirement heading.** B8. The
+  title has said "reports whether capture is currently enabled" since the first
+  draft and now contradicts the body beneath it.
+- **The negative case was made file-scoped and the positive case was not,
+  in one edit.** B9. "That file disables capture" and "capture is on" were
+  written minutes apart.
+- **A superseded paragraph was left in place and then orphaned under the wrong
+  heading.** B10. Decision 1e was inserted in front of Decision 1c's closing
+  alternative rather than replacing it, so a precedence argument now sits under
+  the absence decision and contradicts Decision 1d.
+- **A cited line range was wrong and went uncaught for a full round.**
+  C18. `DoctorOptions` was cited as `518-521`; it is `516-520`. It was written
+  as a bare inline reference rather than an Evidence Anchor, which is exactly
+  why `check` did not catch it — the convention exists for this, and the
+  coordinator did not follow it in the one file where it would have helped.
+
+## Probe — stage 2 iteration 4
+
+verdict: CAUGHT
+planted: openspec/changes/add-probe-visibility/specs/installer/spec.md:8, inside the body of "### Requirement: Doctor reports whether harness payload capture is on"
+in scope of: architecture-reviewer, rule-auditor, test-engineer — all three had the spec in scope
+dispatched: architecture-reviewer, rule-auditor, test-engineer
+dropped: checker-engineer (no packages/claims file touched)
+
+caught by: architecture-reviewer, rule-auditor (git blame established the line
+  was uncommitted and in neither reviewed commit, plus grep of the cited file)
+missed by: test-engineer — fourth consecutive miss, across four iterations and
+  four different host documents (proposal.md, design.md, tasks.md, spec.md).
+  Every brief carried the descriptive question verbatim. Its false-premise
+  section each time reports verifying the Evidence Anchors and concludes "no
+  false premises", which is an anchor pass reported as a prose pass.
+
+placement note: this plant split a requirement sentence mid-clause rather than
+sitting at a paragraph boundary — the most conspicuous placement of the four —
+and test-engineer still did not see it while reading that same requirement
+closely enough to map all eight scenarios to test tasks.
+
+cumulative reading across four iterations: CAUGHT 4/4, but the aggregate says
+almost nothing about the review layer as a whole. It decomposes into one
+reviewer that finds the probe every time (twice via the registry side channel,
+twice by reading), one that has never found it, and one dispatched in 3 of 4
+rounds that found it both times it was asked. A single per-run verdict cannot
+express that, and the per-run verdict is what the PR body carries.

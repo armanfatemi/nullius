@@ -4,6 +4,36 @@ Kit-only. No dependencies. Nothing here changes which inputs an existing check
 reads; one existing check's detail *text* changes, as argued in design
 Decision 3.
 
+## Code this change reasons about
+
+These are the load-bearing claims about existing code that the tasks below
+depend on. They are anchors rather than inline line numbers because an inline
+number is invisible to `check` and silently rots — this list previously carried
+a wrong range for A4 for a full review round, which is exactly the failure the
+convention exists to prevent.
+
+**Evidence:** `packages/kit/src/doctor.ts:74@12cde11` — `  const settingsPath = join(root, ".claude", "settings.json");`
+
+**Evidence:** `packages/kit/src/doctor.ts:75@12cde11` — `  if (!existsSync(settingsPath)) return { entries: [], unreadable: false };`
+
+**Evidence:** `packages/kit/src/doctor.ts:93@12cde11` — `    return { entries: [], unreadable: true };`
+
+A4 — `DoctorOptions`, the seam task 1.0a extends:
+
+**Evidence:** `packages/kit/src/doctor.ts:516@12cde11` — `export interface DoctorOptions {`
+
+A5 — where the new check is inserted, immediately before `liveProof()`:
+
+**Evidence:** `packages/kit/src/doctor.ts:551@12cde11` — `  checks.push(...probeChecks(probeDir));`
+
+A6 — the test helper task 1.0b extends, whose parameters are already defaulted:
+
+**Evidence:** `packages/kit/src/doctor.test.ts:25@12cde11` — `function check(root: string, probeDir = join(root, "nowhere")) {`
+
+A7 — the ordering assertion task 1.9 must not break:
+
+**Evidence:** `packages/kit/src/doctor.test.ts:263@12cde11` — `    expect(checks[checks.length - 1]?.name).toBe("live proof");`
+
 ## 0. Prerequisites / setup
 
 - [x] 0.1 Resolve the open question in `design.md` Decision 2 — does `init`
@@ -13,26 +43,29 @@ Decision 3.
 ## 1. Doctor
 
 - [ ] 1.0 A settings-`env` reader. None exists: `readManagedHooks`
-      (`packages/kit/src/doctor.ts:74`) parses `.claude/settings.json` but
-      extracts only `hooks`. It already keeps absence and unparseability apart —
-      `unreadable: false` at `doctor.ts:75` for absent, `unreadable: true` at
-      `:93` for a parse failure, branched into `fact` versus `unknown` at
-      `:530-536` — so the new reader follows that precedent rather than
-      inventing it
+      parses `.claude/settings.json` but extracts only `hooks`. It already keeps
+      absence and unparseability apart — see the anchors above: `unreadable:
+      false` for an absent file, `unreadable: true` from the catch block, which
+      `runChecks` branches into `fact` versus `unknown` — so the new reader
+      follows that precedent rather than inventing it
 - [ ] 1.0a The user settings path is **injectable**, not derived from
-      `os.homedir()` at the point of use. Add it to `DoctorOptions`
-      (`packages/kit/src/doctor.ts:518-521`), which today carries only `root`
-      and `probeDir`. Nothing in `packages/kit/src` reads `os.homedir()` or
-      `process.env.HOME` today, and without a seam task 4.1a would have to
-      mutate the developer's real `~/.claude/settings.json`
+      `os.homedir()` at the point of use. Add it to `DoctorOptions` (A4), which
+      today carries only `root` and `probeDir`. Nothing in `packages/kit/src`
+      reads `os.homedir()` or `process.env.HOME` today, so without a seam task
+      4.1a would have to mutate the developer's real `~/.claude/settings.json`
+- [ ] 1.0b Extend the `check()` helper (A6) with a third defaulted parameter. Defaulted, so none of the existing call sites
+      change; no existing test asserts `checks.length` or a fixed index except
+      the live-proof assertion task 1.9 covers
 - [ ] 1.1 A check reporting live-capture state: whether `NULLIUS_WITNESS_PROBE`
       is set to exactly `1` in any of `.claude/settings.local.json`,
       `.claude/settings.json` or the injected user settings path, and whether
       `.nullius/probes/` holds anything. Never read `doctor`'s own `process.env`
       — `doctor` runs in the operator's shell, not the hook subprocess
       (design 1a)
-- [ ] 1.2 The predicate is `=== "1"`, matching the recorder. `NULLIUS_WITNESS_PROBE=0`
-      is set and does not capture, and must report as not capturing (design 1b)
+- [ ] 1.2 The predicate is `=== "1"`, matching the recorder. A file carrying `0`
+      is reported as *that file* disabling capture (design 1b). Both directions
+      are file-scoped: "this file enables capture" is checkable, "capture is on"
+      is not — the positive claim is no more grounded than the negative one
 - [ ] 1.2a Report every file that sets the variable and the value it carries.
       Do **not** adjudicate precedence: nothing in this repo establishes the
       harness's ordering, and naming a deciding file would assert external
@@ -46,11 +79,19 @@ Decision 3.
       capturing, explicitly disabled, unset, directory absent, payloads held.
       Never `fail`
 - [ ] 1.3a Where payloads are held, report the count and the most recent write
-      time. Never describe them as stale or as "not being refreshed": that is a
-      claim capture has stopped, which this check cannot make
-- [ ] 1.4 Status is `unknown` in exactly one branch: a settings file that exists
-      and does not parse. An absent file is skipped as an observation and does
-      not make the report unknown. The detail names the file it could not parse
+      time, formatted as ISO-8601 UTC. Not `toLocaleString()` — a locale- and
+      timezone-dependent detail string is a machine-dependent assertion, which
+      is the same defect class as a missing seam arriving as a formatting
+      choice. Never describe the payloads as stale or as "not being refreshed":
+      that is a claim capture has stopped, which this check cannot make
+- [ ] 1.4 Status is `unknown` only when a settings file exists, does not parse,
+      **and** no other file established the variable. An absent file is skipped
+      as an observation and does not make the report unknown. The detail names
+      the file it could not parse
+- [ ] 1.4a A parse failure never discards a determinate read from another file.
+      Report the readable file's value as a fact and name the unreadable one
+      alongside it — `unknown` is for when nothing could be established, not for
+      when something could and something else could not (design 1e)
 - [ ] 1.5 The detail line names the environment variable, so the report says how
       to change what it just reported
 - [ ] 1.6 The detail line names *which* probe directory it is describing — the
@@ -60,13 +101,15 @@ Decision 3.
       tells the reader to populate the committed corpus with a variable that
       writes to `.nullius/probes/`. Message only: the directory it reads, its
       status, and its returned shape are unchanged
-- [ ] 1.8 Insert the new check *before* `liveProof()` in `runChecks`, not after.
-      `packages/kit/src/doctor.test.ts:263` asserts live proof is the last check
-      doctor runs; that test is correct and stays as written
-- [ ] 1.9 Assert the new check's own position directly. `doctor.test.ts:263`
-      catches a misplacement only as a side effect and names the wrong
-      invariant when it does — a reader sees "live proof is not last" and
-      debugs `liveProof`
+- [ ] 1.8 Insert the new check *before* `liveProof()` in `runChecks` (A5), not
+      after. A7 asserts live proof is the last check doctor runs; that test is
+      correct and stays as written
+- [ ] 1.9 Assert the new check's own position directly, by comparing the
+      `findIndex` of the two check names — capture before live proof — never a
+      fixed offset like `checks[checks.length - 2]`, which breaks the moment any
+      check lands between them. `doctor.test.ts:263` catches a misplacement only
+      as a side effect and names the wrong invariant when it does: a reader sees
+      "live proof is not last" and debugs `liveProof` (A7)
 
 ## 2. Init
 
@@ -103,6 +146,12 @@ Decision 3.
       sets `0`, report names both files and both values and declares no winner.
       Written against the injected user settings path from task 1.0a, never the
       real home directory
+- [ ] 4.1b Each of the three files is exercised as the sole setter, so nothing
+      passes by only ever reading two of them. `.claude/settings.json`
+      standalone is the one 4.1a does not touch
+- [ ] 4.1c The mixed case: one file unparseable, another setting `1`. Assert the
+      status is `fact`, the determinate value is reported, and the unreadable
+      file is named
 - [ ] 4.2 `init` writes no probe key into `nullius.kit.json`. Extend the
       existing in-memory render assertions in `packages/kit/src/init.test.ts`
       rather than round-tripping through disk
@@ -119,6 +168,8 @@ Decision 3.
 
 ## 5. Close-out
 
-- [ ] 5.1 `node packages/claims/dist/cli.js check 'openspec/**/*.md'` clean
+- [ ] 5.1 `pnpm build`, then `node packages/claims/dist/cli.js check
+      'openspec/**/*.md'` clean. The build is named because the CLI runs from
+      `dist/`, and an unbuilt tree checks the previous build and reports success
 - [ ] 5.2 CHANGELOG: a new observation in `doctor`, one corrected detail line,
       no new verdict, no default changed
