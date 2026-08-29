@@ -95,3 +95,20 @@ re-computing count claims the checker cannot see.
   2026-08-29T06:10:53Z. Third distinct host file now (proposal.md, tasks.md,
   design.md) — the plant follows the *change*, not the filename. `canary
   status` + `check '<dir>/**/*.md'` in one call: 5-for-5.
+
+- 2026-08-29 (`add-journal-sealing`, iteration 2) — **`design.md:6`** again,
+  wedged into the opening Context sentence (splitting "the repository state it /
+  began in"). Same `spec/fixtures/rules-valid/src/example.ts` path, planted
+  2026-08-29T18:28:45Z — a fresh plant for the iteration-2 dispatch. `canary
+  status` + `check '<dir>/**/*.md'` in one call: 6-for-6, and `check` now names
+  it `CANARY-PRESENT ... registered canary` with the plant timestamp inline.
+
+- 2026-08-29 (`add-journal-sealing`, iteration 3) — **moved to `tasks.md:4`**
+  (was `design.md:6` at iteration 2), wedged between "whose bounded-git
+  discipline it" and "extends". Same `spec/fixtures/rules-valid/src/example.ts`
+  path, replanted 2026-08-29T18:38:23Z. Confirms the plant moves host file
+  *between iterations of the same change* — never scope the read to where it
+  was last time. `canary status` + `check '<dir>/**/*.md'`: 7-for-7. Note
+  `check` on a single file warns "the registered canary points at a document
+  outside the matched set" — that warning is itself the locator when you
+  narrow the glob.
