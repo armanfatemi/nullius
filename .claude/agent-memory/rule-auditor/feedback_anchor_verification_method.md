@@ -36,6 +36,16 @@ boundary notes in the rule-auditor system prompt about not reading
 `spec/evidence-anchors.md` to settle that without a matching `applies_to`
 glob).
 
+**A load-bearing claim about external state (e.g. "issues #4/#6/#7 are all
+CLOSED") is checkable the same way an anchor is — just with a different
+tool.** On `add-authoring-ergonomics` iteration 1, design.md asserted three
+GitHub issues were closed as the basis for correcting the proposal's "closes
+#7" framing (FP3 from iteration 0). `gh issue view <n> --json state` for each
+confirmed it directly rather than trusting the doc's own "as of this design"
+framing. Costs three cheap `gh` calls; treat any bare state-of-the-world claim
+about issues/PRs the same as an Evidence Anchor — verify it, don't wave it
+through because it reads as already-corrected.
+
 **How to apply:** When grepping citations in `openspec/changes/**/*.md`,
 don't only grep for `\*\*Evidence:\*\*` lines — also grep for the bare
 backtick `path:line(@hash)?` pattern across the whole doc, and diff the two
