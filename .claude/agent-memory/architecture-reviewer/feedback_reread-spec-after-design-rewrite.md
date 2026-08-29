@@ -38,3 +38,13 @@ the no-match and unreadable-registry paths, but `specs/check-cli/spec.md`'s
 "Machine-readable output" requirement still described only the passing/failing
 case. A fix that answers a `[concern]` is a behaviour change too — re-read the
 spec against the fix diff, not just against design.md.
+
+**Fourth shape (2026-08-29, `add-probe-visibility` iteration 3): the lag runs
+downhill into `proposal.md` too.** Design Decision 1c replaced "read *the*
+settings env block" with a three-file precedence chain, and `specs/` and
+`tasks.md` both moved with it — but `proposal.md`'s "What changes" bullet still
+described a single "harness settings `env` block" and still pointed the reader
+at the superseded Decision 1a. Proposal prose seeds the PR body and
+`review-evidence.md`, so a lagging proposal outlives the iteration that fixed
+the design. Re-read all four documents against the new Decision, not just the
+normative spec.

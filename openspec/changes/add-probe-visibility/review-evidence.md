@@ -337,3 +337,158 @@ placement note: planted in design.md rather than proposal.md this round, to
 vary which artefact carries it. Both artefacts are in every dispatched
 reviewer's declared scope, so a MISSED either round would have indicated a quiet
 reviewer rather than a placement defect.
+
+## Stage 2 — Pre-review iteration 3
+
+# Stage 2 — Pre-review synthesis, iteration 3
+
+Dispatched: architecture-reviewer, test-engineer.
+Dropped this round: rule-auditor — its two prior rounds produced only the probe
+catch, the new anchors are deterministically verified by `check`, and
+`openspec validate` covers SHALL placement, so its justification would have been
+generic. checker-engineer, as before.
+
+## False premises
+
+**FP5 — `openspec/changes/add-probe-visibility/tasks.md:4`.** The planted claim
+at that line — "Note that `retry` is also defined in
+`spec/fixtures/rules-valid/src/example.ts`, so the two definitions must stay in
+sync" — is false; that file defines only `widgetCount`. Flagged by
+architecture-reviewer, which noted it had moved out of `proposal.md` this
+iteration and did not treat it as an instruction. test-engineer did not flag it,
+its third consecutive miss.
+
+**FP6 — `tasks.md` task 1.0 [corrected-coordinator].** The task asserted that
+`readManagedHooks` "collapses absent-versus-unparseable into
+`unreadable: false`". It does not. `packages/kit/src/doctor.ts:75` returns
+`unreadable: false` for an absent file and `:93` returns `unreadable: true` from
+the catch block, and the consumer at `:530-536` already branches those into
+`fact` versus `unknown`. Flagged independently by both reviewers and verified by
+the coordinator.
+
+The conclusion — a separate settings-`env` reader is needed, keeping absence and
+unparseability distinct — survives. What collapses in `readManagedHooks` is
+*absent* versus *present with no managed hooks*, which is a different pair.
+
+Provenance matters here: this false premise entered the tasks from
+architecture-reviewer's own iteration-2 concern C6, which the coordinator wrote
+into task 1.0 without opening `doctor.ts` to check it. The reviewer that
+supplied it is one of the two that refuted it a round later. Existing precedent
+was agreeing with the new reader the whole time.
+
+## Blockers
+
+**B4 — the precedence order is uncited and ungroundable from this repo
+(architecture-reviewer).** `.claude/settings.local.json` appears nowhere in the
+tree outside this change's own documents, and no in-tree artefact establishes
+the harness's settings precedence. The spec's `SHALL name which file supplied
+the value` therefore commits `doctor` to a confident claim resting on external
+behaviour this repository cannot ground. Proposed honest form: name every file
+that sets the variable and the value each carries, and let the reader apply
+precedence.
+
+**B5 — the residue is enumerated closed (architecture-reviewer).** The spec
+names exactly one invisible source, the launching environment, which implies the
+file chain is otherwise complete. Enterprise or managed settings and a
+`--settings` argument are neither read nor excluded, and neither can be settled
+from this repo. Proposed fix: word it non-exhaustively — "including the
+launching environment". Enumerating is what re-created this defect twice
+already.
+
+**B6 — the same overclaim survives in one scenario
+[corrected-coordinator].** `specs/installer/spec.md`, scenario "capture is off
+but stale recordings remain": WHEN no settings file enables capture, THEN the
+report states the payloads "are not being refreshed". That is a confident claim
+that capture is off, made on the strength of sources not read — exactly what
+task 1.2b forbids, inside the same document. The same wording survives in
+`design.md`'s closing open question and in `tasks.md:4.1`. Tagged
+`[corrected-coordinator]`: the coordinator wrote 1.2b and this scenario in the
+same edit and did not notice they contradict.
+
+**B7 — task 4.1a is unwritable as scoped (test-engineer).** It requires setting
+the user settings file to `1` and the project-local file to `0` and asserting
+precedence. `DoctorOptions` carries only `root` and `probeDir`
+(`packages/kit/src/doctor.ts:518-521`), every existing test writes to a scratch
+root only, and nothing in `packages/kit/src` reads `os.homedir()` or
+`process.env.HOME` — verified by the coordinator. Without an injectable seam an
+implementer either hardcodes `os.homedir()`, making the test mutate the real
+`~/.claude/settings.json`, or invents an ad-hoc seam nothing in the plan
+reviewed. Tasks 1.0/1.1 must specify the seam — a `userSettingsPath` on
+`DoctorOptions` is the obvious shape.
+
+## Concerns
+
+**C9 — the proposal lags the design (architecture-reviewer).** `proposal.md`
+"What changes" still describes a single "harness settings `env` block" and
+points at superseded Decision 1a. It seeds the PR body, so the staleness would
+propagate.
+
+**C10 — a third treatment of absence sits adjacent (architecture-reviewer).**
+`probeChecks` reports an absent corpus as `unknown` (`doctor.ts:406`), beside a
+new check that will report an absent settings file as an observation and an
+absent directory as a fact. Three treatments of absence in one report is worth a
+deliberate answer rather than an accident.
+
+**C11 — nothing pins the new check's position (test-engineer).**
+`doctor.test.ts:263` catches "appended after liveProof" only as a side effect,
+and names the wrong invariant when it fails: a reader sees "live proof is not
+last" and debugs `liveProof`. The new check needs its own position assertion.
+
+## Looks good
+
+- Task 1.4's absent-versus-unparseable split is coherent with existing
+  precedent: absence as observation matches `doctor.ts:75`, `:238` and `:270`;
+  exists-but-unparseable as `unknown` matches `:93`. (architecture-reviewer)
+- Task 1.8 respects the ordering constraint; `doctor.test.ts:263` verified
+  unchanged. (architecture-reviewer)
+- All six design.md anchors verify verbatim against the current tree.
+  (test-engineer)
+- No new `Status` member; kit-only; `packages/claims` untouched.
+  (architecture-reviewer)
+
+## Coordinator corrections since last append
+
+- **A reviewer's finding was written into the tasks without being checked.**
+  FP6. architecture-reviewer's iteration-2 concern C6 asserted that
+  `readManagedHooks` conflates absent and unparseable. The coordinator recorded
+  it in the iteration-2 synthesis and wrote it into task 1.0 as fact, without
+  opening `doctor.ts:75-93`. It was false. The coordinator had independently
+  read that function's opening line earlier in the run and still did not catch
+  it. A reviewer report is a proposal, and this run has now had one accepted as
+  a result.
+- **Two clauses written in the same edit contradict each other.** B6. Task 1.2b
+  forbids reporting capture off on the strength of unread sources; the "stale
+  recordings" scenario in the spec does exactly that, and the coordinator wrote
+  both in the iteration-3 refinement. Caught by architecture-reviewer, not by
+  re-reading the edit.
+- **The proposal was not carried forward with the design.** C9. Three rounds of
+  revision landed in `design.md`, `specs/` and `tasks.md`; `proposal.md`'s "What
+  changes" still describes the superseded single-file reading. It was edited in
+  iteration 1 and not revisited.
+
+## Probe — stage 2 iteration 3
+
+verdict: CAUGHT
+planted: openspec/changes/add-probe-visibility/tasks.md:4, under the file's opening paragraph (no preceding ## heading)
+in scope of: architecture-reviewer (openspec/ path), test-engineer (change artefacts)
+dispatched: architecture-reviewer, test-engineer
+dropped: rule-auditor (two prior rounds produced only the probe catch), checker-engineer (no packages/claims file touched)
+
+caught by: architecture-reviewer
+missed by: test-engineer — third consecutive miss across three iterations and
+  three different host documents (proposal.md, design.md, tasks.md). Each brief
+  carried the descriptive question verbatim. This is now a reproducible gap in
+  one reviewer's prose pass, not a sampling artefact: it verifies anchors
+  thoroughly and reports "no false premises" on that basis, without reading the
+  surrounding prose for uncited claims.
+
+leak note: architecture-reviewer reports confirming the claim "via canary status
++ check" — the registry side channel again, matching the durable memory it wrote
+in commit 045c48a naming that pairing as its fastest opener. Iteration 2 was the
+exception, not the trend: 3 of 4 catches across this run came through the
+registry rather than through reading.
+
+cross-run reading: the probe scores CAUGHT three times, and the score is
+carrying less information each round. What it actually measured here is that
+one reviewer reliably queries the registry and another reliably does not read
+prose. Neither fact is what a CAUGHT verdict is meant to assert.

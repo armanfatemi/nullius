@@ -4,59 +4,71 @@ _Started 2026-08-28; last updated 2026-08-28_
 
 ## Phases completed
 
-- [x] Stage 1: Load — build green, `openspec validate` clean, no dependencies,
-      no pause gates, no human-only commands
-- [x] Stage 2: Pre-review iteration 1 — probe CAUGHT. 2 false premises,
-      2 blockers, 5 concerns
-- [x] Stage 3: Refine iteration 1 — commit 39d215d. All 4 hard findings fixed;
-      spec rewritten, design gained Decisions 1a and 1b, tasks regrouped
+- [x] Stage 1: Load — build green, `openspec validate` clean, no dependencies
+- [x] Stage 2 iteration 1 — probe CAUGHT; 2 false premises, 2 blockers
+- [x] Stage 3 refinement 1 — commit 39d215d
+- [x] Stage 2 iteration 2 — probe CAUGHT; 1 blocker (the refinement itself)
+- [x] Stage 3 refinement 2 — commit f95772e
+- [x] Stage 2 iteration 3 — probe CAUGHT; 4 blockers, 2 false premises
 
 ## Current phase
 
-**Stage 2 (Pre-review)**, iteration 2 — canary planted at `design.md:6`.
-architecture-reviewer, rule-auditor and test-engineer re-dispatched against the
-revised artefacts, each briefed on whether its own previous finding was fixed
-correctly rather than merely acknowledged.
+**PAUSED at the refinement cap.** 3 refinement iterations completed; 4 blockers
+remain. No code has been written — the run never reached Stage 4.
 
-## Next 3 actions
+## Blockers outstanding, with the fix each needs
 
-1. Synthesize iteration 2; score and clear the canary
-2. Zero blockers → Stage 4; otherwise one more refine (cap is 3)
-3. Stage 4 pre-flight: already on `feat/add-probe-visibility`
+1. **B4 precedence is ungroundable.** The spec's `SHALL name which file supplied
+   the value` rests on harness precedence this repo cannot cite. Fix: name every
+   file that sets the variable and its value; let the reader apply precedence.
+2. **B5 residue enumerated closed.** The spec names exactly one invisible source.
+   Fix: "including the launching environment", non-exhaustive.
+3. **B6 self-contradiction inside the spec.** The "stale recordings ... not being
+   refreshed" scenario claims capture is off from unread sources, which task
+   1.2b forbids. Same wording in design.md's open question and tasks.md 4.1.
+   Fix: report what is held and when, never why it stopped.
+4. **B7 task 4.1a is unwritable.** No injectable seam for `~/.claude/settings.json`.
+   Fix: `userSettingsPath` on `DoctorOptions`, named in tasks 1.0/1.1.
+
+Plus FP6: task 1.0's stated reason is false — `readManagedHooks` already
+distinguishes absent from unparseable. Keep the task, fix the rationale.
+
+## Next 3 actions on resume
+
+1. Apply the four blocker fixes above; they are all edits to
+   `specs/installer/spec.md`, `design.md` and `tasks.md`
+2. Re-dispatch architecture-reviewer and test-engineer for iteration 4
+3. Zero blockers → Stage 4 (implement); no code exists yet
 
 ## Integration points the next session needs to read on resume
 
-- packages/kit/src/doctor.ts — `Status` union (`fact` at :37, `failed` keys on
-  `"fail"` only at :554); `probeChecks` at :395 with the detail line at :407
-  that task 1.7 corrects
-- packages/kit/src/cli.ts — `runInit` (:193), the `probeDir` call site (:363)
-  that task 4.3 must pin, the recorder predicate (:436), the live writer (:591)
-- packages/kit/src/doctor.test.ts — existing direct `probeChecks` coverage at
-  :210-213; the new branch matrix lands here
-- packages/kit/src/init.test.ts — :189-204, in-memory render assertions; the
-  right seam for "no probe key in nullius.kit.json"
-- packages/kit/src/init.cli.test.ts — its `run(...)` helper is the candidate
-  seam for the CLI-level test in task 4.3
+- packages/kit/src/doctor.ts — `DoctorOptions` at :518-521 (needs the new seam);
+  `readManagedHooks` :74-93 (absent vs unparseable, already distinguished);
+  `runChecks` :551-552 (insert before `liveProof`); `probeChecks` :395 with the
+  detail line at :407 that task 1.7 corrects
+- packages/kit/src/doctor.test.ts — :263 asserts live proof is last; :210-213 is
+  the existing direct `probeChecks` coverage
+- packages/kit/src/cli.ts — `runInit` :193, `probeDir` call site :363, recorder
+  predicate :436, live writer :591
+- packages/kit/src/init.test.ts — :189-204, the seam for the no-probe-key test
+- specs/installer/spec.md — carries B4, B5 and B6 between them
 
 ## Pending user decisions
 
-- None outstanding. Task 0.1 resolved 2026-08-28: `init` names capture, does not
-  offer to enable it.
+- Whether to raise the refinement cap and continue, or stop here with the
+  proposal in its current state. Both prior design questions are resolved.
 
-## Branch and merge facts the PR must carry
+## Branch and merge facts
 
-- `feat/add-probe-visibility` was branched from `12cde11`, not from `main`, so
-  it carries one pre-existing unrelated commit (`retro`) forward. Branching from
-  `main` instead would have orphaned the `@12cde11` stamps on three new anchors.
-- `12cde11` is NOT on `main` and IS an ancestor of this branch. A merge commit
-  makes the new anchors resolvable; a squash orphans them and the checker fails
-  open with the advisory UNVERIFIABLE-REV. The merge instruction in the PR body
-  is load-bearing for this change specifically.
+- `feat/add-probe-visibility` branched from `12cde11`, not `main`, so three
+  anchors stamped `@12cde11` stay resolvable. It carries one pre-existing
+  unrelated commit (`retro`) forward.
+- Merge with a merge commit. A squash orphans `12cde11` and those anchors fail
+  open with the advisory UNVERIFIABLE-REV.
 
 ## Instrumentation note for the retro
 
-- Both iteration-1 catches came through the registry, not through reading.
-  architecture-reviewer has now written into durable memory that
-  `canary status` + `check` is "3-for-3 as the fastest opener" (commit 045c48a).
-  The probe's side channels are entrenched, so CAUGHT verdicts from this agent
-  measure registry access rather than review attention.
+- Probe scored CAUGHT in all three iterations, but 3 of 4 catches came through
+  the registry side channel rather than by reading. test-engineer missed it
+  three times across three different host documents while reporting "no false
+  premises" on the strength of an anchor pass.

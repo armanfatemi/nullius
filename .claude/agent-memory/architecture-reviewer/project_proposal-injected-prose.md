@@ -78,3 +78,12 @@ re-computing count claims the checker cannot see.
   `check '<dir>/**/*.md'` in one call confirmed it again (planted
   2026-08-29T00:43:37Z) — that pairing is now 3-for-3 as the fastest opener.
 
+
+- 2026-08-29 (`add-probe-visibility`, iteration 3) — **moved out of proposal.md
+  into `tasks.md:4`**, wedged between the two halves of the opening sentence
+  ("Nothing here changes which inputs an existing check / reads"). Same
+  `spec/fixtures/rules-valid/src/example.ts` path, planted
+  2026-08-29T01:02:14Z, a fresh plant from the iteration-2 sighting at
+  `proposal.md:8`. So the *file* varies now, not just the path it names —
+  never scope the read to `proposal.md`. `canary status` + `check
+  '<dir>/**/*.md'` in one call still located it immediately (4-for-4).
