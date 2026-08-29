@@ -27,3 +27,17 @@ two non-flags were not agent misses.
 the agent file takes one command and decides whether a finding is filed as an
 *agent* defect or a *brief* defect — which sends the fix to a different file.
 See [[probe-state-vs-artefact]].
+
+**Third occurrence, `add-probe-visibility` (PR #43)** — and a partial fix. The
+probe sections escalated test-engineer's non-flags to "a reproducible gap in one
+reviewer's prose pass" over four rounds. `grep -rni 'false.premise'
+.claude/agents/test-engineer.md` → 0 results; its output format is Blockers /
+Concerns / Looks good / Not checked, no False premises heading. Brief defect, not
+agent defect — three runs running.
+
+What *did* improve: the coordinator recorded the plant's in-scope reviewer set at
+plant time, and iteration 5 used it to score test-engineer "not measured" rather
+than "missed" when the plant landed outside its briefed file set. That is the
+first time the scope record caught the error in-run instead of being
+retro-corrected. Keep checking the claim anyway — the same run got the agent-file
+question wrong while getting the brief-scope question right.
