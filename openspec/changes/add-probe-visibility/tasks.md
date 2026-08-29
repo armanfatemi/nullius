@@ -171,8 +171,8 @@ A7 — the ordering assertion task 1.9 must not break:
 
 ## 5. Close-out
 
-- [ ] 5.1 `pnpm build`, then `node packages/claims/dist/cli.js check
+- [x] 5.1 `pnpm build`, then `node packages/claims/dist/cli.js check
       'openspec/**/*.md'` clean. The build is named because the CLI runs from
       `dist/`, and an unbuilt tree checks the previous build and reports success
-- [ ] 5.2 CHANGELOG: a new observation in `doctor`, one corrected detail line,
+- [x] 5.2 CHANGELOG: a new observation in `doctor`, one corrected detail line,
       no new verdict, no default changed

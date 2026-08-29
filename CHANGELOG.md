@@ -69,6 +69,55 @@ a package name are that package's own release; the kit versions independently.
   `ArtifactKind` / `HarnessArtifact` / `WiringDeps` / `WiringFinding` /
   `WiringReport` / `WiringVerdict` / `Frontmatter` / `Located` types.
 
+- **kit: `doctor` reports what the settings files say about payload capture.**
+  The recorder can save every raw hook payload behind `NULLIUS_WITNESS_PROBE=1`,
+  and those recordings are what feed the committed corpus that `probeChecks`
+  replays. Nothing reported whether capture was configured, so an empty
+  `.nullius/probes/` was indistinguishable from a directory nobody had asked
+  for — and capture cannot be performed after the fact, so the first time a
+  payload anomaly needs explaining is exactly when the explaining data is found
+  not to exist.
+
+  The new `payload capture` check reads the `env` block of
+  `.claude/settings.local.json`, `.claude/settings.json` and an injected user
+  settings path, and reports every file that sets the variable and the value it
+  carries. **It is an observation, never a verdict** — `fact` in every branch
+  but one, and `fail` in none. Not capturing is a legitimate configuration, and
+  a check that failed on it would be disabled rather than heeded.
+
+  What it deliberately does not claim is the point. It does not read `doctor`'s
+  own `process.env`, because the variable governs the hook subprocess while
+  `doctor` runs in the operator's shell. It does not adjudicate precedence
+  between settings files, because nothing in this repository establishes the
+  harness's ordering and naming a deciding file would assert external behaviour
+  the checker cannot ground. And it never says "capture is on" or "capture is
+  off" — both are claims about sources it cannot read, including the
+  environment that launched the harness. Every statement is scoped to the file
+  it came from. `unknown` is reserved for a settings file that exists, will not
+  parse, and leaves nothing else established; a parse failure alongside a
+  determinate read stays a fact and names the unreadable file beside it.
+
+- **kit: `init` names payload capture without enabling it.** The installer now
+  says that capture exists, what it records, where it lands, and that it is off
+  unless asked for. It does not set the key and does not offer to: raw payloads
+  carry prompt text, tool inputs and absolute home paths, and persisting that is
+  the operator's decision rather than the tool's. A test asserts the rendered
+  `nullius.kit.json` carries no probe key across all three profiles.
+
+### Fixed
+
+- **kit: `probeChecks`' absent-corpus message pointed at the wrong directory.**
+  It told the reader to populate the committed corpus with
+  `NULLIUS_WITNESS_PROBE=1`, which writes to `.nullius/probes/` instead — so
+  following the instruction did not fill the directory the message named. This
+  is the misreading that made the corpus check look like a misdirected
+  live-capture check during an earlier review. The message now names both
+  directories and the promotion path between them. Behaviour is unchanged: the
+  directory it reads, its `unknown` status and its returned shape are the same,
+  and a new test at the CLI seam asserts `doctor` still points it at the corpus
+  — which no previous test did, since every one of them supplied the directory
+  itself.
+
 ## kit 0.2.0
 
 One fix, and it is a consent bug rather than a bug in the checker.
