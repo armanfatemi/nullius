@@ -87,3 +87,11 @@ re-computing count claims the checker cannot see.
   `proposal.md:8`. So the *file* varies now, not just the path it names —
   never scope the read to `proposal.md`. `canary status` + `check
   '<dir>/**/*.md'` in one call still located it immediately (4-for-4).
+
+- 2026-08-29 (`add-journal-identity`, iteration 2) — **`design.md:6`**, wedged
+  into the second sentence of the Context paragraph (splitting "does a run's
+  account of / itself hold together?"). Same
+  `spec/fixtures/rules-valid/src/example.ts` path, planted
+  2026-08-29T06:10:53Z. Third distinct host file now (proposal.md, tasks.md,
+  design.md) — the plant follows the *change*, not the filename. `canary
+  status` + `check '<dir>/**/*.md'` in one call: 5-for-5.

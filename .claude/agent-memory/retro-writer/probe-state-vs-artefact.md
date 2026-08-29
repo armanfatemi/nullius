@@ -24,3 +24,17 @@ on the full repo-relative `doc:line` or the planted text verbatim, so a
 synthesis that paraphrases or uses a bare filename scores MISSED even when the
 reviewers all caught the plant. Check the reviewers' findings before concluding
 the layer went quiet. See [[scope-claims-need-checking]].
+
+**Fixed as of `add-journal-identity` (PR #53, 2026-08-29).** State now carries
+`probe_iter_1..4` and agrees with `review-evidence.md` round for round;
+`.claude/skills/proposal-to-pr/SKILL.md:195` mandates the per-iteration key and
+says an append cannot erase an earlier one. Keep counting `## Probe` sections
+anyway — the agreement is now the expected case, so a *disagreement* is the
+finding.
+
+New on that run: the coordinator overrode its own instrument in the
+conservative direction. Iteration 2 exited 0 from `canary verify` and was
+recorded TAINTED in both the artefact and state, because the plant had been
+disclosed in a committed file. Record that as `tool_score_overridden: true` — a
+tool score and a recorded verdict can now legitimately differ, and the artefact
+is still the one to trust.

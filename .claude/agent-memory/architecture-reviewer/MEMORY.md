@@ -5,3 +5,4 @@
 - [Re-read spec after a design rewrite](feedback_reread-spec-after-design-rewrite.md) — specs/*/spec.md lags a rewritten design.md and can still mandate the rejected behaviour
 - [Check design.md code fences](feedback_check-design-code-fences.md) — fenced TS signatures in design.md drift from the shipped signature; `check` cannot see them
 - [Check early returns against unconditional SHALLs](feedback_check-early-return-branches-against-unconditional-shalls.md) — a branch can satisfy its own Scenario and violate the spec prose above it
+- [Recompute path guards off symlinked tmp](feedback_recompute-path-guards-off-symlinked-tmp.md) — macOS $TMPDIR is symlinked; path-containment guards pass there by accident, re-run them on a real path
