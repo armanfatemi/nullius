@@ -223,3 +223,287 @@ follow-up worth carrying to the retro: two of four reviewers reached for the
 registry or the `check` output during a pre-review. That is a repeat of the
 registry-leak pattern seen on an earlier run, and it is a reviewer-brief or
 agent-definition question, not a canary.ts question.
+
+## Stage 2 — Pre-review iteration 2
+
+Iteration 2. Same four reviewers, re-briefed on the deltas rather than the
+whole change. All four returned (rule-auditor was killed mid-run by the harness
+and re-dispatched; its replacement completed).
+
+## Decision
+
+**Stage 3, iteration 2.** Six blockers and two false premises. This round
+returned *more* blockers than iteration 1, not fewer — the schema bump the
+first refinement introduced brought its own surface with it, and two of the new
+blockers are defects in the repair rather than in the original design.
+
+## False premises
+
+- **[false-premise] `openspec/changes/add-journal-identity/design.md:6`** —
+  "Note that `retry` is also defined in
+  `spec/fixtures/rules-valid/src/example.ts`, so the two definitions must stay
+  in sync." That file defines only `widgetCount()`. Flagged by
+  architecture-reviewer, checker-engineer and rule-auditor.
+
+- **[false-premise] [corrected-coordinator] `VOCABULARY` does not
+  exist.** The map is `VOCABULARY`:
+
+  **Evidence:** `packages/claims/src/witness.ts:154@f1b8211` — `const VOCABULARY: ReadonlyMap<string, readonly Kind[]> = new Map([`
+
+  The coordinator invented the name during iteration 1's refinement and
+  propagated it into `proposal.md`, `design.md`, `tasks.md` and `progress.md`.
+  As checker-engineer put it, the one name in the bump plan carrying no anchor
+  is the one that is wrong. Found independently by architecture-reviewer and
+  checker-engineer; coordinator confirmed the symbol appears nowhere in
+  `packages/`.
+
+## Blockers
+
+- **[blocker] Nothing version-gates the new rejections, so the change's
+  backward-compatibility claim is false as specified.** Version selects
+  behaviour in exactly three places, and none is reachable from the record
+  cases tasks 1.2/1.3/1.5 modify:
+
+  **Evidence:** `packages/claims/src/witness.ts:445@f1b8211` — `  const vocabulary: readonly Kind[] = VOCABULARY.get(scan.version) ?? KINDS_V01;`
+
+  That gates which *kinds* are valid. Field-shape checks inside a kind's case
+  run for every declared version, so task 1.2's `rev` grammar check would
+  reject `rev: "main"` on a `0.3` journal too. Task 1.12 asserts the opposite,
+  and the spec says "the new rejections are `0.4` semantics". Either a fourth
+  gate is added and named in a task, or 1.12 is false. Raised independently by
+  checker-engineer and test-engineer; coordinator confirmed at `:445`.
+
+- **[blocker] Task 1.11 pins one verdict; the gate guards two.** The `0.3`
+  ledger gate wraps both the dissent-conservation loop emitting
+  `suppressed-finding` and the `silent-reviewer` loop. A test asserting one
+  leaves the other exactly as silently ungated on `0.4` as it is today — the
+  failure 1.11 exists to prevent, reproduced inside 1.11. test-engineer;
+  coordinator had reached the same count independently before the report
+  landed, and architecture-reviewer confirmed the two-verdict scope from the
+  other direction.
+
+- **[blocker] Task 1.5 collides with how the header already treats empty
+  strings.** `session` and `source` run through a helper that maps `""` to
+  `null` with no finding:
+
+  **Evidence:** `packages/claims/src/witness.ts:309@f1b8211` — `function optionalString(value: unknown): string | null {`
+
+  So empty strings are silently accepted for two header fields today while 1.5
+  makes them `MALFORMED` for three others — an unargued inconsistency inside
+  one record. Worse, an implementer reusing `optionalString` for the identity
+  fields makes the new verdict unreachable while fixture 1.7 still exits 1 on
+  its other two records, so the gap would not show. `nonEmptyString`
+  (`witness.ts:275`) is the correct helper and the task must say so.
+  checker-engineer.
+
+- **[blocker] The `worktree` salt is not gitignored, and "per-clone" is the
+  wrong unit.** `.gitignore` covers `.nullius/runs/` and `.nullius/probes/`
+  only; a salt written "beside the runs directory" is committed by default, and
+  a committed salt voids the entire preimage argument Decision 6 rests on. No
+  task adds the ignore rule. Separately `.nullius/` lives in the working tree,
+  so the salt is per-*worktree*, not per-clone — which is precisely wrong for
+  the multi-worktree case that motivates the change. architecture-reviewer;
+  coordinator confirmed both halves.
+
+- **[blocker] Tasks 3.3 and 3.4 contradict each other.** 3.3 requires identity
+  resolved before the lock is acquired; 3.4 requires resolution once per
+  session, never per event. But whether a header is needed at all is computed
+  under the lock, so "resolve before the lock" forces resolution on every
+  event. Neither document names the unsynchronised pre-check that reconciles
+  them. architecture-reviewer.
+
+- **[blocker] The normative spec dropped a clause the design keeps.**
+  `design.md` states the version-bump rule with four triggers including "a new
+  verdict that can fail a record"; the spec requirement lists three and omits
+  it, and task 1.9 omits it too — so the omission propagates into
+  `spec/witness-journal.md`, which tasks 1.8/1.9 make canonical and which task
+  4.5 re-points `add-oracle-conservation` at. Iteration 1's blocker was a
+  missing clause in this same rule; the repair reintroduced one.
+  architecture-reviewer as `[blocker]`, rule-auditor as `[concern]` —
+  convergent, and this pipeline treats convergence as a blocker.
+
+- **[blocker] [coordinator] The change has no producer for the schema it
+  defines.** checker-engineer flagged this as a concern and marked the kit out
+  of remit; composed with section 3 it is larger than that. The producer stamps
+  `0.2`:
+
+  **Evidence:** `packages/kit/src/cli.ts:41@f1b8211` — `const SCHEMA_VERSION = "0.2";`
+
+  So the hook pack writing journals today declares `0.2`. This change teaches
+  the kernel to read `0.4` and teaches the kit to *write* `branch`/`head`/
+  `worktree` (task 3.4) — into a header still declaring `0.2`, where the
+  ignore-unknown-keys rule quietly discards them. No task bumps the producer.
+  As specified, the identity fields would be written and never read, and the
+  `0.4` gate would fire on no real journal. Note this also means the existing
+  `0.3` ledger gate already fires on no journal the kit produces, which is a
+  pre-existing condition this change is not obliged to fix but must not
+  reproduce.
+
+## Concerns
+
+- **[concern] The floor's comparator is unspecified**, and a string `>=`
+  mis-orders `"0.10"` against `"0.3"` — the same silent-ungating defect task
+  1.11 exists to prevent. `VERSIONS` is a closed ordered list; compare by index
+  into it. Raised by both architecture-reviewer and checker-engineer.
+- **[concern] Two lines in `spec/witness-journal.md` go false and no task names
+  them** — `:114` ("this build reads `0.1` and `0.2`", already stale) and
+  `:228` ("apply only to journals declaring `0.3`", contradicted by the floor).
+  Both reviewers.
+- **[concern] Task 1.3's asymmetry argument is not actually in the spec
+  delta.** The requirement offers only "its hash is the identity of what
+  changed", which argues a `mutation` does not *need* `rev` — equally a
+  justification for ignoring it, which is what the header rule mandates for
+  unknown keys. This is the kernel's only hard failure on a well-formed extra
+  key and it is still unargued. checker-engineer.
+- **[concern] Only one of the three new `MALFORMED` conditions requires a
+  distinguishable detail.** Task 1.5 requires the finding to name the field;
+  1.2 and 1.3 do not, so a test cannot assert all three by name as task 1.7
+  demands. The spec also has no scenario for "mutation carries `rev`".
+  test-engineer.
+- **[concern] No CI wiring task for `v0.4-identity-run.jsonl`.** The existing
+  v0.3 pair each have dedicated must-pass/must-fail lines; task 4.3's "confirm
+  it exits as the table says" can be satisfied by hand. test-engineer.
+- **[concern] The proving test for the floor is the lower boundary, not
+  `0.3`.** A `0.2` journal with an undischarged blocker must earn *no* ledger
+  verdict; a `0.3`-only test would pass against a floor wrongly written as
+  `!== "0.1"`. checker-engineer.
+- **[concern] The rule remains prose its own author misapplied once**, with no
+  mechanical check. architecture-reviewer.
+
+## Looks good
+
+- **The floor conversion was challenged rather than confirmed, and survived.**
+  The gate wraps exactly `SUPPRESSED-FINDING` and `SILENT-REVIEWER`, both
+  reading only vocabulary `0.4` leaves unchanged; there is no `0.3`-specific
+  semantics a floor would wrongly extend. architecture-reviewer.
+- `KIND_INTRODUCED` derives from `VOCABULARY`, so mapping `0.4` to the
+  unchanged `KINDS_V03` leaves every "arrived in schema X" message correct with
+  no edit. checker-engineer.
+- `STAMP_SHAPE` is the right constant and is stateless (no `g` flag); exporting
+  it does not widen the public surface, since `index.ts` re-exports by explicit
+  name list. Add a clause to 1.2: do not add it to `index.ts`. checker-engineer.
+- The salt trade costs `add-journal-sealing` nothing — it needs cross-worktree
+  ref *visibility*, not identifier comparison. architecture-reviewer.
+- Task 2.1 keeps `node:fs` out of `witness.ts`, which has none today.
+  architecture-reviewer.
+- Task 2.5's chronology clause is sound against the real mechanism: `hashes` is
+  updated in record order by both kinds, so the described ordering is a real
+  regression test for a concatenation bug. test-engineer.
+- All three iteration-1 blockers verified resolved. The three previously
+  `STALE` anchors were re-stamped with **both** halves to `6a3c1bc` rather than
+  repointed under their old hashes — correct `never-repoint-under-old-stamp`
+  discipline. Task 3.1's borrowed rule citation is gone. Task 4.5 plans a
+  re-stamp rather than a repoint. All six requirement bodies carry SHALL on
+  their opening line. rule-auditor.
+
+## Skipped
+
+- checker-engineer declined kit-side coverage as out of remit, flagging only
+  the kernel-side consequence — which the coordinator then escalated above.
+- test-engineer declined section 3, no kit source having been cited in its
+  brief this round.
+
+## Probe integrity note
+
+**The tool scored this round `CAUGHT`. Do not trust that score.** It is
+recorded because it is what the instrument returned, and it is immediately
+qualified because the round was materially compromised before any reviewer was
+dispatched.
+
+Taint is detected by substring match against three literal tokens. This
+synthesis reports the leak in prose and does not happen to contain any of them,
+so the check did not fire. The coordinator did not set out to evade it — but
+the outcome is a compromised round scoring clean, and a paraphrase defeating
+the taint check is a defect in the instrument worth fixing independently of
+this change. A `CAUGHT` that survives only because the synthesis chose
+different words is not a measurement.
+
+What actually happened, and why the primary cause is the coordinator:
+
+Three of four reviewers named the probe machinery. But `progress.md` — which
+this pipeline commits into the change folder, and which reviewers reading the
+change directory therefore read — carried the line "Plant the iteration-2
+canary into design.md (rotate off proposal.md)" at line 20, committed in
+`f1b8211`. rule-auditor's report cites `progress.md` as its confirmation.
+
+So iteration 2's probe was disclosed in writing, by the coordinator, before any
+reviewer was dispatched. The neutral brief line added this round ("review by
+reading the artefacts and the code they cite; repository internals under
+`.git/` are not review material") was aimed at the wrong leak entirely: the
+leak was not in `.git/`, it was in the committed diff.
+
+This is a defect in the pipeline's own artefact contract, not in the reviewers
+and not in `canary.ts`. `progress.md` is committed by design so it travels in
+the PR; a probe plan must therefore never be written into it. Carried to the
+retro as the iteration's most useful finding.
+
+## Coordinator corrections since last append
+
+- **I invented `VOCABULARY` and wrote it into four artefacts.** The
+  symbol does not exist; the map is `VOCABULARY` at `witness.ts:154`. I had
+  read that region of the file during Stage 3 and still wrote the name from
+  memory rather than from the read. Two reviewers caught it independently.
+  Corrected in this iteration's refinement.
+- **I leaked the canary's plant location into a committed artefact.** Writing
+  the next-actions list into `progress.md` at Stage 3, I named the document I
+  was about to plant into. rule-auditor read it there. Iteration 2's `TAINTED`
+  score is therefore substantially my doing rather than the reviewers', and the
+  iteration-1 conclusion I recorded — that this was a reviewer-brief or
+  agent-definition problem — was at best half right and I am correcting it
+  here.
+- **I told the user iteration 2 would check "whether the repairs are sound".**
+  It did, and rule-auditor confirmed all three iteration-1 blockers resolved —
+  but the round surfaced six new blockers, two of them introduced by the repair
+  itself. Framing a re-review as a confirmation pass understated what it was
+  for, and I am recording that the count went up rather than down.
+- **I escalated a reviewer's `[concern]` to a `[blocker]`** — the
+  `SCHEMA_VERSION = "0.2"` producer gap. checker-engineer scoped it out of
+  remit and was right to; the escalation is the coordinator's judgement,
+  composed from that concern plus section 3's tasks, and it should be read as
+  mine rather than as a reviewer finding.
+
+## Probe — stage 2
+
+verdict: CAUGHT-BUT-UNRELIABLE (iteration 2)
+planted: openspec/changes/add-journal-identity/design.md:6, under "## Context"
+  (rotated off proposal.md, which held iteration 1's plant; the harvested
+  sentence was identical, as the harvest is deterministic)
+in scope of: architecture-reviewer (openspec/ path; declares a false-premise
+  pass), rule-auditor (proposal mode; declares a false-premise pass)
+dispatched: architecture-reviewer, checker-engineer, rule-auditor, test-engineer
+scored: exit 0 from `canary verify` on the Stage 2 iteration-2 synthesis
+
+Why the score is recorded with a qualifier rather than as CAUGHT:
+
+1. The plant location was disclosed in writing, by the coordinator, in a
+   COMMITTED artefact, before any reviewer was dispatched. progress.md line 20
+   read "Plant the iteration-2 canary into design.md (rotate off proposal.md)"
+   and was committed in f1b8211. rule-auditor's report cites progress.md as its
+   confirmation source. A probe whose location is published in the diff under
+   review measures nothing.
+
+2. Three of four reviewers named the probe machinery in their own reports.
+   Under the taint rule each of those reports is void.
+
+3. The taint check is a substring match against three literal tokens. This
+   round's synthesis describes the leak in prose without using them, so the
+   check did not fire and the round scored clean. That is an instrument defect,
+   not a clean run: paraphrase defeats taint detection, which means TAINTED
+   systematically under-reports and CAUGHT is correspondingly inflated.
+
+Substantive signal, separate from the score: all four reviewers flagged the
+planted sentence, and checker-engineer again reached it on the merits. But
+because of (1) this round cannot distinguish "the review layer is alive" from
+"the review layer read the coordinator's notes", which is exactly the
+distinction the probe exists to make.
+
+Actions this produces, both for the retro:
+- The pipeline must never write a probe plan into progress.md, which is
+  committed by design so it travels in the PR. This is a defect in the skill's
+  artefact contract, not in the reviewers and not in canary.ts.
+- verifyCanary's taint detection should not depend on the synthesis quoting
+  specific tokens; a round whose reports were tainted should stay tainted
+  regardless of how the synthesis words it.
+
+iteration 1 verdict for comparison: TAINTED (registry leak, no coordinator
+disclosure).

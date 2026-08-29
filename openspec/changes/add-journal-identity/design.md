@@ -112,6 +112,13 @@ The rule itself was never in dispute:
 > record's validity**, or a new verdict that can fail a record. It is not
 > required for additive optional metadata that no verdict reads.
 
+Those four triggers travel together. The iteration-2 review caught this
+document's own spec delta restating the rule with the fourth clause dropped —
+the same failure mode as iteration 1, one clause further along, in the text
+tasks 1.8/1.9 were about to make canonical. The rule now says so about itself:
+a restatement that loses a clause is how a rule decays, and this one has now
+done it twice in two iterations.
+
 The third clause is the one this change taught us to write down. The original
 rule listed only additions, so a change that *removes* validity read as
 out-of-scope by omission, which is exactly how it was misapplied here.
@@ -158,7 +165,7 @@ have gone quiet for the newest schema only.
 That is this repository's cardinal failure mode reproduced by a version bump,
 so the bump carries three obligations, not one:
 
-1. `VERSIONS` gains `"0.4"`; `KINDS_BY_VERSION` maps it to the **unchanged**
+1. `VERSIONS` gains `"0.4"`; `VOCABULARY` maps it to the **unchanged**
    `KINDS_V03` — no kind is added, which is why the kinds table needs no new
    constant.
 2. The ledger gate becomes a floor (`0.3` or later) rather than an equality.
@@ -308,8 +315,21 @@ So the construction is specified rather than left to the implementer:
   and no `SUPPRESSED-FINDING`, with every fixture still exiting as its table
   says. Bought down by making the gate a floor and pinning it with a named unit
   test (tasks 1.10 and 1.11), not by care.
-- **`worktree` identifiers do not compare across clones.** The per-clone salt
-  that makes the digest a real redaction also makes it clone-local. Anything
-  later trying to correlate worktrees across machines will find the field
-  useless for that, by construction. Stated in Decision 6 so it is a known
-  boundary rather than a bug report.
+- **`worktree` identifiers do not compare across clones.** The salt that makes
+  the digest a real redaction also makes it local to wherever the salt lives.
+  Anything later trying to correlate worktrees across machines will find the
+  field useless for that, by construction. Stated in Decision 6 so it is a
+  known boundary rather than a bug report. Note the unit is per-*worktree*
+  rather than per-clone as first written, because `.nullius/` is in the working
+  tree — task 3.5b decides deliberately whether the salt should move to the git
+  common directory instead, and records the reason either way.
+- **The salt is only a redaction if it is not committed.** `.gitignore` covers
+  `.nullius/runs/` and `.nullius/probes/` and nothing else, so a salt written
+  beside them lands in the repository by default and the preimage argument
+  evaporates. Task 3.5a adds the ignore rule in the same commit that creates
+  the file; the two must not be separable.
+- **The rule this change writes down is prose, and prose is what failed.** It
+  was misapplied by its own author in iteration 1 and restated with a missing
+  clause in iteration 2. Nothing mechanically checks that a schema change and a
+  version bump travel together. That is not in scope here, but it is the
+  obvious next ratchet and is recorded as such.

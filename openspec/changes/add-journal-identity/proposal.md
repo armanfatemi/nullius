@@ -138,8 +138,19 @@ from aggregating verdicts, never from merging records. See Decision 1.
 
   Hooks fail open; that constraint does not bend for provenance, and it does
   not bend for a git call that merely takes its time. See Decision 5.
+- **The producer moves too, and that is the part with live consequences.** The
+  hook pack stamps `0.2` today:
+
+  **Evidence:** `packages/kit/src/cli.ts:41@f1b8211` — `const SCHEMA_VERSION = "0.2";`
+
+  So the ledger verdicts, gated at `0.3` and later, currently fire on no
+  journal this repository has ever produced. Task 3.8 bumps the producer to
+  `0.4` — without it this change ships a schema nothing emits, next to the
+  producer that should emit it — and task 3.9 measures what that switches on
+  across the existing `.nullius/runs/` corpus before it lands. A verdict meeting
+  live data for the first time is exactly where a tuning error surfaces.
 - **The version-support table and the ledger gate both move.** `VERSIONS`
-  gains `0.4`, `KINDS_BY_VERSION` maps it to the unchanged `KINDS_V03`, and the
+  gains `0.4`, `VOCABULARY` maps it to the unchanged `KINDS_V03`, and the
   exact-equality ledger gate becomes a floor so `0.4` keeps every verdict `0.3`
   has. That last one is the whole risk of the bump and it carries its own test.
 - No existing `0.3` journal changes verdict. Every field added here is
@@ -204,7 +215,7 @@ is archived and the hook pack writes journals today.
 
 |                                |                                                     |
 | ------------------------------ | --------------------------------------------------- |
-| Estimated tasks                | 31                                                  |
+| Estimated tasks                | 40                                                  |
 | Packages or surfaces touched   | 3 (packages/claims, packages/kit, spec/)            |
 | Risk                           | MEDIUM                                              |
 | Expected sessions to implement | 1                                                   |

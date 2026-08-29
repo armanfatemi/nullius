@@ -83,8 +83,23 @@ rule here: a journal is written by a machine and has no author to be lenient
 toward, and one canonical spelling keeps `rev` values comparable by string
 equality.
 
-A `mutation` SHALL NOT carry `rev`: its hash is the identity of what changed,
-and a mutation asserts nothing intended to be checked again.
+A `mutation` SHALL NOT carry `rev`, and a `mutation` carrying it SHALL be
+`MALFORMED` rather than ignored.
+
+This is the only place the schema hard-fails a well-formed extra key, and it is
+deliberately asymmetric with the header's rule that unrecognised keys are
+ignored. The asymmetry is argued rather than assumed. An unrecognised *header*
+key is a message from a producer this validator does not know, and ignoring it
+is forward compatibility. `rev` on a `mutation` is different: `rev` is a key
+this schema defines, with a meaning this schema assigns, placed on a record the
+schema says cannot carry it. That is not an unknown key from the future — it is
+a known key used wrongly, and the most likely producer of one is code that
+believes a mutation records something re-checkable. Ignoring it would let that
+belief persist silently in a producer, which is precisely the misunderstanding
+the restriction exists to prevent.
+
+"A mutation does not *need* `rev`" would argue only for ignoring it. The reason
+to reject is that a mutation asserting a rev is evidence of a producer bug.
 
 Absence of `rev` SHALL NOT be a finding under this schema. A verdict that reads
 the field is a new verdict and takes a version bump with it.
@@ -96,18 +111,41 @@ the field is a new verdict and takes a version bump with it.
 - **THEN** validation reports no finding, and invariant 2 behaves exactly as it
   does without the field
 
+Each `MALFORMED` finding this requirement introduces SHALL carry a detail that
+names which rule was broken, so that the three conditions are distinguishable
+from one another in a report rather than surfacing as one indistinct verdict.
+
 #### Scenario: a malformed rev is loud
 
 - **WHEN** a `verification` carries `rev: "main"`
 - **THEN** the record is `MALFORMED`, because a ref name is mutable and names a
-  different tree next week
+  different tree next week, and the finding's detail names `rev`
+
+#### Scenario: a mutation carrying a rev is malformed
+
+- **WHEN** a `mutation` carries `rev: "541ae94"`
+- **THEN** the record is `MALFORMED`, and the finding's detail says a mutation
+  cannot carry `rev` — distinguishable from the malformed-rev finding above
+
+#### Scenario: 0.3 journals keep their old semantics
+
+- **WHEN** a `0.3` journal carries a `verification` with `rev: "main"` and a
+  `mutation` carrying `rev`
+- **THEN** validation reports neither as `MALFORMED`, because both rejections
+  are `0.4` semantics and a previously-valid journal does not become invalid
+  under a validator that learned a newer schema
 
 ### Requirement: Schema version bumps track the set of valid records
 
 The schema version SHALL be bumped when the set of valid records changes: a new
-kind, a new member of a closed vocabulary, or a tightening that makes a record
-invalid which a previous version accepted. It SHALL NOT be bumped for additive
-optional metadata that no verdict reads.
+kind, a new member of a closed vocabulary, a tightening that makes a record
+invalid which a previous version accepted, or a new verdict that can fail a
+record. It SHALL NOT be bumped for additive optional metadata that no verdict
+reads.
+
+These four triggers are the canonical statement of the rule. Any restatement
+elsewhere SHALL carry all four; the rule has already been misapplied once by
+omission, and a restatement that drops a clause is how that recurs.
 
 A field being optional SHALL NOT by itself exempt a change from the bump.
 Optionality is a property of a field; validity is a property of a record, and
