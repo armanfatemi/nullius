@@ -1,0 +1,12 @@
+{"kind":"journal","version":"0.4","origin":"hooks","session":"7d41b0c9-3e52-4a86-b1f7-90c2ad5e6b41","source":"startup","branch":"feat/add-journal-identity","head":"8c71f46","worktree":"3f9c1e0a44b27d51"}
+{"kind":"stage","id":"s1","phase":"verify","iteration":1,"change":"add-journal-identity"}
+{"kind":"dispatch","id":"d1","task":"find consumers of legacy.published"}
+{"kind":"report","id":"r1","dispatch":"d1","outcome":"empty","statement":"None."}
+{"kind":"dispatch","id":"d2","task":"review the schema bump"}
+{"kind":"report","id":"r2","dispatch":"d2","outcome":"found","findings":["the ledger gate was an equality against 0.3"]}
+{"kind":"finding","id":"f1","stage":"s1","dispatch":"d2","ref":"B1","severity":"blocker","author":"checker-engineer","text":"The ledger gate tested the declared version for equality with 0.3, so a 0.4 journal would earn neither SUPPRESSED-FINDING nor SILENT-REVIEWER while every fixture still exited as its table says."}
+{"kind":"resolution","id":"res1","finding":"f1","outcome":"fixed","text":"Converted the gate to a floor comparing by index into VERSIONS; this fixture is the 0.4 journal that would have gone ungated."}
+{"kind":"verification","id":"v1","target":{"path":"src/retry.ts","hash":"9f2c4a1b8e7d"},"rev":"541ae94","verdict":"safe"}
+{"kind":"reliance","id":"x1","relies_on":"v1"}
+{"kind":"mutation","id":"m1","target":{"path":"src/migrate.ts","hash":"1d4e7b02cc91"},"tool":"Edit"}
+{"kind":"append","id":"a1","corrections_since_last_append":"None."}

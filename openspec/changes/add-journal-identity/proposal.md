@@ -8,7 +8,7 @@ Two gaps, one root cause: **a journal records what happened and not where.**
 
 A `verification` pins the artifact's hash and nothing else:
 
-**Evidence:** `packages/claims/src/witness.ts:650@541ae94`
+**Evidence:** `packages/claims/src/witness.ts:665@6a3c1bc`
 
 ```
         verified.set(record.id, target);
@@ -42,7 +42,7 @@ roll-up problem and the durability problem are the same problem.
 
 Which leaves the roll-up itself. `witness validate` reads exactly one file:
 
-**Evidence:** `packages/claims/src/cli.ts:249@a717cc4` — `    console.error("usage: nullius witness validate <journal.jsonl>");`
+**Evidence:** `packages/claims/src/cli.ts:381@6a3c1bc` — `    console.error("usage: nullius witness validate <journal.jsonl> [--expect-rules <rule-id...>]");`
 
 That is the right contract for one run and the wrong one for sixty-four. The
 question at that scale is not "is journal 37 internally consistent" but "across
@@ -61,12 +61,38 @@ from aggregating verdicts, never from merging records. See Decision 1.
   `verification` records only. `mutation` does not get one — its hash *is* the
   identity of what changed. This field is what a later `witness replay` needs
   and is landed now because a field forgotten now costs a version bump later.
-- **No schema version bump.** Kinds are a closed list per version:
+- **Schema version bump to `0.4`.** An earlier draft of this proposal claimed
+  the change was purely additive and kept `0.3`. That was false, and pre-review
+  caught it. No record path rejects unknown keys today — `mutation` reads only
+  its `target` and ignores every other key:
+
+  **Evidence:** `packages/claims/src/witness.ts:719@6a3c1bc`
+
+  ```ts
+        mutations += 1;
+        const target = asTarget(record.raw.target);
+  ```
+
+  So a `verification` carrying `rev: "main"` and a `mutation` carrying `rev`
+  both validate **clean at HEAD today**. Making either `MALFORMED` shrinks the
+  set of valid records, which is exactly the trigger the rule in Decision 3
+  names. Kinds are a closed list per version and that list is unchanged:
 
   **Evidence:** `packages/claims/src/witness.ts:143@541ae94` — `const KINDS_V03 = [...KINDS_V02, "stage", "finding", "resolution", "check", "decision"] as const;`
 
-  Nothing here changes the set of valid records, so `0.3` still describes them
-  exactly. See Decision 3.
+  but "the set of valid records" is wider than the set of kinds, and this
+  change moves it. See Decision 3.
+- **The bump is not a one-line change, and that is the interesting part.** The
+  ledger verdicts are gated on the journal declaring `0.3` by exact string
+  equality:
+
+  **Evidence:** `packages/claims/src/witness.ts:1077@6a3c1bc` — `  if (scan.version === "0.3") {`
+
+  Adding `0.4` to the supported list without revisiting that gate would leave
+  every `0.4` journal silently ungated for `SILENT-REVIEWER`,
+  `SUPPRESSED-FINDING` and the rest — a checker that went quiet while CI stayed
+  green, which is the one failure this repository exists to prevent. The gate
+  becomes a floor comparison, and a test pins it. See Decision 3.
 - **`witness survey <glob>`** (kernel): validates each journal independently and
   aggregates the *reports*. Prints the summed three-way outcome counts,
   per-journal pass/fail, and journals that reached no terminal record at all.
@@ -81,7 +107,7 @@ from aggregating verdicts, never from merging records. See Decision 1.
 - **The exported type surface moves.** `JournalHeader` and `JournalReport` are
   both public API, so adding fields to either crosses the package boundary:
 
-  **Evidence:** `packages/claims/src/index.ts:33@a717cc4` — `  type JournalHeader,`
+  **Evidence:** `packages/claims/src/index.ts:61@6a3c1bc` — `  type JournalHeader,`
 
   The addition is optional-only, so no consumer breaks — but it is a public
   surface change and belongs in the CHANGELOG rather than passing as an
@@ -94,18 +120,44 @@ from aggregating verdicts, never from merging records. See Decision 1.
 
   So the "adds no verdict" claim is structurally safe rather than merely
   intended: a verdict added later fails safe by default.
-- **New dependency direction in the kit.** Nothing in the kit's shipping code
-  spawns a process today:
+- **New dependency direction in the kit.** This change gives the kit its first
+  process spawn. Nothing in the kit's shipping code spawned one before it, and
+  the spawn it adds stays off the locked write path — the two modules that run
+  while the append lock is held spawn nothing:
 
-  **Evidence:** `grep -rn --exclude='*.test.ts' 'child_process' packages/kit/src/` → 0 results
+  **Evidence:** `grep -rn --exclude='*.test.ts' 'child_process' packages/kit/src/journalFile.ts packages/kit/src/record.ts` → 0 results
 
   Reading `branch`/`head` needs git. This is a real widening of the kit's
-  surface and it is governed by one rule: **git failure is never a recording
-  failure.** No repository, no git binary, a detached HEAD — the fields are
-  absent, recording proceeds. Hooks fail open; that constraint does not bend
-  for provenance.
-- No existing journal changes verdict. Every field added here is optional, and
-  the header scan already ignores keys it does not know.
+  surface and it is governed by two rules, not one. The first is **git failure
+  is never a recording failure**: no repository, no git binary, a detached HEAD
+  — the fields are absent, recording proceeds. The second was added after
+  pre-review pointed out that the first does not cover the actual hazard, which
+  is git *succeeding slowly*: **no git call runs while the append lock is
+  held**, and every git call is bounded well under the lock's wait deadline.
+  A hook that waits past that deadline does not defer, it is refused:
+
+  **Evidence:** `packages/kit/src/journalFile.ts:49@6a3c1bc` — `const DEFAULT_WAIT_MS = 2_000;`
+
+  Hooks fail open; that constraint does not bend for provenance, and it does
+  not bend for a git call that merely takes its time. See Decision 5.
+- **The producer does not move, and that is a deliberate scope line.** The hook
+  pack stamps `0.2` and keeps stamping it:
+
+  **Evidence:** `packages/kit/src/cli.ts:41@bcf228f` — `const SCHEMA_VERSION = "0.2";`
+
+  Bumping it was scoped in during review and scoped back out when the bump was
+  measured — see Non-Goals. The identity fields are readable at any declared
+  version, so section 3's work lands and is read; what does not happen is a
+  journal declaring `0.4`.
+- **The version-support table and the ledger gate both move.** `VERSIONS`
+  gains `0.4`, `VOCABULARY` maps it to the unchanged `KINDS_V03`, and the
+  exact-equality ledger gate becomes a floor so `0.4` keeps every verdict `0.3`
+  has. The floor is correct on its own terms and is worth landing regardless of
+  who declares `0.4`; it carries its own test.
+- No existing `0.3` journal changes verdict. Every field added here is
+  optional, the header scan already ignores keys it does not know, and a `0.3`
+  journal carrying `rev` keeps validating exactly as it does today — the new
+  rejections are `0.4` semantics, which is what the bump buys.
 
 ## Non-Goals
 
@@ -122,6 +174,42 @@ from aggregating verdicts, never from merging records. See Decision 1.
 - **A producer for `verification`.** It still has none. `rev` is a field on a
   record nothing emits, which is the same bet v0.2 made on `mutation` and v0.3
   made on the ledger kinds — and the reason the field has to be right now.
+- **Bumping the producer to `0.4`.** Scoped in during review and scoped back
+  out when it was measured. The kit stamps `0.2`, so the ledger verdicts — gated
+  at `0.3` and later — fire on no journal this repository has ever produced.
+  Bumping the producer switches them on, and the result is not a calibration
+  question:
+
+  | corpus | header | `SILENT-REVIEWER` findings |
+  | ------ | ------ | -------------------------- |
+  | 18 live journals, 254 `found` reports, 0 `finding` records | `0.2` (real) | 0 |
+  | the same 18 journals | rewritten to `0.3` | 255 |
+
+  CI is unaffected — its journal's terminals are all `no-report`, and the
+  verdict needs `found`. Three gate designs were tried and all three failed.
+  Gating on schema version is what already exists and is a proxy for producer
+  capability. Gating on `origin` makes a verdict depend on a producer's
+  self-declaration, since `origin` is a CLI flag and an environment variable —
+  that breaks `model-proposes-code-verifies` and was withdrawn. Gating on the
+  presence of a `finding` record deletes the verdict, which exists precisely to
+  fire when no finding was filed.
+
+  The reason none of them work is one level down. For a hook journal
+  `outcome: "found"` means only that the subagent's final message was
+  non-empty:
+
+  **Evidence:** `packages/kit/src/record.ts:298@bcf228f` — `          "the subagent stopped without a final message recorded by the harness — it returned, and returned nothing",`
+
+  So every returning subagent is `found`, including implementers and search
+  agents, and `SILENT-REVIEWER` is reading a self-reported reviewer semantic
+  into a harness-derived field. Two producers write one field name with two
+  meanings, and no placement of the gate repairs that.
+
+  That is a real design question about the outcome vocabulary, and it is not
+  what this change is about. It moves to a follow-up, which inherits the
+  measurements above and the three rejected designs rather than rediscovering
+  them. The same test Decision 4 used to move sealing out applies: it is not
+  about identity.
 - **Ref-backed sealing.** Split out to `add-journal-sealing` after review found
   an unresolved concurrency defect in the seal path: the specified
   `hash-object` → `mktree` → `commit-tree` → `update-ref` sequence is a
@@ -164,18 +252,40 @@ is archived and the hook pack writes journals today.
 
 |                                |                                                     |
 | ------------------------------ | --------------------------------------------------- |
-| Estimated tasks                | 23                                                  |
+| Estimated tasks                | 40                                                  |
 | Packages or surfaces touched   | 3 (packages/claims, packages/kit, spec/)            |
-| Risk                           | LOW                                                 |
+| Risk                           | MEDIUM                                              |
 | Expected sessions to implement | 1                                                   |
 
-LOW rather than MEDIUM: every field is optional and additive, no exported union
-grows, no existing journal changes verdict, and the one public-surface change
-(fields on `JournalHeader` / `JournalReport`) cannot break a consumer that does
-not read them.
+MEDIUM rather than LOW, revised after pre-review and held there after the
+producer bump was scoped back out. The first estimate assumed a
+purely additive change and was wrong on its own terms: this change tightens
+record validity and therefore bumps the schema, and the bump drags in a gate
+that is written as exact string equality against `"0.3"`. Getting that gate
+wrong does not fail loudly — it silently ungates the ledger verdicts for every
+`0.4` journal, which is a checker going quiet behind a green build. No exported
+union grows and no public type breaks; the risk is concentrated entirely in the
+version gate and is bought down by task 1.11's test.
 
 ## Open questions
 
+- **Should the header key be `head`, or something that carries its own
+  definition?** Decision 2 narrows `head` to *the commit the session started
+  from*, and puts that narrowing in the spec text. Pre-review observed that the
+  design's own argument — "a caveat that lives only in a comment gets read as
+  absent" — applies to the key name too: a JSON key called `head` travels to
+  every consumer without its spec, and the obvious misreading is the stale one.
+  A self-describing key (`head_at_start`) would close it at the cost of a
+  longer name and a divergence from `branch`/`worktree`, which need no such
+  qualifier. Left open rather than decided silently, because renaming after a
+  producer exists is a migration and renaming now is free.
+- **The pre-existing fixture-coverage gap survives this change.** No TypeScript
+  file opens `spec/fixtures/v0.3-broken-run.jsonl`; its "26 findings" are
+  asserted only by a negated exit code in CI, which stays 1 while any single
+  verdict still fires. Task 1.6 closes this for the records this change adds
+  and for nothing else. That is a deliberate scope line, not an oversight, and
+  it is recorded here so the next reader does not mistake the new assertions
+  for coverage of the old ones.
 - **Does an unreachable `rev` deserve a verdict?** A `verification` can pin a
   commit that a later rebase or squash makes unreachable. The convention already
   documents this failure for anchors — a stamp whose commit is gone fails open

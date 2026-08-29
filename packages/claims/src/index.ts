@@ -55,13 +55,16 @@ export {
 } from "./audit";
 export {
   isJournalFailure,
+  surveyJournals,
   validateJournal,
   TERMINAL_RECORD_KINDS,
   type JournalFinding,
   type JournalHeader,
   type JournalOrigin,
   type JournalReport,
+  type JournalSurvey,
   type JournalVerdict,
+  type SurveyedJournal,
 } from "./witness";
 export {
   checkRuleCoverage,

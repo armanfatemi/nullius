@@ -1,6 +1,8 @@
 import { spawnSync } from "node:child_process";
 import {
   existsSync,
+  chmodSync,
+  copyFileSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -10,7 +12,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 import { afterAll, describe, expect, it } from "vitest";
 
@@ -409,6 +411,97 @@ suite("CLI characterization — witness", () => {
 });
 
 /**
+ * `witness survey` — add-journal-identity tasks 2.1-2.6. Through the built
+ * binary like the rest of this suite: `runWitnessSurvey` is not exported.
+ */
+suite("CLI characterization — witness survey", () => {
+  it("still takes exactly one path for `validate`, which is why `survey` exists", () => {
+    // Task 2.6. Teaching `validate` to accept globs was rejected in design.md
+    // Decision 1 — it is a CI gate people have already wired, and a verb that
+    // sometimes-aggregates invites the merge semantics that decision forbids.
+    // So this refusal is a feature with a reason, and it gets pinned.
+    const two = run(
+      "witness",
+      "validate",
+      "spec/fixtures/valid-run.jsonl",
+      "spec/fixtures/v0.3-run.jsonl",
+    );
+
+    expect(two.code).toBe(2);
+    expect(two.output).toContain("usage: nullius witness validate");
+
+    // And a glob is not expanded by `validate` either: quoted, it reaches the
+    // CLI as a literal path that does not exist.
+    const glob = run("witness", "validate", "spec/fixtures/*.jsonl");
+    expect(glob.code).toBe(2);
+    expect(glob.output).toContain("no such file:");
+  });
+
+  it("prints usage when survey is given no glob", () => {
+    const result = run("witness", "survey");
+
+    expect(result.code).toBe(2);
+    expect(result.output).toContain("nullius witness survey");
+  });
+
+  it("reports an unmatched glob with exit 2 rather than an empty survey", () => {
+    const result = run("witness", "survey", "spec/fixtures/no-such-*.jsonl");
+
+    expect(result.code).toBe(2);
+    expect(result.output).toContain("no journals matched:");
+  });
+
+  it("surveys a glob of valid journals with exit 0", () => {
+    const result = run("witness", "survey", "spec/fixtures/valid-run.jsonl");
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("1 journal(s) surveyed, 0 failing");
+  });
+
+  it("exits 1 when any surveyed journal fails", () => {
+    const result = run("witness", "survey", "spec/fixtures/*.jsonl");
+
+    expect(result.code).toBe(1);
+    expect(result.output).toContain("do not hold up");
+  });
+
+  it("prints the journal count in the same block as the totals", () => {
+    const result = run("witness", "survey", "spec/fixtures/*.jsonl");
+
+    // A summed outcome triple with no denominator reads as one validated run.
+    expect(result.stdout).toMatch(
+      /Outcomes across \d+ independently validated journal\(s\): \d+ found, \d+ explicitly empty, \d+ never reported\./,
+    );
+    expect(result.stdout).toMatch(/\d+ journal\(s\) surveyed, \d+ failing, \d+ valid\./);
+  });
+
+  it("documents survey in the witness help block, one example line still", () => {
+    const result = run("witness", "--help");
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("survey <glob...>");
+    // One `example:` line per command block, still — the overview is composed
+    // from these blocks and the funnel suite counts one per command.
+    expect(
+      result.stdout.split("\n").filter((line) => line.trimStart().startsWith("example:")),
+    ).toHaveLength(1);
+  });
+
+  it("refuses --expect-rules on a survey rather than ignoring it", () => {
+    const result = run(
+      "witness",
+      "survey",
+      "spec/fixtures/valid-run.jsonl",
+      "--expect-rules",
+      "build-before-cli",
+    );
+
+    expect(result.code).toBe(2);
+    expect(result.output).toContain("--expect-rules belongs to `witness validate`");
+  });
+});
+
+/**
  * `--expect-rules` — add-silent-rule-check tasks 3.2-3.4. Exercised through
  * the built CLI, same as the rest of this suite: `runWitness` is not exported
  * (cli.ts ends in `process.exit(main())`), so the observable contract is
@@ -683,5 +776,72 @@ suite("CLI characterization — --format json on a no-match run", () => {
     const result = run("check", "no/such/dir/**/*.md");
     expect(result.code).toBe(0);
     expect(result.stdout).toBe("");
+  });
+});
+
+describe("witness survey — post-review fixes", () => {
+  const FIXTURE = "spec/fixtures/valid-run.jsonl";
+
+  // Every aggregate line, not just the count. A dedupe that fixed the
+  // denominator and left the sums would pass a count-only assertion, and the
+  // sums are the reason the verb exists.
+  const aggregates = (r: { output: string }) =>
+    r.output
+      .split("\n")
+      .filter(
+        (line) =>
+          line.includes("journal(s) surveyed") ||
+          line.includes("record(s) read across") ||
+          line.includes("Outcomes across"),
+      );
+
+  it("counts one file once when reached by two spellings", () => {
+    // Deduping on raw glob output counted one file once per spelling, which
+    // inflated every total INCLUDING the journal count printed beside them —
+    // so the number a reader would use to sanity-check the totals was wrong in
+    // the same direction as the totals.
+    const one = run("witness", "survey", FIXTURE);
+
+    for (const other of [resolve(REPO_ROOT, FIXTURE), FIXTURE.toUpperCase()]) {
+      const both = run("witness", "survey", other, FIXTURE);
+      expect(both.output).toContain("1 journal(s) surveyed");
+      expect(both.code).toBe(one.code);
+      expect(aggregates(both)).toEqual(aggregates(one));
+    }
+  });
+
+  it("refuses an unreadable file with exit 2, like a directory", () => {
+    // isFile() is not readability: a mode-000 regular file passed the earlier
+    // stat guard and then threw EACCES uncaught, exiting 1 — the same code a
+    // failing journal returns, which is the confusion the guard existed to
+    // close while its message claimed it had.
+    const dir = mkdtempSync(join(tmpdir(), "nullius-survey-"));
+    const file = join(dir, "x.jsonl");
+    try {
+      copyFileSync(join(REPO_ROOT, FIXTURE), file);
+      chmodSync(file, 0o000);
+      const result = run("witness", "survey", file);
+
+      expect(result.code).toBe(2);
+      expect(result.stderr).toContain("cannot read journal");
+      expect(result.output).not.toMatch(/at .*\.js:\d+/);
+    } finally {
+      chmodSync(file, 0o644);
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a glob that matched a directory with exit 2, not a crash", () => {
+    // Reading a directory throws EISDIR, which exited 1 — the same code a
+    // genuinely failing journal returns. A mistyped glob was indistinguishable
+    // from a finding, and the operator saw a Node stack trace either way.
+    const result = run("witness", "survey", "spec/fixtures");
+
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain("cannot read journal");
+    // The cause is named rather than swallowed — the operator needs to know it
+    // was a directory — but it arrives as a message, not a stack.
+    expect(result.stderr).toContain("EISDIR");
+    expect(result.output).not.toMatch(/at .*\.js:\d+/);
   });
 });

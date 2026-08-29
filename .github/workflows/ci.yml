@@ -96,6 +96,24 @@ jobs:
           # resolutions are themselves malformed — which must not discharge it.
           node packages/claims/dist/cli.js witness validate spec/fixtures/v0.3-run.jsonl
           ! node packages/claims/dist/cli.js witness validate spec/fixtures/v0.3-broken-run.jsonl
+          # The 0.4 compatibility guarantee, checked rather than asserted. This
+          # journal carries all three records 0.4 rejects — a `rev: "main"`
+          # verification, a `mutation` with `rev`, and `branch: ""` — and
+          # declares 0.3, so it must still exit 0. It gets its own line because
+          # the unchanged suite would pass with the version predicate written
+          # backwards: neither other 0.3 fixture contains a verification or a
+          # mutation at all.
+          node packages/claims/dist/cli.js witness validate spec/fixtures/v0.3-compat-run.jsonl
+          # The same three records at 0.4, where they ARE rejected. This and the
+          # compat journal above are byte-identical apart from the declared
+          # version, so the pair is the test: either alone passes with the
+          # version predicate written backwards.
+          ! node packages/claims/dist/cli.js witness validate spec/fixtures/v0.4-broken-run.jsonl
+          # A 0.4 journal carrying all three identity fields and a rev-stamped
+          # verification. Exit 0 is also what an empty file scores, so the unit
+          # test asserting the fields reach JournalReport.header is what gives
+          # this fixture teeth; the line below only pins that it stays valid.
+          node packages/claims/dist/cli.js witness validate spec/fixtures/v0.4-identity-run.jsonl
           # --expect-rules: did every rule rules select named actually reach a
           # delivered verdict in this journal? "Reached a terminal record" is
           # not enough — the broken fixture trips a never-dispatched rule and

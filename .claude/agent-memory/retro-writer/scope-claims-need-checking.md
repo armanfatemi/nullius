@@ -41,3 +41,12 @@ than "missed" when the plant landed outside its briefed file set. That is the
 first time the scope record caught the error in-run instead of being
 retro-corrected. Keep checking the claim anyway — the same run got the agent-file
 question wrong while getting the brief-scope question right.
+
+**First clean run — `add-journal-identity` (PR #53, 2026-08-29).** All three
+probe sections' `in scope of:` lines check out: `grep -ric 'false.premise'
+.claude/agents/*.md` gives architecture-reviewer 10, rule-auditor 7,
+checker-engineer 0, test-engineer 0, which is exactly what the artefact claims,
+and iteration 3 explicitly declines to count test-engineer's non-flag as a miss.
+The coordinator also wrote the agent-file distinction into its own corrections
+block at iteration 1. So `brief_defects: []` was the honest entry for once.
+Keep running the grep — one clean run is not a repaired habit.

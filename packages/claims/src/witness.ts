@@ -42,8 +42,20 @@
  * is a cascade of `MALFORMED` findings that buries the single fact worth
  * knowing: the validator is older than the journal.
  *
+ * **Schema 0.4** adds place. The header may name the repository state a run
+ * began in (`branch`, `head`, `worktree`) and a `verification` may pin the
+ * revision it was checked against (`rev`). None of it is read by a verdict —
+ * a verdict that depends on a field no producer emits yet fires on nobody. The
+ * bump is owed to the other half: `verification.rev` must be a stamp and a
+ * `mutation` may not carry `rev` at all, and both were previously ignored. A
+ * record that was valid became invalid, which is what bumps a schema; the
+ * fields being optional does not rescue it, because optionality is a property
+ * of a field and validity is a property of a record.
+ *
  * See spec/witness-journal.md.
  */
+
+import { STAMP_SHAPE } from "./parseClaims";
 
 export type JournalVerdict =
   /** The record satisfies every invariant. */
@@ -89,6 +101,20 @@ export interface JournalHeader {
   session: string | null;
   /** startup / resume / clear / compact — a fork in journal identity, made visible. */
   source: string | null;
+  /**
+   * The branch checked out when the run began. null when absent — including
+   * on a detached HEAD, where omitting the field is the honest answer and a
+   * sentinel like `"(detached)"` would be a fact nobody can check.
+   */
+  branch: string | null;
+  /**
+   * The commit the session **started from** — not the tree any later record
+   * was written against. A session commits while it runs, so any other reading
+   * is stale by construction. spec/witness-journal.md carries the definition.
+   */
+  head: string | null;
+  /** A stable identifier for the worktree, never a filesystem path. */
+  worktree: string | null;
 }
 
 export interface JournalFinding {
@@ -143,8 +169,43 @@ const KINDS_V02 = [...KINDS_V01, "mutation"] as const;
 const KINDS_V03 = [...KINDS_V02, "stage", "finding", "resolution", "check", "decision"] as const;
 type Kind = (typeof KINDS_V03)[number];
 
-/** Schemas this build can read. Anything else is UNSUPPORTED-VERSION. */
-const VERSIONS = ["0.1", "0.2", "0.3"] as const;
+/**
+ * Schemas this build can read, **in ascending order**. Anything else is
+ * UNSUPPORTED-VERSION.
+ *
+ * The order is load-bearing, not presentation: `versionAtLeast` compares by
+ * index into this list, so an out-of-order insert silently ungates every
+ * version-gated verdict for the versions it displaces — and nothing else in
+ * this file would notice. A unit test pins the ordering for that reason.
+ *
+ * Exported for that test. Deliberately absent from `index.ts`: the public
+ * barrel re-exports by explicit name list, and this is an internal constant.
+ */
+export const VERSIONS = ["0.1", "0.2", "0.3", "0.4"] as const;
+
+/**
+ * Version floors, compared by **index into `VERSIONS`** and never by string.
+ * `"0.10" >= "0.3"` is false, so a lexicographic floor would ungate every
+ * gated verdict the moment a two-digit minor exists — the same silent-ungating
+ * defect an equality gate causes at the next bump, merely deferred to a
+ * version nobody is looking at yet.
+ *
+ * One predicate for every version-gated behaviour in this file, four call
+ * sites: the identity-field rejection, the `verification.rev` rejection, the
+ * `mutation.rev` rejection, and the ledger verdicts. Four separate comparisons
+ * would be four chances to write one of them as an equality.
+ */
+function versionAtLeast(version: string, floor: (typeof VERSIONS)[number]): boolean {
+  const declared = VERSIONS.findIndex((known) => known === version);
+  return declared >= 0 && declared >= VERSIONS.indexOf(floor);
+}
+
+/**
+ * Repository identity, all optional and none of them read by a verdict. Listed
+ * once so the empty-string rejection below names the offending field rather
+ * than reporting three indistinguishable findings.
+ */
+const IDENTITY_FIELDS = ["branch", "head", "worktree"] as const;
 
 /**
  * Which vocabulary each declared version gets. A map rather than the ternary
@@ -155,6 +216,10 @@ const VOCABULARY: ReadonlyMap<string, readonly Kind[]> = new Map([
   ["0.1", KINDS_V01 as readonly Kind[]],
   ["0.2", KINDS_V02 as readonly Kind[]],
   ["0.3", KINDS_V03 as readonly Kind[]],
+  // 0.4 adds no kind. It tightens which records are valid — `verification.rev`
+  // must be a stamp, `mutation.rev` is refused — so the vocabulary is v0.3's,
+  // unchanged, and no new kinds constant exists to drift from it.
+  ["0.4", KINDS_V03 as readonly Kind[]],
 ]);
 
 /**
@@ -227,6 +292,8 @@ interface JournalRecord {
     statement: unknown;
     findings: unknown;
     target: unknown;
+    /** v0.4, on `verification` only — the revision the claim was checked at. */
+    rev: unknown;
     relies_on: unknown;
     corrections_since_last_append: unknown;
     // v0.3 — the run ledger
@@ -390,12 +457,44 @@ function scanHeader(lines: string[]): HeaderScan {
       });
     }
 
+    // Repository identity. Read at every declared version — a producer that
+    // knows the fields but still stamps 0.2 gets them recorded, and nothing
+    // here reads them as evidence about the run. What IS version-gated is the
+    // rejection below.
+    const identity: { branch: string | null; head: string | null; worktree: string | null } = {
+      branch: null,
+      head: null,
+      worktree: null,
+    };
+    for (const field of IDENTITY_FIELDS) {
+      const value = parsed[field];
+      if (value === undefined) continue;
+      if (nonEmptyString(value)) {
+        identity[field] = value as string;
+        continue;
+      }
+      // 0.4 semantics, and deliberately not applied downward: a 0.3 journal
+      // that validated clean does not become invalid because the validator
+      // learned a newer schema. `nonEmptyString`, not `optionalString` — the
+      // latter maps "" to null and reports nothing, which would leave this
+      // finding unreachable while the fixture still exited 1 on its other
+      // records.
+      if (!versionAtLeast(version, "0.4")) continue;
+      findings.push({
+        line,
+        verdict: "malformed",
+        subject: "journal",
+        detail: `"${field}" is ${JSON.stringify(value)} — an identity field must be a non-empty string when present; omitting the key is the supported way to say git could not answer, and an empty string instead asserts the producer knows and names nothing`,
+      });
+    }
+
     return {
       header: {
         version,
         origin,
         session: optionalString(parsed["session"]),
         source: optionalString(parsed["source"]),
+        ...identity,
       },
       line,
       findings,
@@ -662,6 +761,28 @@ export function validateJournal(content: string): JournalReport {
           });
           break;
         }
+        // v0.4. A verification is the only kind making a claim meant to be
+        // checked again, so it is the only kind that may pin the tree it was
+        // checked against — and a ref name is not a tree. `main` names a
+        // different commit next week, which is precisely the staleness a stamp
+        // exists to escape, so it is refused rather than stored.
+        if (
+          versionAtLeast(scan.version, "0.4") &&
+          record.raw.rev !== undefined &&
+          !(typeof record.raw.rev === "string" && STAMP_SHAPE.test(record.raw.rev))
+        ) {
+          findings.push({
+            line: record.line,
+            verdict: "malformed",
+            subject: record.id,
+            detail: `"rev" is ${JSON.stringify(record.raw.rev)} — a verification's rev must be lower-case hex of 7 to 40 characters, the shape a stamp is written in; a ref name is mutable and names a different tree next week`,
+          });
+          // Reported, and then the record still feeds invariant 2 below. The
+          // target is well formed, and refusing to record it over a bad extra
+          // key would silence a STALE-VERIFICATION rather than the rev — a
+          // rejection that costs another verdict its evidence is the wrong
+          // trade in a validator whose failure mode is going quiet.
+        }
         verified.set(record.id, target);
         hashes.set(target.path, { hash: target.hash, line: record.line });
         break;
@@ -727,6 +848,25 @@ export function validateJournal(content: string): JournalReport {
               'a mutation needs "target": {"path": ..., "hash": ...} — a change that does not say what it changed cannot invalidate the verification it invalidated',
           });
           break;
+        }
+        // v0.4. The only well-formed extra key this schema hard-fails, and
+        // the criterion is narrow on purpose: NOT "a known key on a record
+        // that cannot carry it" — `target` on a dispatch and `severity` on a
+        // check are ignored today and stay ignored. It is the false belief the
+        // key encodes. `rev` means *this claim can be checked again*; a
+        // mutation asserts something changed, which is the opposite of a claim
+        // to re-check. A producer emitting it holds a wrong model of what a
+        // mutation is, and every record it writes is suspect for that reason.
+        if (versionAtLeast(scan.version, "0.4") && record.raw.rev !== undefined) {
+          findings.push({
+            line: record.line,
+            verdict: "malformed",
+            subject: record.id,
+            detail:
+              'a mutation must not carry "rev" — its target hash is the identity of what changed, and a mutation asserts nothing to re-verify; a producer stamping one has the wrong model of the kind',
+          });
+          // Falls through to the hash map for the same reason the verification
+          // case does: invariant 2 must not lose a mutation over an extra key.
         }
         hashes.set(target.path, { hash: target.hash, line: record.line });
         break;
@@ -1071,10 +1211,17 @@ export function validateJournal(content: string): JournalReport {
     });
   }
 
-  // --- The ledger verdicts. Gated on the journal declaring 0.3: without the
-  // gate every v0.2 journal in existence would acquire SILENT-REVIEWER on its
-  // next validation, since none of them can carry a finding to discharge it.
-  if (scan.version === "0.3") {
+  // --- The ledger verdicts. Gated on the journal declaring 0.3 **or later**:
+  // without the gate every v0.2 journal in existence would acquire
+  // SILENT-REVIEWER on its next validation, since none of them can carry a
+  // finding to discharge it.
+  //
+  // A floor, never an equality. This was `=== "0.3"`, and the 0.4 bump would
+  // have left every 0.4 journal ungated for both verdicts below with nothing
+  // failing: CI green, every fixture exiting as its table says, and a family
+  // of verdicts gone quiet for the newest schema only. A later version
+  // inherits every verdict its predecessor earned.
+  if (versionAtLeast(scan.version, "0.3")) {
     // Dissent conservation. Gated to blockers on purpose — measured on the
     // corpus this was derived from, 60.8% of identified findings are never
     // mentioned again, and a verdict that fires on three findings in five is
@@ -1164,4 +1311,151 @@ export function validateJournal(content: string): JournalReport {
 
 function short(hash: string): string {
   return hash.length > 12 ? `${hash.slice(0, 12)}…` : hash;
+}
+
+/**
+ * One journal's place in a survey: its own report, plus the two facts the
+ * roll-up needs that a `JournalReport` does not state directly — did it fail,
+ * and did it reach a terminal record at all.
+ */
+export interface SurveyedJournal {
+  /** The path the caller read this journal from. `surveyJournals` never opens it. */
+  path: string;
+  report: JournalReport;
+  /**
+   * Findings this journal earned that fail, counted by `isJournalFailure` —
+   * the same rule one journal is judged by, applied per journal rather than
+   * re-derived. A survey has no verdict of its own.
+   */
+  failures: number;
+  /** The distinct failing verdicts, in the order they first appeared. */
+  verdicts: JournalVerdict[];
+  /** Terminal records read: `found` + `empty` + `no-report`. */
+  terminals: number;
+  /**
+   * True when the journal declares a schema this build cannot read. Its counts
+   * are all zero because nothing below its header was looked at, so it is held
+   * apart from the journals that were read and genuinely reached no terminal.
+   */
+  unreadable: boolean;
+}
+
+/** The roll-up `witness survey` prints. */
+export interface JournalSurvey {
+  journals: SurveyedJournal[];
+  /**
+   * Journals aggregated. Printed beside the totals, always: a summed outcome
+   * count with no denominator reads as one validated run.
+   */
+  count: number;
+  /** Journals carrying at least one failing finding. */
+  failed: number;
+  records: number;
+  dispatches: number;
+  /** Three numbers, summed three times — never added together. See invariant 1. */
+  outcomes: { found: number; empty: number; noReport: number };
+  verifications: number;
+  mutations: number;
+  /** Paths of journals that were read and reached no terminal record at all. */
+  silent: string[];
+  /** Paths of journals whose schema this build cannot read. Nothing of theirs is in the totals. */
+  unreadable: string[];
+}
+
+/**
+ * Validate each journal on its own and add up the *reports*.
+ *
+ * The records are never combined into one timeline, and that is the whole
+ * reason this function exists rather than a caller concatenating the files and
+ * calling `validateJournal` once. A `verification` and a `mutation` are
+ * correlated by `target.path`; four worktrees each hold a different file under
+ * `src/parser.rs`. Merge those timelines and one worktree's mutation invalidates
+ * another's verification — a STALE-VERIFICATION for an event that never
+ * happened. A validator that invents failures is worse than one that misses
+ * them, because the invented ones teach people to pass `continue-on-error`.
+ *
+ * The same argument settles ids: where the harness omits `tool_use_id` the
+ * recorder falls back to a content hash of the dispatch input, and across
+ * sixty-four concurrent journals one repeated task string collides far more
+ * often than it does inside one session. Merged, that is a DUPLICATE-ID
+ * between two runs that never met.
+ *
+ * And there is a property worth keeping for its own sake: `validate` returns
+ * the same verdict for a journal no matter what else was validated in the same
+ * run. Aggregating reports preserves it; merging records destroys it.
+ *
+ * Pure by construction: it takes content already read by the caller. This
+ * module has no `node:fs`, so globbing and reading stay in the CLI where
+ * `validate`'s already are.
+ */
+export function surveyJournals(
+  inputs: readonly { path: string; content: string }[],
+): JournalSurvey {
+  const journals: SurveyedJournal[] = [];
+  const outcomes = { found: 0, empty: 0, noReport: 0 };
+  let records = 0;
+  let dispatches = 0;
+  let verifications = 0;
+  let mutations = 0;
+  let failed = 0;
+  const silent: string[] = [];
+  const unreadable: string[] = [];
+
+  for (const input of inputs) {
+    // One journal, one validation, one report. Nothing from a previous
+    // iteration is in scope here, which is the invariant this loop exists to
+    // make structural rather than remembered.
+    const report = validateJournal(input.content);
+
+    let failures = 0;
+    const verdicts: JournalVerdict[] = [];
+    let unsupported = false;
+    for (const finding of report.findings) {
+      if (finding.verdict === "unsupported-version") unsupported = true;
+      if (!isJournalFailure(finding.verdict)) continue;
+      failures += 1;
+      if (!verdicts.includes(finding.verdict)) verdicts.push(finding.verdict);
+    }
+
+    const terminals = report.outcomes.found + report.outcomes.empty + report.outcomes.noReport;
+    journals.push({
+      path: input.path,
+      report,
+      failures,
+      verdicts,
+      terminals,
+      unreadable: unsupported,
+    });
+
+    if (failures > 0) failed += 1;
+    if (unsupported) {
+      // Its counts are zero because nothing was read, not because nothing
+      // happened. Summing them is honest; calling it "no terminal records"
+      // would not be, so it is named on its own line instead.
+      unreadable.push(input.path);
+    } else if (terminals === 0) {
+      silent.push(input.path);
+    }
+
+    records += report.records;
+    dispatches += report.dispatches;
+    verifications += report.verifications;
+    mutations += report.mutations;
+    outcomes.found += report.outcomes.found;
+    outcomes.empty += report.outcomes.empty;
+    outcomes.noReport += report.outcomes.noReport;
+  }
+
+  return {
+    journals,
+    count: journals.length,
+    failed,
+    records,
+    dispatches,
+    outcomes,
+    verifications,
+    mutations,
+    silent,
+    unreadable,
+  };
 }

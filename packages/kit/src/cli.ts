@@ -27,6 +27,7 @@ import { findProfile, PROFILE_NAMES, PROFILES } from "./profiles";
 import { applyPlan, buildPlan, formatPlan } from "./render";
 import {
   appendRecords,
+  journalHasContent,
   journalPathFor,
   linksPathFor,
   openDispatchesIn,
@@ -34,10 +35,20 @@ import {
   resolveLink,
   terminalsIn,
 } from "./journalFile";
+import { NO_IDENTITY, resolveIdentity, type JournalIdentity } from "./identity";
 import { planRecords, type RecordContext, type RecordPlan } from "./record";
 import { runPipeline } from "./pipeline";
 
-/** The schema this build writes. The validator reads 0.1 and 0.2. */
+/**
+ * The schema this build writes. The validator reads 0.1 through 0.4.
+ *
+ * Deliberately behind the validator, and deliberately not bumped by the change
+ * that added the header's identity fields. The producer bump is its own
+ * decision: a journal declaring `0.4` is unreadable to any older kernel, which
+ * reports `UNSUPPORTED-VERSION` and then nothing at all. The identity fields
+ * need no bump to be useful, because unknown header keys are ignored at every
+ * version and read at every version — so they land here and are read today.
+ */
 const SCHEMA_VERSION = "0.2";
 
 /** How many findings the advisory check prints before it says "and N more". */
@@ -477,13 +488,17 @@ function runRecord(options: CliOptions): number {
   // own recorder.
   if (event === "SessionEnd" || event === "SubagentStop") {
     let decided: RecordPlan | undefined;
+    // Resolved out here, before appendRecords takes the lock. Passing a
+    // resolver in would put git on the locked path; passing the answer in does
+    // not.
+    const identity = identityFor(root, file);
     const outcome = appendRecords(
       file,
       () => {
         decided = planRecords(payload, context);
         return decided.records;
       },
-      { version: SCHEMA_VERSION, origin: options.origin, session, source: null },
+      { version: SCHEMA_VERSION, origin: options.origin, session, source: null, ...identity },
       { createEmpty: false },
     );
     if (decided?.note != null) note(decided.note);
@@ -525,9 +540,50 @@ function runRecord(options: CliOptions): number {
     origin: options.origin,
     session,
     source: plan.source,
+    // After the early return above, so an ignored Bash call on a session that
+    // has not opened its journal yet does not pay for a git call.
+    ...identityFor(root, file),
   });
   if (outcome.refused !== null) note(outcome.refused);
   return 0;
+}
+
+/**
+ * Identity for this append — resolved once per session, outside the lock.
+ *
+ * Two requirements pull against each other here, and this function is where
+ * they are reconciled. Identity must be resolved BEFORE the append lock,
+ * because a git call under the lock costs every concurrently appending hook
+ * its records rather than merely delaying them. But whether a header is needed
+ * at all is decided UNDER the lock, by `needsHeader` testing the journal's
+ * size — so "resolve before the lock" taken literally means resolving on every
+ * single hook event, which is the per-event git call the design rules out.
+ *
+ * The reconciliation is this unsynchronised pre-check: ask, without the lock,
+ * whether the journal already holds anything, and resolve only when it does
+ * not. After a session's first append the answer is no on every subsequent
+ * event, which is what "once per session, never per event" means in practice.
+ *
+ * The pre-check may race, and that is acceptable *because it is only an
+ * optimisation*. The authoritative decision stays where it was: `needsHeader`
+ * under the lock still decides whether a header is written, so a stale
+ * pre-check can never produce a second header or a header on a journal that
+ * had one. Do not "fix" this race — closing it means moving the size test, and
+ * therefore the git call, back under the lock, which reintroduces the exact
+ * defect this shape exists to avoid.
+ *
+ * What the race does cost, recorded here so it is not discovered later as a
+ * surprise: if two of a session's first appends race, both resolve identity,
+ * and the one that wins the lock had its git call time out, the header is
+ * written with no identity fields — and the loser's successfully resolved
+ * identity is discarded. Identity is resolved once per session, so there is no
+ * second chance: that journal carries no identity for its whole life. This is
+ * acceptable under "git failure is never a recording failure" — the records
+ * are all there and the run is fully validatable — but it is a real loss, not
+ * a wasted computation.
+ */
+function identityFor(root: string, file: string): JournalIdentity {
+  return journalHasContent(file) ? NO_IDENTITY : resolveIdentity(root);
 }
 
 function runCheck(options: CliOptions): number {

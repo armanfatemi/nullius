@@ -98,10 +98,23 @@ anchor density, which already exists and already reports it.
 rejects unknown fields — the `decision` parser validates `choice`, `rationale`,
 and two optional strings, and ignores everything else.
 
-`add-journal-identity` wrote the governing rule: bump when the set of valid
-records changes — a new kind, a new closed-vocabulary member, a new verdict —
-never for additive optional metadata. `justifies` is the second case, so the
-schema stays `0.3` and every existing journal validates identically.
+The governing rule lives in `spec/witness-journal.md`, which is where
+`add-journal-identity` put it precisely so a citation would not rot when that
+change archives:
+
+**Evidence:** `spec/witness-journal.md:351@172cb41` — `The version bumps when **the set of valid records changes**:`
+
+It has **four** triggers, not three: a new kind, a new member of a closed
+vocabulary, a tightening that makes invalid a record a previous version
+accepted, and a new verdict that can fail a record. Never for additive
+optional metadata that no verdict reads. An earlier draft of this paragraph
+restated it with the tightening clause missing, which is the decay the rule
+now warns about in its own text.
+
+`justifies` is additive optional metadata, and — checked against the clause
+that was missing — it tightens nothing: the `decision` parser ignores unknown
+fields today, so no record that was valid becomes invalid. The schema stays
+`0.3` and every existing journal validates identically.
 
 `UNJUSTIFIED-ORACLE-CHANGE` *is* a new verdict, which looks like it should force
 the bump. It does not, because `witness validate` never emits it. It belongs to

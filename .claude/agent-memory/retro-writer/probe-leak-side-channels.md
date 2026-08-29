@@ -45,3 +45,25 @@ Also new: this run's probe sections record per-reviewer catch/miss *and* whether
 each catch came from reading or the registry. That decomposition is worth more
 than the aggregate — 5/5 CAUGHT decomposed to 5/5 for one reviewer (2 leaked),
 2/3 for another, 0/4 for a third that was never briefed for the pass at all.
+
+**Fourth occurrence, and a new channel — `add-journal-identity` (PR #53,
+2026-08-29).** architecture-reviewer's memory file gained this run's plant host
+(`design.md:6`), the same unvaried fixture path, the plant timestamp, and
+"`canary status` + `check '<dir>/**/*.md'` in one call: 5-for-5". The counter is
+now cumulative across runs.
+
+The new channel is worse and is the pipeline's own: the coordinator wrote "Plant
+the iteration-2 canary into design.md" into `progress.md`, which the pipeline
+COMMITS into the change folder, so the plant location shipped in the diff the
+reviewers read. rule-auditor cited `progress.md` as its confirmation source.
+Always grep the committed change folder for the plant document before scoring a
+CAUGHT.
+
+Also confirmed empirically: paraphrase defeats taint. That round scored exit 0
+while three of four reports were tainted, because the synthesis described the
+leak without using any of the three literals. So TAINTED under-reports and
+CAUGHT is inflated corpus-wide, not just per run.
+
+Contrast worth keeping: checker-engineer caught the plant on the merits 3 of 3
+rounds and its new memory file contains no probe machinery at all — and it
+declares no false-premise pass. The declared pass is not what produces catches.
