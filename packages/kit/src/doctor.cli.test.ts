@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 
@@ -80,5 +80,16 @@ suite("doctor — the command surface", () => {
     // named only as where captures land before being promoted.
     expect(detail).toContain("spec/fixtures/probes/claude-code");
     expect(detail).toContain(".nullius/probes/");
+  });
+
+  it("names the user settings file home-relative, never by the operator's home path", () => {
+    // `runDoctor` resolves the real absolute path so the file is actually
+    // read, but the report is what a user pastes into an issue — and this
+    // change exists because raw payloads leak home paths, so printing one in
+    // the report that discusses them is off-key.
+    const detail = detailFor(run("doctor", "--root", scratch()).stdout, "payload capture");
+
+    expect(detail).toContain("~/.claude");
+    expect(detail).not.toContain(homedir());
   });
 });

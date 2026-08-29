@@ -558,6 +558,10 @@ describe("doctor — what the settings files say about payload capture", () => {
     expect(result?.detail).toContain(".claude/settings.json");
     expect(result?.detail).toContain(userSettingsPath);
     expect(result?.detail).toContain("NULLIUS_WITNESS_PROBE");
+    // Scoped to what this check read. A bare "no settings file sets it" leads
+    // with a quantifier over every settings file that exists, which is not a
+    // claim three `existsSync` calls entitle it to make.
+    expect(result?.detail).toContain("no settings file this check read sets");
     expect(result?.detail).toContain("capture may still be enabled by sources this check does not read");
     expect(result?.detail).toContain("launched the harness");
     // "capture is off" is not a checkable claim for the same reason "capture
@@ -589,14 +593,62 @@ describe("doctor — what the settings files say about payload capture", () => {
     expect(result?.status).toBe("unknown");
     expect(result?.detail).toContain(".claude/settings.local.json");
     expect(result?.detail).toContain("NULLIUS_WITNESS_PROBE");
+    expect(result?.detail).toContain("holds no payloads");
     expect(check(root).failed).toBe(false);
 
-    // This row is directory-invariant: status and detail are tied to settings
-    // readability alone, so it is one case rather than three.
+    // This row is NOT directory-invariant. Held payloads are reported wherever
+    // they are held — the requirement is unconditional, and a settings file
+    // that does not parse says nothing about what is on disk. The earlier
+    // version of this test pinned the omission as a deliberate collapse, which
+    // made a spec violation permanent.
     const withPayloads = scratch();
     writeSettings(join(withPayloads, ".claude", "settings.local.json"), "{ not json");
     liveProbe(withPayloads, "SubagentStop.json", NEWEST);
-    expect(captureCheck(withPayloads)?.detail).toBe(result?.detail);
+
+    const held = captureCheck(withPayloads);
+
+    expect(held?.status).toBe("unknown");
+    expect(held?.detail).toContain("1 payload");
+    expect(held?.detail).toContain("2026-02-03T04:05:06.000Z");
+    expect(held?.detail).not.toMatch(/stale|not being refreshed|no longer/i);
+  });
+
+  it("still names every file it read, and the sources it did not, when one does not parse", () => {
+    const root = scratch();
+    const userSettingsPath = join(scratch(), "settings.json");
+    writeSettings(join(root, ".claude", "settings.local.json"), "{ not json");
+
+    const result = captureCheck(root, userSettingsPath);
+
+    expect(result?.status).toBe("unknown");
+    // This branch used to close on "and no other settings file sets it" — an
+    // unhedged claim over settings files, which a reader takes as "capture is
+    // off unless that broken file turns it on". The forbidden-phrase patterns
+    // never fired on it, because the sentence meant it without saying it.
+    expect(result?.detail).toContain(".claude/settings.json");
+    expect(result?.detail).toContain(userSettingsPath);
+    expect(result?.detail).toContain(
+      "capture may still be enabled by sources this check does not read",
+    );
+    expect(result?.detail).toContain("launched the harness");
+    expect(result?.detail).not.toContain("no other settings file sets it");
+    expect(result?.detail).not.toMatch(/capture is off|not capturing|capture is disabled/i);
+  });
+
+  it("reports the user settings file as not supplied rather than dropping it", () => {
+    // The `check()` helper always supplies a path, so the undefined case is
+    // only reachable through `runChecks` directly. Dropped silently, the
+    // message still speaks of "the files checked" while one of them is absent
+    // from the list.
+    const root = scratch();
+
+    const result = runChecks({ root, probeDir: join(root, "nowhere") }).checks.find(
+      (entry) => entry.name === "payload capture",
+    );
+
+    expect(result?.status).toBe("fact");
+    expect(result?.detail).toContain("user settings file");
+    expect(result?.detail).toContain("not supplied");
   });
 
   it("does not make the report unknown for a settings file that is merely absent", () => {
@@ -672,7 +724,9 @@ describe("doctor — what the settings files say about payload capture", () => {
     try {
       const result = captureCheck(scratch());
 
-      expect(result?.detail).toContain("no settings file sets NULLIUS_WITNESS_PROBE");
+      expect(result?.detail).toContain(
+        "no settings file this check read sets NULLIUS_WITNESS_PROBE",
+      );
       expect(result?.detail).not.toContain("enables capture");
     } finally {
       if (previous === undefined) delete process.env["NULLIUS_WITNESS_PROBE"];

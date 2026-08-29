@@ -132,13 +132,21 @@ A7 — the ordering assertion task 1.9 must not break:
 - [x] 4.1 Doctor's branches asserted on the message, not only the status. The
       settings axis is `{sets 1 | sets another value | sets nothing |
       exists but does not parse}`; the directory axis is
-      `{absent | empty | non-empty}`. Two collapses are expected and should be
-      asserted once rather than nine times:
-      - the `does not parse` row is directory-invariant, since status and detail
-        are tied to settings readability alone — one case, not three
+      `{absent | empty | non-empty}`. One collapse is real and should be
+      asserted once rather than nine times; a second was claimed here and was
+      wrong:
       - `absent` and `empty` produce identical output in every row (zero
         payloads held), so they need one shared assertion plus one test that
         they really are identical
+      - the `does not parse` row is **not** directory-invariant. Its *status* is
+        tied to settings readability alone, but its detail still reports held
+        payloads: "where payloads are held, the report SHALL state how many are
+        held and when the most recent was written" is unconditional, and a
+        settings file that will not parse says nothing about what is on disk.
+        This task first claimed the opposite, and the implementation followed it
+        into an early return that dropped held payloads while a test pinned the
+        omission as deliberate. Assert the count and the timestamp in this row
+        too
       The branch that must not be dropped is *no file sets the variable, payloads
       present* — payloads that look like coverage. Assert the detail reports
       count and most-recent-write-time and does NOT call them stale

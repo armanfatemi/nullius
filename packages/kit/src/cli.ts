@@ -376,6 +376,10 @@ function runDoctor(argv: readonly string[]): number {
     // so a test can point it at a fixture instead of the developer's own
     // configuration.
     userSettingsPath: join(homedir(), ".claude", "settings.json"),
+    // Read by its real path, printed by this one. The report is what a user
+    // pastes into an issue, and a check whose subject is payloads leaking
+    // absolute home paths should not open by printing one.
+    userSettingsLabel: "~/.claude/settings.json",
   });
   console.log(formatReport(report));
 

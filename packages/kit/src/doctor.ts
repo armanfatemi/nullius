@@ -117,6 +117,15 @@ interface SettingsRead {
   unreadable: boolean;
   /** The file is not there at all — an observation, never an `unknown`. */
   absent: boolean;
+  /**
+   * No path was handed to the check, so this file was never looked for.
+   *
+   * Distinct from `absent`, which is the result of looking. Dropping the read
+   * entirely would be worse than either: the report speaks of the files it
+   * checked, and a caller that supplied no user settings path would get a list
+   * silently one file short of what the sentence claims to enumerate.
+   */
+  notSupplied: boolean;
 }
 
 /**
@@ -127,13 +136,15 @@ interface SettingsRead {
  * because only the second is a failure to determine.
  */
 function readSettingsEnv(path: string, label: string, variable: string): SettingsRead {
-  if (!existsSync(path)) return { label, value: null, unreadable: false, absent: true };
+  if (!existsSync(path)) {
+    return { label, value: null, unreadable: false, absent: true, notSupplied: false };
+  }
 
   try {
     const settings = JSON.parse(readFileSync(path, "utf8")) as { env?: unknown };
     const env = settings.env;
     if (env === null || typeof env !== "object") {
-      return { label, value: null, unreadable: false, absent: false };
+      return { label, value: null, unreadable: false, absent: false, notSupplied: false };
     }
     const raw = (env as Record<string, unknown>)[variable];
     return {
@@ -141,10 +152,33 @@ function readSettingsEnv(path: string, label: string, variable: string): Setting
       value: raw === undefined || raw === null ? null : String(raw),
       unreadable: false,
       absent: false,
+      notSupplied: false,
     };
   } catch {
-    return { label, value: null, unreadable: true, absent: false };
+    return { label, value: null, unreadable: true, absent: false, notSupplied: false };
   }
+}
+
+/** What one file contributed, in four states that must not collapse into two. */
+function stateOf(read: SettingsRead): string {
+  if (read.notSupplied) return "not supplied";
+  if (read.unreadable) return "could not be parsed";
+  if (read.absent) return "absent";
+  return "sets nothing";
+}
+
+/**
+ * The two clauses that must accompany every "nothing sets it" reading.
+ *
+ * Factored rather than written twice because both no-setter branches owe the
+ * reader the same two things — which files were consulted, and that the list of
+ * sources this check *cannot* consult is open. A branch that carries one
+ * without the other reads as a completeness claim, which is the one thing this
+ * check is not entitled to make.
+ */
+function checkedAndResidue(reads: SettingsRead[]): string {
+  const checked = reads.map((read) => `${read.label} (${stateOf(read)})`).join(", ");
+  return `checked ${checked}; capture may still be enabled by sources this check does not read, among them the environment of the process that launched the harness`;
 }
 
 /** What `.nullius/probes/` holds, said without a verdict about why. */
@@ -190,7 +224,11 @@ function describeLiveCaptures(root: string): string {
  * off" — a shell export into the harness is invisible here, and no amount of
  * file reading recovers it.
  */
-export function captureChecks(root: string, userSettingsPath?: string): Check[] {
+export function captureChecks(
+  root: string,
+  userSettingsPath?: string,
+  userSettingsLabel?: string,
+): Check[] {
   const reads = [
     readSettingsEnv(
       join(root, ".claude", "settings.local.json"),
@@ -198,9 +236,15 @@ export function captureChecks(root: string, userSettingsPath?: string): Check[] 
       CAPTURE_VAR,
     ),
     readSettingsEnv(join(root, ".claude", "settings.json"), ".claude/settings.json", CAPTURE_VAR),
-    ...(userSettingsPath === undefined
-      ? []
-      : [readSettingsEnv(userSettingsPath, userSettingsPath, CAPTURE_VAR)]),
+    userSettingsPath === undefined
+      ? {
+          label: "the user settings file",
+          value: null,
+          unreadable: false,
+          absent: false,
+          notSupplied: true,
+        }
+      : readSettingsEnv(userSettingsPath, userSettingsLabel ?? userSettingsPath, CAPTURE_VAR),
   ];
 
   const setters = reads.filter((read) => read.value !== null);
@@ -208,23 +252,32 @@ export function captureChecks(root: string, userSettingsPath?: string): Check[] 
 
   // `unknown` is for when nothing could be established — not for when
   // something could and something else could not. So this branch requires
-  // both an unreadable file and no determinate read anywhere else, and says
-  // nothing about the directory: what it could not settle is the settings.
+  // both an unreadable file and no determinate read anywhere else.
+  //
+  // It says everything the readable-and-unset branch says, and for the same
+  // reason. Naming only the file that would not parse invites the reading
+  // "capture is off unless that file turns it on" — a completeness claim over
+  // settings files, made by the sentence's shape rather than its words, which
+  // is why no forbidden-phrase check ever caught it. Held payloads are
+  // reported here too: what could not be settled is the settings, and the
+  // directory listing is a separate fact that does not become unavailable
+  // because a JSON file is malformed.
   if (setters.length === 0 && unreadable.length > 0) {
     return [
       {
         name: CAPTURE_CHECK,
         status: "unknown",
-        detail: `could not parse ${unreadable.map((read) => read.label).join(", ")} — ${CAPTURE_VAR} not determined, and no other settings file sets it`,
+        detail: `could not parse ${unreadable.map((read) => read.label).join(", ")} — ${CAPTURE_VAR} not determined there, and no settings file this check read sets it; ${checkedAndResidue(reads)}. ${describeLiveCaptures(root)}`,
       },
     ];
   }
 
   const said =
     setters.length === 0
-      ? `no settings file sets ${CAPTURE_VAR} — checked ${reads
-          .map((read) => `${read.label} (${read.absent ? "absent" : "sets nothing"})`)
-          .join(", ")}; capture may still be enabled by sources this check does not read, among them the environment of the process that launched the harness`
+      ? // Scoped to what was read. "No settings file sets it" leads with a
+        // quantifier over every settings file that exists, which three
+        // `existsSync` calls do not entitle this check to make.
+        `no settings file this check read sets ${CAPTURE_VAR} — ${checkedAndResidue(reads)}`
       : [
           setters
             .map(
@@ -678,10 +731,19 @@ export interface DoctorOptions {
    * own configuration.
    */
   userSettingsPath?: string;
+  /**
+   * How that file is named in the report, when its real path should not be.
+   *
+   * The path is read; the label is printed. `doctor`'s output is what a user
+   * pastes into an issue, and this check exists because raw payloads carry
+   * absolute home paths — so printing the operator's home directory in the
+   * report *about* that leak is the wrong default. Defaults to the path.
+   */
+  userSettingsLabel?: string;
 }
 
 export function runChecks(options: DoctorOptions): DoctorReport {
-  const { root, probeDir, userSettingsPath } = options;
+  const { root, probeDir, userSettingsPath, userSettingsLabel } = options;
   const checks: Check[] = [];
 
   checks.push(...checkConfigs(root));
@@ -712,7 +774,7 @@ export function runChecks(options: DoctorOptions): DoctorReport {
   checks.push(...probeChecks(probeDir));
   // Before the live proof, not after: live proof is the report's closing
   // statement and a test holds it there.
-  checks.push(...captureChecks(root, userSettingsPath));
+  checks.push(...captureChecks(root, userSettingsPath, userSettingsLabel));
   checks.push(...liveProof());
 
   return { checks, failed: checks.some((check) => check.status === "fail") };

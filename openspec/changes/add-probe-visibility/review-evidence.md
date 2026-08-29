@@ -958,3 +958,150 @@ Two guards were demonstrated to bite rather than assumed to:
   twice — once as `NULLIUS_WITNESS_PROBE` and once under a different spelling,
   `captureProbes` — and confirmed each arm fails, then restored render.ts
   byte-identical. A negative assertion that has never failed is not yet a test.
+
+## Stage 6 — Post-review (routed on the diff)
+
+Routing re-derived from `git diff --name-only main...HEAD | route-paths`:
+architecture-reviewer, rule-auditor, test-engineer. checker-engineer dropped —
+no `packages/claims` source file is in the diff.
+
+## Blockers
+
+**B16 — the `unknown` branch makes an unhedged completeness claim
+(architecture-reviewer) [corrected-coordinator].** `packages/kit/src/doctor.ts`,
+the early-return branch `if (setters.length === 0 && unreadable.length > 0)`,
+emits "`could not parse <files> — NULLIUS_WITNESS_PROBE not determined, and no
+other settings file sets it`". It carries neither the enumeration of files read
+nor the non-exhaustive residue clause, both of which the spec requires
+unconditionally wherever no settings file sets the variable — and
+`setters.length === 0` is exactly that case.
+
+This is the scoping invariant the design fought four rounds for, broken in the
+one branch where the forbidding-phrase tests cannot fire. A reader takes it to
+mean *capture is off unless that broken file turns it on*. The sentence means it
+without saying it, and the tests forbid only the saying.
+
+**B17 — the same branch drops held payloads (architecture-reviewer)
+[corrected-coordinator].** It returns early without calling
+`describeLiveCaptures`, so a directory holding payloads reports nothing. The
+spec requires the count and ISO timestamp *wherever* payloads are held, with no
+condition on settings readability. An existing test pins the omission with a
+comment calling the row "directory-invariant", making it permanent rather than
+accidental.
+
+Root cause is the coordinator's, and traceable: test-engineer's iteration-4
+concern C8 observed that the unreadable row collapsed to one case, the
+coordinator wrote "the `does not parse` row is directory-invariant" into task
+4.1, and the implementer built exactly that. The collapse was a testing-effort
+observation about the *settings* axis; it was promoted into a behavioural claim
+about the *directory* axis, where it contradicts an unconditional SHALL in the
+same document.
+
+## Concerns
+
+- `doctor.ts` leads with the global quantifier "no settings file sets …" before
+  the enumeration rescues it; the scoped form is "no settings file this check
+  read sets …". (architecture-reviewer)
+- With `userSettingsPath` undefined the file is dropped from `reads` silently
+  while the message still speaks of the files checked, and no test exercises
+  `undefined` because the `check()` helper always supplies a path.
+  (architecture-reviewer)
+- `runDoctor` passes the absolute `homedir()` path, so the report prints the
+  operator's home directory — off-key in a change whose whole rationale is that
+  raw payloads leak home paths, and `doctor` output gets pasted into issues.
+  (architecture-reviewer)
+- The corrected `probeChecks` message repeats the long `probeDir` twice and
+  stops at "promoted", omitting that promotion requires redacting home paths.
+  (architecture-reviewer)
+- `captureChecks` is exported with no importer outside `runChecks` and the
+  tests. (architecture-reviewer)
+- The no-probe-key assertion scans only top-level keys; correct today because
+  `renderKitConfig` emits a flat object, blind if config ever nests.
+  (test-engineer)
+
+## Rejected suggestion, with reasons
+
+rule-auditor recommended rebasing onto `main` to drop the unrelated `retro`
+commit the branch was cut from. **Declined.** A rebase makes `12cde11`
+unreachable, and 19 anchors in this change are stamped against it. They would
+return the advisory `UNVERIFIABLE-REV`, the checker would fail open, CI would
+stay green, and the hard gate would silently stop existing — the exact failure
+`merge-never-squash.md` exists to prevent, arriving by rebase rather than by
+squash. One small commit of genuinely pending work is a much cheaper cost than
+disarming 19 citations. Recorded rather than silently ignored, because
+"the reviewer was wrong and here is why" is a data point nothing else captures.
+
+## Looks good
+
+- Both sabotage-proven guards still bite in their committed form: repointing
+  `probeDir` at the live directory fails the CLI-seam test, and the no-probe-key
+  assertion catches both `NULLIUS_WITNESS_PROBE` and a differently-spelled
+  `captureProbes`. (test-engineer)
+- `captureChecks` branch coverage is complete against the spec's scenario list,
+  including all three settings files individually as sole setter.
+  (test-engineer)
+- Every forbidding regex is paired with a positive assertion in the same test,
+  so none would pass on an absent feature. (test-engineer)
+- The ISO timestamp is deterministic: whole-second mtimes written via
+  `utimesSync`, `toISOString()` UTC-only. No sub-second or timezone flakiness.
+  (test-engineer)
+- `homedir()` is resolved at the composition root, never inside the check. The
+  seam the design argued for holds. (architecture-reviewer)
+- Zero `FABRICATED` / `WRONG-LINE` / `UNPINNED`; `git log -p` confirms every
+  `@12cde11` anchor was written once and never edited, so the 16 `STALE` are
+  passive drift correctly left unrepointed. (rule-auditor)
+- The search-anchor rescoping is legitimate: the anchor asserts no spec, plugin
+  or CI surface establishes precedence, and narrowing removed exactly the
+  self-caused match. (rule-auditor)
+- `init` writes nothing to any settings file; `one-delivery-mechanism.md`
+  intact. `verdict-needs-fixture-and-test.md` does not bind — no claims verdict.
+  (rule-auditor)
+- CHANGELOG claims verified against the diff. (architecture-reviewer)
+
+## Coordinator corrections since last append
+
+- **A reviewer's effort-saving observation was promoted into a behavioural
+  requirement.** B17, above. C8 was about not writing nine duplicate assertions;
+  the coordinator turned it into "this row is directory-invariant", which is a
+  claim about what the check reports and contradicts an unconditional SHALL in
+  the same spec. Third instance this run of a reviewer's finding being tightened
+  into a claim the reviewer did not make — after `readManagedHooks` and
+  `init.test.ts`'s "existing assertions". The pattern is consistent enough to
+  name: when a reviewer says "you need fewer tests here", that is not a licence
+  to report less.
+- **The anchor count in three dispatch briefs was wrong.** The coordinator wrote
+  "the four `@a717cc4` anchors in proposal.md"; there are five — four `STALE`
+  and one `OK`. "Four STALE" was conflated with "four anchors". Caught by
+  rule-auditor, which corrected the count while noting it changed no finding.
+
+## Stage 5 — Verify after Stage 7 must-fixes
+
+build: pass
+type-check: pass
+test: pass — packages/kit 256/256 across 7 files; packages/claims 765 passed,
+  6 failed, all six in src/flagConformance.test.ts and all six the known ugrep
+  baseline. Confirmed no non-flagConformance failure exists.
+dogfood gates: pass, both polarities — all seven.
+
+Verified in real output rather than only in tests, on the branch that motivated
+the whole change (payloads held, no settings file setting the variable):
+
+  --   payload capture
+       no settings file this check read sets NULLIUS_WITNESS_PROBE — checked
+       .claude/settings.local.json (absent), .claude/settings.json (sets
+       nothing), ~/.claude/settings.json (sets nothing); capture may still be
+       enabled by sources this check does not read, among them the environment
+       of the process that launched the harness. .nullius/probes/ (the live
+       capture directory, not the committed probe corpus) holds 5 payload(s),
+       most recently written 2026-08-27T06:11:36.059Z
+
+Reported as a fact, scoped to the files read, residue named non-exhaustively,
+live directory distinguished from the corpus by name, count and ISO-8601 UTC
+timestamp present, and no claim that capture is off. `grep -c "$HOME/.claude"`
+over the full report returns 0 — the home path is not leaked.
+
+A latent defect surfaced while fixing B16/B17 and was fixed with them: the file
+enumeration rendered only `absent` and `sets nothing`. Once the `unknown` branch
+began sharing that enumeration, an unparseable file would have been labelled
+"sets nothing" — a false statement about a file the check had just said it could
+not read. Found by the implementer, not by review.
