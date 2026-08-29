@@ -12,10 +12,10 @@ it going wrong silently.
 
 ## 1. Kernel — schema
 
-- [ ] 1.1 Header scan reads optional `branch`, `head`, `worktree`; unknown
+- [x] 1.1 Header scan reads optional `branch`, `head`, `worktree`; unknown
       header keys stay ignored (they already are — add the regression test that
       pins it)
-- [ ] 1.2 `verification` accepts optional `rev`, validated against the
+- [x] 1.2 `verification` accepts optional `rev`, validated against the
       lower-case-hex 7–40 stamp shape; a ref name such as `main` is
       `MALFORMED` **on a `0.4` journal**. Reuse `STAMP_SHAPE` from
       `parseClaims.ts` rather than re-declaring the pattern — it is currently
@@ -24,7 +24,7 @@ it going wrong silently.
       this is an internal constant. Do not reach for the anchor *marker*
       grammar: that one accepts mixed case and folds it, which is the wrong
       rule for a machine-written field
-- [ ] 1.2a **Add the version predicate the record loop does not have.** Today
+- [x] 1.2a **Add the version predicate the record loop does not have.** Today
       the declared version selects behaviour only in `scanHeader`'s
       supported-version check, in `VOCABULARY.get(scan.version)`, and in the
       ledger gate — none of them reachable from the `verification`, `mutation`
@@ -34,17 +34,17 @@ it going wrong silently.
       derived from the same ordered `VERSIONS` list the ledger floor uses, and
       gate all three new rejections on it. One predicate, used four times —
       not four comparisons
-- [ ] 1.3 `mutation` rejects `rev` — its hash is the identity of what changed.
+- [x] 1.3 `mutation` rejects `rev` — its hash is the identity of what changed.
       Note this is a new failure *condition*, not a reuse: every existing
       `malformed` fires on a missing or ill-shaped declared field, and none
       rejects a well-formed extra key. Argue the asymmetry with 1.1's
       ignore-unknown-header-keys rule in the spec text, since a reader will
       otherwise read it as an inconsistency
-- [ ] 1.4 `JournalHeader` gains the three fields. **Do not add them to
+- [x] 1.4 `JournalHeader` gains the three fields. **Do not add them to
       `JournalReport`** — it already carries `header`, so `survey` can group
       without re-parsing today; a second copy at report level could diverge
       from the first
-- [ ] 1.5 A present identity field must be a non-empty string; `branch: ""` is
+- [x] 1.5 A present identity field must be a non-empty string; `branch: ""` is
       `MALFORMED` **on a `0.4` journal** (see 1.2a) and the finding names the
       offending field. Use `nonEmptyString`, **not** `optionalString`: the
       latter maps `""` to `null` and reports nothing, which is how `session`
@@ -52,42 +52,42 @@ it going wrong silently.
       unreachable while fixture 1.7 still exits 1 on its other records, so the
       gap would never surface. This is the third new failure condition in this
       change and it gets the same treatment as the other two — see 1.7
-- [ ] 1.5a Argue the resulting asymmetry in the spec text: `session` and
+- [x] 1.5a Argue the resulting asymmetry in the spec text: `session` and
       `source` silently accept `""` while the three identity fields reject it.
       Either justify the split explicitly, or extend the rejection to
       `session`/`source` — in which case that is a fourth tightening and takes
       its own fixture and named test. Do not leave two empty-string policies in
       one record with no stated reason
-- [ ] 1.6 Fixture: `v0.4-identity-run.jsonl` — a journal carrying all three
+- [x] 1.6 Fixture: `v0.4-identity-run.jsonl` — a journal carrying all three
       header fields and a rev-stamped verification, exit 0. Pair it with a unit
       test that asserts the three fields are parsed and reach
       `JournalReport.header`; exit 0 alone is also what an empty file scores
-- [ ] 1.7 Fixture: extend the broken-run corpus with a `rev: "main"`
+- [x] 1.7 Fixture: extend the broken-run corpus with a `rev: "main"`
       verification, a `mutation` carrying `rev`, and a header with `branch: ""`.
       Assert **all three** verdicts by name in a unit test — CI only checks the
       broken fixture's exit code, which stays 1 while any one of them fires.
       Scope note: this closes the gap for the records added here and not for
       the twenty-six pre-existing findings, which stay exit-code-only
-- [ ] 1.8 Update `spec/witness-journal.md`: the three fields,
+- [x] 1.8 Update `spec/witness-journal.md`: the three fields,
       `verification.rev`, and the definition of `head` as *where the run began*
       — in the spec text, not a comment. This file is the canonical home of the
       version-bump rule (see 1.9), because `design.md` moves under
       `openspec/changes/archive/` and any cross-change citation into it rots
-- [ ] 1.8a Two lines in that file go false under this change and are easy to
+- [x] 1.8a Two lines in that file go false under this change and are easy to
       miss because neither mentions `0.4`: `:114` ("this build reads `0.1` and
       `0.2`", already stale before this change) and `:228` ("apply only to
       journals declaring `0.3`", contradicted by the ledger floor). Fix both,
       and re-read the fixture table at `:223` for the same class of error
-- [ ] 1.9 Write the version-bump rule into `spec/witness-journal.md`: bump on
+- [x] 1.9 Write the version-bump rule into `spec/witness-journal.md`: bump on
       the set of valid records — a new kind, a new member of a closed
       vocabulary, or a tightening that invalidates a previously-accepted
       record; not on additive optional metadata. State explicitly that
       optionality of a field does not exempt a change, and that a
       version-gated verdict uses a floor rather than an equality
-- [ ] 1.10 Bump to `0.4`: `VERSIONS` gains `"0.4"`, and `VOCABULARY` maps
+- [x] 1.10 Bump to `0.4`: `VERSIONS` gains `"0.4"`, and `VOCABULARY` maps
       it to the **unchanged** `KINDS_V03` — no kind is added, so no new kinds
       constant is created
-- [ ] 1.11 Convert the ledger gate at `witness.ts:1077` from
+- [x] 1.11 Convert the ledger gate at `witness.ts:1077` from
       `scan.version === "0.3"` to a floor covering `0.3` and later. **This is
       the task the bump exists to make safe.** Without it every `0.4` journal is
       silently ungated while CI stays green and every fixture exits as its table
@@ -105,7 +105,7 @@ it going wrong silently.
         comparison. `"0.10" >= "0.3"` is false, and a floor that mis-orders a
         future version is the same silent-ungating defect this task exists to
         prevent, deferred
-- [ ] 1.12 **Add the `0.3`-compat fixture the guarantee actually needs.**
+- [x] 1.12 **Add the `0.3`-compat fixture the guarantee actually needs.**
       Neither existing `0.3` fixture contains a `verification` or a `mutation`
       at all, so "confirm the `0.3` fixtures still validate identically" is
       satisfiable by running the unchanged suite and would stay green if
@@ -115,9 +115,9 @@ it going wrong silently.
       new rejections — asserted to produce **none** of them, in a named unit
       test. This is the only test in the change that can fail if the version
       predicate is written backwards, which makes it the one that matters most
-- [ ] 1.12a Give that fixture its own must-pass line in
+- [x] 1.12a Give that fixture its own must-pass line in
       `.github/workflows/ci.yml`, for the same reason 4.3a exists
-- [ ] 1.13 Assert `VERSIONS` is in ascending order, in a unit test. Task 1.11's
+- [x] 1.13 Assert `VERSIONS` is in ascending order, in a unit test. Task 1.11's
       floor compares by index into it, so the ordering is load-bearing from
       that point on — and the constant's own comment describes it only as
       "schemas this build can read", which does not warn a future author

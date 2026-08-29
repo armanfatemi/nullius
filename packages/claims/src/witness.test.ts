@@ -1,6 +1,17 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
 import { describe, expect, it } from "vitest";
 
-import { isJournalFailure, validateJournal, type JournalVerdict } from "./witness";
+import { VERSIONS, isJournalFailure, validateJournal, type JournalVerdict } from "./witness";
+
+// fileURLToPath, not URL.pathname: the latter is a URL component, and on a
+// path containing a space it is not a filesystem path.
+const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
+
+function fixture(name: string): string {
+  return readFileSync(`${REPO_ROOT}spec/fixtures/${name}`, "utf8");
+}
 
 function journal(...records: object[]): string {
   return records.map((record) => JSON.stringify(record)).join("\n");
@@ -282,6 +293,10 @@ describe("schema version header", () => {
       origin: "hooks",
       session: "sess-abc",
       source: "startup",
+      // v0.4's identity fields are read at every version and absent here.
+      branch: null,
+      head: null,
+      worktree: null,
     });
   });
 
@@ -883,7 +898,7 @@ describe("v0.3 leaves earlier schemas untouched", () => {
     const report = validateJournal(journal({ kind: "journal", version: "9.0" }));
 
     expect(report.findings.map((f) => f.verdict)).toEqual(["unsupported-version"]);
-    expect(report.findings[0]?.detail).toContain("0.1, 0.2, 0.3");
+    expect(report.findings[0]?.detail).toContain("0.1, 0.2, 0.3, 0.4");
   });
 
   it("does not apply them to a headerless journal", () => {
@@ -1058,7 +1073,7 @@ describe("version tables stay in sync", () => {
   it("gives every readable version a vocabulary", () => {
     // A version in VERSIONS with no VOCABULARY entry silently falls back to
     // v0.1, and every later kind becomes MALFORMED with misleading advice.
-    for (const version of ["0.1", "0.2", "0.3"]) {
+    for (const version of VERSIONS) {
       const report = validateJournal(
         journal({ kind: "journal", version, origin: "hooks" }, DISPATCH, {
           kind: "report",
@@ -1089,5 +1104,400 @@ describe("version tables stay in sync", () => {
       expect(report.findings[0]?.detail).toContain(`arrived in schema ${version}`);
       expect(report.findings[0]?.detail).not.toContain("unknown kind");
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// v0.4 — place. Three optional header fields, one optional `verification.rev`,
+// and the two rejections that made this a version bump rather than additive
+// metadata.
+// ---------------------------------------------------------------------------
+
+const V04 = { kind: "journal", version: "0.4", origin: "hooks" };
+const V03 = { kind: "journal", version: "0.3", origin: "hooks" };
+
+describe("v0.4 header identity — branch, head, worktree", () => {
+  it("parses all three onto the report header", () => {
+    const report = validateJournal(
+      journal({
+        ...V04,
+        branch: "feat/add-journal-identity",
+        head: "8c71f46",
+        worktree: "3f9c1e0a44b27d51",
+      }),
+    );
+
+    expect(report.findings).toEqual([]);
+    expect(report.header?.branch).toBe("feat/add-journal-identity");
+    expect(report.header?.head).toBe("8c71f46");
+    expect(report.header?.worktree).toBe("3f9c1e0a44b27d51");
+  });
+
+  it("reports nothing when all three are absent", () => {
+    const report = validateJournal(journal(V04));
+
+    expect(report.findings).toEqual([]);
+    expect(report.header?.branch).toBeNull();
+    expect(report.header?.head).toBeNull();
+    expect(report.header?.worktree).toBeNull();
+  });
+
+  it("omits branch on a detached HEAD without complaining", () => {
+    const report = validateJournal(journal({ ...V04, head: "8c71f46" }));
+
+    expect(report.findings).toEqual([]);
+    expect(report.header?.head).toBe("8c71f46");
+    expect(report.header?.branch).toBeNull();
+  });
+
+  // The regression test for the promise that keeps a newer producer readable:
+  // a key this build has never heard of is ignored, not reported.
+  it("ignores header keys it does not recognise", () => {
+    const report = validateJournal(journal({ ...V04, remote: "origin", clock_skew_ms: 12 }));
+
+    expect(report.findings).toEqual([]);
+  });
+
+  it("changes no other finding by being present", () => {
+    const records = [
+      DISPATCH,
+      { kind: "report", id: "r1", dispatch: "d1", outcome: "empty" },
+    ];
+    const without = validateJournal(journal(V04, ...records));
+    const with_ = validateJournal(
+      journal({ ...V04, branch: "main", head: "8c71f46", worktree: "3f9c1e0a" }, ...records),
+    );
+
+    expect(with_.findings).toEqual(without.findings);
+  });
+
+  it("refuses an empty identity field and names it", () => {
+    for (const field of ["branch", "head", "worktree"]) {
+      const report = validateJournal(journal({ ...V04, [field]: "" }));
+
+      expect(report.findings.map((f) => f.verdict)).toEqual(["malformed"]);
+      expect(report.findings[0]?.detail).toContain(`"${field}"`);
+    }
+  });
+
+  // `nonEmptyString`, not `optionalString`: whitespace is an empty answer
+  // wearing a costume.
+  it("refuses a whitespace-only identity field", () => {
+    expect(verdicts(journal({ ...V04, branch: "   " }))).toEqual(["malformed"]);
+  });
+
+  it("refuses an identity field that is not a string", () => {
+    const report = validateJournal(journal({ ...V04, head: 8471 }));
+
+    expect(report.findings.map((f) => f.verdict)).toEqual(["malformed"]);
+    expect(report.findings[0]?.detail).toContain('"head"');
+  });
+
+  it("names every offending field when more than one is empty", () => {
+    const report = validateJournal(journal({ ...V04, branch: "", worktree: "" }));
+
+    expect(report.findings.map((f) => f.verdict)).toEqual(["malformed", "malformed"]);
+    expect(report.findings[0]?.detail).toContain('"branch"');
+    expect(report.findings[1]?.detail).toContain('"worktree"');
+  });
+
+  // The asymmetry, pinned so it stays a decision rather than an oversight:
+  // session and source label one journal and nothing correlates journals by
+  // them, so a blank one is uninformative rather than misleading. Tightening
+  // them would be a further tightening and would take its own bump.
+  it("leaves an empty session and source alone at 0.4", () => {
+    const report = validateJournal(journal({ ...V04, session: "", source: "" }));
+
+    expect(report.findings).toEqual([]);
+    expect(report.header?.session).toBeNull();
+    expect(report.header?.source).toBeNull();
+  });
+
+  // Identity is readable at every version — only the rejection is 0.4.
+  it("still parses the fields on a 0.2 journal", () => {
+    const report = validateJournal(
+      journal({ kind: "journal", version: "0.2", origin: "hooks", branch: "main" }),
+    );
+
+    expect(report.findings).toEqual([]);
+    expect(report.header?.branch).toBe("main");
+  });
+});
+
+describe("v0.4 — a verification may pin the revision it was checked at", () => {
+  const target = { path: "src/retry.ts", hash: "9f2c4a1b8e7d" };
+
+  it("accepts a stamp", () => {
+    expect(verdicts(journal(V04, { kind: "verification", id: "v1", target, rev: "541ae94" }))).toEqual(
+      [],
+    );
+  });
+
+  it("reports nothing when rev is absent", () => {
+    expect(verdicts(journal(V04, { kind: "verification", id: "v1", target }))).toEqual([]);
+  });
+
+  it("refuses a ref name, and the detail names rev", () => {
+    const report = validateJournal(
+      journal(V04, { kind: "verification", id: "v1", target, rev: "main" }),
+    );
+
+    expect(report.findings.map((f) => f.verdict)).toEqual(["malformed"]);
+    expect(report.findings[0]?.detail).toContain('"rev"');
+    expect(report.findings[0]?.detail).toContain("lower-case hex");
+  });
+
+  // One canonical spelling, so two stamps naming one commit compare equal by
+  // string equality. A journal is machine-written and has no author to be
+  // lenient toward — this is deliberately stricter than the anchor grammar,
+  // which folds mixed case on the way in.
+  it("refuses upper-case hex", () => {
+    expect(verdicts(journal(V04, { kind: "verification", id: "v1", target, rev: "541AE94" }))).toEqual(
+      ["malformed"],
+    );
+  });
+
+  it("refuses a stamp shorter than seven characters", () => {
+    expect(verdicts(journal(V04, { kind: "verification", id: "v1", target, rev: "541ae9" }))).toEqual(
+      ["malformed"],
+    );
+  });
+
+  it("refuses a rev that is not a string", () => {
+    expect(verdicts(journal(V04, { kind: "verification", id: "v1", target, rev: 541 }))).toEqual([
+      "malformed",
+    ]);
+  });
+
+  // The rejection must not cost invariant 2 its evidence: a validator that
+  // drops a well-formed target over a bad extra key trades one loud verdict
+  // for a silent one.
+  it("still lets the verification go stale", () => {
+    expect(
+      verdicts(
+        journal(
+          V04,
+          { kind: "verification", id: "v1", target, rev: "main" },
+          { kind: "mutation", id: "m1", target: { ...target, hash: "7ab2c40de915" } },
+          { kind: "reliance", id: "x1", relies_on: "v1" },
+        ),
+      ),
+    ).toEqual(["malformed", "stale-verification"]);
+  });
+});
+
+describe("v0.4 — a mutation may not carry rev", () => {
+  const target = { path: "src/retry.ts", hash: "7ab2c40de915" };
+
+  it("refuses it even when the value is a well-formed stamp", () => {
+    const report = validateJournal(
+      journal(V04, { kind: "mutation", id: "m1", target, rev: "541ae94" }),
+    );
+
+    expect(report.findings.map((f) => f.verdict)).toEqual(["malformed"]);
+    expect(report.findings[0]?.detail).toContain("must not carry");
+  });
+
+  // Distinguishable from the malformed-rev finding above, which is the point
+  // of giving each rejection its own detail rather than one indistinct verdict.
+  it("says something different from the malformed-rev finding", () => {
+    const bad = validateJournal(
+      journal(V04, {
+        kind: "verification",
+        id: "v1",
+        target: { path: "a.ts", hash: "aa11" },
+        rev: "main",
+      }),
+    ).findings[0]?.detail;
+    const extra = validateJournal(
+      journal(V04, { kind: "mutation", id: "m1", target, rev: "541ae94" }),
+    ).findings[0]?.detail;
+
+    expect(bad).not.toBe(extra);
+  });
+
+  it("still advances the hash map", () => {
+    expect(
+      verdicts(
+        journal(
+          V04,
+          { kind: "verification", id: "v1", target: { path: "src/retry.ts", hash: "9f2c" } },
+          { kind: "mutation", id: "m1", target, rev: "541ae94" },
+          { kind: "reliance", id: "x1", relies_on: "v1" },
+        ),
+      ),
+    ).toEqual(["malformed", "stale-verification"]);
+  });
+
+  it("leaves every other misplaced key alone", () => {
+    // The criterion is the false belief `rev` encodes on a mutation, not "a
+    // known key on a record that cannot carry it". Nothing here proposes to
+    // reject these, and a future author must not derive that from the rule.
+    expect(
+      verdicts(
+        journal(
+          V04,
+          { ...DISPATCH, target: { path: "a.ts", hash: "aa11" } },
+          { kind: "report", id: "r1", dispatch: "d1", outcome: "empty", statement: "None." },
+        ),
+      ),
+    ).toEqual([]);
+  });
+});
+
+// The one test in this change that fails if the version predicate is written
+// backwards. Neither pre-existing 0.3 fixture carries a `verification` or a
+// `mutation` at all, so "the 0.3 fixtures still validate identically" is
+// satisfiable by running the unchanged suite.
+describe("0.3 journals do not acquire 0.4's rejections", () => {
+  it("reports none of the three for the compat fixture", () => {
+    const report = validateJournal(fixture("v0.3-compat-run.jsonl"));
+
+    expect(report.findings).toEqual([]);
+    expect(report.version).toBe("0.3");
+    expect(report.header?.branch).toBeNull();
+  });
+
+  it("is the same journal that fails at 0.4", () => {
+    // Identical bytes apart from the declared version — so the difference in
+    // outcome is the version predicate and nothing else.
+    const compat = fixture("v0.3-compat-run.jsonl");
+    const broken = fixture("v0.4-broken-run.jsonl");
+
+    expect(compat.replace('"version":"0.3"', "X")).toBe(broken.replace('"version":"0.4"', "X"));
+    expect(validateJournal(broken).findings).toHaveLength(3);
+  });
+
+  it("keeps the rejections off an inline 0.3 journal too", () => {
+    expect(
+      verdicts(
+        journal(
+          { ...V03, branch: "" },
+          { kind: "verification", id: "v1", target: { path: "a.ts", hash: "aa11" }, rev: "main" },
+          { kind: "mutation", id: "m1", target: { path: "b.ts", hash: "bb22" }, rev: "541ae94" },
+        ),
+      ),
+    ).toEqual([]);
+  });
+});
+
+// The bump's real hazard: the ledger gate was `scan.version === "0.3"`, so
+// adding 0.4 to VERSIONS and stopping there would have left every 0.4 journal
+// ungated for both verdicts below, with CI green and every fixture exiting as
+// its table says.
+describe("the ledger gate is a floor, not an equality", () => {
+  const BLOCKER = {
+    kind: "finding",
+    id: "f1",
+    severity: "blocker",
+    author: "rule-auditor",
+    text: "a blocker nothing answers",
+  };
+  const FOUND = {
+    kind: "report",
+    id: "r1",
+    dispatch: "d1",
+    outcome: "found",
+    findings: ["the precheck does not block"],
+  };
+
+  it("gives a 0.4 journal both verdicts the gate guards", () => {
+    const report = validateJournal(journal(V04, DISPATCH, FOUND, BLOCKER));
+    const found = report.findings.map((f) => f.verdict);
+
+    // Both, in one test: the gate wraps both loops, so pinning one leaves the
+    // other exactly as unprotected as it was.
+    expect(found).toContain("suppressed-finding");
+    expect(found).toContain("silent-reviewer");
+  });
+
+  it("gives a 0.3 journal the same two", () => {
+    const found = validateJournal(journal(V03, DISPATCH, FOUND, BLOCKER)).findings.map(
+      (f) => f.verdict,
+    );
+
+    expect(found).toContain("suppressed-finding");
+    expect(found).toContain("silent-reviewer");
+  });
+
+  // The lower boundary, which is what proves it is a floor: a gate wrongly
+  // written as `!== "0.1"` passes the two tests above and fails this one.
+  it("gives a 0.2 journal neither", () => {
+    const found = validateJournal(
+      journal({ kind: "journal", version: "0.2", origin: "hooks" }, DISPATCH, FOUND, BLOCKER),
+    ).findings.map((f) => f.verdict);
+
+    expect(found).not.toContain("suppressed-finding");
+    expect(found).not.toContain("silent-reviewer");
+    // The blocker is a v0.3 kind, so a 0.2 journal reports it as MALFORMED —
+    // which is the version header doing its job, not the ledger gate.
+    expect(found).toContain("malformed");
+  });
+
+  it("gives a headerless journal neither", () => {
+    const found = validateJournal(journal(DISPATCH, FOUND)).findings.map((f) => f.verdict);
+
+    expect(found).not.toContain("silent-reviewer");
+  });
+});
+
+// VERSIONS is compared by index, so its order is behaviour. The constant's own
+// comment used to describe it only as "schemas this build can read", which
+// would not warn an author inserting "0.5" in the wrong place.
+describe("VERSIONS is ordered, and the order is load-bearing", () => {
+  it("is ascending", () => {
+    const rank = (version: string): number[] => version.split(".").map(Number);
+    const ascending = (left: number[], right: number[]): boolean => {
+      for (let index = 0; index < Math.max(left.length, right.length); index += 1) {
+        const a = left[index] ?? 0;
+        const b = right[index] ?? 0;
+        if (a !== b) return a < b;
+      }
+      return false;
+    };
+
+    for (let index = 1; index < VERSIONS.length; index += 1) {
+      expect(rank(String(VERSIONS[index - 1])).every(Number.isFinite)).toBe(true);
+      expect(ascending(rank(String(VERSIONS[index - 1])), rank(String(VERSIONS[index])))).toBe(true);
+    }
+  });
+
+  it("is not merely lexicographic, which is why the floor uses indices", () => {
+    // The trap this ordering exists to survive: "0.10" sorts before "0.3" as a
+    // string. A floor written as a string comparison would ungate every gated
+    // verdict at the first two-digit minor.
+    expect("0.10" >= "0.3").toBe(false);
+  });
+});
+
+describe("the v0.4 fixtures", () => {
+  // Exit 0 is also what an empty file scores, so the fixture is opened here
+  // and its header read rather than trusted to CI's exit code.
+  it("v0.4-identity-run.jsonl validates and carries all three fields", () => {
+    const report = validateJournal(fixture("v0.4-identity-run.jsonl"));
+
+    expect(report.findings).toEqual([]);
+    expect(report.version).toBe("0.4");
+    expect(report.header?.branch).toBe("feat/add-journal-identity");
+    expect(report.header?.head).toBe("8c71f46");
+    expect(report.header?.worktree).toBe("3f9c1e0a44b27d51");
+    expect(report.verifications).toBe(1);
+  });
+
+  // CI only checks this fixture's exit code, which stays 1 while any one of
+  // the three still fires. Naming all three is the difference between "the
+  // fixture is broken" and "these three verdicts work".
+  it("v0.4-broken-run.jsonl trips all three new rejections, by name", () => {
+    const report = validateJournal(fixture("v0.4-broken-run.jsonl"));
+
+    expect(report.findings.map((f) => f.verdict)).toEqual([
+      "malformed",
+      "malformed",
+      "malformed",
+    ]);
+    expect(report.findings[0]?.detail).toContain('"branch"');
+    expect(report.findings[1]?.detail).toContain('"rev" is "main"');
+    expect(report.findings[2]?.detail).toContain('must not carry "rev"');
+    expect(report.findings.every((f) => isJournalFailure(f.verdict))).toBe(true);
   });
 });

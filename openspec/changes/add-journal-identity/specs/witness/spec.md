@@ -60,6 +60,21 @@ This rejection SHALL NOT apply to journals declaring an earlier schema, for the
 same reason the `rev` rejections do not: a record that validated clean under
 `0.3` SHALL NOT become invalid because the validator learned a newer schema.
 
+`session` and `source` SHALL continue to accept an empty string and record it
+as absent, and the asymmetry with the three identity fields SHALL be stated in
+the schema documentation rather than left to be discovered. The rule follows
+the use, not the type: `session` and `source` label one journal, and nothing
+correlates journals by them, so a blank one is merely uninformative. The
+identity fields are claims about a tree that exist to be compared across
+journals, so a blank one compares equal to every other blank one and would
+group unrelated runs together. Tightening `session` or `source` would be a
+further tightening and SHALL take its own version bump.
+
+#### Scenario: session and source keep accepting an empty string
+
+- **WHEN** a `0.4` header carries `session: ""` and `source: ""`
+- **THEN** validation reports no finding, and both are recorded as absent
+
 #### Scenario: an empty identity field is malformed at 0.4
 
 - **WHEN** a `0.4` header carries `branch: ""`

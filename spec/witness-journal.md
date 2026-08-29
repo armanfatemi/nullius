@@ -1,6 +1,6 @@
 # The Witness Journal
 
-**Version 0.2 — draft.** The record a multi-agent run leaves behind, and the
+**Version 0.4 — draft.** The record a multi-agent run leaves behind, and the
 three invariants [`nullius witness validate`](../packages/claims/) enforces on
 it. Companion to [Evidence Anchors](./evidence-anchors.md), which does the same
 job for documents.
@@ -44,8 +44,8 @@ Every record carries `kind`, and every record but the header carries a unique
 | `journal` | The header: which schema, and whose account | `version`, `origin` |
 | `dispatch` | A unit of work handed to an agent | `id` |
 | `report` | The terminal record for one dispatch | `dispatch`, `outcome`, and `findings` or `statement` |
-| `verification` | Something was checked against an artifact | `target: {path, hash}` |
-| `mutation` | An artifact was changed | `target: {path, hash}` |
+| `verification` | Something was checked against an artifact | `target: {path, hash}` (optionally `rev`) |
+| `mutation` | An artifact was changed | `target: {path, hash}` (never `rev`) |
 | `reliance` | A later step resting on a verification | `relies_on` |
 | `append` | An entry added to the run's ledger | `corrections_since_last_append` |
 
@@ -111,11 +111,16 @@ touches several changes and one change spans several sessions.
 ## The header — which schema, and whose account
 
 The first record may be a `journal` header. It carries `version` (the schema
-the records below are written to; this build reads `0.1` and `0.2`), `origin`,
-and optionally `session` and `source` (`startup` / `resume` / `clear` /
-`compact`). A resumed session gets a new id and therefore a new journal file, so
-recording `source` makes a fork in journal identity visible rather than
-mysterious.
+the records below are written to; this build reads `0.1`, `0.2`, `0.3`, and
+`0.4`), `origin`, and optionally `session` and `source` (`startup` / `resume` /
+`clear` / `compact`) plus the three identity fields below. A resumed session
+gets a new id and therefore a new journal file, so recording `source` makes a
+fork in journal identity visible rather than mysterious.
+
+Header keys the validator does not recognise are **ignored, not reported**, so
+a journal from a newer producer stays readable by an older build. That rule is
+what makes the one exception in this schema — a `mutation` carrying `rev` — an
+exception that has to be argued rather than assumed; see below.
 
 A journal with **no header is read as 0.1** — everything that existed before
 the header did. A header naming a version this build does not know produces
@@ -128,6 +133,50 @@ is why it had to land before any third-party producer existed.
 The header must be the **first** record. A `journal` record further down is
 `MALFORMED`: it governs nothing, and a reader would have to guess which of two
 accounts applies.
+
+### Where the run began — `branch`, `head`, `worktree` (v0.4)
+
+Three optional header fields recording *place*. The journal already records
+time well; without these it cannot answer "which tree was this", "did these two
+worktrees agree about `src/parser.rs`", or "where is the journal for the run
+that produced this commit".
+
+| Field | Means |
+| --- | --- |
+| `branch` | The branch checked out when the run began |
+| `head` | **The commit the session started from** |
+| `worktree` | A stable identifier for the worktree — never a filesystem path |
+
+`head` is defined as *where the run began*, and the definition is the whole of
+the field. HEAD moves during a session — in the runs this is built for, many
+times an hour — so `head` is true at exactly one instant, and the tempting
+second reading ("the tree this record was written against") is stale by
+construction for every record but the first. Anything that needs a per-claim
+revision uses `verification.rev` instead.
+
+On a detached HEAD, `branch` is **omitted**. Not `"HEAD"`, not `"(detached)"`:
+a sentinel invented here would be a fact nobody can check, and absence already
+says exactly the right thing. Absence is likewise how a producer says git could
+not answer at all — no repository, no git binary, a call that timed out.
+
+No verdict reads any of the three. They are recorded so that a later question
+can be asked of a corpus, not so that a journal can fail on them.
+
+**They must not be empty when present.** On a journal declaring `0.4` or later,
+`branch: ""` is `MALFORMED`, and the finding names the offending field. An
+empty string is a producer asserting it knows the branch and naming none, which
+is a different and worse fact than omitting the key.
+
+That is deliberately asymmetric with `session` and `source`, which accept `""`
+silently and record it as absent, and the asymmetry is worth stating rather
+than leaving to be discovered. `session` and `source` are *labels for this
+journal*: a blank one is uninformative, and nothing downstream will be misled
+by it, because nothing correlates journals by session id. The identity fields
+are *claims about a tree*, and they exist to be compared across journals — so a
+blank one is not merely uninformative, it is a value that compares equal to
+every other blank one and would group unrelated runs together. The rule follows
+the use, not the type. Nothing here proposes tightening `session` or `source`;
+doing so would be its own tightening and would take its own version bump.
 
 ### `origin` — the harness attests, or the agent says so
 
@@ -199,6 +248,52 @@ so it costs nothing and cannot be argued with:
 
 **Evidence:** `packages/claims/src/witness.ts:689@6f2428f` — `if (latest !== undefined && latest.hash !== source.hash) {`
 
+### `rev` — what a verification was checked against (v0.4)
+
+A `verification` may carry `rev`: the revision the claim was checked at, so it
+can be re-checked later against something immutable rather than against
+whatever the tree says today. It is the only kind that may carry one, because
+it is the only kind making a claim intended to be checked again.
+
+`rev` is **lower-case hexadecimal, 7 to 40 characters** — the shape a *stamp*
+is written in, and the same constant an Evidence Anchor's rev is validated
+against. A ref name such as `main` is `MALFORMED`: it is mutable, it names a
+different tree next week, and that staleness is precisely what pinning a
+revision exists to escape.
+
+This is deliberately stricter than the grammar an anchor *marker* is parsed
+with, which accepts mixed case and folds it on the way in. That leniency is for
+a human typing a citation. A journal is written by a machine and has no author
+to be lenient toward, and one canonical spelling keeps two `rev` values naming
+one commit comparable by string equality.
+
+Absence of `rev` is not a finding. A verdict that reads the field would be a
+new verdict, and takes its own version bump with it.
+
+A `mutation` **may not carry `rev` at all**, and one that does is `MALFORMED`
+rather than ignored. This is the only place the schema hard-fails a well-formed
+extra key, so the criterion is narrow and stated here rather than left to be
+generalised:
+
+The criterion is **not** "a known key on a record that cannot carry it". That
+would prove far too much — `target` on a `dispatch`, `severity` on a `check`,
+`merges_into` on a non-merge `resolution` are all ignored today and stay
+ignored, as do header keys this build has never heard of. A future author must
+not derive further rejections from this one.
+
+The criterion is the specific false belief the key encodes. `rev` means *this
+claim can be checked again*. A mutation asserts that something changed, which
+is the opposite of a claim to re-check; its target hash is already the identity
+of what changed. So a producer emitting `mutation.rev` is not merely misfiling
+a key — it holds a wrong model of what a mutation is, and every record it
+writes is suspect for the same reason. Ignoring the key would let that model
+persist silently. No other misplacement in this schema carries a comparable
+implication about its producer, which is why no other misplacement is refused.
+
+Both rejections apply **only to journals declaring `0.4` or later**. A record
+that validated clean under `0.3` does not become invalid because the validator
+learned a newer schema.
+
 ## Invariant 3 — omission is invalid
 
 Every `append` must carry `corrections_since_last_append`. `"None."` passes; an
@@ -225,9 +320,19 @@ made invalid, and the only way to say nothing is to say it.
 | `SUPPRESSED-FINDING` | A `blocker` no resolution answers (v0.3) | ❌ |
 | `SILENT-REVIEWER` | A dispatch that reported `found` and filed no finding (v0.3) | ❌ |
 
-The last two apply only to journals declaring `0.3`. Gating them on the version
-is what keeps every existing journal's output identical: none of them can carry
-a `finding`, so ungated, all of them would acquire `SILENT-REVIEWER` at once.
+The last two apply to journals declaring `0.3` **or later**. Gating them on the
+version is what keeps every earlier journal's output identical: none of them
+can carry a `finding`, so ungated, all of them would acquire `SILENT-REVIEWER`
+at once.
+
+The gate is a **floor**, not an equality, and that is load-bearing rather than
+stylistic. It was written as `version === "0.3"`, and adding `0.4` to the
+readable list without converting it would have left every `0.4` journal ungated
+for both verdicts with nothing failing: CI green, every fixture exiting as this
+table says, and a family of verdicts gone quiet for the newest schema only. The
+floor compares by **index into the ordered version list**, never by string —
+`"0.10" >= "0.3"` is false, and a lexicographic floor merely defers the same
+silent ungating to a version nobody is looking at yet.
 
 `SUPPRESSED-FINDING` is gated to `blocker` for a measured reason. In the corpus
 it was derived from, 59 of 97 identified findings (60.8%) are never mentioned
@@ -238,9 +343,46 @@ a finding may be answered in a commit or a PR thread. It justifies the
 verdict's existence; it does not predict its rate under a producer that knows
 the rule.
 
+## When the schema version bumps
+
+This is the canonical statement of the rule. It lives here rather than in a
+change proposal because proposals are archived and a citation into one rots.
+
+The version bumps when **the set of valid records changes**:
+
+1. a new kind;
+2. a new member of a closed vocabulary;
+3. a **tightening** that makes invalid a record a previous version accepted;
+4. a new verdict that can fail a record.
+
+It does **not** bump for additive optional metadata that no verdict reads.
+
+All four triggers travel together, and a restatement that carries three of them
+is how this rule decays — it has already happened twice, once by dropping the
+tightening clause and once by dropping the new-verdict clause. Any restatement
+elsewhere carries all four or points here.
+
+Two clarifications the rule cost something to learn:
+
+- **A field being optional does not exempt a change.** Optionality is a
+  property of a field; validity is a property of a record. `verification.rev`
+  and the header's identity fields are all optional, and `0.4` is still a bump,
+  because refusing a key that was previously ignored makes a previously valid
+  record invalid. The v0.4 bump is owed entirely to clause 3 — the additive
+  fields alone would not have earned one.
+- **A version-gated verdict uses a floor, never an equality.** A later version
+  inherits every verdict its predecessor earned. A verdict silently ungated by
+  a bump is indistinguishable from a verdict that was never reached, which is
+  the failure mode this whole tool exists to refuse.
+
+Bumping is not free, which is why the criterion is the set of valid records
+rather than the presence of new fields: an older validator reading a newer
+journal stops at `UNSUPPORTED-VERSION` and reports **nothing at all**. A bump
+that buys no diagnostic power costs real coverage.
+
 ## Fixtures
 
-Seven journals live next to this spec:
+Ten journals live next to this spec:
 
 | Fixture | What it is for |
 | --- | --- |
@@ -251,6 +393,9 @@ Seven journals live next to this spec:
 | [`hooks-run.jsonl`](./fixtures/hooks-run.jsonl) | Not written by hand: what the Claude Code hook pack actually produced from a real two-subagent session. Exercises correlation, not the invariants — see below |
 | [`v0.3-run.jsonl`](./fixtures/v0.3-run.jsonl) | A v0.3 run exercising all five ledger kinds, both merge outcomes, and a `looks-good` finding discharging a dispatch |
 | [`v0.3-broken-run.jsonl`](./fixtures/v0.3-broken-run.jsonl) | Trips both ledger verdicts and every new `MALFORMED` and `DANGLING-REFERENCE` path — including a blocker whose only resolutions are themselves malformed, which must not discharge it |
+| [`v0.4-identity-run.jsonl`](./fixtures/v0.4-identity-run.jsonl) | A v0.4 run carrying all three identity fields and a rev-stamped verification, and earning a ledger verdict's silence at a version the gate used to exclude |
+| [`v0.4-broken-run.jsonl`](./fixtures/v0.4-broken-run.jsonl) | Trips all three of v0.4's new rejections: `branch: ""`, a `rev: "main"` verification, and a `mutation` carrying `rev` |
+| [`v0.3-compat-run.jsonl`](./fixtures/v0.3-compat-run.jsonl) | The same bytes as `v0.4-broken-run.jsonl` apart from the declared version — and it must exit 0, because a record valid under `0.3` stays valid |
 
 ```sh
 nullius witness validate spec/fixtures/valid-run.jsonl   # exit 0
@@ -260,7 +405,14 @@ nullius witness validate spec/fixtures/future-run.jsonl  # exit 1, one finding
 nullius witness validate spec/fixtures/hooks-run.jsonl   # exit 0, and nobody typed it
 nullius witness validate spec/fixtures/v0.3-run.jsonl    # exit 0, all five ledger kinds
 nullius witness validate spec/fixtures/v0.3-broken-run.jsonl  # exit 1, 26 findings
+nullius witness validate spec/fixtures/v0.4-identity-run.jsonl # exit 0, identity in the header
+nullius witness validate spec/fixtures/v0.4-broken-run.jsonl  # exit 1, three findings
+nullius witness validate spec/fixtures/v0.3-compat-run.jsonl  # exit 0, the same three records
 ```
+
+The last two are a pair, and only the pair proves anything: identical records
+at two declared versions, one failing three ways and one clean. Either alone
+passes with the version predicate written backwards.
 
 `hooks-run.jsonl` is the only one nobody typed, and it is worth being exact
 about what that buys. It is evidence about the **recorder**: that a producer

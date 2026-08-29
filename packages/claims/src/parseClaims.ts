@@ -283,7 +283,20 @@ export function parsePresenceMarker(line: string): PresenceMarker | null {
   };
 }
 
-const STAMP_SHAPE = /^[0-9a-f]{7,40}$/;
+/**
+ * The shape a *stamp* is written in: lower-case hex, 7 to 40 characters.
+ *
+ * Deliberately not the grammar a marker is *parsed* with — that one accepts
+ * mixed case and folds it on the way in, because a human typed it. This is the
+ * canonical spelling a stamp is stored as, so two stamps naming one commit
+ * compare equal by string equality.
+ *
+ * Exported for `witness.ts`, which validates a journal's `verification.rev`
+ * against the same rule and must not re-declare the pattern. Deliberately
+ * absent from `index.ts`: the public barrel re-exports by explicit name list,
+ * and this is an internal constant rather than API.
+ */
+export const STAMP_SHAPE = /^[0-9a-f]{7,40}$/;
 
 /**
  * Returns `line` with only its `:LINE` and `@rev` characters changed, or null
