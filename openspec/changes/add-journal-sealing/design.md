@@ -52,10 +52,40 @@ A predicate written as "the compare failed" is therefore not implementable from
 an exit code, and a seal that abandons on a held lock loses journals through the
 guard rather than around it.
 
-So `attemptCas` reports three outcomes, not two: `landed`, `contended` (the ref
-moved or was locked — retryable, and both cases are the same fact from the
-seal's point of view: someone else is touching this ref), and `unavailable` (no
-git, no repository, budget exhausted — not retryable, and the seal stops).
+So `attemptCas` reports three outcomes, not two: `landed`, `contended` (another
+sealer is touching this ref — retryable), and `unavailable` (anything else — not
+retryable, and the seal stops and says so).
+
+**`contended` is a positive match; everything unmatched is `unavailable`.** This
+is the load-bearing half of the decision, and the opposite of the natural
+implementation. `cannot lock ref` is not a sufficient discriminator: measured
+against real git, four distinct failures share it, and only two are transient.
+
+| trailing clause | cause | outcome |
+| --- | --- | --- |
+| `is at <a> but expected <b>` | compare mismatch | `contended` |
+| `Unable to create '...lock': File exists` | another process holds the lock | `contended` |
+| `Unable to create '...lock': Permission denied` | read-only refs directory | `unavailable` |
+| `unable to resolve reference '...': reference broken` | corrupt ref | `unavailable` |
+
+Note that the two `Unable to create '...lock'` rows disagree, so the clause
+cannot be split at its opening either — the discrimination has to reach the
+final phrase.
+
+Matching on failure text is brittle in one specific direction, and the direction
+is what matters. If the predicate is written as "retry unless it looks
+permanent", then every failure git learns to word differently becomes
+retryable, and a permanent fault — a broken ref, a read-only `.git` — burns the
+entire budget at **every session end, forever**, while `doctor` reports the
+journal unsealed and never says why. That is this repository's own failure mode
+manufactured by the guard meant to prevent it.
+
+Written the other way round, an unrecognised failure is `unavailable`: the seal
+stops, announces itself on stderr, and leaves the journal for the sweep. The
+cost of misclassifying a transient failure as permanent is one deferred seal
+that the next sweep reclaims. The cost of the inverse is unbounded. So the
+predicate matches the two known-transient shapes and treats everything else,
+including anything git may word differently in future, as permanent.
 
 **Alternatives considered:**
 
@@ -137,8 +167,14 @@ one commit in the log per sweep rather than N.
 
 **Chosen:** every git call is best-effort, bounded by a per-call timeout *and* a
 total budget for the seal as a whole, and never throws into the append path. A
-failed or abandoned seal leaves the working file, **writes one line to stderr
-saying so**, and ends the session normally; `doctor` counts it unsealed.
+failed or abandoned seal leaves the working file or files, **writes one line to
+stderr saying so**, and ends the session normally; `doctor` counts them unsealed.
+
+Note the plural. Since Decision 2 makes a sweep one atomic commit for N
+journals, an exhausted sweep abandons all N rather than one. That is acceptable
+and is not a loss — every working file survives untouched, so the next sweep
+reclaims the whole set — but it is latency proportional to N, and the stderr
+line must name the count rather than a journal.
 
 **Rationale:** hooks fail open. That constraint does not bend for durability, and
 a durability mechanism that can break a session is worse than no durability.
@@ -167,6 +203,19 @@ Identity resolution runs before the lock and so its total must clear the lock
 deadline. The seal runs after the lock is released, so its budget answers to a
 different question — how long a session may spend exiting — and is therefore
 allowed to be larger than `IDENTITY_BUDGET_MS`. It is not allowed to be absent.
+
+**The numbers.** `SEAL_TIMEOUT_MS` is 500 per call and `SEAL_BUDGET_MS` is 3 000
+for the seal as a whole. Both are larger than identity's 250/600 because the
+seal writes and runs off the lock; both are chosen to be a fraction of any
+plausible hook timeout rather than to consume one.
+
+3 000 ms does not buy sixty-four serialized attempts, and is not meant to. At
+six calls an attempt that is roughly five to ten attempts on a warm repository —
+enough that ordinary contention lands, and deliberately not enough that a losing
+seal holds a session open while it keeps trying. Past that the sweep is the
+right mechanism and the budget's job is to hand over to it. Sizing the budget to
+win at sixty-four contenders would be sizing the *session exit* to the worst
+case of a background durability mechanism, which inverts what matters.
 
 That "different question" has a limit this design does not get to set. Nothing
 *local* waits on the seal: `cli.ts` returns as soon as `appendRecords` has
@@ -205,15 +254,27 @@ first offered, and it is the wrong one: choosing runtime behaviour to suit a tes
 is exactly the coupling that makes a seam objectionable, and a backoff would in
 any case only need an injectable clock, which this codebase can afford.
 
-The real reason is that backoff solves a problem this design no longer has.
-Backoff exists to thin a thundering herd — many contenders arriving at once,
-each retry colliding with the retries it provoked. After Decision 2's batching
-the contending population is one sealer per session end plus one per sweep, and
-a sweep is a single write however many journals it carries. There is no herd to
-thin, and a delay would spend the budget from Decision 3 on waiting rather than
-on attempts. If contention is ever measured to be worse than this reasoning
-predicts, backoff is the first thing to add and an injectable clock is what it
-will need; the seam does not preclude either.
+A second attempt at a rationale argued that Decision 2's batching removes the
+herd. That is also wrong, and wrong against this document's own neighbour:
+batching removes the *sweep's* self-contention and does nothing to the session-end
+population, which Decision 1 explicitly scales to sixty-four concurrent journals.
+A herd is exactly what this tool's normal case is.
+
+**The honest position is that no backoff is the starting point, not the answer.**
+What is actually known: git's `update-ref` failure is cheap and immediate, so a
+tight loop is not the CPU hazard it would be against a network service; the loop
+is bounded by wall clock rather than attempts (Decision 1), so an unlucky seal
+gives up on time rather than spinning; and the working file survives every
+outcome, so the worst case of losing every race is a deferred seal, not a lost
+journal. What is not known is the actual collision rate at sixty-four
+contenders, and nothing in this change measures it.
+
+So: ship without backoff, and treat the retry-attempt counts the seal already
+has to observe as the measurement. If seals are routinely reaching their budget,
+the first change is backoff with an injectable clock; the seam from this decision
+makes that a local edit. Recording it this way, rather than as a decided
+question, is the point — a rationale that has now failed twice should not get a
+third confident restatement.
 
 ### 6. The seal gets its own runner, in its own module
 

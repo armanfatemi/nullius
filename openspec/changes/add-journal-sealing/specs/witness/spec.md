@@ -36,12 +36,18 @@ in to recording has not opted in to that either.
 ### Requirement: Sealing is atomic against concurrent sessions
 
 The kit SHALL update `refs/nullius/runs` with a compare-and-swap against the ref
-value it read, and SHALL retry when the update fails because the ref was
-contended — whether the compare mismatched or the ref's lock was held by another
-process. Git reports both as exit 128 with a message opening `cannot lock ref`,
-so a retry predicate that distinguishes them is not implementable and would
-abandon journals on ordinary lock contention. Retries SHALL be bounded by a total
-wall-clock budget rather than by an attempt count alone.
+value it read, and SHALL retry only when the failure positively matches a known
+transient shape — a compare mismatch, or a ref lock held by another process.
+Every other failure SHALL be treated as permanent: the seal stops, says so, and
+leaves the journal for a later sweep.
+
+The default direction is normative, not an implementation detail. Four distinct
+`update-ref` failures share the message prefix `cannot lock ref`, and two of them
+— a read-only refs directory and a corrupt ref — are permanent. A predicate that
+retries unless a failure looks permanent would make those faults consume the
+seal's entire budget at every session end indefinitely, while reporting only that
+the journal is unsealed. Retries SHALL be bounded by a total wall-clock budget
+rather than by an attempt count alone.
 
 An unguarded update SHALL NOT be used. Two sessions sealing concurrently both
 read the same tree, and a last-writer-wins update drops one journal from the ref
@@ -71,5 +77,13 @@ versions.
 #### Scenario: exhausted retries leave the journal recoverable
 
 - **WHEN** the seal exhausts its budget without landing
-- **THEN** the journal is left unsealed, its working file is intact, the reason
-  is written to stderr, the exit code is 0, and `doctor` counts it unsealed
+- **THEN** every journal in the attempt is left unsealed, its working file is
+  intact, the reason and the count are written to stderr, the exit code is 0,
+  and `doctor` counts them unsealed
+
+#### Scenario: a permanent fault stops the seal instead of consuming its budget
+
+- **WHEN** `update-ref` fails for a reason outside the known transient shapes,
+  such as a corrupt ref or a read-only refs directory
+- **THEN** the seal stops on the first failure, names the reason on stderr, and
+  does not retry

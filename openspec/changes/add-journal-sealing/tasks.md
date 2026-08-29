@@ -30,12 +30,19 @@ extends and whose journals it seals.
       Never a bare two-argument `update-ref` — that is the read-modify-write
       this change exists to avoid
 - [ ] 1.3a **`attemptCas` reports three outcomes, not two**: `landed`,
-      `contended`, `unavailable`. Retry on `contended` only. `contended` covers
-      **both** a compare mismatch and a held `refs/nullius/runs.lock` — git
-      reports both as exit 128 with a message opening `cannot lock ref`,
-      differing only in the trailing clause, so a predicate written as "the
-      compare failed" is not implementable from an exit code and would abandon
-      journals on ordinary lock contention
+      `contended`, `unavailable`. Retry on `contended` only
+- [ ] 1.3a-i **`contended` is a positive match on two known-transient shapes;
+      everything else is `unavailable`.** Match `is at <a> but expected <b>`
+      (compare mismatch) and `Unable to create '...lock': File exists` (another
+      process holds the lock). Do **not** key on `cannot lock ref` — four
+      measured failures share that prefix and only two are transient; a
+      read-only refs directory gives `Unable to create '...lock': Permission
+      denied` and a corrupt ref gives `unable to resolve reference '...':
+      reference broken`, both permanent. The default direction is the whole
+      point: an unrecognised failure treated as retryable makes a permanent
+      fault burn the full budget at every session end forever, while treating a
+      transient one as permanent costs a single deferred seal the next sweep
+      reclaims
 - [ ] 1.3b **The total git budget is the bound**, not an attempt count. Keep an
       attempt ceiling only as a guard against git failing instantly in a loop,
       and set it well above the contending population so ordinary contention
@@ -46,7 +53,7 @@ extends and whose journals it seals.
       `IDENTITY_BUDGET_MS` — it runs after the lock is released and answers to
       how long a session may spend exiting, not to the lock deadline — but it
       may not be absent, and it must sit under the harness's own `SessionEnd`
-      timeout. Budget for **six** calls per attempt (`readRefTip`,
+      timeout. `SEAL_TIMEOUT_MS` 500, `SEAL_BUDGET_MS` 3 000 (Decision 3). Budget for **six** calls per attempt (`readRefTip`,
       `hash-object`, the tip's tree read, `mktree`, `commit-tree`,
       `update-ref`), four of which repeat on every retry
 - [ ] 1.5 On exhaustion or any git failure: leave the journal unsealed and the
@@ -85,7 +92,9 @@ extends and whose journals it seals.
 ## 4. Tests
 
 - [ ] 4.1 **The concurrency test is the load-bearing one**: two seals racing the
-      same ref both land. Drive it through the 1.2 seam in a single test
+      same ref both land — and "both land" means **the final ref tree contains
+      both `<session>.jsonl` entries**, not merely that both `attemptCas` calls
+      returned `landed`. Assert the tree, not the return values. Drive it through the 1.2 seam in a single test
       process — A calls `readRefTip()`, B seals completely, A's now-stale
       `oldTip` goes to a *real* `update-ref`, git rejects it, A retries and
       lands. Nothing mocked; the CAS under test is git's. A naive
@@ -104,6 +113,13 @@ extends and whose journals it seals.
       actually happen** — that the tip moved between A's read and A's first
       attempt, and that A's first attempt returned `contended`. A comment alone
       is a claim; the assertions are what make it checkable
+- [ ] 4.1b **Assert the retry rebuilds its tree from the *new* tip.** 4.1a's two
+      assertions pin that contention was real, not that the outcome is correct:
+      an implementation that re-reads the new tip for the CAS compare but
+      rebuilds the tree from its stale cached copy satisfies both, lands a
+      legitimate CAS, and silently drops B's journal from the tree. The
+      tree-contents assertion in 4.1 is what closes this; keep it explicit here
+      so it is not dropped as redundant
 - [ ] 4.2 Retry exhaustion leaves the journal unsealed and the file intact, and
       says so on stderr. Force it **through the seam with real git** — hold a
       stale `oldTip` across the bound, advancing the ref out from under each
@@ -117,10 +133,24 @@ extends and whose journals it seals.
       repository, and survives deletion of the one that produced it.
       `packages/kit/src/identity.test.ts` already creates a real second worktree
       via `git worktree add` inside a fast unit test; reuse that technique
-- [ ] 4.5 **The sweep**: write a journal into `.nullius/runs/` without ever
-      reaching `SessionEnd`, run `witness seal`, assert the ref now carries it.
+- [ ] 4.5 **The sweep**: write journals into `.nullius/runs/` without ever
+      reaching `SessionEnd`, run `witness seal`, assert the ref now carries them.
       This is `specs/witness/spec.md`'s "a crashed session leaves an unsealed
       journal, not a lost one" scenario, which 4.3 and 4.4 do not cover
+- [ ] 4.5a **Seed at least two journals and assert exactly one new commit.** At
+      N=1 a batched sweep and an N-commits sweep are indistinguishable, so a
+      single-journal test cannot detect the violation 2.2 exists to prevent.
+      Count commits on `refs/nullius/runs` before and after, assert the
+      difference is 1, and assert that commit's tree carries both entries
+- [ ] 4.5b **The held-lock branch**: write `<gitdir>/refs/nullius/runs.lock`
+      directly, call `attemptCas`, assert it returns `contended` and **not**
+      `unavailable`; remove the lock and assert the next attempt lands. This is
+      `specs/witness/spec.md`'s "a held ref lock is retried, not abandoned"
+      scenario. Writing the lockfile is git's own documented mechanism, not a
+      mock
+- [ ] 4.5c **A permanent fault is not retried**: corrupt the ref (write a
+      non-OID into it), assert `attemptCas` returns `unavailable` on the first
+      call and that the seal does not consume its budget retrying
 - [ ] 4.6 **`doctor`'s positive count**: three journals in `.nullius/runs/`, the
       ref carrying one → `doctor` reports two unsealed and does not fail. This
       is `specs/installer/spec.md`'s "unsealed journals are counted, not failed"
