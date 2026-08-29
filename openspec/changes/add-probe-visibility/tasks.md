@@ -42,69 +42,69 @@ A7 — the ordering assertion task 1.9 must not break:
 
 ## 1. Doctor
 
-- [ ] 1.0 A settings-`env` reader. None exists: `readManagedHooks`
+- [x] 1.0 A settings-`env` reader. None exists: `readManagedHooks`
       parses `.claude/settings.json` but extracts only `hooks`. It already keeps
       absence and unparseability apart — see the anchors above: `unreadable:
       false` for an absent file, `unreadable: true` from the catch block, which
       `runChecks` branches into `fact` versus `unknown` — so the new reader
       follows that precedent rather than inventing it
-- [ ] 1.0a The user settings path is **injectable**, not derived from
+- [x] 1.0a The user settings path is **injectable**, not derived from
       `os.homedir()` at the point of use. Add it to `DoctorOptions` (A4), which
       today carries only `root` and `probeDir`. Nothing in `packages/kit/src`
       reads `os.homedir()` or `process.env.HOME` today, so without a seam task
       4.1a would have to mutate the developer's real `~/.claude/settings.json`
-- [ ] 1.0b Extend the `check()` helper (A6) with a third defaulted parameter. Defaulted, so none of the existing call sites
+- [x] 1.0b Extend the `check()` helper (A6) with a third defaulted parameter. Defaulted, so none of the existing call sites
       change; no existing test asserts `checks.length` or a fixed index except
       the live-proof assertion task 1.9 covers
-- [ ] 1.1 A check reporting live-capture state: whether `NULLIUS_WITNESS_PROBE`
+- [x] 1.1 A check reporting live-capture state: whether `NULLIUS_WITNESS_PROBE`
       is set to exactly `1` in any of `.claude/settings.local.json`,
       `.claude/settings.json` or the injected user settings path, and whether
       `.nullius/probes/` holds anything. Never read `doctor`'s own `process.env`
       — `doctor` runs in the operator's shell, not the hook subprocess
       (design 1a)
-- [ ] 1.2 The predicate is `=== "1"`, matching the recorder. A file carrying `0`
+- [x] 1.2 The predicate is `=== "1"`, matching the recorder. A file carrying `0`
       is reported as *that file* disabling capture (design 1b). Both directions
       are file-scoped: "this file enables capture" is checkable, "capture is on"
       is not — the positive claim is no more grounded than the negative one
-- [ ] 1.2a Report every file that sets the variable and the value it carries.
+- [x] 1.2a Report every file that sets the variable and the value it carries.
       Do **not** adjudicate precedence: nothing in this repo establishes the
       harness's ordering, and naming a deciding file would assert external
       behaviour the checker cannot ground (design 1d)
-- [ ] 1.2b Where no file sets it, the detail names the files read and states
+- [x] 1.2b Where no file sets it, the detail names the files read and states
       that capture may still be enabled by sources this check does not read,
       including the launching environment. The wording stays non-exhaustive. It
       must NOT say capture is off — that would be a claim about sources it did
       not read
-- [ ] 1.3 Status is `fact` in every branch where the settings files parse —
+- [x] 1.3 Status is `fact` in every branch where the settings files parse —
       capturing, explicitly disabled, unset, directory absent, payloads held.
       Never `fail`
-- [ ] 1.3a Where payloads are held, report the count and the most recent write
+- [x] 1.3a Where payloads are held, report the count and the most recent write
       time, formatted as ISO-8601 UTC. Not `toLocaleString()` — a locale- and
       timezone-dependent detail string is a machine-dependent assertion, which
       is the same defect class as a missing seam arriving as a formatting
       choice. Never describe the payloads as stale or as "not being refreshed":
       that is a claim capture has stopped, which this check cannot make
-- [ ] 1.4 Status is `unknown` only when a settings file exists, does not parse,
+- [x] 1.4 Status is `unknown` only when a settings file exists, does not parse,
       **and** no other file established the variable. An absent file is skipped
       as an observation and does not make the report unknown. The detail names
       the file it could not parse
-- [ ] 1.4a A parse failure never discards a determinate read from another file.
+- [x] 1.4a A parse failure never discards a determinate read from another file.
       Report the readable file's value as a fact and name the unreadable one
       alongside it — `unknown` is for when nothing could be established, not for
       when something could and something else could not (design 1e)
-- [ ] 1.5 The detail line names the environment variable, so the report says how
+- [x] 1.5 The detail line names the environment variable, so the report says how
       to change what it just reported
-- [ ] 1.6 The detail line names *which* probe directory it is describing — the
+- [x] 1.6 The detail line names *which* probe directory it is describing — the
       live capture directory, not the committed corpus — since conflating them
       is the misreading this change exists to prevent
 - [ ] 1.7 Correct `probeChecks`' absent-corpus detail line, which currently
       tells the reader to populate the committed corpus with a variable that
       writes to `.nullius/probes/`. Message only: the directory it reads, its
       status, and its returned shape are unchanged
-- [ ] 1.8 Insert the new check *before* `liveProof()` in `runChecks` (A5), not
+- [x] 1.8 Insert the new check *before* `liveProof()` in `runChecks` (A5), not
       after. A7 asserts live proof is the last check doctor runs; that test is
       correct and stays as written
-- [ ] 1.9 Assert the new check's own position directly, by comparing the
+- [x] 1.9 Assert the new check's own position directly, by comparing the
       `findIndex` of the two check names — capture before live proof — never a
       fixed offset like `checks[checks.length - 2]`, which breaks the moment any
       check lands between them. `doctor.test.ts:263` catches a misplacement only
@@ -122,14 +122,14 @@ A7 — the ordering assertion task 1.9 must not break:
 
 ## 3. Documentation
 
-- [ ] 3.1 `.nullius/README.md`: the two probe directories and why they differ —
+- [x] 3.1 `.nullius/README.md`: the two probe directories and why they differ —
       committed corpus versus live capture
-- [ ] 3.2 State plainly that raw payloads carry prompt text and absolute paths,
+- [x] 3.2 State plainly that raw payloads carry prompt text and absolute paths,
       and that this is why capture is opt-in
 
 ## 4. Tests
 
-- [ ] 4.1 Doctor's branches asserted on the message, not only the status. The
+- [x] 4.1 Doctor's branches asserted on the message, not only the status. The
       settings axis is `{sets 1 | sets another value | sets nothing |
       exists but does not parse}`; the directory axis is
       `{absent | empty | non-empty}`. Two collapses are expected and should be
@@ -142,14 +142,14 @@ A7 — the ordering assertion task 1.9 must not break:
       The branch that must not be dropped is *no file sets the variable, payloads
       present* — payloads that look like coverage. Assert the detail reports
       count and most-recent-write-time and does NOT call them stale
-- [ ] 4.1a Disagreement is asserted directly: user file sets `1`, project-local
+- [x] 4.1a Disagreement is asserted directly: user file sets `1`, project-local
       sets `0`, report names both files and both values and declares no winner.
       Written against the injected user settings path from task 1.0a, never the
       real home directory
-- [ ] 4.1b Each of the three files is exercised as the sole setter, so nothing
+- [x] 4.1b Each of the three files is exercised as the sole setter, so nothing
       passes by only ever reading two of them. `.claude/settings.json`
       standalone is the one 4.1a does not touch
-- [ ] 4.1c The mixed case: one file unparseable, another setting `1`. Assert the
+- [x] 4.1c The mixed case: one file unparseable, another setting `1`. Assert the
       status is `fact`, the determinate value is reported, and the unreadable
       file is named
 - [ ] 4.2 `init` writes no probe key into `nullius.kit.json`. Assert against the

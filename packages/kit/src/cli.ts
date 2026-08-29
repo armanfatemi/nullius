@@ -16,6 +16,7 @@
 
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import { isJournalFailure, validateJournal, type JournalOrigin } from "@nullius-inverba/claims";
@@ -361,6 +362,10 @@ function runDoctor(argv: readonly string[]): number {
   const report = runChecks({
     root,
     probeDir: join(root, "spec", "fixtures", "probes", "claude-code"),
+    // Resolved here rather than inside the check: `runChecks` takes the path
+    // so a test can point it at a fixture instead of the developer's own
+    // configuration.
+    userSettingsPath: join(homedir(), ".claude", "settings.json"),
   });
   console.log(formatReport(report));
 

@@ -860,3 +860,32 @@ cumulative across five iterations: CAUGHT 5/5. Decomposed by reviewer —
 architecture-reviewer 5/5 (2 via the registry side channel, 3 by reading),
 rule-auditor 2/3 in scope, test-engineer 0/4 in scope. The per-run verdict the
 PR body carries cannot express any of this.
+
+## Stage 5 — Verify chunk 1 (doctor capture check + docs)
+
+build: pass
+type-check: pass
+test: pass — packages/kit 246/246 (up from 234, i.e. the 12 new tests);
+  packages/claims 765 passed, 6 failed, all six in src/flagConformance.test.ts
+  and all six the known ugrep baseline (-P, -T, --no-ignore-case,
+  --perl-regexp, --initial-tab, --context). Flag table untouched.
+dogfood gates: pass, both polarities — valid-run 0, broken-run 1, wiring-valid
+  0, wiring-broken 1, wiring . 0, check README+spec --require-markers 0,
+  check openspec 0.
+
+One gate caught a real defect during this chunk, recorded because it is the
+first time an anchor in this change has fired against the implementation rather
+than against a draft:
+
+`check 'openspec/**/*.md'` failed COUNT-MISMATCH on design.md's search anchor
+`grep -rn 'settings.local.json' packages plugin spec .github → 0`, which found
+15. All 15 were this change's own implementation — the new capture check reads
+`.claude/settings.local.json`. The absence claim was true when written and the
+change falsified it.
+
+The general point is worth carrying: a search anchor has no rev-stamp, so unlike
+a presence anchor it cannot be pinned to the commit where it held. An absence
+claim in a change proposal is therefore only safe if scoped to surfaces the
+change will not touch. Rescoped to `plugin spec .github` — where a precedence
+*specification* would live, and which this change does not modify — and the
+prose now says why the scope is what it is.

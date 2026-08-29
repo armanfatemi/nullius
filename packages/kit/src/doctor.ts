@@ -94,6 +94,153 @@ function readManagedHooks(root: string): { entries: HookEntry[]; unreadable: boo
   }
 }
 
+/** The variable the recorder tests, and the only one this check reads. */
+const CAPTURE_VAR = "NULLIUS_WITNESS_PROBE";
+
+/** The name the capture-state check reports under. */
+const CAPTURE_CHECK = "payload capture";
+
+/**
+ * Where live capture writes. Named with the disclaimer attached everywhere it
+ * appears, because the committed corpus `probeChecks` reads is a different
+ * directory and reading one report as the other is the misreading this check
+ * exists to prevent.
+ */
+const LIVE_PROBE_DIR = ".nullius/probes/ (the live capture directory, not the committed probe corpus)";
+
+interface SettingsRead {
+  /** How this file is named in the report. */
+  label: string;
+  /** The value the file's `env` block carries, or null when it sets none. */
+  value: string | null;
+  /** The file exists and did not parse — the one honest `unknown`. */
+  unreadable: boolean;
+  /** The file is not there at all — an observation, never an `unknown`. */
+  absent: boolean;
+}
+
+/**
+ * One settings file's `env` entry for a variable.
+ *
+ * Follows `readManagedHooks`' precedent rather than inventing one: an absent
+ * file and an unparseable file are different answers and must not collapse,
+ * because only the second is a failure to determine.
+ */
+function readSettingsEnv(path: string, label: string, variable: string): SettingsRead {
+  if (!existsSync(path)) return { label, value: null, unreadable: false, absent: true };
+
+  try {
+    const settings = JSON.parse(readFileSync(path, "utf8")) as { env?: unknown };
+    const env = settings.env;
+    if (env === null || typeof env !== "object") {
+      return { label, value: null, unreadable: false, absent: false };
+    }
+    const raw = (env as Record<string, unknown>)[variable];
+    return {
+      label,
+      value: raw === undefined || raw === null ? null : String(raw),
+      unreadable: false,
+      absent: false,
+    };
+  } catch {
+    return { label, value: null, unreadable: true, absent: false };
+  }
+}
+
+/** What `.nullius/probes/` holds, said without a verdict about why. */
+function describeLiveCaptures(root: string): string {
+  const dir = join(root, ".nullius", "probes");
+  if (!existsSync(dir)) return `${LIVE_PROBE_DIR} holds no payloads`;
+
+  let newest: Date | null = null;
+  let held = 0;
+  try {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (!entry.isFile()) continue;
+      held += 1;
+      const { mtime } = statSync(join(dir, entry.name));
+      if (newest === null || mtime.getTime() > newest.getTime()) newest = mtime;
+    }
+  } catch (error) {
+    return `${LIVE_PROBE_DIR} could not be listed: ${error instanceof Error ? error.message : String(error)}`;
+  }
+
+  // An absent directory and an empty one hold the same number of payloads, so
+  // they say the same thing. The count and the time are facts; calling them
+  // stale would be a claim that capture has stopped, which cannot be checked
+  // from here.
+  if (held === 0 || newest === null) return `${LIVE_PROBE_DIR} holds no payloads`;
+  return `${LIVE_PROBE_DIR} holds ${held} payload(s), most recently written ${newest.toISOString()}`;
+}
+
+/**
+ * What the settings files say about live payload capture — a fact, not a fault.
+ *
+ * Two things this deliberately does not do. It does not read `doctor`'s own
+ * `process.env`: the variable governs the hook subprocess, while `doctor` runs
+ * in the operator's shell, so its environment answers a different question. And
+ * it does not adjudicate precedence between settings files — nothing in this
+ * repository establishes the harness's ordering, so naming a deciding file
+ * would be an ungrounded claim about external behaviour. Every setter is
+ * reported with the value it carries, which is strictly more informative than
+ * a winner would have been.
+ *
+ * Both readings are scoped to the file they came from. "This file enables
+ * capture" is checkable; "capture is on" is not, and neither is "capture is
+ * off" — a shell export into the harness is invisible here, and no amount of
+ * file reading recovers it.
+ */
+export function captureChecks(root: string, userSettingsPath?: string): Check[] {
+  const reads = [
+    readSettingsEnv(
+      join(root, ".claude", "settings.local.json"),
+      ".claude/settings.local.json",
+      CAPTURE_VAR,
+    ),
+    readSettingsEnv(join(root, ".claude", "settings.json"), ".claude/settings.json", CAPTURE_VAR),
+    ...(userSettingsPath === undefined
+      ? []
+      : [readSettingsEnv(userSettingsPath, userSettingsPath, CAPTURE_VAR)]),
+  ];
+
+  const setters = reads.filter((read) => read.value !== null);
+  const unreadable = reads.filter((read) => read.unreadable);
+
+  // `unknown` is for when nothing could be established — not for when
+  // something could and something else could not. So this branch requires
+  // both an unreadable file and no determinate read anywhere else, and says
+  // nothing about the directory: what it could not settle is the settings.
+  if (setters.length === 0 && unreadable.length > 0) {
+    return [
+      {
+        name: CAPTURE_CHECK,
+        status: "unknown",
+        detail: `could not parse ${unreadable.map((read) => read.label).join(", ")} — ${CAPTURE_VAR} not determined, and no other settings file sets it`,
+      },
+    ];
+  }
+
+  const said =
+    setters.length === 0
+      ? `no settings file sets ${CAPTURE_VAR} — checked ${reads
+          .map((read) => `${read.label} (${read.absent ? "absent" : "sets nothing"})`)
+          .join(", ")}; capture may still be enabled by sources this check does not read, among them the environment of the process that launched the harness`
+      : [
+          setters
+            .map(
+              (read) =>
+                `${read.label} ${read.value === "1" ? "enables" : "disables"} capture (${CAPTURE_VAR}=${read.value})`,
+            )
+            .join("; "),
+          setters.length > 1 ? "; this check does not adjudicate precedence between settings files" : "",
+          unreadable.length > 0
+            ? `; could not parse ${unreadable.map((read) => read.label).join(", ")}`
+            : "",
+        ].join("");
+
+  return [{ name: CAPTURE_CHECK, status: "fact", detail: `${said}. ${describeLiveCaptures(root)}` }];
+}
+
 /** Shell operators that are not the command, and whose operands are not either. */
 const REDIRECTIONS = /^\d*(>>|>|<<|<|2>&1|&>)/;
 
@@ -517,10 +664,18 @@ export interface DoctorOptions {
   root: string;
   /** Where recorded harness probes live, when the repo has any. */
   probeDir: string;
+  /**
+   * The user-level harness settings file, injected rather than derived.
+   *
+   * Hard-wiring `os.homedir()` at the point of use would make the check
+   * untestable: the only way to exercise it would be to mutate the developer's
+   * own configuration.
+   */
+  userSettingsPath?: string;
 }
 
 export function runChecks(options: DoctorOptions): DoctorReport {
-  const { root, probeDir } = options;
+  const { root, probeDir, userSettingsPath } = options;
   const checks: Check[] = [];
 
   checks.push(...checkConfigs(root));
@@ -549,6 +704,9 @@ export function runChecks(options: DoctorOptions): DoctorReport {
   }
 
   checks.push(...probeChecks(probeDir));
+  // Before the live proof, not after: live proof is the report's closing
+  // statement and a test holds it there.
+  checks.push(...captureChecks(root, userSettingsPath));
   checks.push(...liveProof());
 
   return { checks, failed: checks.some((check) => check.status === "fail") };

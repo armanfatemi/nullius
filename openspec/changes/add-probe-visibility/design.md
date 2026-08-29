@@ -126,9 +126,20 @@ carries, and stop there.
 
 An earlier draft had the first file in precedence order decide, and the report
 name it. That is a confident claim about harness behaviour, and nothing in this
-repository establishes the ordering:
+repository establishes the ordering. No specification, plugin artefact or CI
+surface here mentions the file whose precedence would have to be decided:
 
-**Evidence:** `grep -rn 'settings.local.json' packages plugin spec .github` → 0 results
+**Evidence:** `grep -rn 'settings.local.json' plugin spec .github` → 0 results
+
+The scope of that search is deliberate and worth stating, because the first
+version of this anchor searched `packages` too and went red the moment this
+change was implemented — the new check reads `settings.local.json`, so the
+implementation falsified an absence claim the design had made about the
+pre-change tree. Code that *reads* a settings file says nothing about which file
+wins; only a specification could, and there is none. A search anchor has no
+rev-stamp, so unlike a presence anchor it cannot be pinned to the commit where
+it was true, and an absence claim in a change proposal has to be scoped to
+surfaces the change will not touch.
 
 Naming a deciding file
 would have `doctor` assert something it cannot check — the same class of error
