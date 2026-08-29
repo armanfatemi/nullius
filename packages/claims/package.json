@@ -1,6 +1,6 @@
 {
   "name": "@nullius-inverba/claims",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Deterministic checker for Evidence Anchors \u2014 machine-verifiable claims about a codebase in design docs, RFCs, and agent-written proposals.",
   "license": "MIT",
   "author": "Arman Fatemi",
