@@ -206,3 +206,103 @@ caught by: architecture-reviewer AND rule-auditor, independently. First round in
 not scored: test-engineer — its agent file declares no false-premise pass.
 note on rule-auditor's two earlier misses: this round it opened the fixture and also ran the deterministic checker over the document, which reports a planted claim by name. That means the catch is partly attributable to tooling rather than to the reviewer's own reading, and the run cannot separate the two. The earlier finding stands — a plant carrying no `**Evidence:**` anchor is outside the citation pass that reviewer leads with — but "it caught it on round 3" is weaker evidence of coverage than it looks.
 note on placement: three plants, three documents, one sentence. `harvestFalseClaim` is deterministic over a sorted scan and the repository did not change between rounds, so rotation moved the location and not the text. architecture-reviewer flagged it on all three rounds without remarking on the repetition; that is consistent with re-reading each time and also consistent with recognising it, and this run cannot tell which. Varying the sentence needs a `canary.ts` change (a seed or an explicit `--symbol` override), not a placement choice.
+
+## Stage 3 — Refine iteration 3, and the refinement cap
+
+All five iteration-3 blockers and both concerns addressed in commit `aa54d39`. The run then paused at `--max-refine`'s default of 3 rather than dispatching a fourth review round.
+
+## Why the pause is here rather than one round later
+
+Three refinement iterations is the cap. The iteration-3 fixes are committed but unreviewed, and verifying them would take a fourth review round — which, if it found anything, would need a fourth refinement round to act on. Stopping after the third refinement and saying so is the honest place; running a review whose findings the cap forbids acting on would produce a report nobody is allowed to use.
+
+## The datum the cap exists to surface
+
+| round | false premises | blockers |
+| --- | --- | --- |
+| 1 | 3 | 4 |
+| 2 | 2 | 5 |
+| 3 | 1 | 5 |
+
+The subject matter narrowed sharply — round 1 asked whether the design was right, round 3 asked whether a predicate discriminates four error strings and whether three test assertions pin what they claim. `rule-auditor` returned clean in all three rounds. But the blocker *rate* did not fall, and in rounds 2 and 3 the largest findings were against decisions this coordinator had written in the immediately preceding round:
+
+- refine 1 wrote Decision 6 on a reuse argument that did not survive reading `runGit` (caught round 2)
+- refine 1 wrote a five-attempt bound counting the wrong population (caught round 2)
+- refine 2 wrote a `contended` predicate that classified permanent faults as retryable (caught round 3)
+- refine 2 wrote task 4.1a asserting non-vacuity with assertions that do not establish it (caught round 3)
+- refine 2 replaced Decision 5's rejected rationale with one contradicting its neighbour (caught round 3)
+
+That is five design errors introduced by the refinement process itself, all caught, none reaching implementation. The review layer is doing its job. What the pattern says is that this change's design is being *authored* during refinement rather than checked there, which is not what three rounds of pre-review are sized for.
+
+## Unreviewed as of this pause
+
+- `design.md` Decision 1 — the inverted predicate and its four-row measured table
+- `design.md` Decision 3 — `SEAL_TIMEOUT_MS` 500 / `SEAL_BUDGET_MS` 3 000
+- `design.md` Decision 5 — the no-backoff rationale, third version
+- `tasks.md` 1.3a-i, 4.1b, 4.5a, 4.5b, 4.5c
+- `specs/witness/spec.md` — the positive-match requirement and the permanent-fault scenario
+
+## Coordinator corrections since last append
+
+- None new in this refinement beyond those already recorded under "Stage 2 — Pre-review iteration 3", which named all three of the round's corrections at the moment they were found.
+- One clarification on a claim made in that append: I wrote that the reviewer's proposed fix for the predicate (discriminate on the trailing clause) was "not sufficient". That is accurate but understates what the measurement changed. The reviewer's finding — that a permanent fault was in the retryable bucket — was entirely correct and was the whole insight; the measurement only showed the boundary sits one clause deeper than proposed. The design change that followed, inverting the default so unmatched failures are permanent, came from the reviewer's diagnosis and not from the coordinator's measurement.
+
+## Stage 2 — Pre-review iteration 4
+
+Narrow verification round over commit `aa54d39` only. Dispatched: architecture-reviewer, test-engineer. `rule-auditor` dropped at pre-flight — `aa54d39` added zero Evidence anchors, changed no SHALL placement, and named no delivery mechanism, so its justification would have been generic.
+
+## Blockers
+
+- **[blocker] `Unable to create '...lock': File exists` is not a transient shape** (architecture-reviewer) **[corrected-coordinator]**. A **stale** lockfile left by a crashed process produces byte-identical output to a live held lock, reproduced at git 2.50.1 — and git never reaps it. Its own message says so: `a git process may have crashed in this repository earlier: remove the file manually to continue.` So a permanent fault sits *inside* one of the two shapes the inverted predicate admits as retryable, and burns the full budget at every session end forever while `doctor` says only "unsealed". That is the defect iteration 3 flagged, surviving the fix intended to close it. The seal's own killed hook is a plausible producer of the stale lock, which makes the mechanism its own trigger.
+
+- **[blocker] The budget sizing argument is contradicted by measurement** (architecture-reviewer) **[corrected-coordinator]**. Decision 3 claims 3 000 ms buys "roughly five to ten attempts on a warm repository" and argues the under-sizing is deliberate. Measured: `spawnSync` git averages 8.6–9.2 ms here, so six calls is about 54 ms and a retry about 36 ms — 3 000 ms buys roughly **seventy** attempts. The argument inverts: the budget *does* buy sixty-four contenders. The reviewer names this as the signature of a number chosen before the reasoning, which is what it was.
+
+- **[blocker] Decision 5's measurement apparatus does not exist** (architecture-reviewer) **[corrected-coordinator]**. The rewritten rationale rests on "treat the retry-attempt counts the seal already has to observe as the measurement." Nothing in `tasks.md` or the specs emits, records or surfaces a retry count; stderr fires only on failure. "Ship it and measure" cannot do its work when nothing measures.
+
+- **[blocker] The pluralisation stopped short of the actionable documents** (architecture-reviewer **and** test-engineer, independently — cross-reviewer convergence). `specs/witness/spec.md` and Decision 3 now require the count on stderr for a batched sweep, but `tasks.md` 1.5 still says "one line on stderr saying **the journal** was not sealed" and 4.2 still asserts the singular. test-engineer adds the coverage half: no task seeds a batched sweep, exhausts its budget, and asserts all N stay unsealed with the count named — the same argument 4.5a makes on the success side, unapplied to the failure side. The tasks as written build what the spec forbids.
+
+## Concerns
+
+- **[concern] A fifth shape exists and is transient** (architecture-reviewer): a first-seal race with a zeros `<old>` gives `cannot lock ref '...': reference already exists`, currently classified `unavailable`. Cost is one deferred seal, within the design's own accounting — but "four distinct failures" is not exhaustive, and the table asserts it is. A directory/file conflict is a sixth, correctly permanent.
+- **[concern] `6 × SEAL_TIMEOUT_MS (500) = SEAL_BUDGET_MS (3 000)` exactly** (architecture-reviewer). One all-timeouts attempt consumes the entire budget, so in the worst case the retry mechanism is structurally unreachable — a retry loop that cannot retry.
+- **[concern] The sixty-four premise is stretched** (architecture-reviewer). The anchor verifies exactly, but its context in `add-journal-identity` is `survey` aggregating id collisions across journals — it supports sixty-four concurrent *journals*, not sixty-four simultaneous session-end CAS attempts. Decisions 3 and 5 both lean on it as a contender count. The direction is safe (it inflates the worst case) but the citation is doing more work than it can carry.
+- **[concern] 4.5c names the wrong call** (test-engineer): it asserts `attemptCas` returns `unavailable` on a corrupt ref, but the first git call in the seal path is `readRefTip()`, whose failure contract is undefined anywhere in section 1. Empirically the scenario is robust today, but incidentally rather than by decision.
+- **[concern] 4.5c's "does not consume budget retrying" names no assertion technique** (test-engineer). Either the `spawnSync`-interception call-count pattern or a wall-clock assertion would work; the task should say which.
+
+## Confirmed sound
+
+- **The inversion itself is right** (architecture-reviewer): positive-match-plus-default-permanent is the correct direction and the cost-asymmetry argument holds. `Permission denied`, `reference broken` and the D/F conflict all correctly fall through to `unavailable`. The defect is in the membership of the transient set, not in the shape of the rule.
+- **Decision 5 v3's register is right** (architecture-reviewer): refusing a third confident restatement and naming what is unknown is the correct move; it fails on missing apparatus, not on candour.
+- **4.1 + 4.1b close the stale-cached-tree hole** (test-engineer): that implementation lands a real CAS but omits B's entry, which 4.1's tree-contents assertion catches directly.
+- **4.5a's commit-count delta plus tree contents reliably distinguishes** a batched sweep from an N-commits sweep (both reviewers).
+- **No separate task is needed for git rewording a transient message** (test-engineer): 4.1a and 4.5b exercise real git output and assert `contended` by name, so a rewording would fail them.
+- **No false premises about existing code in this revision** (architecture-reviewer): `IDENTITY_TIMEOUT_MS`/`IDENTITY_BUDGET_MS`, `runGit`'s 250–273 span, and the `identity.lock.test.ts:93-97` "Not vacuous" block all verify as cited.
+
+## The pattern this round confirms
+
+I set a stopping rule before this round: if its blockers were again against decisions written in the immediately preceding refinement, hand the design back rather than refine a fourth time. Three of the four are — the transient-set membership, the budget sizing, and the measurement apparatus were all authored in `aa54d39`.
+
+The predicate specifically has now failed in three successive forms: absent (round 2), keyed on the wrong clause (round 3), and admitting a permanent fault inside a shape it calls transient (round 4). Each fix was locally correct and each was wrong in a new way, which is the signature of the mechanism being wrong rather than the parameters. The mechanism is classifying git's English error text.
+
+## Coordinator corrections since last append
+
+- **[corrected-coordinator]** I asserted in Decision 3 that 3 000 ms buys "roughly five to ten attempts on a warm repository." I did not measure git spawn latency before writing that; it is about 9 ms, so the real figure is near seventy. The number was chosen first and the justification written to fit it, which is precisely the failure the reviewer named. This is the fourth instance in four rounds of the same error — asserting a fact about the system from something adjacent to it rather than from measurement — after `packages/kit/src/git.ts` (inferred from where a file ought to live), Decision 6's reuse argument (written without reading `runGit`), and two anchor line numbers (estimated from a `sed` window).
+- **[corrected-coordinator]** I classified `File exists` as transient. I raised the stale-lockfile case myself in the dispatch brief because I suspected it, and then shipped the classification anyway pending the answer rather than holding it. Suspecting a defect and writing the artefact as though it were settled is worse than not having thought of it, because it puts a known-uncertain claim into a document that reads as decided.
+- **[corrected-coordinator]** Decision 5 v3 argued that retry counts the seal "already has to observe" would serve as the measurement justifying a later backoff decision. Nothing observes them. I described an apparatus that does not exist and used its existence as the reason the decision could be deferred.
+
+## Probe — stage 2
+
+verdict: MISSED
+iteration: 4
+planted: openspec/changes/add-journal-sealing/specs/witness/spec.md:8, inside the body of "### Requirement: Journals are sealed to a git ref" (rotated: proposal.md, design.md, tasks.md, now specs/witness/spec.md)
+claim: "Note that `retry` is also defined in `spec/fixtures/rules-valid/src/example.ts`, so the two definitions must stay in sync."
+in scope of: architecture-reviewer only. rule-auditor also declares a false-premise pass but was dropped at pre-flight this round, for reasons recorded in the synthesis.
+dispatched: architecture-reviewer, test-engineer
+not scored: test-engineer — its agent file declares no false-premise pass.
+
+Diagnosis. This is a genuine miss, not a placement defect: architecture-reviewer had `specs/witness/spec.md` in its declared scope, quoted from it (`spec.md:83`) in its own report, and declares a false-premise pass. The claim was in a file it read.
+
+The detail that makes this worth reading twice: the same reviewer volunteered, unprompted, that "the iteration-3 planted sentence at `tasks.md:4` is gone." It checked whether the previous one had been removed and reported the absence — while the current one sat unreported in a file it had open. That is the failure mode the skill's own guidance predicts for an unvaried plant: `harvestFalseClaim` is deterministic over a sorted scan, the repository did not change across rounds, and so all four plants were the identical sentence. Three rounds of seeing it appears to have converted it from a claim to be evaluated into a known artefact to be located, and once located at its old address and found absent, the question was treated as closed.
+
+Consequence for the three CAUGHT rounds. They should be read down, not thrown out. A reviewer that recognises a sentence by its text is not demonstrating the false-premise pass the probe is meant to measure, and this round is the first evidence that recognition was in play. The instrument cannot separate "read it and judged it false" from "recognised it" on any of rounds 1-3.
+
+What would fix it is not rotation, which is all this run had available. It is varying the sentence, which needs a `canary.ts` change — a seed, or an explicit `--symbol` override. Recorded here as the concrete follow-up this run's probe data argues for.
