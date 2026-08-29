@@ -32,15 +32,22 @@ no verdict attached.
   determine this." Where the settings file is readable the state *is*
   determinable, and claiming otherwise would be the checker overstating its own
   ignorance, which is the mirror of the failure this repo refuses. `??` is
-  retained for the one case where it is honest: settings absent or unparseable.
+  retained for the one case where it is honest: a settings file that exists and
+  does not parse, with nothing else establishing the value. An *absent* file is
+  an observation, not an unknown — see Decision 1e.
 
 **Rationale:** the goal is that a reader of `doctor` output knows capture is off.
 That needs visibility, not severity.
 
 ### 1a. Capture state is read from the settings env block, not `process.env`
 
-**Chosen:** `doctor` reads the `env` block of the harness settings file and asks
-whether the capture variable is set there to exactly `1`.
+**Chosen:** `doctor` reads settings files rather than its own environment.
+
+Read this decision together with 1c and 1d, which supersede its scope. The first
+draft said "the" settings file, singular, and asked whether the variable was
+"set there" — both wrong, and corrected below. What 1a settles, and what
+survives unchanged, is only this: the source is settings on disk, never
+`doctor`'s own `process.env`.
 
 This corrects a false premise in the first draft of this design, which asserted
 capture state was determinable "from the environment and the filesystem" and
@@ -65,8 +72,8 @@ operator's shell, and its only use of its own environment is the `PATH` lookup:
 So a naive `process.env` read inside `doctor` is wrong in both directions:
 capture configured in settings and actually running would report "off", and
 `NULLIUS_WITNESS_PROBE=1 nullius-kit doctor` would report "on" while the hooks
-never saw it. Reading the settings block makes the check answer the question it
-claims to answer.
+never saw it. Reading settings files makes the check answer a question it can
+actually settle — what those files say — rather than one it cannot.
 
 **Alternative considered:** report `??` whenever the project settings file is
 silent — rejected, because silence is the common case and the report would then
@@ -119,8 +126,11 @@ carries, and stop there.
 
 An earlier draft had the first file in precedence order decide, and the report
 name it. That is a confident claim about harness behaviour, and nothing in this
-repository establishes the ordering: `.claude/settings.local.json` appears
-nowhere in the tree outside this change's own documents. Naming a deciding file
+repository establishes the ordering:
+
+**Evidence:** `grep -rn 'settings.local.json' packages plugin spec .github` → 0 results
+
+Naming a deciding file
 would have `doctor` assert something it cannot check — the same class of error
 as 1a and 1c, arriving a third time by a different route.
 

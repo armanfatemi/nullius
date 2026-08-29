@@ -152,9 +152,12 @@ A7 — the ordering assertion task 1.9 must not break:
 - [ ] 4.1c The mixed case: one file unparseable, another setting `1`. Assert the
       status is `fact`, the determinate value is reported, and the unreadable
       file is named
-- [ ] 4.2 `init` writes no probe key into `nullius.kit.json`. Extend the
-      existing in-memory render assertions in `packages/kit/src/init.test.ts`
-      rather than round-tripping through disk
+- [ ] 4.2 `init` writes no probe key into `nullius.kit.json`. Assert against the
+      in-memory output of `renderKitConfig` rather than round-tripping through
+      disk — the same technique `packages/kit/src/init.test.ts` already uses for
+      `renderConfig`. Note it is a *new* assertion, not an extension of an
+      existing one: that file has no in-memory content assertions for
+      `renderKitConfig` today
 - [ ] 4.3 A test at the **CLI seam** asserting `doctor` still points
       `probeChecks` at the committed corpus. A second direct call to
       `probeChecks` duplicates the existing coverage in

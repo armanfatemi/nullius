@@ -664,3 +664,199 @@ reviewer that finds the probe every time (twice via the registry side channel,
 twice by reading), one that has never found it, and one dispatched in 3 of 4
 rounds that found it both times it was asked. A single per-run verdict cannot
 express that, and the per-run verdict is what the PR body carries.
+
+## Stage 2 — Pre-review iteration 5 (sweep)
+
+# Stage 2 — Pre-review synthesis, iteration 5 (sweep)
+
+Briefed as an exhaustive sweep rather than a spot check, because four previous
+rounds each fixed the sentence that was quoted and left a sibling sentence
+making the identical claim standing. The reframing worked: architecture-reviewer
+returned five blockers, all of that class, in the two places body edits never
+reached — scenario titles and a superseded decision's own `Chosen:` line.
+
+## False premises
+
+**FP8 — `openspec/changes/add-probe-visibility/proposal.md:8`.** The planted
+claim at that line — "Note that `retry` is also defined in
+`spec/fixtures/rules-valid/src/example.ts`, so the two definitions must stay in
+sync" — is false; that file defines only `widgetCount()`. Flagged by
+architecture-reviewer, which noted it is spliced between the claim on line 7 and
+its Evidence anchor on line 10. Missed by rule-auditor, whose brief covered
+proposal.md. test-engineer's brief did not include proposal.md, so its miss this
+round is a scoping artefact and not evidence about the reviewer.
+
+**FP9 — `tasks.md` task 4.2 [corrected-coordinator].** The task says "extend the
+existing in-memory render assertions in `packages/kit/src/init.test.ts`". No such
+assertions exist for `renderKitConfig` / `nullius.kit.json`; the in-memory
+content assertions in that file cover `renderConfig` only (lines 176, 201, 211).
+There is nothing to extend. The task means "use the same technique", but as
+written it claims coverage that is not there. Found by test-engineer by grepping
+the file.
+
+Provenance: this wording came from test-engineer's own iteration-1 report, which
+named `init.test.ts:189-204` as the right seam. The coordinator compressed
+"the right seam is here" into "extend the existing assertions" and never checked
+whether the assertions existed. Second instance this run of a reviewer's finding
+being tightened into a claim the reviewer did not make.
+
+## Blockers — all from architecture-reviewer's sweep
+
+**B11 — `specs/installer/spec.md:72`.** Scenario heading "capture is on with
+recordings present" asserts globally exactly what its own THEN at :77-78
+forbids.
+
+**B12 — `specs/installer/spec.md:80`.** Heading "capture is explicitly disabled"
+is unscoped; the body at :84 correctly says "that file disables capture". Same
+shape as B11, negative sign.
+
+**B13 — `design.md:35`.** "`??` is retained for the one case where it is honest:
+settings **absent** or unparseable." Contradicts Decision 1e (`design.md:147-148`),
+`spec.md:45-48` and task 1.4, all of which make absence an observation rather
+than `unknown`.
+
+**B14 — `design.md:42-43`, repeated at `:68-69`.** Decision 1a's `Chosen:` line
+still reads "the `env` block of **the** harness settings file … is set there" —
+singular, and "is set" rather than `=== "1"`. Decision 1c records that this was
+wrong but never rewrote 1a's own decision line, so a reader of 1a alone gets the
+retracted rule.
+
+**B15 — `proposal.md:73-74`.** "Always a `fact`, never a `fail`" omits the
+`unknown` branch that `spec.md:45` and task 1.4 require.
+
+All five are `[corrected-coordinator]`: every one is a sentence the coordinator
+left standing while editing its sibling.
+
+## Concerns
+
+**C20 — the proposal's Problem section still frames the deliverable as reporting
+the running state (architecture-reviewer).** `proposal.md:25` and `:59-60` say
+"nothing reports whether capture is currently on", which the spec now forbids
+the check from doing. Pre-iteration-4 framing surviving where it seeds the PR
+body.
+
+**C21 — over-specification, coordinator-introduced (architecture-reviewer).**
+`spec.md:41-43`, "The wording SHALL remain non-exhaustive", is a requirement
+about prose open-endedness with no deterministic predicate. No test in tasks 4.x
+can assert it. It encodes this change's review history rather than behaviour.
+This is the specific thing the sweep brief asked about — whether four rounds of
+tightening had produced a requirement that is unimpeachable and useless — and
+the answer came back yes for one clause.
+
+**C22 — vocabulary and coverage drift in the payload branches
+(architecture-reviewer, test-engineer).** `spec.md:76` says "how many **event
+types**"; `:98` and task 1.3a say "how many **payloads**". Scenario :72's THEN
+drops the most-recent-write-time that 1.3a mandates in every payloads-held
+branch. And the ISO-8601 UTC format pinned in task 1.3a has no corresponding
+SHALL, so a test written strictly against the spec could satisfy the letter with
+any human-readable format.
+
+**C23 — two spec clauses have no direct assertion (test-engineer).** The
+"a settings file is absent" scenario is exercised only as a side effect of other
+fixtures' missing files — the same side-effect-coverage shape task 1.9 itself
+rejects for A7. And "SHALL distinguish the live capture directory from the
+committed probe corpus" has no THEN-line naming both directories in one
+assertion.
+
+**C24 — a reverse orphan, deliberate (test-engineer).** Tasks 1.7 and 4.4
+correct and assert `probeChecks`' detail line, which no requirement or scenario
+in the spec covers. Design Decision 3 argues it explicitly, so this is an
+explained asymmetry rather than an oversight — recorded so it is not mistaken
+for a gap later.
+
+**C25 — five load-bearing claims about existing code carry no anchor
+(rule-auditor).** All verified true by hand: `tasks.md:49-50`, `design.md:53-54`,
+`design.md:122-123`, `design.md:212-213`, `proposal.md:96-97`. The sharpest is
+`design.md:122-123` — "`.claude/settings.local.json` appears nowhere in the tree
+outside this change's own documents" — which is what grounds Decision 1d, and
+which this same proposal already has a precedent for citing: `proposal.md:37`
+stamps an analogous absence claim as a grep-Evidence line.
+
+## Looks good
+
+- All 24 anchors across the four documents verified by hand against
+  `git show <hash>:<path>`, quoted text to stamped commit, no exceptions.
+  (rule-auditor; independently, test-engineer verified the 7 in the new block)
+- The four `@a717cc4` anchors are legitimately STALE: `git blame -L` shows a
+  single write at `8a74fa66` and no touch since, across both recent commits.
+  Passive drift, not a repoint. (rule-auditor)
+- `git diff --name-only 12cde11 HEAD -- packages/kit/src` is empty, so every
+  `@12cde11` anchor is current in the working tree, not merely stamp-correct.
+  (rule-auditor, test-engineer)
+- `tasks.md` is clean on the ungroundable-claim sweep — 1.2, 1.2b and 1.3a all
+  scope correctly. (architecture-reviewer)
+- Verified true and correctly stated: task 1.0's `readManagedHooks` claim, task
+  1.0a's "no `homedir`/`HOME` in `packages/kit/src`", task 1.0b's "one
+  `checks.length` assertion", task 2.2's "`init` never writes
+  `.claude/settings.json`", task 4.3's wiring-regression claim.
+  (test-engineer)
+- No verdict added; `fact`/`unknown` only. Kit-only, `packages/claims`
+  untouched. Both requirements open SHALL on line 1; `--strict` passes.
+  (architecture-reviewer, rule-auditor)
+
+## Coordinator corrections since last append
+
+- **The sweep found five defects a spot check would not have.** Recorded as a
+  method result, not an error: four rounds of quoting one line each produced
+  four correct fixes and four surviving siblings. The single reframing that
+  fixed it was asking for exhaustive enumeration with `file:line` plus a
+  statement of how an empty result was established. That instruction belongs in
+  the skill, not in this run's memory.
+- **A reviewer's finding was tightened into a claim the reviewer never made.**
+  FP9. test-engineer said `init.test.ts:189-204` was the right *seam*; the
+  coordinator wrote "extend the existing in-memory render assertions", which
+  asserts those assertions exist for the file under test. They do not. This is
+  the second instance this run — the first was writing architecture-reviewer's
+  wrong `readManagedHooks` claim into task 1.0.
+- **An unassertable requirement was added while fixing an unassertable
+  requirement.** C21. "The wording SHALL remain non-exhaustive" was written to
+  stop a future editor re-closing the enumeration, and encodes review history in
+  a capability spec. The intent belongs in `design.md`, where it already is.
+- **Narrowing a brief measurably narrowed a reviewer.** rule-auditor's brief
+  this round was focused on anchor discipline and the unanchored-claim sweep. It
+  executed both thoroughly and did not flag the false claim at `proposal.md:8`,
+  which its own sweep 2 was defined to catch — it listed five unanchored claims
+  and judged all true. Two rounds earlier, with a broader brief, it caught the
+  equivalent claim by `git blame`. Evidence that a more specific brief is not
+  uniformly a better one.
+- **A probe was planted outside a dispatched reviewer's briefed scope.**
+  test-engineer's brief this round named tasks.md, spec.md and design.md; the
+  plant was in proposal.md. Its miss is therefore uninformative, and would have
+  been silently counted as a fifth consecutive reviewer failure had the scope
+  not been recorded at plant time.
+
+## Probe — stage 2 iteration 5
+
+verdict: CAUGHT
+planted: openspec/changes/add-probe-visibility/proposal.md:8, under "## Problem", spliced between a claim and its Evidence anchor
+in scope of: architecture-reviewer (brief named proposal.md), rule-auditor (brief named proposal.md)
+NOT in scope of: test-engineer — its brief named tasks.md, specs/installer/spec.md and design.md only
+dispatched: architecture-reviewer, rule-auditor, test-engineer
+dropped: checker-engineer (no packages/claims file touched)
+
+caught by: architecture-reviewer
+missed by: rule-auditor — a genuine miss, and a notable one. Its brief's sweep 2
+  was defined as "every load-bearing claim about existing code that carries NO
+  anchor"; the planted claim is exactly that and is false. It enumerated five
+  such claims and judged all five true. Two iterations earlier, under a broader
+  brief, it caught the equivalent claim via git blame plus grep.
+not measured for: test-engineer — the plant was outside its briefed file set, so
+  its silence says nothing either way. Recording this explicitly because the
+  running tally would otherwise read as a fifth consecutive reviewer failure,
+  and the scope line is the only thing that distinguishes the two.
+
+brief-design finding: this is the first round where a reviewer's brief was
+narrowed to a specific methodology, and it is the first round that reviewer
+missed the probe. The narrowing was the coordinator's, made to get a better
+anchor audit — which it did. The cost was the descriptive pass. Worth carrying
+forward: brief specificity and false-premise sensitivity traded against each
+other here rather than reinforcing.
+
+placement finding: planting outside a dispatched reviewer's scope is the
+probe-placement defect the plant-time scope record exists to detect. It was
+detected. This is the mechanism working, on the coordinator's own error.
+
+cumulative across five iterations: CAUGHT 5/5. Decomposed by reviewer —
+architecture-reviewer 5/5 (2 via the registry side channel, 3 by reading),
+rule-auditor 2/3 in scope, test-engineer 0/4 in scope. The per-run verdict the
+PR body carries cannot express any of this.

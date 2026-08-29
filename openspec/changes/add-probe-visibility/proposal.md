@@ -21,8 +21,11 @@ test over recordings, not a report on live state:
 
 **Evidence:** `packages/kit/src/cli.ts:360@a717cc4` — `    probeDir: join(root, "spec", "fixtures", "probes", "claude-code"),`
 
-The gap is that **nothing reports whether capture is currently on.** Live
-payloads land in a different directory entirely:
+The gap is that **nothing reports what the configuration says about capture.**
+Whether capture is *running* is not knowable from here — the environment that
+launched the harness can enable it unseen — but what the settings files say is
+knowable, and nothing reports that either. Live payloads land in a different
+directory entirely:
 
 **Evidence:** `packages/kit/src/cli.ts:588@a717cc4` — ``  const file = join(root, ".nullius", "probes", `${name}.json`);``
 
@@ -37,7 +40,7 @@ nor any of the modules it composes to decide what to write:
 
 So the loop has no entry point. The corpus is fed by live capture; live capture
 is off by default; and a `doctor` run reports the corpus check green while
-capture is off, which is true and reads as "probing is fine."
+nothing is being captured, which is true and reads as "probing is fine."
 
 The variable is not wholly undocumented — `record --help` describes it:
 
@@ -69,8 +72,10 @@ about it has to be reported when it is true or not at all.
 - **A `doctor` check for live capture state** (kit): reads the harness settings
   files — project-local, project-shared and user — and reports every one that
   sets `NULLIUS_WITNESS_PROBE`, the value it carries, and whether
-  `.nullius/probes/` holds anything. Always a `fact`, never a `fail`; not
-  capturing is a legitimate choice, not a defect. Three things it deliberately
+  `.nullius/probes/` holds anything. Never a `fail` — not capturing is a
+  legitimate choice, not a defect. A `fact` in every branch but one: a settings
+  file that exists and will not parse, with nothing else establishing the value,
+  is `unknown`. Three things it deliberately
   does not do, each of which it did in an earlier draft of this proposal:
   - it does not read `doctor`'s own environment, because the variable governs
     the hook subprocess and `doctor` runs in the operator's shell (design 1a)

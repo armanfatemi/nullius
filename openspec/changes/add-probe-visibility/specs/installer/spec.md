@@ -38,9 +38,8 @@ Where no settings file sets the variable, the report SHALL state which files
 were read and SHALL state that capture may still be enabled by sources this
 check does not read, including — but not limited to — the environment of the
 process that launched the harness. It SHALL NOT report that capture is off,
-because that is a claim about sources it did not read. The wording SHALL remain
-non-exhaustive: enumerating the invisible sources is what produced two
-successive versions of this requirement that forbade the correct answer.
+because that is a claim about sources it did not read, and SHALL NOT present its
+list of unread sources as complete.
 
 The state SHALL be reported as unknown only for a settings file that exists and
 does not parse. An absent settings file is not an unreadable one, and the two
@@ -49,6 +48,12 @@ cannot be parsed is a failure to determine.
 
 The report SHALL name the environment variable that controls capture, so that a
 reader can act on what was reported without consulting documentation.
+
+Where payloads are held, the report SHALL state how many are held and when the
+most recent was written, as an ISO-8601 UTC timestamp. The format is fixed
+because a locale- or timezone-dependent rendering cannot be asserted
+deterministically, which would make the requirement untestable on a machine
+other than the author's.
 
 The check SHALL read a user settings file whose location is not fixed to the
 invoking user's home directory. Stated observably because it is a capability
@@ -69,15 +74,16 @@ them will read a green corpus check as evidence that capture is on.
   capture may still be enabled by sources this check does not read — including
   the launching environment — and does not fail
 
-#### Scenario: capture is on with recordings present
+#### Scenario: one file enables capture and recordings are present
 
 - **WHEN** exactly one settings file sets the capture variable, to `1`, and the
   live probe directory holds payloads
 - **THEN** the report names that file as enabling capture, and states how many
-  event types are held, as a fact. It does not assert that capture is on
-  globally, for the same reason it may not assert that capture is off
+  payloads are held and when the most recent was written, as a fact. It does not
+  assert that capture is on globally, for the same reason it may not assert that
+  capture is off
 
-#### Scenario: capture is explicitly disabled
+#### Scenario: one file explicitly disables capture
 
 - **WHEN** exactly one settings file sets the variable, to a value other than
   `1`
@@ -114,6 +120,14 @@ them will read a green corpus check as evidence that capture is on.
 - **THEN** the report states what the readable file says, as a fact, and also
   names the file it could not parse. A determinate read is not discarded because
   a different file was unreadable
+
+#### Scenario: the report distinguishes the live directory from the corpus
+
+- **WHEN** `doctor` runs in a repository holding both a committed probe corpus
+  and a live capture directory
+- **THEN** the capture-state report names the live capture directory, and does
+  so in terms that cannot be read as describing the committed corpus, which a
+  different check reports on separately
 
 #### Scenario: a settings file is absent
 
