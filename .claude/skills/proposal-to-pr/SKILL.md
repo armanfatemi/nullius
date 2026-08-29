@@ -142,6 +142,17 @@ earlier stage as covering these.
    still run; you simply do not iterate on failures.
 10. **Never start implementation while a dependency is unsatisfied.** Stage 1's
     gate is not advisory.
+11. **Never `git commit -a`/`git commit -am` for an agent-memory sweep, or for
+    any commit made mid-run.** Stage the specific paths. The working tree can
+    hold unrelated edits (another proposal's in-progress work, a settings
+    change under review), and a blanket add has already swept one into a
+    commit that then had to be reverted twice.
+12. **Never invoke a gate through a shell loop over a stored command string**
+    (`for cmd in check wiring rules; do $cmd ...; done`, or `c="node ...
+    cli.js"; $c ...`). Not every shell word-splits an unquoted variable — zsh
+    does not by default — so the loop can silently no-op or report every gate
+    as failing when all of them passed. Write each gate invocation out as its
+    own explicit command line.
 
 ## Stage machine
 
@@ -181,7 +192,9 @@ pr_url                 set at Stage 8
 sub_phase              the current task-section, e.g. "routing-table"
 sub_phase_progress     "4/7 tasks — table + tests done; CLI adapter pending"
 human_commands         from blocked-commands, if any
-probe                  caught | missed | tainted | not-planted
+probe_iter_<N>         caught | missed | tainted | not-planted | not-scored
+                       one key per pre-review iteration — never a bare
+                       `probe` key, which cannot hold more than the last round
 ```
 
 `sub_phase` and `sub_phase_progress` are written after every task-section commit
@@ -515,9 +528,22 @@ reviewer's declared scope, which is a probe-placement defect. After `clear`,
 nothing on disk distinguishes them. One line at plant time; unrecoverable
 afterwards.
 
+**Rotate the target document across iterations of the same change** —
+`proposal.md`, then `design.md`, then `tasks.md`, cycling if there are more
+rounds than documents. `harvestFalseClaim` picks its claim deterministically
+from a sorted scan of source files, so re-planting the *same* document on an
+unchanged repo reissues the identical sentence at the identical line; two
+runs on record show a reviewer recognizing a repeated plant by its exact text
+rather than by reading. Rotating the document changes where it lands, which is
+the one lever available without a code change — it does not change the
+sentence itself. If varying the sentence turns out to matter, that is a
+`canary.ts` change (a seed or an explicit `--symbol` override), not something
+this step can work around.
+
 **If `plant` fails, note it and run unprobed.** Instrumentation must never be
-able to block shipping. Set `probe=not-planted` in state and record the reason
-in Step 6 — that is a legitimate outcome, not a finding.
+able to block shipping. Set `probe_iter_<N>=not-planted` in state (see Step
+6's note on why the key is per-iteration) and record the reason in Step 6 —
+that is a legitimate outcome, not a finding.
 
 ### Step 4 — dispatch, in parallel, in one message
 
@@ -552,7 +578,20 @@ sketch the synthesis structure.
 ### Step 5 — synthesize, then score the probe
 
 Synthesize the returns: deduplicate, group by severity, resolve conflicts
-explicitly, cite the source agent. Write the synthesis to a file and score it:
+explicitly, cite the source agent. Write the synthesis to a file and score it.
+
+**The synthesis is the artefact `canary verify` scores, not a summary of it.**
+`verifyCanary` has exactly two match paths, both literal substring checks
+against the synthesis text: the plant's `doc:line`, or its claim text
+verbatim (`packages/claims/src/canary.ts:328-329`). A synthesis that
+abbreviates the path (basename instead of the full repo-relative path) or
+paraphrases a finding instead of quoting it defeats both paths even when a
+reviewer genuinely read and flagged the planted claim — this exact failure
+produced a false `MISSED` at iteration 1 of three separate runs before it was
+diagnosed. When resolving a reviewer's finding into the synthesis, carry the
+**full repo-relative path** and reproduce any quoted claim **verbatim**;
+never shorten a path to a filename or restate a finding in your own words in
+the document `canary verify` will read.
 
 ```bash
 node packages/claims/dist/cli.js canary verify /tmp/stage2-synthesis.md
@@ -567,7 +606,7 @@ node packages/claims/dist/cli.js canary clear
 - exit 3 → `tainted`. A report named the probe machinery, so the result is void.
   **Never record a tainted run as caught.**
 - exit 2 → could not run — an unreadable registry, for instance. Record
-  `probe=not-planted` and keep going, on the same rule as a failed `plant`:
+  `probe_iter_<N>=not-planted` and keep going, on the same rule as a failed `plant`:
   instrumentation never blocks shipping, and a probe that could not be scored
   says nothing about the review layer either way. Write the Step 6 probe section
   with `verdict: not-planted` and the error in place of the location.
@@ -607,7 +646,28 @@ When `plant` itself failed, write the same section with `verdict: not-planted`
 and the plant error in place of the location — an absent section and a passing
 probe are indistinguishable to anything reading in bulk, so say so explicitly.
 
-Also mirror the verdict into state: `state-set <change> probe caught`.
+**Only name an agent in `in scope of:` if its own file declares a
+false-premise pass.** Check `.claude/agents/<name>.md` for that heading before
+writing the line — do not infer it from the agent's name or its general remit.
+Two runs on record listed `test-engineer` as in scope and then scored it a
+miss for not catching a plant its own agent file never asked it to look for;
+that is a brief defect charged to the wrong party, and it also makes `MISSED`
+look more informative than it is. If a round's dispatched set genuinely
+contains nobody in scope for the plant's location, the correct verdict is
+neither `CAUGHT` nor `MISSED` — write `NOT-SCORED` and say why (e.g. "plant
+landed in `proposal.md`, this round dispatched only `test-engineer` and
+`rule-auditor`, neither declares a scope covering it").
+
+Also mirror the verdict into state, **keyed by iteration so a later round
+cannot erase an earlier one**: `state-set <change> probe_iter_<N> caught`.
+`review-evidence.md`'s `## Probe — stage 2` sections are always the full,
+append-only history — `appendEvidence` never overwrites — but a single
+`state-set <change> probe <verdict>` key is last-write-wins, so a run that
+scored `missed, caught, caught` would leave `state.probe` reading only
+`caught`, silently disagreeing with the artefact it is supposed to mirror.
+Do not write a bare `probe` key at all; a coordinator resuming mid-run should
+read `review-evidence.md`, not reconstruct history from a key that cannot
+hold one.
 
 ### Decision
 
@@ -706,10 +766,17 @@ it becomes `FABRICATED` the instant the change lands, and the honest author is
 called a fabricator by their own merge. With a stamp, the immutable half stays a
 hard gate and only the line number degrades to the advisory `STALE`.
 
-Commit at meaningful boundaries — typically per task section. After every
+**Commit per task section — not "typically," always.** After every
 task-section commit, write `sub_phase` and `sub_phase_progress` to state and
 update `progress.md`. Each committed section is a clean handoff boundary; apply
 the context-budget discipline above rather than starting the next chunk degraded.
+One run landed 23 tasks in a single 953-line commit and lost that boundary at
+the exact moment it needed it: an implementing agent was killed mid-run by a
+session-limit error with nothing committed to resume from, and recovery meant
+a full manual file-by-file re-verification of the entire diff. The state
+schema's `sub_phase`/`sub_phase_progress` fields exist for exactly this
+resume case; accumulating work into one end-of-stage commit throws the
+capability away before it is ever needed.
 
 ### Spec-vs-code drift branch
 
@@ -728,6 +795,13 @@ resolutions, in order of preference:
 
 The wrong move is the silent path: writing a test against a different surface and
 ticking the task complete. That accumulates drift and lies to the next reader.
+
+**Clear `sub_phase` and `sub_phase_progress` before leaving Stage 4.** They
+are a within-stage resume aid; carrying their last value into `verify`,
+`post-review`, or beyond is a lie about where the run is. One run's state
+still read "2/4 chunks — docs (section 5) pending" at `stage: retro`, on a
+change whose implementation had long since finished — harmless to that run
+only because nobody resumed from it while it was wrong.
 
 State transition: `stage: implement` → `stage: verify`.
 
@@ -1180,7 +1254,7 @@ theirs.
   misread.
 - **Six test failures in `flagConformance`** — that is the ugrep baseline, not a
   regression. Any other count is real.
-- **`canary plant` fails** — note it, set `probe=not-planted`, run unprobed.
+- **`canary plant` fails** — note it, set `probe_iter_<N>=not-planted`, run unprobed.
   Instrumentation never blocks shipping.
 - **`gh` not authenticated** — pause at Stage 8 with the auth command.
 
