@@ -30,3 +30,18 @@ probe section. Four CAUGHT scores, none of which measured reading.
 `probe_plant_varied` frontmatter fields) rather than passing the score through.
 A leaked CAUGHT is a finding, not a healthy probe. See
 [[probe-state-vs-artefact]] and [[scope-claims-need-checking]].
+
+**Third occurrence, and it got structural — `add-probe-visibility` (PR #43).**
+architecture-reviewer's *durable* memory now carries the leak: commit `045c48a`
+added to `project_proposal-injected-prose.md` the line "`canary status` +
+`check '<dir>/**/*.md'` in one call confirmed it again … that pairing is now
+3-for-3 as the fastest opener", together with the plant's exact fixture path
+(`spec/fixtures/rules-valid/src/example.ts`, unvaried across five rounds, and
+unvaried across the previous run too). A side channel that was incidental is now
+persisted across runs. Treat any future CAUGHT from architecture-reviewer in this
+repo as pre-compromised until the plant string is varied.
+
+Also new: this run's probe sections record per-reviewer catch/miss *and* whether
+each catch came from reading or the registry. That decomposition is worth more
+than the aggregate — 5/5 CAUGHT decomposed to 5/5 for one reviewer (2 leaked),
+2/3 for another, 0/4 for a third that was never briefed for the pass at all.
