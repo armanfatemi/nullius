@@ -28,18 +28,34 @@ session.
 ### 1. The seal is compare-and-swap, not read-modify-write
 
 **Chosen:** `update-ref refs/nullius/runs <new> <old>` — git's own compare-and-swap
-— inside a retry loop bounded at **five attempts** and by the total budget of
-Decision 3, whichever is reached first. On exhaustion the journal is left
+— inside a retry loop **bounded by the total git budget of Decision 3**, with an
+attempt ceiling as a secondary guard only. On exhaustion the journal is left
 unsealed, the exhaustion is announced on stderr, and `doctor` counts it; nothing
 is partially written.
 
-Five is chosen against the shape of the contention, not as a round number. Each
-loss costs one lost race against another *session ending* — an event that occurs
-once per session, not once per hook — so five consecutive losses means five
-other sessions ended inside this one's seal window. At that point the retry is
-no longer the mechanism that will fix it, and the sweep is: the working file is
-still on disk and `witness seal` reclaims it later at no cost. The bound exists
-to hand the problem to the recovery path, not to eventually win.
+**The budget is the bound; the attempt ceiling is not.** An attempt count is the
+wrong primary bound because the number of attempts a seal needs is a function of
+how many other sealers are active, which the seal cannot know. A wall-clock
+budget is a function of what the session can afford to spend exiting, which it
+can. The ceiling exists for one case the budget does not cover: git failing
+*instantly* and repeatedly, where a budget alone would spin. Set it well above
+the contending population — the loop should reach it only when something is
+wrong, never in the course of ordinary contention.
+
+**Retry on contention, which is not the same as retry on compare failure.** The
+ref can refuse a write for two reasons, and only one of them is a compare
+mismatch: another process may hold `refs/nullius/runs.lock` in the shared common
+directory. Git reports both the same way — exit 128, with a message opening
+`cannot lock ref 'refs/nullius/runs'`, differing only in the trailing clause
+(`is at <a> but expected <b>` versus `Unable to create '...lock': File exists`).
+A predicate written as "the compare failed" is therefore not implementable from
+an exit code, and a seal that abandons on a held lock loses journals through the
+guard rather than around it.
+
+So `attemptCas` reports three outcomes, not two: `landed`, `contended` (the ref
+moved or was locked — retryable, and both cases are the same fact from the
+seal's point of view: someone else is touching this ref), and `unavailable` (no
+git, no repository, budget exhausted — not retryable, and the seal stops).
 
 **Alternatives considered:**
 
@@ -60,8 +76,12 @@ to hand the problem to the recovery path, not to eventually win.
 **Rationale:** this is the failure mode the project exists to make loud, occurring
 inside the mechanism whose entire purpose is not losing the record. It is also
 not hypothetical here — concurrent sessions in one repository are the normal case
-for this tool, and the proposal that specified the unguarded sequence argued for
-sixty-four concurrent journals four decisions earlier in the same document.
+for this tool, and the change that deferred sealing to this one is scaled for
+sixty-four of them:
+
+**Evidence:** `openspec/changes/add-journal-identity/design.md:58@a1a6a54` — `Across sixty-four concurrent journals, "fix the compiler errors in bun_runtime"`
+
+**Evidence:** `openspec/changes/add-journal-identity/design.md:178@a1a6a54` — `## Decision 4 — sealing moved to `add-journal-sealing``
 
 The loss is recoverable — the working file stays on disk, so `witness seal`
 re-sweeps it and `doctor` counts it unsealed. That is what makes this a design
@@ -104,6 +124,15 @@ is local evidence until someone chooses otherwise.
 an advisory lock and runs on every hook event, and adding git invocations inside
 that lock trades a fast local write for a slow one under contention.
 
+**A sweep is one commit, not N.** `witness seal` finding N unsealed journals
+builds a single tree carrying all N and issues one `update-ref`. The obvious
+implementation — seal each journal in turn — makes the recovery mechanism
+contend with itself: N ref updates from one process, each of which can lose to
+the next, so the tool that exists to reclaim unsealed journals becomes the
+largest producer of ref contention in the system. Batching removes that
+entirely, and it is also the cheaper shape: one `commit-tree`, one ref write,
+one commit in the log per sweep rather than N.
+
 ### 3. Git failure is never a recording failure — but it is never silent either
 
 **Chosen:** every git call is best-effort, bounded by a per-call timeout *and* a
@@ -125,10 +154,12 @@ journal that announced itself is a fact someone can act on; one that did not is
 discoverable only by whoever independently thinks to run `doctor`, which is the
 shape of absence this project is named after.
 
-**Two budgets, not one.** The per-call timeout bounds one `update-ref`; the seal
-is four calls per attempt times N retries, and contention is the expected case
-rather than the exceptional one. The precedent states the reason a per-call
-bound alone is insufficient:
+**Two budgets, not one.** The per-call timeout bounds one `update-ref`; a seal
+attempt is **six** calls, not four — `readRefTip`, `hash-object`, a tree read of
+the current tip, `mktree`, `commit-tree`, `update-ref` — and a retry repeats the
+last four because the tree must be rebuilt onto the tip that displaced it. Times
+N retries, with contention as the expected case rather than the exceptional one.
+The precedent states the reason a per-call bound alone is insufficient:
 
 **Evidence:** `packages/kit/src/identity.ts:53@5b7f9f2` — `* The per-call timeout bounds one `rev-parse`; without a total, resolution`
 
@@ -136,6 +167,16 @@ Identity resolution runs before the lock and so its total must clear the lock
 deadline. The seal runs after the lock is released, so its budget answers to a
 different question — how long a session may spend exiting — and is therefore
 allowed to be larger than `IDENTITY_BUDGET_MS`. It is not allowed to be absent.
+
+That "different question" has a limit this design does not get to set. Nothing
+*local* waits on the seal: `cli.ts` returns as soon as `appendRecords` has
+returned, so no other hook in this process is blocked. But the seal runs inside a
+blocking `SessionEnd` hook, and the harness running that hook has a timeout of
+its own that no document here names. The budget is therefore chosen to sit
+comfortably under any plausible one rather than to consume what is available,
+and the seal must remain correct when killed mid-loop — which it is, because
+every attempt is a single atomic `update-ref` and a killed seal simply leaves the
+journal for the sweep.
 
 ### 5. The seal is two separable steps, because the concurrency test needs a seam
 
@@ -159,30 +200,79 @@ Nothing is mocked; the CAS under test is git's.
 Written as one opaque function, that test cannot be written at all, which is why
 the shape is fixed here and not discovered in Stage 4.
 
-**No backoff** keeps retry-exhaustion testable without an injectable clock or a
-sleep. Contention here is a handful of concurrent sessions, not a thundering
-herd, and the total budget from Decision 3 is the backstop that a backoff would
-otherwise provide.
+**No backoff, and the reason is not testability.** Testability was the reason
+first offered, and it is the wrong one: choosing runtime behaviour to suit a test
+is exactly the coupling that makes a seam objectionable, and a backoff would in
+any case only need an injectable clock, which this codebase can afford.
 
-### 6. Write-capable git extends the kit's own helper
+The real reason is that backoff solves a problem this design no longer has.
+Backoff exists to thin a thundering herd — many contenders arriving at once,
+each retry colliding with the retries it provoked. After Decision 2's batching
+the contending population is one sealer per session end plus one per sweep, and
+a sweep is a single write however many journals it carries. There is no herd to
+thin, and a delay would spend the budget from Decision 3 on waiting rather than
+on attempts. If contention is ever measured to be worse than this reasoning
+predicts, backoff is the first thing to add and an injectable clock is what it
+will need; the seam does not preclude either.
 
-**Chosen:** the seal's git calls live with the kit's existing bounded-git
-discipline in `packages/kit/src/identity.ts`, under their own timeout and
-budget constants — not the kernel's reader, and not a third spawn path.
+### 6. The seal gets its own runner, in its own module
 
-**Rationale:** the alternative was never live. The kernel's `revFileReader`
-reads *a file at a rev* and cannot express `hash-object`, `mktree`,
-`commit-tree` or `update-ref`; `add-journal-identity` recorded that rejection in
-the code itself rather than only in its proposal:
+**Chosen:** a new `packages/kit/src/seal.ts` with its own bounded-git runner.
+It copies the *discipline* of `identity.ts`'s runner — `shell: false`, an
+argument vector, a per-call timeout, `SIGKILL`, a capped buffer, no throw — and
+shares none of its code.
 
-**Evidence:** `packages/kit/src/identity.ts:30@5b7f9f2` — `* `revFileReader` in the kernel is not the reuse candidate for any of this: it`
+**Rationale.** An earlier draft of this decision put the seal's git calls into
+`packages/kit/src/identity.ts`, arguing that reusing the discipline meant
+reusing the helper and that two implementations of one discipline is the thing
+worth avoiding. That argument does not survive reading the helper. `runGit` is
+private, and three properties make it unusable here rather than merely
+inconvenient:
 
-So the real question is whether a module named for identity resolution should
-own a write path. It should: what is being reused is the discipline — `shell:
-false`, an argument vector, a timeout, a `SIGKILL`, every error folded into one
-"no answer" — and two implementations of that discipline is the thing worth
-avoiding. The seal gets its own budget constants because it answers to a
-different deadline (Decision 3), not its own spawn helper.
+- It hardcodes `input: ""`, and deliberately so — a git subcommand that decides
+  to prompt would otherwise hold the hook open for its whole timeout. But
+  `mktree` reads its tree entries from stdin, so the seal cannot use a runner
+  that guarantees stdin is empty.
+- It collapses every failure into `null`, which is right for identity — the
+  caller's response to a missing binary and a non-zero exit is the same, omit
+  the field — and wrong for the seal, which must distinguish `contended` from
+  `unavailable` to know whether to retry at all (Decision 1).
+- It returns `null` for empty stdout as well as for failure. A *successful*
+  `update-ref` prints nothing and exits 0, so `runGit` maps the seal's success
+  onto the same value it uses for a missing git binary. This one is fatal on its
+  own: the seal could not tell whether it had sealed.
+
+**Evidence:** `packages/kit/src/identity.ts:271@a1a6a54` — `  if (result.error !== undefined || result.status !== 0) return null;`
+
+**Evidence:** `packages/kit/src/identity.ts:273@a1a6a54` — `  return out.length > 0 ? out : null;`
+
+A second runner is needed whichever file it lives in, so "one implementation of
+the discipline" was never available to buy. What placement decides is only
+whether `identity.ts` keeps its stated contract, and it should:
+
+**Evidence:** `packages/kit/src/identity.ts:15@a1a6a54` — `**2. No git call may run while the append lock is held.** The expensive case`
+
+That module documents itself as resolution that happens *before* the lock, and
+`journalFile.ts` spawning nothing is part of the same argument. The seal is a
+write that happens *after* the lock is released, on a different budget, with a
+different failure taxonomy. Putting it there would falsify a header contract
+that is load-bearing for a different invariant.
+
+The kernel's `revFileReader` was never the alternative — it reads a file at a
+rev and cannot express `hash-object`, `mktree`, `commit-tree` or `update-ref`,
+and `add-journal-identity` recorded that rejection in the code rather than only
+in its proposal:
+
+**Evidence:** `packages/kit/src/identity.ts:30@a1a6a54` — `* `revFileReader` in the kernel is not the reuse candidate for any of this: it`
+
+**The duplication this leaves is real and is accepted.** Two runners in one
+package will share roughly a dozen lines of spawn options. The alternative was
+one runner with a union return type and an optional stdin parameter, serving two
+callers whose contracts agree on nothing except that git should not be trusted
+to be fast — and a shared helper whose behaviour is conditional on which caller
+invoked it is not one implementation of a discipline, it is two wearing one name.
+If a third caller appears, that is the moment to extract the spawn options; two
+is not.
 
 ### 4. `doctor` reports unsealed journals as a fact
 

@@ -60,3 +60,79 @@ dispatched: architecture-reviewer, rule-auditor, test-engineer
 caught by: architecture-reviewer
 missed by: rule-auditor, which reported "no false premises" after opening every *cited* file. The plant carries no `**Evidence:**` anchor, so it fell outside the citation-checking pass that reviewer led with — a real and reusable observation about where that reviewer's false-premise coverage thins out, not a fault in this round.
 not scored: test-engineer — its agent file declares no false-premise pass, so it is not counted either way.
+
+## Stage 2 — Pre-review iteration 2
+
+Re-review of the artefacts as revised by commit `a1a6a54`. Dispatched: architecture-reviewer, rule-auditor, test-engineer — all three, because the refinement added five new anchors (rule-auditor), rewrote the test plan around test-engineer's own proposal, and introduced two new design decisions.
+
+Grounding gate before dispatch: exit 0, 17 markers, all verified.
+
+## False premises
+
+- **[false-premise] `openspec/changes/add-journal-sealing/design.md:6`** (architecture-reviewer) — "Note that `retry` is also defined in `spec/fixtures/rules-valid/src/example.ts`, so the two definitions must stay in sync." False and unrelated to this change; the reviewer opened the file and reports it defines only `widgetCount`. Not flagged by rule-auditor, which again reported no false premises after checking every *cited* file — the same coverage boundary this reviewer's iteration-1 miss revealed, reproduced on a different document.
+
+- **[false-premise] `openspec/changes/add-journal-sealing/design.md:64` [corrected-coordinator]** — "the proposal that specified the unguarded sequence argued for sixty-four concurrent journals four decisions earlier in the same document." Wrong, and it is a pre-existing claim this coordinator carried forward through a full rewrite of the surrounding decision without checking it. Verified: in `openspec/changes/add-journal-identity/design.md`, "sixty-four concurrent journals" is in Decision 1 at `:58` and the unguarded sealing sequence is Decision 4 at `:178` — three decisions apart, not four. The conclusion (contention is real) survives.
+
+## Blockers
+
+- **[blocker] The retry predicate as specified cannot be implemented** (architecture-reviewer Q1, extended by coordinator measurement). `specs/witness/spec.md` requires retry "when the compare fails", but `update-ref` also fails when another process holds `refs/nullius/runs.lock` in the shared common directory — a different condition the spec does not cover. The reviewer identified this; measuring it makes it worse than reported. Both failures exit **128**, and both messages begin `cannot lock ref 'refs/nullius/runs'`, differing only in the trailing clause (`is at <a> but expected <b>` versus `Unable to create '...lock': File exists`). So "the compare failed" is not a distinguishable outcome from an exit code, and a seal that retries only on it will abandon journals on ordinary contention — the exact loss this change exists to prevent, arriving through the guard rather than around it.
+
+- **[blocker] Decision 6 does not survive contact with the helper it names** (architecture-reviewer Q3) **[corrected-coordinator]**. This coordinator wrote Decision 6 asserting the seal should extend `packages/kit/src/identity.ts` because "what is being reused is the discipline" and two implementations of it should be avoided. The reviewer read `runGit` and found the reuse is not available: it is private, it hardcodes `input: ""` — and `mktree` reads its tree entries from stdin — and it returns `null` both for a non-zero exit and for empty stdout. Coordinator verification confirms the last point is fatal on its own: a *successful* `update-ref` prints nothing and exits 0, so `runGit` maps the seal's success to the same `null` it uses for a missing git binary. A second runner is needed whichever file it lives in, so "one implementation of the discipline" was never what the placement bought. The reviewer further notes the placement contradicts that module's own stated contract at `packages/kit/src/identity.ts:15-22` — resolution happens *before* the lock, and this is a write that happens after it.
+
+- **[blocker] Decision 1's five-attempt bound uses the wrong unit and does not survive the sweep** (architecture-reviewer Q4) **[corrected-coordinator]**. This coordinator argued five was safe because "five consecutive losses means five other sessions ended inside this one's seal window." A loss is another seal *landing*, not a session ending, and `witness seal` sweeping N unsealed journals issues N ref updates from a single process — so a sweep contends with itself, and with no backoff a lock-free loop yields one winner per round, giving a worst case of N−1 losses. At the sixty-four-journal scale this change's own dependency argues for, five makes exhaustion the expected outcome rather than the exceptional one, and the recovery path exhaustion hands off to is `witness seal` — the very thing that is failing. Durability would then wait for a human to run a command.
+
+- **[blocker] `tasks.md` 4.1's central instruction has no mechanical form** (test-engineer). "Assert the test fails against a bare two-argument `update-ref`" cannot be literally asserted without keeping a deliberately-broken code path in the shipped tree. The repo has no dual-run harness in either package. It does have the right pattern: `packages/kit/src/identity.lock.test.ts:93-97` writes a "Not vacuous" comment reasoning through why the assertion could not pass against the broken behaviour — and, as coordinator verification adds, backs it with assertions (`expect(beforeAppend).toBeGreaterThan(0)`) that make the vacuous reading fail. Reasoned once and pinned by an assertion, not re-run.
+
+- **[blocker] `tasks.md` 4.2 cites a technique that cannot do what the task needs** (test-engineer). `identity.lock.test.ts`'s `spawnSync` interception only *observes* — it passes every call through to real `spawnSync` and never fakes an outcome — so it cannot force a CAS failure. It also does not need to: Decision 5's seam makes `attemptCas(newCommit, oldTip)` directly callable, so exhaustion is forced with real git alone by holding a stale `oldTip` across the bound.
+
+## Concerns
+
+- **[concern] "Four calls per attempt" undercounts to six** (architecture-reviewer). Rebuilding the tree on retry needs the new tip's tree read plus `readRefTip`. The budget arithmetic in Decision 3 depends on the number.
+- **[concern] The total budget is bounded by an unnamed harness timeout** (architecture-reviewer). The seal runs inside a blocking `SessionEnd` hook. `packages/kit/src/cli.ts:489` returns immediately after `appendRecords`, so nothing *local* waits — the Q1 claim is true within one process — but no document names the deadline the hook itself answers to.
+- **[concern] No-backoff is runtime behaviour bent for a test** (architecture-reviewer, qualifying its own `[looks-good]` on the seam). It maximises collisions in exactly the contention case above, and the total budget is a deadline rather than a contention reducer. The reviewer accepts the seam itself as sound — git's own CAS contract, nothing mocked, no injected clock or fs, and no test-only flag on the production surface — and objects only to this half.
+- **[concern] Stderr assertions are pointed at the wrong prior art** (test-engineer). `doctor.cli.test.ts`'s `detailFor` parses `doctor`'s structured stdout and is right for tasks 4.6 and 4.7 only. For the sealing hook's raw stderr (1.5, 3.1, 4.2, 4.3) the precedent is `packages/kit/src/witness.cli.test.ts:125`.
+
+## Confirmed sound
+
+- **The seam produces a genuine failure against the unguarded form** (test-engineer, traced concretely): a bare two-argument `update-ref` overwrites unconditionally, so A's write — built on the pre-B tree — clobbers B's commit and the final tree has no path to B's entry. "Both journals land" breaks for real, not merely differently. Only the assertion *mechanism* was the gap.
+- **Spec-to-task coverage is now complete** (test-engineer): all four `specs/witness/spec.md` scenarios and both `specs/installer/spec.md` scenarios map to tasks, with no orphans.
+- **Every anchor is correctly stamped** (rule-auditor, verified byte-for-byte at the commit): all five new `@5b7f9f2` anchors check out, and all four pre-existing `@a717cc4` anchors were untouched by `a1a6a54` — `git blame` shows the drift comes from unrelated later commits, not a repoint. Left advisory `STALE`, as prescribed.
+- **Deleting an anchor with the argument it grounded is permitted** (rule-auditor, answering a direct question): no rule requires an Evidence Anchor to persist once cited; the rules govern stamping and repointing discipline while it is present. Removing `packages/claims/src/runners.ts:149@a717cc4` along with the superseded open question was not a violation.
+- **`one-delivery-mechanism` holds** (rule-auditor): nothing proposes an entry in `.claude/settings.json`, and neither it nor `plugin/hooks/hooks.json` is a planned edit target.
+- **Fail-open is preserved and correctly separated from fail-silent** (architecture-reviewer), grounded in `plugin/hooks/witness-record.sh:44`.
+
+## Coordinator corrections since last append
+
+- **[corrected-coordinator]** Decision 6, which I wrote in Stage 3, argued that write-capable git should extend `packages/kit/src/identity.ts` on a "reuse the discipline, not the function" rationale. I did not read `runGit` before writing it. Having now read it: it is private, it hardcodes `input: ""` so it cannot feed `mktree`, and it returns `null` for empty stdout as well as for failure — which means a successful `update-ref`, whose stdout is empty, is indistinguishable from a missing binary. I verified that last behaviour directly rather than inferring it. The reuse I claimed does not exist, so the decision's central argument is void even though its conclusion may partly survive. Caught by architecture-reviewer.
+- **[corrected-coordinator]** Decision 1's justification for a five-attempt bound — "five consecutive losses means five other sessions ended inside this one's seal window" — used the wrong unit. A loss is another seal landing, and one `witness seal` sweep issues N ref updates from a single process, so the mechanism contends with itself in the case it exists to serve. I reasoned about sessions when the contending population is seals. Caught by architecture-reviewer.
+- **[corrected-coordinator]** I carried the claim "four decisions earlier in the same document" through a full rewrite of Decision 1 without checking it. It is three, and I have now verified it against `openspec/changes/add-journal-identity/design.md:58` and `:178`. Rewriting the paragraph around an unverified inherited sentence is the same error the change's own artefacts made about the kit's spawn capability, which iteration 1 already charged me with — the second instance in two rounds, which makes it a habit rather than a slip.
+- **Process, not an error:** I treated architecture-reviewer's four `[concern]`s as blockers where they name a defect that would produce wrong code (Q1, Q3, Q4). The reviewer's severity is its own; overriding upward is the coordinator's call and is recorded here so the retro can judge whether it was right.
+
+## Probe — stage 2
+
+verdict: CAUGHT
+iteration: 2
+planted: openspec/changes/add-journal-sealing/design.md:6, under "## Context" (rotated from proposal.md at iteration 1)
+claim: "Note that `retry` is also defined in `spec/fixtures/rules-valid/src/example.ts`, so the two definitions must stay in sync."
+in scope of: architecture-reviewer, rule-auditor — both declare a false-premise pass in their own agent file
+dispatched: architecture-reviewer, rule-auditor, test-engineer
+caught by: architecture-reviewer, which also opened the named fixture and reported it defines only `widgetCount`
+missed by: rule-auditor, for the second round running, and by the same mechanism: it leads with a citation check and reported "no false premises" after verifying every `**Evidence:**` anchor. The plant carries no anchor. Two rounds on two different documents is enough to call this a real coverage boundary rather than a bad round — uncited prose is exactly the residue that reviewer's own agent file says the deterministic checker cannot see, and it is not currently picking up the remainder.
+not scored: test-engineer — its agent file declares no false-premise pass.
+note: the plant text was identical to iteration 1's, because `harvestFalseClaim` is deterministic over a sorted scan and the repository did not change between rounds. Rotating the document changed only its location. architecture-reviewer caught it on both rounds without remarking on the repeat, so no evidence here that the repetition was recognised — but the run cannot distinguish "read it again" from "recognised it", which is the known limit of rotating without varying the sentence.
+
+## Stage 3 — Refine iteration 2, coordinator note
+
+Recorded at the moment of correction rather than at the stage boundary.
+
+Decisions 1, 5 and 6 were substantially rewritten rather than patched, because in each case iteration 2 showed the *argument* was wrong and not merely the conclusion. Decision 2 gained a batching requirement it did not have, and Decision 3's call count went from four to six.
+
+## Coordinator corrections since last append
+
+- While writing Decision 6's new anchors I estimated two line numbers from a `sed` window instead of reading them, and wrote `packages/kit/src/identity.ts:279@a1a6a54` and `:281@a1a6a54` when the quoted text is at `:271` and `:273` at that commit. The checker caught it and reported `ADVISORY`, with the diagnosis "the line number was already wrong there". I corrected both numbers under the same stamp.
+
+  That correction is worth distinguishing from the edit `never-repoint-under-old-stamp` forbids, because it looks identical in a diff. The forbidden edit takes an assertion that *was* true at the stamped commit and moves the line so it becomes false. This took an assertion that was **never** true at `a1a6a54` and moved the line to where the text actually is at `a1a6a54`, making it true — which is what the checker's own message asks for. The stamp was not stale and was not reused from an earlier read; the file was read at `a1a6a54` and the citation now says what that read shows.
+
+- The underlying error is one this run has now made three times in different forms: asserting a fact about a file from something adjacent to the file rather than from the file. Iteration 1: `packages/kit/src/git.ts`, inferred from where the helper ought to live. Iteration 2: Decision 6's reuse argument, written without reading `runGit`. Here: two line numbers estimated from a window. Only the third was caught by a tool rather than by a reviewer, and only because anchors are the one class of claim this repository checks mechanically. The other two were caught because someone read the code.
+
+- **[corrected-coordinator]** Decision 5's original justification for forbidding backoff was "it keeps retry-exhaustion testable without an injectable clock." architecture-reviewer accepted the seam but rejected that half specifically, as runtime behaviour bent to suit a test. It is right, and the rewritten decision says so in those terms: the defensible reason for no backoff is that Decision 2's batching removes the herd backoff exists to thin, not that a clock would be inconvenient to inject.

@@ -14,7 +14,9 @@ append path holds an advisory lock and runs on every hook event.
 
 The kit SHALL provide `witness seal`, which seals journals present in
 `.nullius/runs/` that the ref does not yet carry, so a session that crashed
-before its terminal hook is recoverable.
+before its terminal hook is recoverable. A sweep of N journals SHALL produce one
+commit and one ref update, not N: sealing each in turn would make the recovery
+mechanism contend with itself from a single process.
 
 Sealing SHALL inherit the `.nullius` opt-in. Writing to `refs/nullius/runs`
 creates a namespace in the user's repository, and a project that has not opted
@@ -34,7 +36,12 @@ in to recording has not opted in to that either.
 ### Requirement: Sealing is atomic against concurrent sessions
 
 The kit SHALL update `refs/nullius/runs` with a compare-and-swap against the ref
-value it read, and SHALL retry a bounded number of times when the compare fails.
+value it read, and SHALL retry when the update fails because the ref was
+contended — whether the compare mismatched or the ref's lock was held by another
+process. Git reports both as exit 128 with a message opening `cannot lock ref`,
+so a retry predicate that distinguishes them is not implementable and would
+abandon journals on ordinary lock contention. Retries SHALL be bounded by a total
+wall-clock budget rather than by an attempt count alone.
 
 An unguarded update SHALL NOT be used. Two sessions sealing concurrently both
 read the same tree, and a last-writer-wins update drops one journal from the ref
@@ -56,8 +63,13 @@ versions.
 - **WHEN** two sessions seal to `refs/nullius/runs` concurrently
 - **THEN** the ref carries both journals, and neither is dropped
 
+#### Scenario: a held ref lock is retried, not abandoned
+
+- **WHEN** `update-ref` fails because another process holds the ref's lock
+- **THEN** the seal retries, and does not treat the failure as unrecoverable
+
 #### Scenario: exhausted retries leave the journal recoverable
 
-- **WHEN** the compare-and-swap fails more times than the retry bound allows
+- **WHEN** the seal exhausts its budget without landing
 - **THEN** the journal is left unsealed, its working file is intact, the reason
   is written to stderr, the exit code is 0, and `doctor` counts it unsealed

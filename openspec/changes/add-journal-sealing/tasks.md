@@ -9,12 +9,13 @@ extends and whose journals it seals.
       exists in `packages/kit/src/identity.ts` and journal headers carry
       `branch` / `head` / `worktree`
 - [ ] 0.2 Read `design.md` Decision 6 before writing any git call. The
-      helper-placement question is **settled**, not open: write-capable git
-      extends the kit's own bounded-git discipline in `identity.ts` under its
-      own timeout and budget constants. Do not reach for the kernel's
-      `revFileReader` — it reads a file at a rev and cannot express
-      `hash-object`, `mktree`, `commit-tree` or `update-ref`, and
-      `add-journal-identity` already recorded that rejection in the code
+      helper-placement question is **settled**: a new `packages/kit/src/seal.ts`
+      with its own runner, copying `identity.ts`'s discipline and none of its
+      code. Do **not** reuse `runGit` — it hardcodes `input: ""` and `mktree`
+      needs stdin, and it returns `null` for empty stdout, which is what a
+      *successful* `update-ref` produces. Do not reach for the kernel's
+      `revFileReader` either; it reads a file at a rev and cannot express any of
+      these subcommands
 
 ## 1. Sealing
 
@@ -25,18 +26,29 @@ extends and whose journals it seals.
       loop is composed from them. Not an internal detail — task 4.1's test
       cannot be written against one opaque function, and a retry loop written
       opaquely first will have to be taken apart later
-- [ ] 1.3 **Compare-and-swap the ref**: `update-ref refs/nullius/runs <new> <old>`,
-      retrying on mismatch, bounded at **five attempts** and by the seal's total
-      git budget, whichever is reached first. Never a bare two-argument
-      `update-ref` — that is the read-modify-write this change exists to avoid.
-      **No backoff between retries** (Decision 5): backoff would make 4.2 need
-      an injectable clock, and the total budget is the backstop
+- [ ] 1.3 **Compare-and-swap the ref**: `update-ref refs/nullius/runs <new> <old>`.
+      Never a bare two-argument `update-ref` — that is the read-modify-write
+      this change exists to avoid
+- [ ] 1.3a **`attemptCas` reports three outcomes, not two**: `landed`,
+      `contended`, `unavailable`. Retry on `contended` only. `contended` covers
+      **both** a compare mismatch and a held `refs/nullius/runs.lock` — git
+      reports both as exit 128 with a message opening `cannot lock ref`,
+      differing only in the trailing clause, so a predicate written as "the
+      compare failed" is not implementable from an exit code and would abandon
+      journals on ordinary lock contention
+- [ ] 1.3b **The total git budget is the bound**, not an attempt count. Keep an
+      attempt ceiling only as a guard against git failing instantly in a loop,
+      and set it well above the contending population so ordinary contention
+      never reaches it. **No backoff** (Decision 5)
 - [ ] 1.4 **Two budgets, not one** (Decision 3): a per-call timeout *and* a total
-      for the seal as a whole, as separate exported constants alongside
+      for the seal as a whole, as constants in `seal.ts` mirroring
       `IDENTITY_TIMEOUT_MS` / `IDENTITY_BUDGET_MS`. The seal's total may exceed
       `IDENTITY_BUDGET_MS` — it runs after the lock is released and answers to
       how long a session may spend exiting, not to the lock deadline — but it
-      may not be absent
+      may not be absent, and it must sit under the harness's own `SessionEnd`
+      timeout. Budget for **six** calls per attempt (`readRefTip`,
+      `hash-object`, the tip's tree read, `mktree`, `commit-tree`,
+      `update-ref`), four of which repeat on every retry
 - [ ] 1.5 On exhaustion or any git failure: leave the journal unsealed and the
       working file intact. No partial write, no thrown error, no non-zero exit —
       **and one line on stderr saying the journal was not sealed and why.**
@@ -53,7 +65,10 @@ extends and whose journals it seals.
       `appendRecords`' callback and therefore under the lock; journal sealing
       must not join it there
 - [ ] 2.2 `witness seal` sweeps `.nullius/runs/` for journals the ref does not
-      carry, so a crashed session is recoverable
+      carry, so a crashed session is recoverable. **One commit for all N**, not
+      N commits: sealing each in turn makes the recovery mechanism the largest
+      producer of ref contention in the system, contending with itself N times
+      from a single process
 - [ ] 2.3 State in the spec that the ref write inherits the `.nullius` opt-in:
       `witness seal` creates a `refs/nullius/` namespace in the user's
       repository, and nothing should do that on a project that never opted in
@@ -73,15 +88,29 @@ extends and whose journals it seals.
       same ref both land. Drive it through the 1.2 seam in a single test
       process — A calls `readRefTip()`, B seals completely, A's now-stale
       `oldTip` goes to a *real* `update-ref`, git rejects it, A retries and
-      lands. Nothing mocked; the CAS under test is git's.
-      **Assert the test fails against a bare two-argument `update-ref`** — a
-      naive two-subprocess race passes either way, because two processes rarely
-      collide in the read-tip→write window on a local filesystem, and a test
-      that passes either way tests nothing
+      lands. Nothing mocked; the CAS under test is git's. A naive
+      two-subprocess race is **not** acceptable here: two processes rarely
+      collide in the read-tip→write window on a local filesystem, so it would
+      pass against a bare `update-ref` too
+- [ ] 4.1a **Pin the non-vacuity the way this repo already does it.** Do not
+      keep a deliberately-unguarded `update-ref` path in the tree to run the
+      test against — there is no dual-run harness in either package and adding
+      one means shipping dead code for a one-time check. Follow
+      `packages/kit/src/identity.lock.test.ts:93-97`: a comment reasoning
+      through why this interleaving cannot pass unguarded (a bare
+      two-argument `update-ref` overwrites unconditionally, so A's write built
+      on the pre-B tree clobbers B's commit and the final tree has no path to
+      B's entry), **backed by assertions that fail if the setup did not
+      actually happen** — that the tip moved between A's read and A's first
+      attempt, and that A's first attempt returned `contended`. A comment alone
+      is a claim; the assertions are what make it checkable
 - [ ] 4.2 Retry exhaustion leaves the journal unsealed and the file intact, and
-      says so on stderr. Force it with the `spawnSync`-interception technique in
-      `packages/kit/src/identity.lock.test.ts`, which transfers directly given
-      1.3's no-backoff rule
+      says so on stderr. Force it **through the seam with real git** — hold a
+      stale `oldTip` across the bound, advancing the ref out from under each
+      attempt. Do **not** reach for `identity.lock.test.ts`'s `spawnSync`
+      interception: that technique only observes and passes every call through
+      to real `spawnSync`, never faking an outcome, so it cannot force a CAS
+      failure. The seam makes it unnecessary
 - [ ] 4.3 Sealing in a non-repository directory exits 0, records normally, and
       announces the skip
 - [ ] 4.4 A sealed journal is readable from a second worktree of the same
@@ -97,7 +126,11 @@ extends and whose journals it seals.
       is `specs/installer/spec.md`'s "unsealed journals are counted, not failed"
       scenario, which had no task behind it
 - [ ] 4.7 `doctor`'s `??` path, asserted on the message and not only the exit
-      code. `doctor.cli.test.ts`'s `detailFor` helper is the prior art
+      code. `doctor.cli.test.ts`'s `detailFor` helper is the prior art for 4.6
+      and 4.7, which read `doctor`'s structured stdout. It is **not** the prior
+      art for the stderr assertions in 1.5, 3.1, 4.2 and 4.3 — those are the
+      sealing path's raw stderr, for which `packages/kit/src/witness.cli.test.ts`
+      is the precedent
 
 ## 5. Documentation
 
