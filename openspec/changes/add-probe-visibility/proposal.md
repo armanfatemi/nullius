@@ -66,12 +66,19 @@ about it has to be reported when it is true or not at all.
 
 ## What changes
 
-- **A `doctor` check for live capture state** (kit): reports whether
-  `NULLIUS_WITNESS_PROBE` is set to exactly `1` in the harness settings `env`
-  block, and whether `.nullius/probes/` holds anything, as a `fact` — never a
-  `fail`. Not capturing is a legitimate choice, not a defect. The value is read
-  from settings rather than from `doctor`'s own environment, because the
-  variable governs the hook subprocess and not `doctor`; see design Decision 1a.
+- **A `doctor` check for live capture state** (kit): reads the harness settings
+  files — project-local, project-shared and user — and reports every one that
+  sets `NULLIUS_WITNESS_PROBE`, the value it carries, and whether
+  `.nullius/probes/` holds anything. Always a `fact`, never a `fail`; not
+  capturing is a legitimate choice, not a defect. Three things it deliberately
+  does not do, each of which it did in an earlier draft of this proposal:
+  - it does not read `doctor`'s own environment, because the variable governs
+    the hook subprocess and `doctor` runs in the operator's shell (design 1a)
+  - it does not adjudicate precedence between settings files, because nothing in
+    this repository establishes the harness's ordering (design 1d)
+  - it does not report "capture is off" when no file sets the variable, because
+    sources it cannot read — including the launching environment — can still
+    enable it (design 1c)
 - **A corrected `probeChecks` detail line** (kit): when the committed corpus is
   absent, the current message tells the reader to fill it with a variable that
   writes to a different directory. The message changes; the check does not.

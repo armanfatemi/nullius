@@ -78,10 +78,10 @@ that motivated the change, and a directory listing does not answer it.
 
 ### 1c. Read the whole precedence chain, and name what is still not visible
 
-**Chosen:** read project-local, project-shared and user settings in precedence
-order; the first that sets the variable decides, and the report names that file.
-Where none set it, report what was read and say that the launching environment
-is not visible from here — never that capture is off.
+**Chosen:** read project-local, project-shared and user settings; report every
+file that sets the variable and the value it carries; do not assert which one
+wins. Where none set it, report what was read and say that capture may still be
+enabled by sources this check does not read — never that capture is off.
 
 **This decision exists because 1a as first written was wrong in the same way
 the thing it fixed was wrong.** The first revision required capture state be
@@ -97,6 +97,59 @@ The residue is real and is named rather than closed over: a variable exported
 in the shell that launched the harness is invisible to `doctor`, and no amount
 of file reading recovers it. That is why the silent case reports what it read
 instead of what it concluded.
+
+**The residue is also named non-exhaustively, on purpose.** An earlier draft
+listed the launching environment as *the* invisible source, which implies the
+file chain is otherwise complete — and enterprise or managed settings and a
+`--settings` argument are neither read nor excluded here, neither of which this
+repository can settle. Enumerating the unknowns is the move that produced two
+successive versions of this requirement that forbade the correct answer, so the
+wording stays open-ended.
+
+### 1d. Report every setter; do not adjudicate precedence
+
+**Chosen:** name each settings file that sets the variable and the value it
+carries, and stop there.
+
+An earlier draft had the first file in precedence order decide, and the report
+name it. That is a confident claim about harness behaviour, and nothing in this
+repository establishes the ordering: `.claude/settings.local.json` appears
+nowhere in the tree outside this change's own documents. Naming a deciding file
+would have `doctor` assert something it cannot check — the same class of error
+as 1a and 1c, arriving a third time by a different route.
+
+Reporting every setter is strictly more informative than reporting a winner. A
+reader who sees two files disagree learns something a resolved answer would have
+hidden, and the resolution belongs to the component that actually performs it.
+
+**Alternative considered:** vendor the precedence order as a documented
+assumption and check it — rejected. It is external behaviour that can change
+without notice, and this repository has one rule already
+(`openspec-shall-first-line.md`) that exists precisely because a tool's
+behaviour could not be grounded in-tree. One such ungrounded claim, clearly
+labelled, is a known cost; a second one buried inside a checker's confident
+output is not.
+
+### 1e. Absence is treated three ways in one report, deliberately
+
+The new check sits next to two existing treatments of absence, and they differ:
+
+- an absent settings file is an **observation** — nothing was configured, which
+  is the common and correct case
+- a settings file that exists and does not parse is **`unknown`** — something
+  was configured and this tool cannot read it
+- an absent probe corpus is **`unknown`** in `probeChecks`, because that check
+  replays recordings and without them it has verified nothing
+
+The third is the one that looks inconsistent and is not. `probeChecks` reports
+`unknown` because its subject *is* the recordings; with none, it made no
+finding. The capture check's subject is the configuration, which is fully read
+even when it configures nothing. The distinction is between "I could not perform
+my check" and "I performed it and the answer is none".
+
+This is written down because three treatments of absence in adjacent lines of
+one report will read as an accident to the next person, and the honest response
+to that is an argument rather than a forced consistency.
 
 **Alternative considered:** report the effective value by merging all files —
 rejected. Precedence is what the harness applies, so a merge that ignored it
@@ -189,8 +242,10 @@ Mirrored from `proposal.md`:
 
 - ~~Whether `init` offers to enable capture or only mentions it.~~ **Resolved:**
   it only mentions it. See Decision 2.
-- Whether live captures need a harness-version stamp, since a stale capture
-  looks like coverage while testing a payload shape that no longer ships. Still
-  open, and partly mitigated here: the "capture off but payloads present" branch
-  now reports that the held payloads are not being refreshed, which names the
-  staleness without dating it.
+- Whether live captures need a harness-version stamp, since a capture taken
+  against an older harness looks like coverage while testing a payload shape
+  that no longer ships. Still open, and only partly mitigated here: the check
+  reports how many payloads are held and when the most recent was written, which
+  lets a reader judge age for themselves. It deliberately does not call them
+  stale — that would be a claim about whether capture is still running, which
+  this check cannot make.

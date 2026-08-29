@@ -17,19 +17,25 @@ Capture state SHALL be determined from the harness settings files, not from
 `doctor` runs in the operator's shell, so its own environment answers a
 different question from the one being asked.
 
-The settings files SHALL be read in precedence order — project-local, then
-project-shared, then user — and the first that sets the variable SHALL decide
-the reported state. The report SHALL name which file supplied the value, so a
-reader who disagrees with the answer knows which file to edit.
+The check SHALL read every settings file it knows of — project-local,
+project-shared, and user — and SHALL report each file that sets the variable
+together with the value that file carries. It SHALL NOT assert which file wins.
+Settings precedence is behaviour of the harness, and this repository contains
+nothing that establishes it; a checker that named a deciding file would be
+asserting external behaviour it cannot ground. Reporting every setter and its
+value gives the reader what they need to act, and leaves the resolution to the
+component that actually performs it.
 
 The variable SHALL be treated as enabling capture only when its value is exactly
 `1`. Any other value, including `0`, is reported as not capturing.
 
 Where no settings file sets the variable, the report SHALL state which files
-were read and SHALL state that capture may still be enabled by the environment
-of the process that launched the harness, which is not visible from `doctor`. It
-SHALL NOT report that capture is off, because that is a claim about sources it
-did not read.
+were read and SHALL state that capture may still be enabled by sources this
+check does not read, including — but not limited to — the environment of the
+process that launched the harness. It SHALL NOT report that capture is off,
+because that is a claim about sources it did not read. The wording SHALL remain
+non-exhaustive: enumerating the invisible sources is what produced two
+successive versions of this requirement that forbade the correct answer.
 
 The state SHALL be reported as unknown only for a settings file that exists and
 does not parse. An absent settings file is not an unreadable one, and the two
@@ -38,6 +44,11 @@ cannot be parsed is a failure to determine.
 
 The report SHALL name the environment variable that controls capture, so that a
 reader can act on what was reported without consulting documentation.
+
+The location of the user settings file SHALL be injectable rather than derived
+from the process's home directory at the point of use. A requirement whose test
+would have to mutate the developer's real home directory is not testable, and an
+untestable requirement is worse than an absent one.
 
 The report SHALL distinguish the live capture directory from the committed probe
 corpus, naming which of the two it is describing, because a reader who conflates
@@ -52,31 +63,33 @@ them will read a green corpus check as evidence that capture is on.
 
 #### Scenario: capture is on with recordings present
 
-- **WHEN** a settings file sets the capture variable to `1` and the live probe
-  directory holds payloads
-- **THEN** the report states that capture is on, names the file that enabled it
-  and how many event types are held, as a fact
+- **WHEN** exactly one settings file sets the capture variable, to `1`, and the
+  live probe directory holds payloads
+- **THEN** the report states that capture is on, names that file and how many
+  event types are held, as a fact
 
 #### Scenario: capture is explicitly disabled
 
-- **WHEN** the highest-precedence settings file that mentions the variable sets
-  it to a value other than `1`
-- **THEN** the report states that capture is off, names the file that disabled
-  it, and does not fail
+- **WHEN** exactly one settings file sets the variable, to a value other than
+  `1`
+- **THEN** the report states that that file disables capture, names it, and does
+  not fail
 
-#### Scenario: a lower-precedence file is overridden
+#### Scenario: two settings files disagree
 
 - **WHEN** the user settings file sets the capture variable to `1` and the
   project-local settings file sets it to `0`
-- **THEN** the report reflects the project-local value and names that file, not
-  the user file
+- **THEN** the report names both files and the value each carries, and does not
+  declare which one takes effect
 
-#### Scenario: capture is off but stale recordings remain
+#### Scenario: payloads are held while no settings file enables capture
 
-- **WHEN** no settings file enables capture and the live probe directory
-  nonetheless holds payloads from an earlier session
-- **THEN** the report states that the held payloads are not being refreshed, as
-  a fact
+- **WHEN** no settings file sets the capture variable and the live probe
+  directory nonetheless holds payloads
+- **THEN** the report states how many payloads are held and when the most recent
+  was written, as a fact, and SHALL NOT state that they are stale or that they
+  are not being refreshed — capture may be enabled by a source this check does
+  not read
 
 #### Scenario: a settings file does not parse
 

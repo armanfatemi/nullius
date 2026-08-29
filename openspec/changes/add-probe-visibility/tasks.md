@@ -14,27 +14,40 @@ Decision 3.
 
 - [ ] 1.0 A settings-`env` reader. None exists: `readManagedHooks`
       (`packages/kit/src/doctor.ts:74`) parses `.claude/settings.json` but
-      extracts only `hooks`, and collapses absent-versus-unparseable into
-      `unreadable: false`. The new reader must keep those two apart, or one
-      report will say `fact` for hooks and `unknown` for capture off the same
-      missing file
+      extracts only `hooks`. It already keeps absence and unparseability apart —
+      `unreadable: false` at `doctor.ts:75` for absent, `unreadable: true` at
+      `:93` for a parse failure, branched into `fact` versus `unknown` at
+      `:530-536` — so the new reader follows that precedent rather than
+      inventing it
+- [ ] 1.0a The user settings path is **injectable**, not derived from
+      `os.homedir()` at the point of use. Add it to `DoctorOptions`
+      (`packages/kit/src/doctor.ts:518-521`), which today carries only `root`
+      and `probeDir`. Nothing in `packages/kit/src` reads `os.homedir()` or
+      `process.env.HOME` today, and without a seam task 4.1a would have to
+      mutate the developer's real `~/.claude/settings.json`
 - [ ] 1.1 A check reporting live-capture state: whether `NULLIUS_WITNESS_PROBE`
-      is set to exactly `1` anywhere in the settings precedence chain
-      (`.claude/settings.local.json`, then `.claude/settings.json`, then
-      `~/.claude/settings.json`), and whether `.nullius/probes/` holds anything.
-      Never read `doctor`'s own `process.env` — `doctor` runs in the operator's
-      shell, not the hook subprocess (design 1a)
+      is set to exactly `1` in any of `.claude/settings.local.json`,
+      `.claude/settings.json` or the injected user settings path, and whether
+      `.nullius/probes/` holds anything. Never read `doctor`'s own `process.env`
+      — `doctor` runs in the operator's shell, not the hook subprocess
+      (design 1a)
 - [ ] 1.2 The predicate is `=== "1"`, matching the recorder. `NULLIUS_WITNESS_PROBE=0`
       is set and does not capture, and must report as not capturing (design 1b)
-- [ ] 1.2a First file in precedence order that sets the variable wins, and the
-      detail names that file. A user setting of `1` overridden by a
-      project-local `0` reports off, naming the project-local file (design 1c)
+- [ ] 1.2a Report every file that sets the variable and the value it carries.
+      Do **not** adjudicate precedence: nothing in this repo establishes the
+      harness's ordering, and naming a deciding file would assert external
+      behaviour the checker cannot ground (design 1d)
 - [ ] 1.2b Where no file sets it, the detail names the files read and states
-      that the launching environment is not visible from `doctor`. It must NOT
-      say capture is off — that would be a claim about sources it did not read
+      that capture may still be enabled by sources this check does not read,
+      including the launching environment. The wording stays non-exhaustive. It
+      must NOT say capture is off — that would be a claim about sources it did
+      not read
 - [ ] 1.3 Status is `fact` in every branch where the settings files parse —
-      capturing, explicitly disabled, unset, directory absent, directory stale.
+      capturing, explicitly disabled, unset, directory absent, payloads held.
       Never `fail`
+- [ ] 1.3a Where payloads are held, report the count and the most recent write
+      time. Never describe them as stale or as "not being refreshed": that is a
+      claim capture has stopped, which this check cannot make
 - [ ] 1.4 Status is `unknown` in exactly one branch: a settings file that exists
       and does not parse. An absent file is skipped as an observation and does
       not make the report unknown. The detail names the file it could not parse
@@ -50,6 +63,10 @@ Decision 3.
 - [ ] 1.8 Insert the new check *before* `liveProof()` in `runChecks`, not after.
       `packages/kit/src/doctor.test.ts:263` asserts live proof is the last check
       doctor runs; that test is correct and stays as written
+- [ ] 1.9 Assert the new check's own position directly. `doctor.test.ts:263`
+      catches a misplacement only as a side effect and names the wrong
+      invariant when it does — a reader sees "live proof is not last" and
+      debugs `liveProof`
 
 ## 2. Init
 
@@ -79,10 +96,13 @@ Decision 3.
       - `absent` and `empty` produce identical output in every row (zero
         payloads held), so they need one shared assertion plus one test that
         they really are identical
-      The branch that must not be dropped is *no file enables capture, payloads
-      present* — stale recordings that look like coverage
-- [ ] 4.1a Precedence is asserted directly: user file sets `1`, project-local
-      sets `0`, report says off and names the project-local file
+      The branch that must not be dropped is *no file sets the variable, payloads
+      present* — payloads that look like coverage. Assert the detail reports
+      count and most-recent-write-time and does NOT call them stale
+- [ ] 4.1a Disagreement is asserted directly: user file sets `1`, project-local
+      sets `0`, report names both files and both values and declares no winner.
+      Written against the injected user settings path from task 1.0a, never the
+      real home directory
 - [ ] 4.2 `init` writes no probe key into `nullius.kit.json`. Extend the
       existing in-memory render assertions in `packages/kit/src/init.test.ts`
       rather than round-tripping through disk
