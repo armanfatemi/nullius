@@ -94,6 +94,212 @@ function readManagedHooks(root: string): { entries: HookEntry[]; unreadable: boo
   }
 }
 
+/** The variable the recorder tests, and the only one this check reads. */
+const CAPTURE_VAR = "NULLIUS_WITNESS_PROBE";
+
+/** The name the capture-state check reports under. */
+const CAPTURE_CHECK = "payload capture";
+
+/**
+ * Where live capture writes. Named with the disclaimer attached everywhere it
+ * appears, because the committed corpus `probeChecks` reads is a different
+ * directory and reading one report as the other is the misreading this check
+ * exists to prevent.
+ */
+const LIVE_PROBE_DIR = ".nullius/probes/ (the live capture directory, not the committed probe corpus)";
+
+interface SettingsRead {
+  /** How this file is named in the report. */
+  label: string;
+  /** The value the file's `env` block carries, or null when it sets none. */
+  value: string | null;
+  /** The file exists and did not parse — the one honest `unknown`. */
+  unreadable: boolean;
+  /** The file is not there at all — an observation, never an `unknown`. */
+  absent: boolean;
+  /**
+   * No path was handed to the check, so this file was never looked for.
+   *
+   * Distinct from `absent`, which is the result of looking. Dropping the read
+   * entirely would be worse than either: the report speaks of the files it
+   * checked, and a caller that supplied no user settings path would get a list
+   * silently one file short of what the sentence claims to enumerate.
+   */
+  notSupplied: boolean;
+}
+
+/**
+ * One settings file's `env` entry for a variable.
+ *
+ * Follows `readManagedHooks`' precedent rather than inventing one: an absent
+ * file and an unparseable file are different answers and must not collapse,
+ * because only the second is a failure to determine.
+ */
+function readSettingsEnv(path: string, label: string, variable: string): SettingsRead {
+  if (!existsSync(path)) {
+    return { label, value: null, unreadable: false, absent: true, notSupplied: false };
+  }
+
+  try {
+    const settings = JSON.parse(readFileSync(path, "utf8")) as { env?: unknown };
+    const env = settings.env;
+    if (env === null || typeof env !== "object") {
+      return { label, value: null, unreadable: false, absent: false, notSupplied: false };
+    }
+    const raw = (env as Record<string, unknown>)[variable];
+    return {
+      label,
+      value: raw === undefined || raw === null ? null : String(raw),
+      unreadable: false,
+      absent: false,
+      notSupplied: false,
+    };
+  } catch {
+    return { label, value: null, unreadable: true, absent: false, notSupplied: false };
+  }
+}
+
+/** What one file contributed, in four states that must not collapse into two. */
+function stateOf(read: SettingsRead): string {
+  if (read.notSupplied) return "not supplied";
+  if (read.unreadable) return "could not be parsed";
+  if (read.absent) return "absent";
+  // Only reached today where no file sets the variable, so this arm is
+  // unreachable in practice — but that invariant lives in the caller, not in
+  // the type. A caller that changed would otherwise render a file that sets
+  // the variable as "sets nothing", which is the falsehood this whole check
+  // exists to avoid making.
+  if (read.value !== null) return `sets ${CAPTURE_VAR}=${read.value}`;
+  return "sets nothing";
+}
+
+/**
+ * The two clauses that must accompany every "nothing sets it" reading.
+ *
+ * Factored rather than written twice because both no-setter branches owe the
+ * reader the same two things — which files were consulted, and that the list of
+ * sources this check *cannot* consult is open. A branch that carries one
+ * without the other reads as a completeness claim, which is the one thing this
+ * check is not entitled to make.
+ */
+function checkedAndResidue(reads: SettingsRead[]): string {
+  const checked = reads.map((read) => `${read.label} (${stateOf(read)})`).join(", ");
+  return `checked ${checked}; capture may still be enabled by sources this check does not read, among them the environment of the process that launched the harness`;
+}
+
+/** What `.nullius/probes/` holds, said without a verdict about why. */
+function describeLiveCaptures(root: string): string {
+  const dir = join(root, ".nullius", "probes");
+  if (!existsSync(dir)) return `${LIVE_PROBE_DIR} holds no payloads`;
+
+  let newest: Date | null = null;
+  let held = 0;
+  try {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (!entry.isFile()) continue;
+      held += 1;
+      const { mtime } = statSync(join(dir, entry.name));
+      if (newest === null || mtime.getTime() > newest.getTime()) newest = mtime;
+    }
+  } catch (error) {
+    return `${LIVE_PROBE_DIR} could not be listed: ${error instanceof Error ? error.message : String(error)}`;
+  }
+
+  // An absent directory and an empty one hold the same number of payloads, so
+  // they say the same thing. The count and the time are facts; calling them
+  // stale would be a claim that capture has stopped, which cannot be checked
+  // from here.
+  if (held === 0 || newest === null) return `${LIVE_PROBE_DIR} holds no payloads`;
+  return `${LIVE_PROBE_DIR} holds ${held} payload(s), most recently written ${newest.toISOString()}`;
+}
+
+/**
+ * What the settings files say about live payload capture — a fact, not a fault.
+ *
+ * Two things this deliberately does not do. It does not read `doctor`'s own
+ * `process.env`: the variable governs the hook subprocess, while `doctor` runs
+ * in the operator's shell, so its environment answers a different question. And
+ * it does not adjudicate precedence between settings files — nothing in this
+ * repository establishes the harness's ordering, so naming a deciding file
+ * would be an ungrounded claim about external behaviour. Every setter is
+ * reported with the value it carries, which is strictly more informative than
+ * a winner would have been.
+ *
+ * Both readings are scoped to the file they came from. "This file enables
+ * capture" is checkable; "capture is on" is not, and neither is "capture is
+ * off" — a shell export into the harness is invisible here, and no amount of
+ * file reading recovers it.
+ */
+export function captureChecks(
+  root: string,
+  userSettingsPath?: string,
+  userSettingsLabel?: string,
+): Check[] {
+  const reads = [
+    readSettingsEnv(
+      join(root, ".claude", "settings.local.json"),
+      ".claude/settings.local.json",
+      CAPTURE_VAR,
+    ),
+    readSettingsEnv(join(root, ".claude", "settings.json"), ".claude/settings.json", CAPTURE_VAR),
+    userSettingsPath === undefined
+      ? {
+          label: "the user settings file",
+          value: null,
+          unreadable: false,
+          absent: false,
+          notSupplied: true,
+        }
+      : readSettingsEnv(userSettingsPath, userSettingsLabel ?? userSettingsPath, CAPTURE_VAR),
+  ];
+
+  const setters = reads.filter((read) => read.value !== null);
+  const unreadable = reads.filter((read) => read.unreadable);
+
+  // `unknown` is for when nothing could be established — not for when
+  // something could and something else could not. So this branch requires
+  // both an unreadable file and no determinate read anywhere else.
+  //
+  // It says everything the readable-and-unset branch says, and for the same
+  // reason. Naming only the file that would not parse invites the reading
+  // "capture is off unless that file turns it on" — a completeness claim over
+  // settings files, made by the sentence's shape rather than its words, which
+  // is why no forbidden-phrase check ever caught it. Held payloads are
+  // reported here too: what could not be settled is the settings, and the
+  // directory listing is a separate fact that does not become unavailable
+  // because a JSON file is malformed.
+  if (setters.length === 0 && unreadable.length > 0) {
+    return [
+      {
+        name: CAPTURE_CHECK,
+        status: "unknown",
+        detail: `could not parse ${unreadable.map((read) => read.label).join(", ")} — ${CAPTURE_VAR} not determined there, and no settings file this check could parse sets it; ${checkedAndResidue(reads)}. ${describeLiveCaptures(root)}`,
+      },
+    ];
+  }
+
+  const said =
+    setters.length === 0
+      ? // Scoped to what was read. "No settings file sets it" leads with a
+        // quantifier over every settings file that exists, which three
+        // `existsSync` calls do not entitle this check to make.
+        `no settings file this check could parse sets ${CAPTURE_VAR} — ${checkedAndResidue(reads)}`
+      : [
+          setters
+            .map(
+              (read) =>
+                `${read.label} ${read.value === "1" ? "enables" : "disables"} capture (${CAPTURE_VAR}=${read.value})`,
+            )
+            .join("; "),
+          setters.length > 1 ? "; this check does not adjudicate precedence between settings files" : "",
+          unreadable.length > 0
+            ? `; could not parse ${unreadable.map((read) => read.label).join(", ")}`
+            : "",
+        ].join("");
+
+  return [{ name: CAPTURE_CHECK, status: "fact", detail: `${said}. ${describeLiveCaptures(root)}` }];
+}
+
 /** Shell operators that are not the command, and whose operands are not either. */
 const REDIRECTIONS = /^\d*(>>|>|<<|<|2>&1|&>)/;
 
@@ -404,7 +610,13 @@ export function probeChecks(probeDir: string): Check[] {
       {
         name: "harness payload probe",
         status: "unknown",
-        detail: `no probe recordings at ${probeDir} — capture some with NULLIUS_WITNESS_PROBE=1`,
+        // Both directories are named because the old text named only this
+        // one and then told the reader to fill it with a variable that writes
+        // to the other. Following that instruction populated `.nullius/probes/`
+        // and left this check reporting the same absence, which is how the
+        // corpus came to be read as a live-capture check pointed somewhere
+        // wrong. The corpus is fed by promotion, not by capture.
+        detail: `no probe recordings at ${probeDir} — that is the committed corpus, fed by hand: NULLIUS_WITNESS_PROBE=1 captures live payloads into .nullius/probes/, and recordings are promoted from there into ${probeDir}`,
       },
     ];
   }
@@ -517,10 +729,27 @@ export interface DoctorOptions {
   root: string;
   /** Where recorded harness probes live, when the repo has any. */
   probeDir: string;
+  /**
+   * The user-level harness settings file, injected rather than derived.
+   *
+   * Hard-wiring `os.homedir()` at the point of use would make the check
+   * untestable: the only way to exercise it would be to mutate the developer's
+   * own configuration.
+   */
+  userSettingsPath?: string;
+  /**
+   * How that file is named in the report, when its real path should not be.
+   *
+   * The path is read; the label is printed. `doctor`'s output is what a user
+   * pastes into an issue, and this check exists because raw payloads carry
+   * absolute home paths — so printing the operator's home directory in the
+   * report *about* that leak is the wrong default. Defaults to the path.
+   */
+  userSettingsLabel?: string;
 }
 
 export function runChecks(options: DoctorOptions): DoctorReport {
-  const { root, probeDir } = options;
+  const { root, probeDir, userSettingsPath, userSettingsLabel } = options;
   const checks: Check[] = [];
 
   checks.push(...checkConfigs(root));
@@ -549,6 +778,9 @@ export function runChecks(options: DoctorOptions): DoctorReport {
   }
 
   checks.push(...probeChecks(probeDir));
+  // Before the live proof, not after: live proof is the report's closing
+  // statement and a test holds it there.
+  checks.push(...captureChecks(root, userSettingsPath, userSettingsLabel));
   checks.push(...liveProof());
 
   return { checks, failed: checks.some((check) => check.status === "fail") };

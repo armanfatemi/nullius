@@ -15,6 +15,14 @@ missed false premise against it. The agent's actual scope is
 `test-engineer.md` contains no false-premise pass at all — only
 `architecture-reviewer` declares one. The agent was never dispatched to find it.
 
+Second occurrence, `add-authoring-ergonomics` (PR #42): all five probe sections
+listed `checker-engineer` and `test-engineer` as in scope "briefed to read
+proposal.md in full", and iteration 0 wrote "test-engineer's false-premise pass
+spot-checked anchors only". Neither agent file contains the string "false
+premise" at all; only `architecture-reviewer` and `rule-auditor` declare that
+pass (`rule-auditor.md:89`, unconditional in proposal mode). So test-engineer's
+two non-flags were not agent misses.
+
 **How to apply:** globs get paraphrased and the paraphrase gets wider. Grepping
 the agent file takes one command and decides whether a finding is filed as an
 *agent* defect or a *brief* defect — which sends the fix to a different file.

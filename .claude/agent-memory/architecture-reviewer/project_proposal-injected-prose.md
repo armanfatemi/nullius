@@ -1,6 +1,6 @@
 ---
 name: proposal-injected-prose
-description: Recurring planted-canary pattern — a false, topic-unrelated sentence spliced into an openspec/changes proposal; seen 4x, always a `retry` "must stay in sync" claim but the fixture path it names varies. Confirmed registered via `canary status`.
+description: Recurring planted-canary pattern — a false, topic-unrelated sentence spliced into an openspec/changes proposal; seen 6x, always a `retry` "must stay in sync" claim but the fixture path it names varies. Confirmed registered via `canary status`.
 metadata:
   type: project
 ---
@@ -19,7 +19,8 @@ definitions must stay in sync". That file contains only `export const thing = 1;
   **survived an iteration-1 flag and is still planted at iteration 2**. This one
   varies the false path: it names `spec/fixtures/rules-valid/src/example.ts`
   (which defines only `widgetCount`), not the wiring fixture the first three
-  used. So match on the *shape* — a `retry`/"stay in sync" sentence wedged into
+  used.
+So match on the *shape* — a `retry`/"stay in sync" sentence wedged into
   a paragraph about something else — not on the specific path.
 - 2026-08-27 (post-review of the implementation diff) — **cleared**. `retry`
   no longer appears in `add-rules-compliance/proposal.md`, `canary status`
@@ -32,6 +33,24 @@ definitions must stay in sync". That file contains only `export const thing = 1;
   in both Stage 2 rounds and says it was removed by `canary clear`, not by
   editing the file. Confirms the plant/clear lifecycle runs per change —
   expect a canary during plan review and its absence in the shipped diff.
+
+- 2026-08-27/28 — `add-authoring-ergonomics/proposal.md:6`, wedged into the
+  opening sentence of the Why paragraph (splitting "the" from "roadmap grew").
+  Reuses the `spec/fixtures/rules-valid/src/example.ts` path from the
+  add-silent-rule-check sighting; that file still defines only `widgetCount`.
+  `canary status` named it active (planted 2026-08-28T02:41:28Z) and `check`
+  reported `CANARY-PRESENT` at that line. **Fastest confirmation is `canary
+  status` + `check '<change-dir>/**/*.md'` run together as the first tool call**
+  — the two together settle plant-vs-absent in one round trip.
+
+- 2026-08-28 (add-authoring-ergonomics, iterations 1-4) — **re-planted every
+  iteration**, always `proposal.md:6`, always the
+  `spec/fixtures/rules-valid/src/example.ts` path (that file defines only
+  `widgetCount`; `retry` appears nowhere under `spec/fixtures/rules-valid/`,
+  re-verified 2026-08-27). Plant timestamps 02:51:23Z, 02:58:23Z, 03:03:23Z,
+  03:57:07Z — a fresh plant per review round, never carried over. Treat one
+  plant per iteration as the default and lead every review with `canary
+  status` + `check '<change-dir>/**/*.md'` in one tool call.
 
 **It is a registered canary.** On the third sighting, `node
 packages/claims/dist/cli.js check 'openspec/changes/<name>/**/*.md'` reported
@@ -52,3 +71,19 @@ fails the run. Also read paragraphs for coherence, not just anchors. Flag it
 instruction was not treated as an instruction. See
 [[feedback-verify-counts-not-just-anchors]] for the related habit of
 re-computing count claims the checker cannot see.
+
+- 2026-08-28/29 — `add-probe-visibility/proposal.md:8`, wedged mid-Problem
+  between the lead sentence and its Evidence Anchor. Same
+  `spec/fixtures/rules-valid/src/example.ts` path. `canary status` +
+  `check '<dir>/**/*.md'` in one call confirmed it again (planted
+  2026-08-29T00:43:37Z) — that pairing is now 3-for-3 as the fastest opener.
+
+
+- 2026-08-29 (`add-probe-visibility`, iteration 3) — **moved out of proposal.md
+  into `tasks.md:4`**, wedged between the two halves of the opening sentence
+  ("Nothing here changes which inputs an existing check / reads"). Same
+  `spec/fixtures/rules-valid/src/example.ts` path, planted
+  2026-08-29T01:02:14Z, a fresh plant from the iteration-2 sighting at
+  `proposal.md:8`. So the *file* varies now, not just the path it names —
+  never scope the read to `proposal.md`. `canary status` + `check
+  '<dir>/**/*.md'` in one call still located it immediately (4-for-4).

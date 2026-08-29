@@ -1,7 +1,7 @@
-import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
@@ -22,8 +22,12 @@ const REAL_PROBES = fileURLToPath(
   new URL("../../../spec/fixtures/probes/claude-code", import.meta.url),
 );
 
-function check(root: string, probeDir = join(root, "nowhere")) {
-  return runChecks({ root, probeDir });
+function check(
+  root: string,
+  probeDir = join(root, "nowhere"),
+  userSettingsPath = join(root, "nowhere-user-settings.json"),
+) {
+  return runChecks({ root, probeDir, userSettingsPath });
 }
 
 function find(checks: Check[], name: string): Check | undefined {
@@ -230,6 +234,23 @@ describe("doctor — the harness payload probe", () => {
     expect(results[0]?.status).toBe("unknown");
   });
 
+  it("routes the reader through live capture to the corpus, naming both directories", () => {
+    // The old text said "capture some with NULLIUS_WITNESS_PROBE=1" while
+    // naming the committed corpus — but that variable writes to
+    // `.nullius/probes/`, so following the instruction populated a different
+    // directory than the one the message pointed at. That conflation is the
+    // misreading this change exists to prevent, so the corrected text is
+    // pinned here rather than left to drift back.
+    const dir = join(scratch(), "none");
+    const detail = probeChecks(dir)[0]?.detail ?? "";
+
+    expect(detail).toContain(dir);
+    expect(detail).toContain("committed corpus");
+    expect(detail).toContain(".nullius/probes/");
+    expect(detail).toContain("promoted");
+    expect(detail).not.toContain("capture some with NULLIUS_WITNESS_PROBE=1");
+  });
+
   it("fails when a payload no longer yields the record it should", () => {
     const dir = scratch();
     // A plausible harness change: the dispatch tool renamed again.
@@ -431,5 +452,332 @@ describe("doctor — a diagnostic must not throw on a broken repo", () => {
 
     expect(() => check(root)).not.toThrow();
     expect(check(root).checks.find((entry) => entry.name === "CI workflow")?.status).toBe("fail");
+  });
+});
+
+/**
+ * The capture-state check.
+ *
+ * Every assertion here is on the message rather than only the status. The
+ * check's whole job is to say what it read without concluding anything about
+ * what it did not read, and a status alone cannot tell those apart: "no file
+ * sets the variable" and "capture is off" are the same `--` and different
+ * claims.
+ */
+describe("doctor — what the settings files say about payload capture", () => {
+  function writeSettings(path: string, contents: unknown): void {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, typeof contents === "string" ? contents : JSON.stringify(contents));
+  }
+
+  function liveProbe(root: string, name: string, at: Date): void {
+    const dir = join(root, ".nullius", "probes");
+    mkdirSync(dir, { recursive: true });
+    const file = join(dir, name);
+    writeFileSync(file, "{}\n");
+    utimesSync(file, at, at);
+  }
+
+  function captureCheck(root: string, userSettingsPath?: string): Check | undefined {
+    return check(root, undefined, userSettingsPath).checks.find(
+      (entry) => entry.name === "payload capture",
+    );
+  }
+
+  // Whole seconds, so the value survives the round trip through
+  // `utimesSync` exactly and the assertion is not a float-precision coin flip.
+  const NEWEST = new Date("2026-02-03T04:05:06.000Z");
+
+  it("names the file that enables capture and the payloads held, as a fact", () => {
+    const root = scratch();
+    writeSettings(join(root, ".claude", "settings.local.json"), {
+      env: { NULLIUS_WITNESS_PROBE: "1" },
+    });
+    liveProbe(root, "PreToolUse-Agent.json", new Date("2025-12-25T00:00:00.000Z"));
+    liveProbe(root, "SubagentStop.json", NEWEST);
+
+    const result = captureCheck(root);
+
+    expect(result?.status).toBe("fact");
+    expect(result?.detail).toContain(".claude/settings.local.json");
+    expect(result?.detail).toContain("enables capture");
+    expect(result?.detail).toContain("NULLIUS_WITNESS_PROBE=1");
+    expect(result?.detail).toContain("2 payload");
+    // ISO-8601 UTC, not toLocaleString: a detail string that reads differently
+    // on the author's machine cannot be asserted anywhere else.
+    expect(result?.detail).toContain("2026-02-03T04:05:06.000Z");
+    expect(result?.detail).toMatch(
+      /most recently written \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z/,
+    );
+    // The directory named is the live one, said so it cannot be read as the
+    // committed corpus a different check reports on.
+    expect(result?.detail).toContain(".nullius/probes/");
+    expect(result?.detail).toContain("not the committed probe corpus");
+    expect(check(root).failed).toBe(false);
+  });
+
+  it("says the same thing about an absent live directory and an empty one", () => {
+    const absent = scratch();
+    const empty = scratch();
+    mkdirSync(join(empty, ".nullius", "probes"), { recursive: true });
+    // Same path for both, so the live directory is the only thing that differs.
+    const userSettingsPath = join(scratch(), "settings.json");
+
+    // Zero payloads held is zero payloads held. Asserted once, here, so the
+    // rest of this suite does not have to carry both columns.
+    expect(captureCheck(empty, userSettingsPath)?.detail).toBe(
+      captureCheck(absent, userSettingsPath)?.detail,
+    );
+    expect(captureCheck(absent, userSettingsPath)?.detail).toContain("holds no payloads");
+  });
+
+  it("reports any value other than 1 as that file disabling capture", () => {
+    const root = scratch();
+    writeSettings(join(root, ".claude", "settings.json"), {
+      env: { NULLIUS_WITNESS_PROBE: "0" },
+    });
+
+    const result = captureCheck(root);
+
+    expect(result?.status).toBe("fact");
+    expect(result?.detail).toContain(".claude/settings.json");
+    expect(result?.detail).toContain("disables capture");
+    expect(result?.detail).toContain("NULLIUS_WITNESS_PROBE=0");
+    expect(check(root).failed).toBe(false);
+  });
+
+  it("where no file sets it, names what it checked and refuses to say capture is off", () => {
+    const root = scratch();
+    const userSettingsPath = join(scratch(), "settings.json");
+    writeSettings(join(root, ".claude", "settings.json"), { env: { NULLIUS_KIT_BIN: "x" } });
+
+    const result = captureCheck(root, userSettingsPath);
+
+    expect(result?.status).toBe("fact");
+    expect(result?.detail).toContain(".claude/settings.local.json");
+    expect(result?.detail).toContain(".claude/settings.json");
+    expect(result?.detail).toContain(userSettingsPath);
+    expect(result?.detail).toContain("NULLIUS_WITNESS_PROBE");
+    // Scoped to what this check read. A bare "no settings file sets it" leads
+    // with a quantifier over every settings file that exists, which is not a
+    // claim three `existsSync` calls entitle it to make.
+    expect(result?.detail).toContain("no settings file this check could parse sets");
+    expect(result?.detail).toContain("capture may still be enabled by sources this check does not read");
+    expect(result?.detail).toContain("launched the harness");
+    // "capture is off" is not a checkable claim for the same reason "capture
+    // is on" is not — both quantify over sources this check never read.
+    expect(result?.detail).not.toMatch(/capture is off|not capturing|capture is disabled/i);
+  });
+
+  it("reports payloads held while no file enables capture, and never calls them stale", () => {
+    const root = scratch();
+    liveProbe(root, "SubagentStop.json", NEWEST);
+
+    const result = captureCheck(root);
+
+    // Payloads that look like coverage. The count and the write time are
+    // facts; "stale" would be a claim that capture has stopped, which this
+    // check cannot make.
+    expect(result?.status).toBe("fact");
+    expect(result?.detail).toContain("1 payload");
+    expect(result?.detail).toContain("2026-02-03T04:05:06.000Z");
+    expect(result?.detail).not.toMatch(/stale|not being refreshed|no longer/i);
+  });
+
+  it("is unknown only when nothing could be established, and names the file it could not parse", () => {
+    const root = scratch();
+    writeSettings(join(root, ".claude", "settings.local.json"), "{ not json");
+
+    const result = captureCheck(root);
+
+    expect(result?.status).toBe("unknown");
+    expect(result?.detail).toContain(".claude/settings.local.json");
+    expect(result?.detail).toContain("NULLIUS_WITNESS_PROBE");
+    expect(result?.detail).toContain("holds no payloads");
+    expect(check(root).failed).toBe(false);
+
+    // This row is NOT directory-invariant. Held payloads are reported wherever
+    // they are held — the requirement is unconditional, and a settings file
+    // that does not parse says nothing about what is on disk. The earlier
+    // version of this test pinned the omission as a deliberate collapse, which
+    // made a spec violation permanent.
+    const withPayloads = scratch();
+    writeSettings(join(withPayloads, ".claude", "settings.local.json"), "{ not json");
+    liveProbe(withPayloads, "SubagentStop.json", NEWEST);
+
+    const held = captureCheck(withPayloads);
+
+    expect(held?.status).toBe("unknown");
+    expect(held?.detail).toContain("1 payload");
+    expect(held?.detail).toContain("2026-02-03T04:05:06.000Z");
+    expect(held?.detail).not.toMatch(/stale|not being refreshed|no longer/i);
+  });
+
+  it("still names every file it read, and the sources it did not, when one does not parse", () => {
+    const root = scratch();
+    const userSettingsPath = join(scratch(), "settings.json");
+    writeSettings(join(root, ".claude", "settings.local.json"), "{ not json");
+
+    const result = captureCheck(root, userSettingsPath);
+
+    expect(result?.status).toBe("unknown");
+    // This branch used to close on "and no other settings file sets it" — an
+    // unhedged claim over settings files, which a reader takes as "capture is
+    // off unless that broken file turns it on". The forbidden-phrase patterns
+    // never fired on it, because the sentence meant it without saying it.
+    expect(result?.detail).toContain(".claude/settings.json");
+    expect(result?.detail).toContain(userSettingsPath);
+    expect(result?.detail).toContain(
+      "capture may still be enabled by sources this check does not read",
+    );
+    expect(result?.detail).toContain("launched the harness");
+    expect(result?.detail).not.toContain("no other settings file sets it");
+    expect(result?.detail).not.toMatch(/capture is off|not capturing|capture is disabled/i);
+  });
+
+  it("reports the user settings file as not supplied rather than dropping it", () => {
+    // The `check()` helper always supplies a path, so the undefined case is
+    // only reachable through `runChecks` directly. Dropped silently, the
+    // message still speaks of "the files checked" while one of them is absent
+    // from the list.
+    const root = scratch();
+
+    const result = runChecks({ root, probeDir: join(root, "nowhere") }).checks.find(
+      (entry) => entry.name === "payload capture",
+    );
+
+    expect(result?.status).toBe("fact");
+    expect(result?.detail).toContain("user settings file");
+    expect(result?.detail).toContain("not supplied");
+  });
+
+  it("does not make the report unknown for a settings file that is merely absent", () => {
+    // Absence is an observation; unreadability is a failure to determine.
+    expect(captureCheck(scratch())?.status).toBe("fact");
+  });
+
+  it("names both files and both values when two disagree, and declares no winner", () => {
+    const root = scratch();
+    const userSettingsPath = join(scratch(), "settings.json");
+    writeSettings(userSettingsPath, { env: { NULLIUS_WITNESS_PROBE: "1" } });
+    writeSettings(join(root, ".claude", "settings.local.json"), {
+      env: { NULLIUS_WITNESS_PROBE: "0" },
+    });
+
+    const result = captureCheck(root, userSettingsPath);
+
+    expect(result?.status).toBe("fact");
+    expect(result?.detail).toContain(userSettingsPath);
+    expect(result?.detail).toContain(".claude/settings.local.json");
+    expect(result?.detail).toContain("enables capture");
+    expect(result?.detail).toContain("disables capture");
+    expect(result?.detail).toContain("does not adjudicate precedence");
+    // Nothing in this repository establishes the harness's ordering, so a
+    // deciding file would be an ungrounded claim about external behaviour.
+    expect(result?.detail).not.toMatch(/\bwins\b|takes effect|effective value|overrides/i);
+  });
+
+  it("reads each of the three settings files as a sole setter", () => {
+    // So nothing passes by only ever consulting two of them.
+    const cases: { label: string; path: (root: string, user: string) => string }[] = [
+      { label: ".claude/settings.local.json", path: (root) => join(root, ".claude", "settings.local.json") },
+      { label: ".claude/settings.json", path: (root) => join(root, ".claude", "settings.json") },
+      { label: "user", path: (_root, user) => user },
+    ];
+
+    for (const { label, path } of cases) {
+      const root = scratch();
+      const userSettingsPath = join(scratch(), "settings.json");
+      writeSettings(path(root, userSettingsPath), { env: { NULLIUS_WITNESS_PROBE: "1" } });
+
+      const result = captureCheck(root, userSettingsPath);
+
+      expect(result?.status, label).toBe("fact");
+      expect(result?.detail, label).toContain(label === "user" ? userSettingsPath : label);
+      expect(result?.detail, label).toContain("enables capture");
+    }
+  });
+
+  it("keeps a determinate read when a different file does not parse", () => {
+    const root = scratch();
+    writeSettings(join(root, ".claude", "settings.local.json"), "{ not json");
+    writeSettings(join(root, ".claude", "settings.json"), {
+      env: { NULLIUS_WITNESS_PROBE: "1" },
+    });
+
+    const result = captureCheck(root);
+
+    // `unknown` is for when nothing could be established, not for when
+    // something could and something else could not.
+    expect(result?.status).toBe("fact");
+    expect(result?.detail).toContain(".claude/settings.json");
+    expect(result?.detail).toContain("enables capture");
+    expect(result?.detail).toContain("could not parse");
+    expect(result?.detail).toContain(".claude/settings.local.json");
+  });
+
+  it("never reads doctor's own environment", () => {
+    // The variable governs the hook subprocess. `doctor` runs in the
+    // operator's shell, so its own environment answers a different question.
+    const previous = process.env["NULLIUS_WITNESS_PROBE"];
+    process.env["NULLIUS_WITNESS_PROBE"] = "1";
+    try {
+      const result = captureCheck(scratch());
+
+      expect(result?.detail).toContain(
+        "no settings file this check could parse sets NULLIUS_WITNESS_PROBE",
+      );
+      expect(result?.detail).not.toContain("enables capture");
+    } finally {
+      if (previous === undefined) delete process.env["NULLIUS_WITNESS_PROBE"];
+      else process.env["NULLIUS_WITNESS_PROBE"] = previous;
+    }
+  });
+
+  it("runs before the live proof", () => {
+    const checks = check(scratch()).checks;
+    const captureAt = checks.findIndex((entry) => entry.name === "payload capture");
+    const proofAt = checks.findIndex((entry) => entry.name === "live proof");
+
+    // Compared by name, not by a fixed offset: `checks[length - 2]` breaks the
+    // moment any check lands between them, and the live-proof assertion
+    // elsewhere in this file catches a misplacement only as a side effect,
+    // under a name that sends the reader to debug `liveProof`.
+    expect(captureAt).toBeGreaterThanOrEqual(0);
+    expect(proofAt).toBeGreaterThanOrEqual(0);
+    expect(captureAt).toBeLessThan(proofAt);
+  });
+});
+
+describe("captureChecks — the quantifier does not include what it could not read", () => {
+  it("does not claim over a file it just said it could not parse", () => {
+    const root = scratch();
+    mkdirSync(join(root, ".claude"), { recursive: true });
+    writeFileSync(join(root, ".claude", "settings.local.json"), "{ not json");
+
+    const detail = find(check(root).checks, "payload capture")?.detail ?? "";
+
+    // "no settings file this check READ sets it" quantifies over a set that
+    // includes the unparseable file — asserting a value for the one file the
+    // same sentence calls undetermined. "could parse" excludes it.
+    expect(detail).toContain("no settings file this check could parse sets it");
+    expect(detail).not.toContain("this check read sets");
+  });
+
+  it("never renders a file that sets the variable as setting nothing", () => {
+    const root = scratch();
+    mkdirSync(join(root, ".claude"), { recursive: true });
+    writeFileSync(
+      join(root, ".claude", "settings.json"),
+      JSON.stringify({ env: { NULLIUS_WITNESS_PROBE: "1" } }),
+    );
+
+    const detail = find(check(root).checks, "payload capture")?.detail ?? "";
+
+    // stateOf() is only ever called where no file sets the variable. That
+    // invariant lives in the caller, not the type, so assert the safe
+    // rendering directly rather than trusting the call site to stay put.
+    expect(detail).toContain("enables capture");
+    expect(detail).not.toContain(".claude/settings.json (sets nothing)");
   });
 });

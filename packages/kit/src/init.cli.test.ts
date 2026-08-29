@@ -168,6 +168,18 @@ suite("init — the recording opt-in is not ours to set", () => {
     expect(existsSync(join(root, "nullius.authoring.md"))).toBe(true);
   });
 
+  // Naming capture is the whole of init's obligation here: the operator
+  // cannot decline a feature nobody told them about, and they cannot judge
+  // whether to accept it without being told payloads carry prompt text.
+  it("names payload capture, what it records, and that it is off", () => {
+    const result = run("init", "--root", scratch(), "--profile", "specs", "--yes");
+
+    expect(result.stdout).toContain("NULLIUS_WITNESS_PROBE");
+    expect(result.stdout).toContain(".nullius/probes/");
+    expect(result.stdout).toContain("prompt text");
+    expect(result.stdout).toContain("OFF unless you ask for it");
+  });
+
   it("leaves a .nullius/ the user created alone", () => {
     const root = scratch();
     mkdirSync(join(root, ".nullius"));

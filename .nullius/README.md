@@ -41,6 +41,53 @@ tool whose thesis is that unrecorded work launders into evidence of absence.
    on stderr rather than silently recording nothing — an empty `runs/` must
    never be indistinguishable from a session where nothing happened.
 
+## The two probe directories, which are not the same thing
+
+`nullius` has two directories with `probes` in the path, and conflating them is
+the mistake this section exists to prevent.
+
+**`spec/fixtures/probes/claude-code/` is a committed corpus.** It holds
+recordings of real hook payloads, and `doctor` replays them through the real
+extractor so that a harness upgrade which changes payload shape fails a check
+instead of quietly producing empty journals. It is a regression test over
+recordings, it belongs in the repository, and it is checked into git.
+
+**`.nullius/probes/` is live capture.** It holds the latest raw payload per
+event type from *this machine*, it is gitignored, and it is how the corpus gets
+fed. Nothing replays it; it is raw material.
+
+A green corpus check therefore says nothing about whether capture is currently
+configured. That is why `doctor` reports on both, and why the capture-state
+report names the live directory explicitly.
+
+## Turning capture on, and why it is off
+
+Capture is off unless a settings file asks for it:
+
+```json
+{ "env": { "NULLIUS_WITNESS_PROBE": "1" } }
+```
+
+The value must be exactly `1`. The recorder tests for that string, so `0` — or
+`true`, or `yes` — does not capture.
+
+Set it in `.claude/settings.json`, `.claude/settings.local.json`, or your user
+settings. `doctor` reads all three and reports what each says; it deliberately
+does not tell you which one wins, because settings precedence is the harness's
+behaviour and this repository has nothing that establishes it. It also cannot
+see a variable exported in the shell that launched the harness, and says so
+rather than guessing.
+
+**Why this is opt-in rather than the default.** A raw payload is the payload:
+prompt text, tool inputs and outputs, and absolute paths including your home
+directory. The committed corpus had to have the last of those redacted before
+it could be shared. Persisting that by default would be this tool making a
+privacy decision on your behalf, and it is not the tool's decision to make.
+`init` names the option and never enables it.
+
+Redaction of captured payloads is not solved here. If you turn capture on,
+`.nullius/probes/` holds unredacted payloads until you delete them.
+
 ## Reading what it produces
 
 ```sh

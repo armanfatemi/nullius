@@ -16,6 +16,7 @@
 
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import { isJournalFailure, validateJournal, type JournalOrigin } from "@nullius-inverba/claims";
@@ -232,6 +233,16 @@ function runInit(argv: readonly string[]): number {
 
   console.log(formatPlan(plan, options.dryRun));
 
+  // Named, never enabled. Capture writes raw hook payloads — prompt text and
+  // absolute paths — so whether to persist them is the operator's call, and an
+  // installer that switched it on as a side effect of setup would have made
+  // that call for them. Naming it is the part init owes; setting it is not.
+  console.log("");
+  console.log("  Payload capture: setting NULLIUS_WITNESS_PROBE to exactly 1 saves every raw");
+  console.log("  hook payload to .nullius/probes/. Those payloads carry your prompt text and");
+  console.log("  absolute paths, so capture is OFF unless you ask for it — init does not set");
+  console.log("  it and will not offer to. Detail: .nullius/README.md");
+
   if (options.dryRun) {
     console.log("");
     console.log("Dry run — the working tree is unchanged.");
@@ -361,6 +372,14 @@ function runDoctor(argv: readonly string[]): number {
   const report = runChecks({
     root,
     probeDir: join(root, "spec", "fixtures", "probes", "claude-code"),
+    // Resolved here rather than inside the check: `runChecks` takes the path
+    // so a test can point it at a fixture instead of the developer's own
+    // configuration.
+    userSettingsPath: join(homedir(), ".claude", "settings.json"),
+    // Read by its real path, printed by this one. The report is what a user
+    // pastes into an issue, and a check whose subject is payloads leaking
+    // absolute home paths should not open by printing one.
+    userSettingsLabel: "~/.claude/settings.json",
   });
   console.log(formatReport(report));
 
