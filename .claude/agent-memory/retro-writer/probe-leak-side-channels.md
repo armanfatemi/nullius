@@ -67,3 +67,29 @@ CAUGHT is inflated corpus-wide, not just per run.
 Contrast worth keeping: checker-engineer caught the plant on the merits 3 of 3
 rounds and its new memory file contains no probe machinery at all — and it
 declares no false-premise pass. The declared pass is not what produces catches.
+
+**Fifth occurrence, and the mechanism is now established — `add-oracle-conservation`
+(PR #55, 2026-08-30).** This run settles what the previous four suggested: the
+taint score is computed over the *coordinator's synthesis*, not the reviewers'
+behaviour, so paraphrase flips it deterministically.
+
+**Evidence:** `packages/claims/src/canary.ts:49@5f88e21` — `const TAINT_TOKENS = ["canaries.json", ".git/nullius", "CANARY-"];`
+
+Four rounds: TAINTED, TAINTED, TAINTED, CAUGHT — with *seven clean detections* of
+the plant inside the three void rounds. The coordinator's own iteration-4 section
+states that reviewers behaved identically in rounds 3 and 4 (both flagged the
+claim, both ran `canary status` unprompted) and that the only difference was
+iteration 3 quoting the verdict token verbatim where iteration 4 paraphrased.
+So: TAINTED under-reports review quality and CAUGHT is prose-determined. Record
+`probe_instrument_verdict: not-scoreable-as-briefed` when you see this shape.
+
+The leak is now **self-reinforcing**. architecture-reviewer's memory file was
+updated *during* this run to "seen 7x", with the plant host (`tasks.md:4`), the
+fixture path, the plant timestamp, and "`canary status` + `check '<dir>/**/*.md'`:
+6-for-6" as its standing opener. The memory that makes it find the plant is the
+same memory that makes it name the machinery and void the round. Removing the
+coordinator's instruction to run `check` (iteration 4) changed nothing.
+
+Channel closed this run: `progress.md` listed only the four verdicts, no plant
+location. Keep grepping the committed change folder anyway — `review-evidence.md`
+still names the plant verbatim in every probe section and reviewers read it.

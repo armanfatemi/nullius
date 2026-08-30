@@ -1,46 +1,36 @@
 # Progress — proposal-to-pr: add-oracle-conservation
 
-_Started 2026-08-29; last updated 2026-08-29_
+_Started 2026-08-29; last updated 2026-08-30_
 
 ## Phases completed
 
 - [x] Stage 1: Load
-- [x] Stage 2: Pre-review iteration 1 — 4 blockers, 3 false premises; probe TAINTED
-- [x] Stage 3: Refine iteration 1 — 2 user decisions taken
-- [x] Stage 2: Pre-review iteration 2 — 3 blockers (2 coordinator-introduced); probe TAINTED
-- [x] Stage 3: Refine iteration 2 — added MALFORMED-JUSTIFICATION verdict
-- [x] Stage 2: Pre-review iteration 3 — 3 blockers (all coordinator-introduced); probe TAINTED
-- [x] Stage 3: Refine iteration 3 — clause-4 argued properly; rule restatement removed
+- [x] Stage 2/3: Pre-review + refine, 4 iterations
+- [x] Stage 4: Implement — 57/58 tasks
+- [x] Stage 5: Verify — build, type-check, tests, dogfood gates both polarities
+- [x] Stage 6/7: Post-review + address must-fixes
+- [x] Stage 8: PR opened — #55
+- [x] Stage 9: Retro written, committed, push verified against origin
 
 ## Current phase
 
-**PAUSED at the refinement cap.** `pause_reason=refinement_cap`.
-Three refinement iterations completed, which is the default `--max-refine`.
-Zero blockers are known to remain, but iteration 3's fixes have NOT been
-re-reviewed — and every prior round found that the previous round's fixes
-introduced new blockers.
+**Done.** PR #55 open, awaiting human review and a merge commit.
 
 ## Next 3 actions
 
-1. User decides: run a 4th review round (re-invoke with `--max-refine 4`), or
-   accept the current artefacts and proceed to Stage 4 (implement)
-2. If proceeding: create `feat/add-oracle-conservation` from main, walk tasks.md
-3. Nothing has been implemented — no code exists yet
+1. Human review and merge #55 — with a merge commit, never a squash
+2. Consider the retro's six proposed rule changes (a field in the retro, not applied)
+3. Task 4.5 (`--format json`) stays deferred until `add-authoring-ergonomics` lands
 
 ## Integration points the next session needs to read on resume
 
-- packages/claims/src/config.ts:48,51-61,84+ and cli.ts:895-914 — the FOUR config
-  hops; `configVersion` is the cautionary case (in KNOWN_KEYS, no assignment)
-- packages/claims/src/witness.ts:1146 — the `decision` parser that must NOT learn
-  about `justifies`
-- packages/claims/src/rules.ts:42-64 — the RuleVerdict/PASSING pattern, including
-  why `malformed-rule-header` is excluded
-- packages/claims/src/runners.ts:143,149,236 — hex-only REV_PATTERN, no
-  name-status diff; new plumbing required
-- .github/workflows/ci.yml:220 — the `rules check` both-polarities model
+- packages/claims/src/oracle.ts — the classifier and OracleVerdict/PASSING
+- packages/claims/src/oracleGit.ts — the git/journal binding layer
+- packages/claims/src/config.ts — the four config hops for `oracles`
+- packages/claims/src/witness.ts — VERSIONS, now through 0.5
+- spec/witness-journal.md — the clause-4 case and the 0.5 entry
 
 ## Pending user decisions
 
-- Whether to spend a 4th review round verifying iteration 3's fixes, or proceed
-  to implementation. See the cap note above for why this is a real choice rather
-  than a formality.
+- The retro graded this run `blocking`; its six proposed rule changes are
+  unapplied and are the user's to accept or reject

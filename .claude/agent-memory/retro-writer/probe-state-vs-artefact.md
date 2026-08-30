@@ -38,3 +38,13 @@ recorded TAINTED in both the artefact and state, because the plant had been
 disclosed in a committed file. Record that as `tool_score_overridden: true` — a
 tool score and a recorded verdict can now legitimately differ, and the artefact
 is still the one to trust.
+
+**Second run of agreement — `add-oracle-conservation` (PR #55, 2026-08-30).**
+State carried `probe_iter_1..4` = tainted, tainted, tainted, caught, matching
+`review-evidence.md` round for round. The per-iteration fix is holding.
+
+New nuance for the frontmatter: a `[tainted, tainted, tainted, caught]` run is
+NOT a run that improved. Score the single scalar `probe:` from the last round
+because that is what the tool returned, but always emit `probe_iterations:` and a
+`probe_note` saying whether reviewer behaviour differed between the void and
+scored rounds. On this run it did not — see [[probe-leak-side-channels]].

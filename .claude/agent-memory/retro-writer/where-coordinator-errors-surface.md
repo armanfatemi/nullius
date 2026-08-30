@@ -40,3 +40,21 @@ exist. The map is `VOCABULARY`" — the invented symbol was replaced everywhere,
 including inside its own correction, so the wrong name is unrecoverable. When a
 corrections block records an invented identifier, check whether the wrong name
 is still legible; if it is not, that is its own finding.
+
+**`add-oracle-conservation` (PR #55, 2026-08-30) — richest yet: 11 blocks, 27
+tagged entries.** Two things to reuse.
+
+1. **The tag is now sometimes dual.** Seven bullets carry BOTH a finding tag and
+   the correction tag, e.g. `- **[blocker] [corrected-coordinator] The `PASSING`
+   set has no complement.**` — that is a coordinator defect a reviewer caught, and
+   it separates cleanly from the 20 entries inside the corrections blocks, which
+   skew self-caught. Grep `^- \*\*\[.*\[corrected-coordinator\]` to split them.
+2. **The run's best findings were written by the coordinator against itself,
+   before any reviewer named them** — the probe instrument defect ("the instrument
+   is measuring reviewer tool-use, not review quality") and the fail-open-default
+   class ("the question that finds this class is not 'is the logic right' but
+   'which way does this fall when it does not know'"). Quote these verbatim; a
+   paraphrase loses the part that makes them actionable.
+
+Still write the blind spot under `## Uncertainty`. These blocks bound what was
+caught and say nothing about what was not.

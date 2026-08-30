@@ -147,6 +147,12 @@ earlier stage as covering these.
     hold unrelated edits (another proposal's in-progress work, a settings
     change under review), and a blanket add has already swept one into a
     commit that then had to be reverted twice.
+    **This forbids the blanket add, not the file.** `git add <specific path>`
+    is the remedy, and it applies to *every* path the run dirtied — the retro,
+    `progress.md`, and `.claude/agent-memory` alike. Reading this rule as
+    "commit as little as possible" is how a run ends `done` over a tree it
+    dirtied itself; the run owns what it wrote and must land all of it. Stage 9
+    lists the set and then verifies it with `git status --porcelain`.
 12. **Never invoke a gate through a shell loop over a stored command string**
     (`for cmd in check wiring rules; do $cmd ...; done`, or `c="node ...
     cli.js"; $c ...`). Not every shell word-splits an unquoted variable — zsh
@@ -269,6 +275,14 @@ which is the same reason Stage 9 is told not to trust your summary.
   Write it with `progress-write` (markdown on stdin), never with the Write tool
   — the helper is the same write path used for state and evidence, and it
   avoids a per-write permission prompt.
+
+  "Committed" is a claim about the end of the run, not about each write.
+  `progress-write` only writes the file; it stages nothing. Whichever stage
+  commits next carries whatever `progress.md` updates have accumulated, and the
+  **last** one is carried by Stage 9's closing commit — which is why that commit
+  stages `progress.md` explicitly. A stage that writes `progress.md` and then
+  makes no commit has left it dirty, and that is fine mid-run and a defect at
+  the end.
 
 Update **both** at every stage transition. Structure for `progress.md`:
 
@@ -1159,20 +1173,71 @@ artefacts. The whole reason it is a separate agent is that your account of the
 run — at the end of a long session, with the early mistakes compacted away — is
 the least reliable input available.
 
-Commit the retro on the feature branch so it travels with the PR, and verify
-the push actually landed before declaring the run done — a push fails (stale
-ref, network, auth) exactly as easily as any other git command, and nothing
-else in this stage would notice a silent failure:
+### The closing commit covers everything this run dirtied, not just the retro
+
+Commit on the feature branch so the work travels with the PR, and verify the
+push actually landed before declaring the run done — a push fails (stale ref,
+network, auth) exactly as easily as any other git command, and nothing else in
+this stage would notice a silent failure.
+
+**Three classes of file are dirty at this point, and an earlier version of this
+stage staged only the first.** The result was a run that reported `done` over a
+working tree with uncommitted changes in it — including `progress.md`, the
+resume artefact this stage had itself just rewritten:
+
+1. **The retro** — the single path `retro-writer` returned.
+2. **`openspec/changes/<change>/progress.md`** — you update it on every stage
+   transition, including the `retro` → `done` one below. Staging the retro alone
+   leaves that final update permanently uncommitted, so the committed
+   `progress.md` disagrees with the state file and says the run is still at
+   `retro`.
+3. **`.claude/agent-memory/**`** — tracked files that the reviewer and
+   retro-writer agents write to as they run. They are this run's output, not
+   local scratch. Left unstaged they accumulate across runs and every future
+   `git status` opens dirty for reasons nobody can attribute.
 
 ```bash
 git add .claude/retrospectives/<the-one-file-it-named>
+git add openspec/changes/<change>/progress.md
+git add .claude/agent-memory          # tracked agent output; see the caveat below
 git commit -m "docs: retrospective for <change>"
 git push
 ```
 
-Stage the single path the agent returned, never the directory and never `-A`.
-The working tree holds untracked local scratch, and a directory add sweeps it
-into a commit that then has to be amended.
+**Still never `git add -A`, and never `git commit -a`.** The prohibition in
+hard rule 11 has not loosened — it has been made specific. The working tree
+routinely holds untracked directories that are *not* this run's: other change
+proposals drafted mid-session (a retro that proposes follow-up work leaves
+exactly this), local scratch, editor droppings. `git add .claude/agent-memory`
+is a bounded path whose contents this run's agents wrote; `-A` is unbounded and
+has already swept an unrelated proposal into a commit that had to be reverted
+twice.
+
+If `.claude/agent-memory` is untracked or absent in a given repository, skip
+that line rather than creating it.
+
+### Then assert the tree is clean, because remembering is not a mechanism
+
+Staging by explicit path is correct and it is also exactly the kind of step that
+silently drifts as the run's file set grows. So do not rely on the list above
+being complete — check:
+
+```bash
+git status --porcelain
+```
+
+Read what it prints. Anything still listed must be one of:
+
+- **untracked and not this run's** — another change's proposal directory, local
+  scratch. Correct to leave; name it in your closing summary so the user can see
+  you classified it deliberately rather than missed it.
+- **anything else** — a file this run touched and did not commit. Stage it by
+  path and amend, or commit it separately. Do not transition to `done` while one
+  of these is outstanding.
+
+A run that ends `done` over a dirty tree it created is the same shape of defect
+as every other one here: the report and the artefact disagree, and the report is
+the one people read.
 
 **Check `git push`'s exit code before transitioning to `done`.** A non-zero
 exit means the retro is committed locally but not on the PR's branch — the

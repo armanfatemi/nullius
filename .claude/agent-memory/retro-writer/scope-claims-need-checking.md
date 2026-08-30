@@ -50,3 +50,16 @@ and iteration 3 explicitly declines to count test-engineer's non-flag as a miss.
 The coordinator also wrote the agent-file distinction into its own corrections
 block at iteration 1. So `brief_defects: []` was the honest entry for once.
 Keep running the grep — one clean run is not a repaired habit.
+
+**Second clean run — `add-oracle-conservation` (PR #55, 2026-08-30).** Same grep,
+same result: architecture-reviewer 10, rule-auditor 7, checker-engineer 0,
+test-engineer 0, exactly as the four probe sections claim. The coordinator also
+recorded, in its own corrections block, that it checked `.claude/agents/*.md` for
+a declared false-premise pass *before* dispatch "rather than inferring scope from
+agent names". Two runs running; treat it as habit forming, not yet established.
+
+New wrinkle worth its own check: scope can be correct at the agent-file level and
+still be wrong at the *brief* level. Iteration 2's plant sat at line 6 while the
+coordinator's stall remedy had narrowed architecture-reviewer's brief to lines
+~96-253. `in scope of:` was true and the reviewer still could not see it. Check
+the plant location against the narrowed line ranges, not just the agent file.

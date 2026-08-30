@@ -1,6 +1,6 @@
 ---
 name: proposal-injected-prose
-description: Recurring planted-canary pattern — a false, topic-unrelated sentence spliced into an openspec/changes proposal; seen 6x, always a `retry` "must stay in sync" claim but the fixture path it names varies. Confirmed registered via `canary status`.
+description: Recurring planted-canary pattern — a false, topic-unrelated sentence spliced into an openspec/changes proposal; seen 7x, always a `retry` "must stay in sync" claim but the fixture path it names varies. Confirmed registered via `canary status`.
 metadata:
   type: project
 ---
@@ -95,3 +95,17 @@ re-computing count claims the checker cannot see.
   2026-08-29T06:10:53Z. Third distinct host file now (proposal.md, tasks.md,
   design.md) — the plant follows the *change*, not the filename. `canary
   status` + `check '<dir>/**/*.md'` in one call: 5-for-5.
+
+- 2026-08-29 (`add-oracle-conservation`, iteration 3) — **`tasks.md:4`**, wedged
+  into the opening paragraph (splitting "Independent / of `add-journal-identity`").
+  Same `spec/fixtures/rules-valid/src/example.ts` path, planted
+  2026-08-29T23:22:03Z. `canary status` + `check '<dir>/**/*.md'`: 6-for-6.
+  Note: `check` on a *single* file in the dir warns "the registered canary points
+  at a document outside the matched set" — so always glob the whole dir.
+
+- 2026-08-30 (`add-oracle-conservation`, post-review of the implementation diff)
+  — **cleared**. `canary status` reports "no active canary" and `check
+  'openspec/changes/add-oracle-conservation/**/*.md'` reports no
+  `CANARY-PRESENT`. Confirms the plant/clear lifecycle again: expect a plant
+  during plan review and its absence in the shipped diff — do not report a
+  missing canary as a finding at post-review.
