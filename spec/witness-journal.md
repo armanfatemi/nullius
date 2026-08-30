@@ -91,6 +91,16 @@ Its meaning and its validation belong to `nullius oracle`, the only consumer tha
 means anything by it: `change` is closed to `deleted`, `skipped`, `weakened`, and
 a blank `path` or an unrecognised class is `MALFORMED-JUSTIFICATION` there.
 
+**If `oracle` ever adds a fourth class, that is a bump here.** The vocabulary is
+documented in this spec and enforced in `oracle`, which leaves an ownership
+question worth answering before it is asked in anger: clause 2 fires on the
+journal's version, because the closed set is part of what a `decision` record is
+allowed to say. The field's *meaning* belongs to `oracle`; the field's *shape* is
+the journal's, and widening a shape the journal documents is a change to the set
+of valid records however the widening is enforced. Resolve it that way rather
+than by the reflex — the change that introduced this field spent four review
+iterations discovering that "the validator does not read it" settles nothing.
+
 The referent is a derived pair, never a record id. `oracle` computes
 `(path, change)` from a diff and the producer writes the same pair from the same
 diff, so the two meet without either knowing the other's ids — which is the

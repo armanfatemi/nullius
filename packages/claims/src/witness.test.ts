@@ -1698,12 +1698,19 @@ describe("schema 0.5 — the oracle-conservation bump", () => {
   // The design's load-bearing claim: the bump tightens nothing. A decision
   // carrying justifies must validate identically to one without it, at 0.4 AND
   // at 0.5 — witness validate never reads the field at any version.
+  //
+  // The journal below deliberately earns a finding (the dispatch reports
+  // "found" and files nothing, so SILENT-REVIEWER fires). An earlier version of
+  // this test used a clean journal and compared [] to [], which would have
+  // passed even if the validator HAD started reading the field — a well-formed
+  // justifies produces no finding either way. Comparing two non-empty finding
+  // lists is what makes this an assertion rather than a tautology.
   it("reports the same findings for a decision with and without justifies", () => {
     const make = (version: string, justifies: boolean) =>
       [
         `{"kind":"journal","version":"${version}","origin":"self-reported","session":"s"}`,
         '{"kind":"dispatch","id":"d1","task":"t"}',
-        '{"kind":"report","id":"r1","dispatch":"d1","outcome":"empty","statement":"None."}',
+        '{"kind":"report","id":"r1","dispatch":"d1","outcome":"found","findings":["x"]}',
         JSON.stringify({
           kind: "decision",
           id: "dec1",
@@ -1718,6 +1725,8 @@ describe("schema 0.5 — the oracle-conservation bump", () => {
     for (const version of ["0.4", "0.5"]) {
       const withField = validateJournal(make(version, true)).findings;
       const without = validateJournal(make(version, false)).findings;
+      // Non-empty on both sides, or the comparison below proves nothing.
+      expect(without.length).toBeGreaterThan(0);
       expect(withField.map((f) => `${f.verdict}:${f.detail ?? ""}`)).toEqual(
         without.map((f) => `${f.verdict}:${f.detail ?? ""}`),
       );

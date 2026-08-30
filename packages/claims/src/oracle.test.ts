@@ -1,3 +1,7 @@
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { describe, expect, it } from "vitest";
 
 import {
@@ -301,9 +305,44 @@ describe("an absent journal is a reported state", () => {
 });
 
 describe("files outside every declared glob are ignored entirely", () => {
-  it("does not classify a source file", () => {
-    const report = checkOracles(TESTS, deps([{ path: "src/retry.ts", status: "D" }]));
-    expect(report.findings).toEqual([]);
+  // Asserting only that the out-of-glob path produces nothing would pass
+  // against a checkOracles that returned an empty report unconditionally. The
+  // in-glob deletion in the same call is what makes the silence meaningful:
+  // one path is classified, the other is not, in a single invocation.
+  it("classifies an in-glob deletion and ignores an out-of-glob one", () => {
+    const report = checkOracles(
+      TESTS,
+      deps([
+        { path: "src/retry.ts", status: "D" },
+        { path: "test/retry.test.ts", status: "D" },
+      ]),
+    );
+    expect(report.findings).toHaveLength(1);
+    expect(report.findings[0]?.subject).toBe("test/retry.test.ts");
     expect(report.advisory).toEqual([]);
+  });
+});
+
+/**
+ * A guard for a defect that shipped once and was caught only because a reviewer
+ * noticed `Bin` in a diffstat.
+ *
+ * `globMatches` used NUL as an internal sentinel, and the discharge key joined
+ * `path` and `change` with one. Both worked, every test passed, and the file
+ * became binary to git — so the entire diff was unreviewable in a PR. Nothing
+ * else in the suite would have noticed: NUL is a valid JavaScript string
+ * character and a perfectly good separator.
+ *
+ * The check is over the whole source tree rather than this module, because the
+ * mistake is not oracle-specific — it is what any "separator that cannot appear
+ * in the data" reaches for.
+ */
+describe("source files are text, not binary", () => {
+  it("contains no NUL byte in any kernel source file", () => {
+    const dir = fileURLToPath(new URL(".", import.meta.url));
+    const offenders = readdirSync(dir)
+      .filter((name) => name.endsWith(".ts"))
+      .filter((name) => readFileSync(join(dir, name), "utf8").includes("\0"));
+    expect(offenders).toEqual([]);
   });
 });

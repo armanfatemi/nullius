@@ -1119,3 +1119,81 @@ close-out 8.2: check 'README.md' 'spec/**/*.md' --require-markers clean
 close-out 8.3: all twelve witness fixtures exit exactly as spec/witness-journal.md
       says, including the new v0.5 pair (0 and 1 respectively)
 wiring .: pass
+
+## Stage 7 — Address must-fixes (post-review)
+
+## Blocker
+
+- **[blocker] `oracle.ts` was stored as a binary file.** Found by
+  `checker-engineer`, which noticed `Bin 0 -> 11701 bytes` in the diffstat before
+  it read a line of the code. `globMatches` used NUL as an internal sentinel for
+  its `**` placeholder, and the discharge key joined `path` and `change` with
+  another. Both worked. All 27 tests passed. `type-check` passed. And git
+  classified the file as binary, so **the entire diff was unreviewable in the
+  PR** — the one artefact a human reviewer was going to read.
+
+  Fixed by removing the sentinels rather than substituting a different magic
+  byte: `globMatches` now builds its regex by scanning, and the discharge set is
+  a nested `Map<string, Set<HardChange>>`. Both are better code independently of
+  the encoding.
+
+  A regression guard was added — a test asserting no kernel source file contains
+  a NUL byte, scoped to the whole `src` directory rather than this module,
+  because the mistake belongs to "a separator that cannot appear in the data"
+  generally rather than to oracle.
+
+## Concerns closed
+
+- **Clause-2 ownership** (`architecture-reviewer`). The journal spec documented
+  `justifies.change` as a closed vocabulary while `oracle` enforced it, and
+  nothing said which side decides if a fourth class is ever added.
+  `spec/witness-journal.md` now answers it: clause 2 fires on the journal's
+  version, because the field's *meaning* belongs to `oracle` but its *shape*
+  belongs to the journal, and widening a documented shape changes the set of
+  valid records however it is enforced.
+- **A vacuous-ish equivalence test** (coordinator, partially disputed). See
+  corrections below.
+- **A weak glob-filter test** (`test-engineer`). It asserted only that an
+  out-of-glob path produced nothing, which a constant-empty `checkOracles` would
+  satisfy. It now classifies an in-glob deletion and ignores an out-of-glob one
+  in the same call, so the silence is meaningful.
+
+## Looks good
+
+- `architecture-reviewer`: no blockers, no false premises. The bump reasoning is
+  correct and names all three refuted drafts; no surviving no-bump text anywhere
+  live (the remaining instances are in dated history sections of this file);
+  README does not overclaim and all three limits are enforced in code;
+  `oracle.ts` satisfies pure-cores-injected-fs (no `node:fs`, sole import a type)
+  and fuzzy-heuristics-stay-advisory (the counted `weakened` passes, the
+  closed-vocabulary `malformed-justification` fails).
+- `test-engineer`: 26 of 27 oracle tests load-bearing; the CI step's exit-code
+  and output assertions confirmed to be separate statements; CI uses
+  `fetch-depth: 0`, so `HEAD..HEAD` resolves.
+- Anchors: all markers verified, only advisory `STALE`. `proposal.md:87` is
+  `STALE` by design — the stamp holds and the text moved because this change
+  moved it, which is exactly the case rev-stamping exists to keep advisory.
+
+## Coordinator corrections since last append
+
+- **[corrected-coordinator] I called the schema-equivalence test vacuous;
+  `test-engineer` disagreed and was substantially right.** I checked empirically
+  that both sides produced zero findings and concluded the test compared `[]` to
+  `[]`. True, and narrower than what I said: the *suite* was not vacuous, because
+  a third test supplies a malformed `justifies` and still asserts zero journal
+  findings, which does falsify a validator that reads the field. I strengthened
+  the equivalence test anyway (it now compares two non-empty finding lists), but
+  my framing overstated the gap and I am recording that rather than letting the
+  strengthening imply the reviewer was wrong.
+
+- **[corrected-coordinator] I shipped a binary source file and every gate I ran
+  said it was fine.** Build, type-check, 874 tests, all dogfood gates in both
+  polarities — none of them looks at file encoding, and none of them should have
+  to. A reviewer reading a diffstat caught it in one line. Worth naming precisely
+  because the failure is this repository's own thesis pointed at me: I had a full
+  green board standing in for a property nothing was checking.
+
+- **A note on what the probe could not have caught.** The canary measures whether
+  reviewers catch a planted false *claim*. Nothing about a planted claim would
+  have surfaced an unreviewable diff. The probe scored CAUGHT at iteration 4 and
+  the review layer still had to find this by ordinary attention.
