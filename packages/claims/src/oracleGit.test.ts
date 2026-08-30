@@ -1,9 +1,13 @@
+import { fileURLToPath } from "node:url";
+
 import { describe, expect, it } from "vitest";
 
 import {
   collectJustifications,
+  gitOracleDeps,
   parseNameStatus,
   parseRange,
+  type ParsedRange,
 } from "./oracleGit";
 
 describe("parseRange", () => {
@@ -160,5 +164,44 @@ describe("parseRange carries the separator", () => {
 
   it("gives a bare revision a two-dot separator", () => {
     expect(parseRange("abc1234")).toHaveProperty("sep", "..");
+  });
+});
+
+/**
+ * The absent/unreadable default, which is the whole safety property.
+ *
+ * These run against real git in this repository, because the classification
+ * keys off git's own stderr wording and a hand-written fake would only assert
+ * that the regex matches the string I wrote for it.
+ */
+describe("gitOracleDeps distinguishes absent from unreadable", () => {
+  const root = fileURLToPath(new URL("../../..", import.meta.url));
+
+  it("reports a genuinely missing path as absent", () => {
+    const range = parseRange("HEAD..HEAD") as ParsedRange;
+    const deps = gitOracleDeps(range, root, null);
+    expect(deps.readAt("does/not/exist.ts", "head").status).toBe("absent");
+  });
+
+  it("reads a path that is there", () => {
+    const range = parseRange("HEAD..HEAD") as ParsedRange;
+    const deps = gitOracleDeps(range, root, null);
+    expect(deps.readAt("README.md", "head").status).toBe("read");
+  });
+
+  // The direction that matters. An unresolvable revision must never be reported
+  // as "the file is not there" — that is the fail-open this module was fixed to
+  // remove, and defaulting to `absent` for unrecognised stderr rebuilds it one
+  // layer down, keyed to a list of strings nobody can promise is complete.
+  it("reports an unresolvable revision as unreadable, not absent", () => {
+    const range = parseRange("deadbeefdeadbeef..deadbeefdeadbeef") as ParsedRange;
+    const deps = gitOracleDeps(range, root, null);
+    const read = deps.readAt("README.md", "head");
+    expect(read.status).toBe("unreadable");
+  });
+
+  it("reports a diff over an unresolvable range as null, not empty", () => {
+    const range = parseRange("deadbeefdeadbeef..deadbeefdeadbeef") as ParsedRange;
+    expect(gitOracleDeps(range, root, null).diff()).toBeNull();
   });
 });

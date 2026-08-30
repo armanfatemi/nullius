@@ -17,6 +17,20 @@ import type { DiffEntry, OracleDeps, RawJustification, RevRead } from "./oracle"
 const DEFAULT_GIT_TIMEOUT_MS = 10_000;
 
 /**
+ * git's wording for "that path is not in that tree" — the one failure that is
+ * an answer rather than an absence of one.
+ *
+ * Observed forms:
+ *   fatal: path 'x' does not exist in 'HEAD'
+ *   fatal: path 'x' exists on disk, but not in 'HEAD'
+ *
+ * Anything not matching this is `unreadable`. The list is deliberately the
+ * narrow side of the default: a shape missing from here costs a spurious
+ * exit 2, while a shape wrongly admitted costs a silent clean pass.
+ */
+const PATH_ABSENT = /does not exist in|exists on disk, but not in/i;
+
+/**
  * A range as the user typed it. Deliberately narrow: two revisions joined by
  * `..` or `...`, each hex or a conservative ref shape. The operands reach a
  * subprocess, so anything resembling a flag is refused rather than escaped.
@@ -244,17 +258,20 @@ export function gitOracleDeps(
     let read: RevRead;
     if (out.status === "ok") {
       read = { status: "read", content: out.stdout };
-    } else if (/exists on disk, but not in|does not exist in|path .* does not exist/i.test(out.reason)) {
-      // git's way of saying the path is not in that tree. That is a real answer
-      // about the repository, not a failure to get one.
+    } else if (PATH_ABSENT.test(out.reason)) {
+      // The only shape that means "the path is genuinely not in that tree".
+      // That is a real answer about the repository, not a failure to get one.
       read = { status: "absent" };
-    } else if (/^fatal: invalid object name|unknown revision|bad revision/i.test(out.reason)) {
-      read = { status: "unreadable", reason: out.reason };
     } else {
-      // Anything else git refused on is treated as absent only when the
-      // revision itself resolved; otherwise the caller would read a broken
-      // range as an empty one.
-      read = { status: "absent" };
+      // Everything else is unreadable, and the default direction matters more
+      // than the regex does. An earlier draft defaulted the other way — absent
+      // unless the reason matched a known bad-revision shape — which meant a
+      // timeout (`ETIMEDOUT`), a missing git binary, or any stderr wording the
+      // patterns did not anticipate was silently read as "the file is not
+      // there". That is the fail-open this whole change exists to remove,
+      // rebuilt one layer down and keyed to a list of strings nobody can
+      // promise is complete.
+      read = { status: "unreadable", reason: out.reason };
     }
     cache.set(key, read);
     return read;

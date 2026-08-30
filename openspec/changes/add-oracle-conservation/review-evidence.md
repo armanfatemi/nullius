@@ -1277,3 +1277,51 @@ documents rename *out* of a glob as deliberately unclassified in v1.
   reviewers catch a planted false *claim*. All three blockers are defects in
   behaviour, invisible to a claim-level probe. It scored CAUGHT at iteration 4
   and the review layer still had to find these by ordinary attention to code.
+
+## Stage 7 — Coordinator-found: the fail-open, rebuilt one layer down
+
+Found by the coordinator while probing its own fix, before the reviewer that
+asked about it returned.
+
+**The fix for the fail-open contained the fail-open.** `readAt` classified a git
+failure as `absent` or `unreadable` by regex-matching git's stderr, and
+**defaulted to `absent`** for anything unmatched. So a timeout (`ETIMEDOUT`), a
+missing git binary, a permissions error, or any stderr wording the two patterns
+did not anticipate was still silently read as "the file is not there" — which is
+the same silent clean pass, rebuilt one layer down and keyed to a list of strings
+nobody can promise is complete.
+
+Observed the real shapes against git in this repository rather than guessing:
+
+  fatal: path 'x' does not exist in 'HEAD'        -> genuinely absent
+  fatal: invalid object name 'deadbeefdeadbeef'.  -> unreadable
+
+The fix is the default direction, not a longer regex. `PATH_ABSENT` now matches
+only the two "not in that tree" wordings, and **everything else is
+`unreadable`**. The asymmetry is deliberate and written down where the constant
+is defined: a shape missing from the list costs a spurious exit 2, while a shape
+wrongly admitted costs a silent clean pass. Only one of those is recoverable by
+the person reading the output.
+
+Four tests added, running against real git in this repository rather than a
+hand-written fake — a fake would only assert that the regex matches the string
+I wrote for it. They pin: a missing path reads `absent`, a present path reads
+`read`, an unresolvable revision reads `unreadable` (not `absent`), and a diff
+over an unresolvable range returns `null` (not `[]`).
+
+## Coordinator corrections since last append
+
+- **[corrected-coordinator] I fixed a fail-open by writing a smaller one.** The
+  three blockers I had just closed were all "a confident answer from an
+  incomplete read", and my remedy for the third reproduced exactly that at the
+  classification boundary. I only found it because I went looking at the part of
+  my own fix I trusted least, and I flagged that same part to `checker-engineer`
+  in the same breath — so I knew where the weakness was and had still shipped it
+  to a commit.
+
+- **The general form, worth the retro's attention.** Twice now in this change the
+  defect has been a *default* rather than a *rule*: `PASSING` defaulting to
+  contain everything, and `absent` defaulting to catch everything unmatched. Both
+  read as correct locally and both silently disabled the check. The question that
+  finds this class is not "is the logic right" but "which way does this fall when
+  it does not know", and I have not been asking it unprompted.
