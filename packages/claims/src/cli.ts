@@ -52,8 +52,11 @@ import {
   type RulesArgs,
   type WiringArgs,
   type WitnessArgs,
+  type OracleArgs,
 } from "./cliArgs";
 import { parseConfig, type ClaimsConfig } from "./config";
+import { checkOracles, isOracleFailure } from "./oracle";
+import { gitOracleDeps, parseRange } from "./oracleGit";
 import { DEMO_DOC_PATH, demoResults, writeDemoFixture } from "./demo";
 import { buildEagerPrompt } from "./eagerPrompt";
 import { parseClaims, parsePresenceMarker } from "./parseClaims";
@@ -189,6 +192,23 @@ const CANARY_HELP = `nullius canary <plant|verify|status|clear>
   clear                 remove the planted claim, restoring the document
   example: nullius canary plant docs/design.md`;
 
+const ORACLE_HELP = `nullius oracle <range>
+  did anything that grades this project get weaker across the range, and did
+  anybody say why? Reads declared \`oracles\` globs from nullius.config.json and
+  classifies each changed path. deleted, skipped and weakened are hard and raise
+  an obligation; every other change is listed and raises none. An obligation is
+  discharged by a witness-journal \`decision\` carrying
+  \`justifies: {path, change}\` naming the same pair.
+  options:
+    --journal <path>    journal to read justifications from. Omitted, none is
+                        read, and the run says so rather than reporting a clean
+                        zero
+    --config <path>     config file (default: nullius.config.json if present)
+    --strict            also fail on UNJUSTIFIED-ORACLE-CHANGE, which is
+                        advisory by default. MALFORMED-JUSTIFICATION fails
+                        either way — a mistyped class is an authoring error
+  example: nullius oracle main...HEAD --journal .nullius/runs/latest.jsonl`;
+
 /** Overview order. Keyed by the command word `parseCli` reports on help. */
 const COMMAND_HELP: ReadonlyMap<string, string> = new Map([
   ["check", CHECK_HELP],
@@ -198,6 +218,7 @@ const COMMAND_HELP: ReadonlyMap<string, string> = new Map([
   ["wiring", WIRING_HELP],
   ["rules", RULES_HELP],
   ["canary", CANARY_HELP],
+  ["oracle", ORACLE_HELP],
 ]);
 
 const USAGE = `usage: nullius <command>
@@ -753,6 +774,105 @@ function runWiring(args: WiringArgs): number {
  * `add-rules-compliance`. Both scan `.claude/rules/*.md` under `args.root`
  * via `scanRules`, then hand the results to the pure functions in `rules.ts`.
  */
+/**
+ * `nullius oracle <range>` — did anything that grades this project get weaker,
+ * and did anybody say why?
+ *
+ * The pass line states the limit rather than implying a broader one: the
+ * verdict certifies that a reason was recorded, never that the reason is good.
+ */
+function runOracle(args: OracleArgs): number {
+  const parsed = parseRange(args.range);
+  if ("error" in parsed) {
+    console.error(parsed.error);
+    return 2;
+  }
+
+  let config: ClaimsConfig;
+  try {
+    config = loadConfig(args.config);
+  } catch (err) {
+    console.error((err as Error).message);
+    return 2;
+  }
+
+  let journal: string | null = null;
+  if (args.journal !== undefined) {
+    if (!existsSync(args.journal)) {
+      console.error(`no such journal: ${args.journal}`);
+      return 2;
+    }
+    journal = readFileSync(args.journal, "utf8");
+  }
+
+  const deps = gitOracleDeps(parsed, process.cwd(), journal);
+  const report = checkOracles(config.oracles, deps, {
+    journalProvided: args.journal !== undefined,
+  });
+
+  // An unconfigured project is told, never reassured. A config that matches
+  // nothing must not be able to say "no oracle changed".
+  if (report.unconfigured) {
+    console.error(
+      "no `oracles` declared in nullius.config.json — this run checked nothing.\n" +
+        "  An unconfigured project and a project whose oracle held still are different\n" +
+        "  facts, and only one of them is evidence. Declare what grades this project:\n" +
+        '  {"oracles": [{"glob": "test/**/*.test.ts", "weakening": "\\\\bexpect\\\\("}]}',
+    );
+    return 2;
+  }
+
+  for (const glob of report.weakeningUnchecked) {
+    console.error(
+      `note: '${glob}' declares no \`weakening\` pattern, so \`weakened\` went unchecked for it`,
+    );
+  }
+
+  // An absent journal is the same species of silent zero as an absent config:
+  // nothing can be discharged, and a clean run would otherwise read as "every
+  // change was accounted for".
+  if (report.journalAbsent) {
+    console.error(
+      "note: no --journal given, so no justification could discharge anything and\n" +
+        "  `malformed-justification` was unreachable",
+    );
+  }
+
+  for (const finding of report.findings) {
+    const label = finding.verdict.toUpperCase();
+    const where =
+      finding.record === undefined
+        ? `${finding.subject}${finding.change === undefined ? "" : ` (${finding.change})`}`
+        : `${finding.subject}:${finding.record}`;
+    const stream = isOracleFailure(finding.verdict) ? console.error : console.log;
+    stream(`${label.padEnd(26)} ${where}`);
+    stream(`${" ".repeat(26)} ! ${finding.detail}`);
+  }
+
+  for (const entry of report.justified) {
+    console.log(`OK                         ${entry.path} (${entry.change}) — justified`);
+  }
+
+  for (const path of report.advisory) {
+    console.log(`advisory                   ${path}`);
+  }
+
+  const hard = report.findings.filter((f) => isOracleFailure(f.verdict)).length;
+  const soft = report.findings.length - hard;
+
+  console.log(
+    `\n${report.findings.length} finding(s): ${hard} failing, ${soft} advisory; ` +
+      `${report.justified.length} justified, ${report.advisory.length} other change(s).`,
+  );
+  console.log(
+    "This certifies that a reason was recorded, never that the reason is good.",
+  );
+
+  if (hard > 0) return 1;
+  if (args.strict && soft > 0) return 1;
+  return 0;
+}
+
 function runRules(args: RulesArgs): number {
   if (!existsSync(args.root)) {
     console.error(`no such directory: ${args.root}`);
@@ -1248,6 +1368,8 @@ function main(): number {
       return runWiring(command);
     case "rules":
       return runRules(command);
+    case "oracle":
+      return runOracle(command);
     case "canary":
       return runCanary(command);
     case "audit":

@@ -1082,3 +1082,29 @@ dogfood gates: pass, both polarities —
   check 'README.md' 'spec/**/*.md' --require-markers
   check 'openspec/**/*.md'
   rules check rules-valid / !rules-broken
+
+## Stage 5 — Verify chunk 2 (oracle core, CLI, CI)
+
+build: pass
+type-check: pass
+test: pass — 873 passed, 6 failed, all six in flagConformance and all six the
+      documented ugrep-on-macOS baseline. One non-baseline failure appeared and
+      was fixed: `cli.characterization.test.ts` asserts the help overview's
+      example count, which is legitimately 8 now that `oracle` exists. That is
+      an outdated expectation, not a defect — the count is the assertion.
+      kit: 282 passed.
+dogfood gates: pass, both polarities — witness (valid/broken, v0.5 pair),
+      wiring (valid/broken/self), check (specs + openspec), rules
+      (valid/broken/self).
+new oracle gates, all five verified locally before landing in CI:
+      oracle HEAD..HEAD --config oracle-valid  -> 0
+      ! oracle HEAD..HEAD --config oracle-broken -> verdict, exit 1
+      output grep for MALFORMED-JUSTIFICATION  -> matches
+      ! oracle HEAD..HEAD (unconfigured)        -> exit 2
+      output grep for "no `oracles` declared"   -> matches
+
+A bug the tests caught, worth recording because it is the kind that passes
+review: `parseRange("main..")` fell through the range pattern into the
+bare-revision branch, which permits `.`, and silently became the revision
+`main..` diffed against `main..~1`. A malformed range answered with a confident
+wrong result rather than refused. Fixed with an explicit guard and a test.

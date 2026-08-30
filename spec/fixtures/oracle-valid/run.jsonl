@@ -1,0 +1,9 @@
+{"kind":"journal","version":"0.5","origin":"hooks","session":"2f7b6a90-4c13-4e85-9d27-8b3ac1e05f42","source":"startup","branch":"feat/oracle-valid","head":"1a0cd3d","worktree":"bb52d0e1f8c34790"}
+{"kind":"stage","id":"s1","phase":"implement","iteration":1,"change":"add-oracle-conservation"}
+{"kind":"dispatch","id":"d1","task":"retire the superseded fixture test"}
+{"kind":"report","id":"r1","dispatch":"d1","outcome":"found","findings":["its subject moved to the conformance corpus"]}
+{"kind":"finding","id":"f1","stage":"s1","dispatch":"d1","ref":"C1","severity":"concern","author":"test-engineer","text":"test/legacy.test.ts asserts what the conformance corpus already asserts, so deleting it removes no coverage."}
+{"kind":"resolution","id":"res1","finding":"f1","outcome":"fixed","text":"Deleted the file and recorded the decision that accounts for it."}
+{"kind":"decision","id":"dec1","choice":"deleted the superseded fixture test","rationale":"its subject moved to the conformance corpus, so the file asserted nothing the corpus does not","justifies":{"path":"test/legacy.test.ts","change":"deleted"}}
+{"kind":"decision","id":"dec2","choice":"loosened the retry timing assertion","rationale":"the helper now backs off exponentially, so a fixed bound asserted the old contract","justifies":{"path":"test/retry.test.ts","change":"weakened"}}
+{"kind":"append","id":"a1","corrections_since_last_append":"None."}

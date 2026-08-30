@@ -197,7 +197,7 @@ suite("CLI characterization — top-level", () => {
  * not leak its neighbours.
  */
 suite("CLI characterization — per-command help", () => {
-  const COMMAND_NAMES = ["check", "demo", "audit", "witness", "wiring", "rules", "canary"];
+  const COMMAND_NAMES = ["check", "demo", "audit", "witness", "wiring", "rules", "canary", "oracle"];
 
   function exampleLines(text: string): string[] {
     return text.split("\n").filter((line) => line.trimStart().startsWith("example:"));
@@ -220,7 +220,7 @@ suite("CLI characterization — per-command help", () => {
     for (const name of COMMAND_NAMES) {
       expect(result.stdout, name).toContain(`nullius ${name}`);
     }
-    expect(exampleLines(result.stdout)).toHaveLength(7);
+    expect(exampleLines(result.stdout)).toHaveLength(8);
   });
 
   it("still exits 2 with no arguments at all", () => {

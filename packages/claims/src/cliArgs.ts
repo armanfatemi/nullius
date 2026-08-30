@@ -93,6 +93,18 @@ export interface RulesArgs {
   emitBrief: string | undefined;
 }
 
+export interface OracleArgs {
+  kind: "oracle";
+  /** The commit range, as typed. `base == head` is legal — see parseRange. */
+  range: string;
+  /** Journal to read justifications from. Absent means none is read. */
+  journal: string | undefined;
+  /** Config path. Needed so CI can point the verb at a fixture config. */
+  config: string | undefined;
+  /** Widen what fails beyond the union's own non-passing members. */
+  strict: boolean;
+}
+
 export type Command =
   /**
    * `command` is set when a command word led the line (`nullius check
@@ -107,11 +119,14 @@ export type Command =
   | WitnessArgs
   | WiringArgs
   | RulesArgs
+  | OracleArgs
   | CanaryArgs;
 
 /** Which command owns which flag, so a misplaced one can name its home. */
 const FLAG_OWNERS: ReadonlyMap<string, string> = new Map([
   ["--require-markers", "check"],
+  ["--journal", "oracle"],
+  ["--strict", "oracle"],
   ["--probing", "check"],
   ["--fix", "check"],
   ["--stamp", "check"],
@@ -130,6 +145,7 @@ const COMMANDS: ReadonlySet<string> = new Set([
   "wiring",
   "rules",
   "canary",
+  "oracle",
   "demo",
   "eager-prompt",
 ]);
@@ -223,6 +239,7 @@ export function parseCli(argv: readonly string[]): Command {
   if (first === "wiring") return parseWiring(rest);
   if (first === "rules") return parseRules(rest);
   if (first === "canary") return parseCanary(rest);
+  if (first === "oracle") return parseOracle(rest);
   return parseAudit(rest, first === "eager-prompt");
 }
 
@@ -408,6 +425,45 @@ function parseWiring(rawArgv: readonly string[]): WiringArgs {
  * end of the line) rather than taking exactly one value the way every other
  * flag here does.
  */
+function parseOracle(rawArgv: readonly string[]): OracleArgs {
+  const { flags: argv, literal } = splitOperands(rawArgv);
+  const operands: string[] = [...literal];
+  let journal: string | undefined;
+  let config: string | undefined;
+  let strict = false;
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === undefined) continue;
+    if (arg === "--journal") {
+      index += 1;
+      journal = requireValue(argv, index, "--journal", "a path to a .jsonl journal");
+    } else if (arg === "--config") {
+      index += 1;
+      config = requireValue(argv, index, "--config", "a path to nullius.config.json");
+    } else if (arg === "--strict") {
+      strict = true;
+    } else if (arg.startsWith("-")) {
+      throw new CliError(`unknown flag for \`oracle\`: ${arg}`);
+    } else {
+      operands.push(arg);
+    }
+  }
+
+  const range = operands[0];
+  if (range === undefined) {
+    throw new CliError(
+      "usage: nullius oracle <range> [--journal <path>] [--config <path>] [--strict]\n" +
+        "  e.g. nullius oracle main...HEAD --journal .nullius/runs/latest.jsonl",
+    );
+  }
+  if (operands.length > 1) {
+    throw new CliError("`oracle` takes exactly one range");
+  }
+
+  return { kind: "oracle", range, journal, config, strict };
+}
+
 function parseRules(rawArgv: readonly string[]): RulesArgs {
   const [sub, ...rest] = rawArgv;
   if (sub !== "select" && sub !== "check") {
