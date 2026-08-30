@@ -1,9 +1,10 @@
 # Known defects in the checkers
 
-Two defects found by porting real files through the tooling rather than by
-reading it. Neither is fixed: each needs its own change with a spec delta,
-fixtures and unit tests, per `CLAUDE.md`'s rule that a verdict without both is
-a verdict that can go quiet.
+Three defects. The first two were found by porting real files through the
+tooling rather than by reading it; the third was found when archiving the
+change that was supposed to close it. None is fixed: each needs its own change
+with a spec delta, fixtures and unit tests, per `CLAUDE.md`'s rule that a
+verdict without both is a verdict that can go quiet.
 
 They are written down here because the sessions that found them recorded them
 in a workspace that is gitignored, and a finding whose only home is a
@@ -62,3 +63,41 @@ citation was dead, and the checker was structurally unable to say so.
 
 A green `wiring` run is therefore not evidence that every path in a document
 resolves. It is evidence that every path the filter could see resolves.
+
+## `oracle` never gained `--format json`, and its conditional task expired unnoticed
+
+`add-oracle-conservation` shipped `oracle` with one task left open, conditional
+on a sibling change:
+
+**Evidence:** `openspec/changes/archive/2026-08-30-add-oracle-conservation/tasks.md:95@b964779` — `- [ ] 4.5 `--format json` if `add-authoring-ergonomics` has landed; otherwise`
+
+That condition was false when the task was written and true when the change
+merged — `add-authoring-ergonomics` landed as PR #42, `add-oracle-conservation`
+as PR #55. Nothing re-evaluates a conditional task after its precondition
+changes, so the task stayed unticked and the work was never picked up.
+
+`--format` remains owned by `check` alone, and the flag table says so:
+
+**Evidence:** `packages/claims/src/cliArgs.ts:133@b964779` — `  ["--format", "check"],`
+
+**Evidence:** `packages/claims/src/cliArgs.ts:37@b964779` — `  format: CheckFormat;`
+
+The table is the mechanism, not a comment: a flag registered to `check` is
+rejected on any other verb, so `oracle` has one output shape and no
+machine-readable one. `OracleArgs` declares no equivalent field.
+
+The gap is worth recording rather than fixing in passing, because closing it
+breaks something that currently works. CI pins `oracle`'s *human* output and
+greps an uppercased verdict token, and the change that shipped it wrote down
+exactly how a later `--format json` would break that grep:
+
+**Evidence:** `openspec/changes/archive/2026-08-30-add-oracle-conservation/tasks.md:178@b964779` — `      4.5's `--format json` would render it lowercase and the grep would stop`
+
+So the fix is not a flag; it is a flag plus a decision about the de facto
+contract CI already depends on.
+
+The generalizable defect is the conditional task itself. A checkbox whose
+condition is evaluated once, at authoring time, is a task that can silently
+stop applying — the same shape as a gate that stops gating. Tasks that depend
+on another change landing should either become a declared dependency, which
+`proposal-to-pr` blocks on, or be written unconditionally.

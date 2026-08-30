@@ -677,7 +677,13 @@ suite("CLI characterization — --format json parity", () => {
   interface Report {
     version: number;
     documents: { doc: string; results: { verdict: string; failing: boolean }[] }[];
-    summary: { failures: number; markerFloorFailed: boolean; next: string | null };
+    summary: {
+      failures: number;
+      markerFloorFailed: boolean;
+      next: string | null;
+      presenceAnchors: number;
+      absenceAnchors: number;
+    };
   }
 
   function parity(...args: string[]): { human: Run; json: Run; report: Report } {
@@ -733,10 +739,21 @@ suite("CLI characterization — --format json parity", () => {
     expect(report.summary.markerFloorFailed).toBe(true);
   });
 
-  it("agrees on this change's own folder", () => {
-    const { human, report } = parity("openspec/changes/add-authoring-ergonomics/*.md");
+  /**
+   * Deliberately NOT a folder under `openspec/changes/`.
+   *
+   * This test used to point at the change being developed when it was written,
+   * which made archiving that change — the normal, intended end of a change's
+   * life — break the suite. A characterization test needs a target that is real
+   * repository content and also permanent; `spec/` is the spec family, which
+   * accumulates rather than rotating, and it carries live anchors so the run
+   * exercises real verdicts rather than an empty document set.
+   */
+  it("agrees on a real, permanently-present folder of this repository's own docs", () => {
+    const { human, report } = parity("spec/*.md");
 
     expect(report.documents.length).toBeGreaterThan(0);
+    expect(report.summary.presenceAnchors + report.summary.absenceAnchors).toBeGreaterThan(0);
     expect(human.code).toBe(report.summary.failures > 0 || report.summary.markerFloorFailed ? 1 : 0);
   });
 });
