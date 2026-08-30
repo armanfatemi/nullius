@@ -20,3 +20,20 @@ active, `1` when one is) or the message printed when no canary is active.
 
 - **WHEN** no canary is planted and `canary status` is run
 - **THEN** the output is `no active canary` and the exit code is `0`
+
+### Requirement: check's canary warnings do not print the plant's document
+
+`check` SHALL NOT name the registered canary's document in either of the
+warnings it emits about canary state. It SHALL continue to emit both warnings
+under their existing conditions, and SHALL NOT direct the reader to
+`canary status` for a location that command no longer reports.
+
+#### Scenario: The out-of-scope warning does not name the document
+
+- **WHEN** a canary is registered against a document outside the set `check` matched, and `check` is run
+- **THEN** the warning states that a registered canary points outside the matched set, and does not name the document or refer the reader to `canary status`
+
+#### Scenario: The stale-registry warning does not name the document
+
+- **WHEN** a canary is registered against a matched document but the planted claim is no longer present, and `check` is run without `--probing`
+- **THEN** the warning states that the registry is stale and gives the remedy of deleting `.git/nullius/canaries.json`, and does not name the document

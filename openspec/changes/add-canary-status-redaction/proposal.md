@@ -34,8 +34,27 @@ reviewer read `canary status`'s output instead of the document. Trying to
 detect the cheat from report wording alone is a losing game against
 phrasing, and it puts a heuristic in the position of inferring intent from
 prose — the wrong shape of fix for a deterministic tool. The available fix is
-prevention: stop the command from answering the question a reviewer would
-use it to answer.
+prevention: stop the commands from answering the question a reviewer would
+use them to answer.
+
+**`status` is not the only such command.** `check` prints the plant's document
+itself, unprompted, in two warning branches — and the first one names
+`canary status` as the place to go for more:
+
+**Evidence:** `packages/claims/src/cli.ts:1107@3f64b6e`
+
+```ts
+        `warning: the registered canary points at a document outside the matched set (${activeCanary.doc}) — not read; run \`canary status\``,
+```
+
+That branch fires precisely when the registered canary sits outside the set
+being checked — which is the case for a reviewer running this repository's
+other documented gate, `check 'README.md' 'spec/**/*.md'`, while a canary is
+planted in a proposal. So the shortest path to the plant's location does not
+run through `status` at all, and a change that redacted only `status` would
+report that it had closed the vector while leaving a shorter one open. Both
+commands are in scope here for that reason; `design.md` Decision 2 carries the
+argument.
 
 ## Why now
 
@@ -50,6 +69,10 @@ use it, not less.
   planted — enough for the documented legitimate uses (a human or the
   coordinator checking "is something still planted"), not enough to locate
   the claim.
+- `check`'s two canary warnings no longer name the plant's document either,
+  and the first stops directing the reader to `canary status`, which after
+  this change can no longer answer it. Both warnings keep their diagnostic
+  content: something is registered, and it is in an unexpected state.
 - The coordinator does not lose anything it needs: `canary plant` already
   prints the location at plant time, and Stage 2 Step 3 already instructs
   recording it then — `status` was never the coordinator's source for this
@@ -79,10 +102,12 @@ use it, not less.
   convention for historical probe sections is a different fix, to a
   different file, and is out of scope here.
 - **Not touching `canary verify`'s CAUGHT/MISSED messages**, which also print
-  `entry.doc:entry.line`. That command is exclusively a coordinator action
-  (Stage 2 Step 5) — no SKILL.md instruction or observed run has a dispatched
-  reviewer invoke it. Lower-risk than `status`, and left alone to keep this
-  change's blast radius to the vector that was actually observed being used.
+  `entry.doc:entry.line`. The boundary is *when the command runs*, not how
+  secret its output is: `verify` is invoked only by the coordinator at Stage 2
+  Step 5, after the review has already been written and scored, so no ordering
+  exists in which a reviewer's report could benefit from reading it. `status`
+  and `check` are both commands a reviewer runs *during* the review, which is
+  what puts them in scope and leaves `verify` out.
 
 ## Dependencies
 
@@ -102,7 +127,7 @@ None known.
 
 |                                 |                                    |
 | ------------------------------- | ------------------------------------ |
-| Estimated tasks                 | ~6                                    |
+| Estimated tasks                 | ~11 (was ~6 before scope grew to `check`) |
 | Packages or surfaces touched    | 1 (`packages/claims`)                 |
 | Risk                            | LOW                                   |
 | Expected sessions to implement  | 1                                     |
