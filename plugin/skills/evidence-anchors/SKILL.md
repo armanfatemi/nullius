@@ -161,3 +161,36 @@ want that second question asked, hand it to `nullius audit <doc>`: each claim
 goes to its own agent, alone, and is told to refute it. That is also the honest
 route for an absence claim grep cannot settle, which comes back as
 `UNVERIFIABLE-BY-SEARCH` rather than as false confidence.
+
+## When you weaken a test, anchor the reason
+
+If your project runs `nullius oracle`, a `deleted`, `skipped` or `weakened`
+oracle raises an obligation discharged by a witness-journal `decision` naming
+the same `{path, change}` pair. That verdict certifies only that a reason was
+**recorded** — it never assesses whether the reason is any good, and no model is
+ever asked to.
+
+Which leaves a gap worth closing by hand. `rationale` is prose, written by the
+agent that made the edit, and an agent that will loosen an assertion to get
+green will also write a fluent sentence about why that was necessary. So:
+
+**The rationale for a hard oracle change carries an Evidence Anchor into the
+implementation that made it necessary.**
+
+```json
+{"kind":"decision","id":"dec1",
+ "choice":"loosened the retry timing assertion",
+ "rationale":"the helper now backs off exponentially, so a fixed 100ms bound asserted the old contract. **Evidence:** `src/retry.ts:41@a1b2c3d` — `  const delay = base * 2 ** attempt;`",
+ "justifies":{"path":"test/retry.test.ts","change":"weakened"}}
+```
+
+Now the reason is falsifiable. `check` re-verifies it forever, and if the
+implementation is later reverted the anchor goes `STALE` — surfacing a test edit
+that has quietly lost its justification, months after anyone would have thought
+to look for it.
+
+**This is a convention, not a verdict, and deliberately so.** Requiring an
+anchor mechanically would mean deciding which rationales are load-bearing, and
+the rule everywhere else here is that anchors do not go on judgment calls. The
+honest claim for the convention is narrow: it does not stop anyone taking the
+shortcut, it stops the shortcut being *private*.

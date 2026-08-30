@@ -1,0 +1,5 @@
+{
+  "oracles": [
+    { "glob": "test/**/*.test.ts", "weakening": "\\bexpect\\(", "skipMarker": "\\.skip\\(" }
+  ]
+}

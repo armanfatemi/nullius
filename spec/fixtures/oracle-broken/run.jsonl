@@ -1,0 +1,5 @@
+{"kind":"journal","version":"0.5","origin":"hooks","session":"9e1c4d72-3ab5-4f60-8c19-7d02e5a4b638","source":"startup","branch":"feat/oracle-broken","head":"1a0cd3d","worktree":"aa41c9d0e7b25368"}
+{"kind":"dispatch","id":"d1","task":"loosen the retry assertions"}
+{"kind":"report","id":"r1","dispatch":"d1","outcome":"found","findings":["the timing bound asserted the old contract"]}
+{"kind":"decision","id":"dec1","choice":"loosened the retry timing assertion","rationale":"the helper backs off exponentially now","justifies":{"path":"test/retry.test.ts","change":"tweaked"}}
+{"kind":"append","id":"a1","corrections_since_last_append":"None."}

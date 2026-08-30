@@ -1,6 +1,6 @@
 # The Witness Journal
 
-**Version 0.4 — draft.** The record a multi-agent run leaves behind, and the
+**Version 0.5 — draft.** The record a multi-agent run leaves behind, and the
 three invariants [`nullius witness validate`](../packages/claims/) enforces on
 it. Companion to [Evidence Anchors](./evidence-anchors.md), which does the same
 job for documents.
@@ -77,6 +77,35 @@ derivation, including four claims it overturned, is in
 | `resolution` | A finding's fate | `finding`, `outcome`, `text` |
 | `check` | A command ran, and what it showed | `command`, `outcome`, `text` |
 | `decision` | An approach was chosen, and why | `choice`, `rationale` |
+
+A `decision` MAY also carry `justifies` (v0.5), an object of `path` and
+`change`, naming a hard oracle change the decision accounts for:
+
+```jsonl
+{"kind":"decision","id":"dec1","choice":"loosened the retry timing assertion","rationale":"the helper now backs off exponentially, so a fixed bound asserted the old contract","justifies":{"path":"test/retry.test.ts","change":"weakened"}}
+```
+
+**`witness validate` does not read this field**, not even to reject a malformed
+one, and reports the same findings for a journal carrying it as for one without.
+Its meaning and its validation belong to `nullius oracle`, the only consumer that
+means anything by it: `change` is closed to `deleted`, `skipped`, `weakened`, and
+a blank `path` or an unrecognised class is `MALFORMED-JUSTIFICATION` there.
+
+**If `oracle` ever adds a fourth class, that is a bump here.** The vocabulary is
+documented in this spec and enforced in `oracle`, which leaves an ownership
+question worth answering before it is asked in anger: clause 2 fires on the
+journal's version, because the closed set is part of what a `decision` record is
+allowed to say. The field's *meaning* belongs to `oracle`; the field's *shape* is
+the journal's, and widening a shape the journal documents is a change to the set
+of valid records however the widening is enforced. Resolve it that way rather
+than by the reflex — the change that introduced this field spent four review
+iterations discovering that "the validator does not read it" settles nothing.
+
+The referent is a derived pair, never a record id. `oracle` computes
+`(path, change)` from a diff and the producer writes the same pair from the same
+diff, so the two meet without either knowing the other's ids — which is the
+point, because the deletions most worth catching are made by tools that emit no
+`mutation` record to refer to.
 
 ```jsonl
 {"kind":"journal","version":"0.3","origin":"self-reported","session":"2f9c1a4e","source":"startup"}
@@ -370,6 +399,18 @@ Two clarifications the rule cost something to learn:
   because refusing a key that was previously ignored makes a previously valid
   record invalid. The v0.4 bump is owed entirely to clause 3 — the additive
   fields alone would not have earned one.
+- **A verdict in another command still fires clause 4.** `0.5` is owed to
+  `nullius oracle`, which introduces `MALFORMED-JUSTIFICATION` — a verdict that
+  reads `decision.justifies` and fails the record carrying it. `witness
+  validate` never reads the field, and every `0.4` journal stays valid, so
+  clauses 1 to 3 are all untouched. Three drafts of that change argued their way
+  to no bump: that it tightens nothing (true, and irrelevant); that clause 4
+  means a verdict *this validator* emits (a qualifier the clause does not carry);
+  and that nothing previously valid becoming invalid is what every clause
+  measures (false — clauses 1 and 2 fire without invalidating anything, and the
+  reading collapses clause 4 into clause 3, erasing it). The exemption says
+  *no verdict reads it*, without qualification. A verdict reads it, so the
+  exemption is unavailable and clause 4 fires on its own terms.
 - **A version-gated verdict uses a floor, never an equality.** A later version
   inherits every verdict its predecessor earned. A verdict silently ungated by
   a bump is indistinguishable from a verdict that was never reached, which is
@@ -396,6 +437,8 @@ Ten journals live next to this spec:
 | [`v0.4-identity-run.jsonl`](./fixtures/v0.4-identity-run.jsonl) | A v0.4 run carrying all three identity fields and a rev-stamped verification, and earning a ledger verdict's silence at a version the gate used to exclude |
 | [`v0.4-broken-run.jsonl`](./fixtures/v0.4-broken-run.jsonl) | Trips all three of v0.4's new rejections: `branch: ""`, a `rev: "main"` verification, and a `mutation` carrying `rev` |
 | [`v0.3-compat-run.jsonl`](./fixtures/v0.3-compat-run.jsonl) | The same bytes as `v0.4-broken-run.jsonl` apart from the declared version — and it must exit 0, because a record valid under `0.3` stays valid |
+| [`v0.5-run.jsonl`](./fixtures/v0.5-run.jsonl) | A v0.5 run carrying two `decision` records with well-formed `justifies` — accepted and uninterpreted, because the field belongs to `oracle` and the journal only stores it |
+| [`v0.5-broken-run.jsonl`](./fixtures/v0.5-broken-run.jsonl) | Trips v0.4's three rejections at v0.5, since a later version inherits every verdict its predecessor earned |
 
 ```sh
 nullius witness validate spec/fixtures/valid-run.jsonl   # exit 0
@@ -408,6 +451,8 @@ nullius witness validate spec/fixtures/v0.3-broken-run.jsonl  # exit 1, 26 findi
 nullius witness validate spec/fixtures/v0.4-identity-run.jsonl # exit 0, identity in the header
 nullius witness validate spec/fixtures/v0.4-broken-run.jsonl  # exit 1, three findings
 nullius witness validate spec/fixtures/v0.3-compat-run.jsonl  # exit 0, the same three records
+nullius witness validate spec/fixtures/v0.5-run.jsonl     # exit 0, justifies stored and not read
+nullius witness validate spec/fixtures/v0.5-broken-run.jsonl  # exit 1, v0.4's rejections inherited
 ```
 
 The last two are a pair, and only the pair proves anything: identical records

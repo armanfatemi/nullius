@@ -1671,3 +1671,89 @@ describe("survey — aggregates reports, never merges journals", () => {
     });
   });
 });
+
+// The 0.5 bump is owed to the new-verdict clause: `nullius oracle` introduces
+// MALFORMED-JUSTIFICATION, which reads `decision.justifies` and fails the record
+// carrying it. The bump must therefore be visible in VERSIONS while changing
+// nothing about what validate accepts — the claim the design makes, asserted
+// here rather than left to the fixture's exit code.
+describe("schema 0.5 — the oracle-conservation bump", () => {
+  it("appends 0.5 without displacing any earlier version", () => {
+    expect(VERSIONS).toEqual(["0.1", "0.2", "0.3", "0.4", "0.5"]);
+  });
+
+  it("accepts a 0.5 journal", () => {
+    const report = validateJournal(
+      [
+        '{"kind":"journal","version":"0.5","origin":"self-reported","session":"s"}',
+        '{"kind":"dispatch","id":"d1","task":"t"}',
+        '{"kind":"report","id":"r1","dispatch":"d1","outcome":"empty","statement":"None."}',
+      ].join("\n"),
+    );
+    expect(
+      report.findings.filter((f) => isJournalFailure(f.verdict)),
+    ).toEqual([]);
+  });
+
+  // The design's load-bearing claim: the bump tightens nothing. A decision
+  // carrying justifies must validate identically to one without it, at 0.4 AND
+  // at 0.5 — witness validate never reads the field at any version.
+  //
+  // The journal below deliberately earns a finding (the dispatch reports
+  // "found" and files nothing, so SILENT-REVIEWER fires). An earlier version of
+  // this test used a clean journal and compared [] to [], which would have
+  // passed even if the validator HAD started reading the field — a well-formed
+  // justifies produces no finding either way. Comparing two non-empty finding
+  // lists is what makes this an assertion rather than a tautology.
+  it("reports the same findings for a decision with and without justifies", () => {
+    const make = (version: string, justifies: boolean) =>
+      [
+        `{"kind":"journal","version":"${version}","origin":"self-reported","session":"s"}`,
+        '{"kind":"dispatch","id":"d1","task":"t"}',
+        '{"kind":"report","id":"r1","dispatch":"d1","outcome":"found","findings":["x"]}',
+        JSON.stringify({
+          kind: "decision",
+          id: "dec1",
+          choice: "loosened the timing assertion",
+          rationale: "the helper now backs off exponentially",
+          ...(justifies
+            ? { justifies: { path: "test/retry.test.ts", change: "weakened" } }
+            : {}),
+        }),
+      ].join("\n");
+
+    for (const version of ["0.4", "0.5"]) {
+      const withField = validateJournal(make(version, true)).findings;
+      const without = validateJournal(make(version, false)).findings;
+      // Non-empty on both sides, or the comparison below proves nothing.
+      expect(without.length).toBeGreaterThan(0);
+      expect(withField.map((f) => `${f.verdict}:${f.detail ?? ""}`)).toEqual(
+        without.map((f) => `${f.verdict}:${f.detail ?? ""}`),
+      );
+    }
+  });
+
+  // A malformed justifies is oracle's business, not the journal's. If this ever
+  // starts failing, the bump has silently become a tightening and the design's
+  // central claim is false.
+  it("does not read justifies, so a malformed one is not a journal finding", () => {
+    const report = validateJournal(
+      [
+        '{"kind":"journal","version":"0.5","origin":"self-reported","session":"s"}',
+        '{"kind":"dispatch","id":"d1","task":"t"}',
+        '{"kind":"report","id":"r1","dispatch":"d1","outcome":"empty","statement":"None."}',
+        '{"kind":"decision","id":"dec1","choice":"c","rationale":"r","justifies":{"path":"","change":"tweaked"}}',
+      ].join("\n"),
+    );
+    expect(
+      report.findings.filter((f) => isJournalFailure(f.verdict)),
+    ).toEqual([]);
+  });
+
+  it("still refuses a version above 0.5", () => {
+    const report = validateJournal(
+      '{"kind":"journal","version":"0.6","origin":"self-reported","session":"s"}',
+    );
+    expect(report.findings.some((f) => isJournalFailure(f.verdict))).toBe(true);
+  });
+});

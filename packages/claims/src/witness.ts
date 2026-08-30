@@ -181,7 +181,7 @@ type Kind = (typeof KINDS_V03)[number];
  * Exported for that test. Deliberately absent from `index.ts`: the public
  * barrel re-exports by explicit name list, and this is an internal constant.
  */
-export const VERSIONS = ["0.1", "0.2", "0.3", "0.4"] as const;
+export const VERSIONS = ["0.1", "0.2", "0.3", "0.4", "0.5"] as const;
 
 /**
  * Version floors, compared by **index into `VERSIONS`** and never by string.
@@ -220,6 +220,14 @@ const VOCABULARY: ReadonlyMap<string, readonly Kind[]> = new Map([
   // must be a stamp, `mutation.rev` is refused — so the vocabulary is v0.3's,
   // unchanged, and no new kinds constant exists to drift from it.
   ["0.4", KINDS_V03 as readonly Kind[]],
+  // 0.5 adds no kind and tightens nothing. It exists because `nullius oracle`
+  // introduces MALFORMED-JUSTIFICATION, a verdict that reads `decision.justifies`
+  // and fails the record carrying it — the new-verdict trigger of the versioning
+  // rule in `spec/witness-journal.md`. `witness validate` still never reads the
+  // field, so every 0.4 journal is a valid 0.5 journal and validation gains no
+  // finding; the version moves so a reader knows a clean validate no longer
+  // means what it used to.
+  ["0.5", KINDS_V03 as readonly Kind[]],
 ]);
 
 /**

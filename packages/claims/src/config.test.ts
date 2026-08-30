@@ -128,3 +128,75 @@ describe("parseConfig — the configVersion reservation", () => {
     });
   });
 });
+
+describe("parseConfig — the oracles key", () => {
+  it("accepts a glob-only entry", () => {
+    expect(parseConfig({ oracles: [{ glob: "test/**/*.test.ts" }] }, "c.json")).toEqual({
+      oracles: [{ glob: "test/**/*.test.ts" }],
+    });
+  });
+
+  it("accepts weakening and skipMarker", () => {
+    const config = parseConfig(
+      {
+        oracles: [
+          { glob: "test/**/*.test.ts", weakening: "\\bexpect\\(", skipMarker: "\\.skip\\(" },
+        ],
+      },
+      "c.json",
+    );
+    expect(config.oracles?.[0]?.weakening).toBe("\\bexpect\\(");
+    expect(config.oracles?.[0]?.skipMarker).toBe("\\.skip\\(");
+  });
+
+  // The whole point of the key is that it reaches the command. A key that
+  // validates and is then dropped is `configVersion`'s deliberate behaviour and
+  // would be a defect here.
+  it("survives to the parsed config rather than being silently dropped", () => {
+    const config = parseConfig({ oracles: [{ glob: "a/**" }] }, "c.json");
+    expect(config.oracles).toBeDefined();
+    expect(config.oracles).toHaveLength(1);
+  });
+
+  it("rejects an unknown sub-key, naming it", () => {
+    expect(() =>
+      parseConfig({ oracles: [{ glob: "a/**", weakning: "x" }] }, "c.json"),
+    ).toThrow(/unknown key 'weakning'/);
+  });
+
+  it("rejects an entry with no glob", () => {
+    expect(() => parseConfig({ oracles: [{ weakening: "x" }] }, "c.json")).toThrow(
+      /needs a non-empty 'glob'/,
+    );
+  });
+
+  it("rejects a blank glob", () => {
+    expect(() => parseConfig({ oracles: [{ glob: "   " }] }, "c.json")).toThrow(
+      /needs a non-empty 'glob'/,
+    );
+  });
+
+  it("rejects a non-array oracles", () => {
+    expect(() => parseConfig({ oracles: { glob: "a/**" } }, "c.json")).toThrow(
+      /must be an array of objects/,
+    );
+  });
+
+  // An uncompilable pattern is an authoring error, and the run that finds it
+  // should name the config it came from rather than failing later at match time.
+  it("rejects a weakening pattern that cannot compile, naming the entry", () => {
+    expect(() =>
+      parseConfig({ oracles: [{ glob: "a/**", weakening: "(" }] }, "c.json"),
+    ).toThrow(/oracles\[0\].*not a valid regular expression/s);
+  });
+
+  it("reports the index of the offending entry", () => {
+    expect(() =>
+      parseConfig({ oracles: [{ glob: "a/**" }, { glob: "b/**", nope: 1 }] }, "c.json"),
+    ).toThrow(/oracles\[1\]/);
+  });
+
+  it("leaves oracles undefined when the key is absent", () => {
+    expect(parseConfig({ driftWindow: 2 }, "c.json").oracles).toBeUndefined();
+  });
+});

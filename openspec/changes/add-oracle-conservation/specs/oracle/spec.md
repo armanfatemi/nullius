@@ -42,8 +42,22 @@ Three classes SHALL be **hard**, and the list SHALL be closed:
 Every other change to a declared oracle SHALL be reported as advisory and SHALL
 raise no obligation.
 
-The three hard classes SHALL be exactly those that strictly reduce what the
-oracle can detect. A class that does not reduce detection SHALL NOT be hard.
+Reduction of what the oracle can detect SHALL be the reason a class is hard.
+That is the rationale for the closed list above, and it is neither a universal
+property of every instance nor an exhaustive account of the reductions that
+exist.
+
+It is not universal over instances: `skipped` applied to a file added within the
+range reduces nothing, because there was nothing there to reduce, and it SHALL
+still be classified hard rather than special-cased against the base revision.
+
+It is not exhaustive over reductions: a rename out of a declared glob, and the
+removal of a glob from the `oracles` configuration, both reduce detection and
+SHALL both be left unclassified in this version.
+
+The command SHALL NOT claim completeness it does not have. Where its output
+summarises what was checked, it SHALL be phrased as the classes it detects rather
+than as the reductions that are possible.
 
 #### Scenario: a deleted test is hard
 
@@ -74,6 +88,16 @@ Matching SHALL be on the derived pair `(path, change)` and SHALL NOT require a
 record id, because the changes most worth catching are made by tools that emit
 no record to refer to.
 
+The `oracle` capability SHALL own the validation of `justifies`, because it is
+its only consumer. A `justifies` whose `path` is blank, or whose `change` falls
+outside the three hard classes, SHALL be reported `MALFORMED-JUSTIFICATION` and
+SHALL NOT discharge any obligation. `witness validate` SHALL NOT report a finding
+for it.
+
+`MALFORMED-JUSTIFICATION` SHALL be raised by reading the journal, independently of
+whether any change in the range matches it. A verdict conditional on a matching
+change would be unreachable in exactly the case the typo caused.
+
 Multiple hard changes to one path SHALL each require their own justification
 when their `change` classes differ.
 
@@ -88,6 +112,21 @@ when their `change` classes differ.
 - **WHEN** a declared pattern's count decreases and no decision names that path
   with `change: "weakened"`
 - **THEN** the change is reported `UNJUSTIFIED-ORACLE-CHANGE`
+
+#### Scenario: a mistyped change class is loud, not inert
+
+- **WHEN** a decision carries `justifies: {path: "a.test.ts", change: "tweaked"}`
+  and `a.test.ts` was deleted in the range
+- **THEN** the deletion is still reported `UNJUSTIFIED-ORACLE-CHANGE`, and the
+  malformed justification is separately reported `MALFORMED-JUSTIFICATION` naming
+  the unrecognised class alongside the three valid ones
+
+#### Scenario: a mistyped class is caught with no matching change
+
+- **WHEN** a journal carries a malformed `justifies` and no file in the range
+  matches its `path`
+- **THEN** `MALFORMED-JUSTIFICATION` is still reported, and the exit code is
+  non-zero with no strict flag set
 
 #### Scenario: one decision does not discharge two classes
 
@@ -120,11 +159,32 @@ entailment.
 
 ### Requirement: Oracle checking is advisory before it is a gate
 
-The command SHALL default to reporting without a failing exit code, and SHALL
-fail only when explicitly opted in.
+Pass and fail SHALL be decided by a verdict's membership in an `OracleVerdict`
+`PASSING` set, following the mechanism every other verdict family in this kernel
+already uses, and SHALL NOT be decided solely by a command-line flag.
+
+`UNJUSTIFIED-ORACLE-CHANGE` SHALL be a member of that set in v1, so the default
+run reports without a failing exit code. The membership SHALL carry a written
+argument for why it passes, so that the calibration is a decision on the record
+rather than an accident of where the check landed.
+
+`PASSING` SHALL NOT contain every member of the union. `MALFORMED-JUSTIFICATION`
+SHALL be excluded from it and SHALL fail with no flag set, on the same principle
+that excludes `malformed-rule-header` from the rule verdicts' passing set: a
+mistyped key is an authoring error rather than a finding about the codebase. A
+passing set with no complement would make the failure predicate constant-false
+and return the decision to the flag it was moved off.
+
+`--strict` SHALL widen what fails rather than being the only thing that can fail.
 
 #### Scenario: default run reports without blocking
 
 - **WHEN** `nullius oracle <range>` finds an unjustified change and no strict
   flag is set
 - **THEN** the findings are printed and the exit code is 0
+
+#### Scenario: the failure decision is not a no-op predicate
+
+- **WHEN** the kernel is asked whether an `OracleVerdict` is a failure
+- **THEN** the answer comes from `PASSING` membership, so the predicate remains
+  meaningful independently of any CLI flag

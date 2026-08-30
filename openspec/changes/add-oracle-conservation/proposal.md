@@ -69,23 +69,38 @@ kernel already reads git under a timeout:
   deliberate — the vocabulary does not grow, and `choice` plus `rationale` is
   already the shape "why we did this" wants:
 
-  **Evidence:** `packages/claims/src/witness.ts:997@012786a` — `            detail: 'a decision needs a non-empty "choice" — the approach taken',`
+  **Evidence:** `packages/claims/src/witness.ts:1152@4a82cc6` — `            detail: 'a decision needs a non-empty "choice" — the approach taken',`
 
 - **`UNJUSTIFIED-ORACLE-CHANGE`** (kernel): a hard change no `decision`
   justifies. It lands in a new `OracleVerdict` union rather than the kernel's
   exported `Verdict`, following the precedent set for rules:
 
-  **Evidence:** `openspec/changes/add-rules-compliance/tasks.md:7@012786a`
+  **Evidence:** `packages/claims/src/rules.ts:42@4a82cc6` — `export type RuleVerdict =`
 
-  ```
-  - [ ] 1.2 `RuleVerdict` union (separate from `Verdict`): `UNGROUNDED-RULE`,
-  ```
+  That union carries its own `PASSING` set, and `OracleVerdict` takes the same
+  shape rather than deciding pass and fail from a CLI flag:
 
-- **No schema version bump.** `justifies` is additive optional metadata that no
-  journal verdict reads, and no record parser rejects unknown fields. The rule
-  this change follows was written down one commit ago:
+  **Evidence:** `packages/claims/src/rules.ts:60@4a82cc6` — `const PASSING: ReadonlySet<RuleVerdict> = new Set<RuleVerdict>([`
 
-  **Evidence:** `openspec/changes/add-journal-identity/design.md:115@012786a` — `> A version bump is required when the set of valid records changes — a new`
+- **A schema version bump, to `0.5`.** The current version is `0.4`:
+
+  **Evidence:** `packages/claims/src/witness.ts:184@4a82cc6` — `export const VERSIONS = ["0.1", "0.2", "0.3", "0.4"] as const;`
+
+  `justifies` on its own would not have bumped it: the field is optional, the
+  `decision` parser ignores unknown keys, and a record carrying it validates
+  identically before and after. The exemption for additive optional metadata
+  would have applied exactly as written.
+
+  It bumps because of the verdict, not the field. `MALFORMED-JUSTIFICATION` reads
+  `justifies` and fails a `decision` record on it, which defeats the exemption —
+  whose condition is *no verdict reads it*, unqualified — and satisfies the
+  new-verdict trigger directly.
+
+  The bump tightens nothing. Every `0.4` journal is a valid `0.5` journal and
+  `witness validate` gains no finding; the version moves so that a reader knows a
+  clean validation no longer means what it used to. Three earlier drafts argued
+  their way to no-bump and each was refuted under review; Design Decision 3 keeps
+  all three and says why they failed.
 
 ## Impact
 

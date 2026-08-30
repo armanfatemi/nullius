@@ -109,6 +109,8 @@ jobs:
           # version, so the pair is the test: either alone passes with the
           # version predicate written backwards.
           ! node packages/claims/dist/cli.js witness validate spec/fixtures/v0.4-broken-run.jsonl
+          node packages/claims/dist/cli.js witness validate spec/fixtures/v0.5-run.jsonl
+          ! node packages/claims/dist/cli.js witness validate spec/fixtures/v0.5-broken-run.jsonl
           # A 0.4 journal carrying all three identity fields and a rev-stamped
           # verification. Exit 0 is also what an empty file scores, so the unit
           # test asserting the fields reach JournalReport.header is what gives
@@ -220,3 +222,57 @@ jobs:
           node packages/claims/dist/cli.js rules check spec/fixtures/rules-valid
           ! node packages/claims/dist/cli.js rules check spec/fixtures/rules-broken
           node packages/claims/dist/cli.js rules check
+
+      # The oracle verb, both polarities.
+      #
+      # Read the limits before trusting this step:
+      #
+      # 1. The negated arm gates MALFORMED-JUSTIFICATION ONLY.
+      #    UNJUSTIFIED-ORACLE-CHANGE is advisory in v1 and exits 0, so it is
+      #    asserted by name in oracle.test.ts and NOT here. A regression that
+      #    silenced it alone would leave this step green.
+      #
+      # 2. The arm asserts on OUTPUT as well as exit code, deliberately. An
+      #    absent `oracles` key also exits non-zero, so a bare `!` would be
+      #    satisfied identically by "the verdict fired" and by "nothing is
+      #    configured" — a gate that passes for the wrong reason, which is the
+      #    exact defect .claude/rules/verdict-needs-fixture-and-test.md names.
+      #    Hence --config, pointing at a fixture where oracles IS declared.
+      #
+      # 3. The exit-code and output assertions are SEPARATE statements.
+      #    `! cmd | grep -q X` negates the pipeline rather than the command and
+      #    inverts the assertion.
+      #
+      # 4. The arm pins the human format. Every renderer prints
+      #    verdict.toUpperCase(), so the token is a de facto contract — but a
+      #    future --format json would render it lowercase and the grep would
+      #    stop matching silently.
+      #
+      # The range is empty (base == head) on purpose: MALFORMED-JUSTIFICATION is
+      # read from the journal, not the diff, so it needs no commit history and
+      # this fixture needs no .git directory.
+      - name: nullius oracle (self)
+        run: |
+          node packages/claims/dist/cli.js oracle HEAD..HEAD \
+            --config spec/fixtures/oracle-valid/nullius.config.json \
+            --journal spec/fixtures/oracle-valid/run.jsonl
+          ! node packages/claims/dist/cli.js oracle HEAD..HEAD \
+            --config spec/fixtures/oracle-broken/nullius.config.json \
+            --journal spec/fixtures/oracle-broken/run.jsonl
+          node packages/claims/dist/cli.js oracle HEAD..HEAD \
+            --config spec/fixtures/oracle-broken/nullius.config.json \
+            --journal spec/fixtures/oracle-broken/run.jsonl 2>&1 \
+            | grep -q 'MALFORMED-JUSTIFICATION'
+          # An unconfigured project must report, never reassure.
+          ! node packages/claims/dist/cli.js oracle HEAD..HEAD
+          node packages/claims/dist/cli.js oracle HEAD..HEAD 2>&1 \
+            | grep -q 'no `oracles` declared'
+          # A real three-dot range against this repository's own history.
+          # HEAD..HEAD cannot see the separator at all — merge-base(HEAD,HEAD)
+          # is HEAD — so every arm above is blind to the defect where `diff()`
+          # ignored `sep` and ran `..` for both. This arm consumes the `...`
+          # path end to end and must exit 0 rather than 2, which is also a
+          # standing check that merge-base resolution works in a CI checkout.
+          node packages/claims/dist/cli.js oracle "$(git rev-parse HEAD)...HEAD" \
+            --config spec/fixtures/oracle-valid/nullius.config.json \
+            --journal spec/fixtures/oracle-valid/run.jsonl
