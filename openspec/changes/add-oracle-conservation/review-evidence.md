@@ -1065,3 +1065,20 @@ paraphrasing the rule.
   text rather than on tally or authority, and recorded the disagreement rather
   than averaging it. Worth noting because the round would have passed if I had
   counted votes.
+
+## Stage 5 — Verify chunk 1 (config + schema bump)
+
+build: pass
+type-check: pass (one real failure found and fixed — `config.oracles?.[0].weakening`
+            needed `?.[0]?.` under noUncheckedIndexedAccess; the defect was in the
+            new test, not the new code)
+test: pass — 832 passed, 6 failed, all six in flagConformance and all six the
+      known ugrep-on-macOS baseline. Count and file both match the documented
+      baseline exactly, so this is environmental. kit: 282 passed.
+dogfood gates: pass, both polarities —
+  witness validate valid-run / !broken-run
+  witness validate v0.5-run / !v0.5-broken-run   (new this chunk)
+  wiring wiring-valid / !wiring-broken / wiring .
+  check 'README.md' 'spec/**/*.md' --require-markers
+  check 'openspec/**/*.md'
+  rules check rules-valid / !rules-broken

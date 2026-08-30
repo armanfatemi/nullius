@@ -46,6 +46,32 @@ export interface ClaimsConfig {
    * appeared. Accepting it now is what buys that compatibility later.
    */
   configVersion?: number;
+  /**
+   * The artifacts that grade this project — tests, golden files, snapshots,
+   * fixtures, an approved-output corpus. Declared, never inferred: a checker
+   * that guessed which files were oracles from path conventions would be
+   * confidently wrong on every project that names them differently.
+   *
+   * Absent is a reported state, not an empty result. A project with no
+   * `oracles` must never be told that no oracle changed, because an
+   * unconfigured project and a project whose oracle genuinely held still are
+   * different facts and only one of them is evidence.
+   */
+  oracles?: OracleGlob[];
+}
+
+/** One declared oracle glob, and what weakening looks like inside it. */
+export interface OracleGlob {
+  /** Repo-relative glob naming the files that grade this project. */
+  glob: string;
+  /**
+   * A regular expression whose match count is compared across a range. A
+   * decrease is `weakened`. Optional, and its absence is announced rather than
+   * silently downgrading the check to two-thirds of itself.
+   */
+  weakening?: string;
+  /** A regular expression whose match count increasing means `skipped`. */
+  skipMarker?: string;
 }
 
 const KNOWN_KEYS = new Set([
@@ -58,7 +84,60 @@ const KNOWN_KEYS = new Set([
   "relaxedControl",
   "searchTimeoutMs",
   "configVersion",
+  "oracles",
 ]);
+
+const ORACLE_KEYS = new Set(["glob", "weakening", "skipMarker"]);
+
+/**
+ * Per-entry strictness, on the same reasoning as the top-level closed-key
+ * check: a typo'd `weakning` would otherwise leave the glob silently unable to
+ * detect the class it was configured to detect, which is the quiet failure the
+ * top-level check already refuses.
+ */
+function parseOracles(value: unknown, path: string): OracleGlob[] {
+  if (!Array.isArray(value)) {
+    throw new Error(`${path}: 'oracles' must be an array of objects`);
+  }
+  return value.map((entry, i) => {
+    const where = `${path}: 'oracles[${i}]'`;
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+      throw new Error(`${where} must be an object`);
+    }
+    const record = entry as Record<string, unknown>;
+    for (const key of Object.keys(record)) {
+      if (!ORACLE_KEYS.has(key)) {
+        throw new Error(
+          `${where} has unknown key '${key}' — allowed keys: ${[...ORACLE_KEYS].join(", ")}`,
+        );
+      }
+    }
+    const glob = record["glob"];
+    if (typeof glob !== "string" || glob.trim() === "") {
+      throw new Error(`${where} needs a non-empty 'glob'`);
+    }
+    const parsed: OracleGlob = { glob };
+    for (const key of ["weakening", "skipMarker"] as const) {
+      const pattern = record[key];
+      if (pattern === undefined) continue;
+      if (typeof pattern !== "string" || pattern === "") {
+        throw new Error(`${where} '${key}' must be a non-empty string`);
+      }
+      // Compile here rather than at match time. A pattern that cannot compile
+      // is an authoring error, and the run that discovers it should be the one
+      // that names the file it came from.
+      try {
+        new RegExp(pattern);
+      } catch (err) {
+        throw new Error(
+          `${where} '${key}' is not a valid regular expression: ${(err as Error).message}`,
+        );
+      }
+      parsed[key] = pattern;
+    }
+    return parsed;
+  });
+}
 
 function isStringArray(value: unknown): value is string[] {
   return (
@@ -121,6 +200,11 @@ export function parseConfig(json: unknown, path: string): ClaimsConfig {
       );
     }
     config.searchTimeoutMs = searchTimeoutMs;
+  }
+
+  const oracles = record["oracles"];
+  if (oracles !== undefined) {
+    config.oracles = parseOracles(oracles, path);
   }
 
   const relaxedControl = record["relaxedControl"];
