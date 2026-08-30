@@ -8,6 +8,76 @@ a package name are that package's own release; the kit versions independently.
 
 ### Added
 
+- **`nullius oracle <range>` — conservation of the thing that grades the work.**
+  The artifact that decides whether work is done is writable by the thing being
+  measured, and when a change makes a test fail there are two ways back to green
+  that produce identical output: fix the code, or fix the test. Editing the test
+  is frequently correct, so the question is not whether the oracle changed but
+  whether the change was **accounted for**.
+
+  Declare what grades the project under a new `oracles` config key — an array of
+  `{glob, weakening?, skipMarker?}`. The verb diffs a commit range against those
+  globs and classifies each changed path. `deleted`, `skipped` and `weakened` are
+  hard and raise an obligation; every other change is listed and raises none.
+  Flagging every test touch would produce a list nobody reads, and a list nobody
+  reads is worse than none because it launders as review.
+
+  An obligation is discharged by a witness-journal `decision` carrying
+  `justifies: {path, change}` naming the same pair. The referent is derived, not
+  assigned: both sides compute `(path, change)` from the same diff, so no record
+  id is ever needed. That is the point — git is the source rather than the
+  journal's own `mutation` records, because those come from hooks watching
+  editing tools only, and a `rm`, a `git rm` or any script-driven deletion leaves
+  no record at all. Deletion is the highest-risk edit there is, and the tier that
+  is normally the stronger attestation has its coverage hole exactly there.
+
+  **New verdict union.** `OracleVerdict` is separate from the exported `Verdict`,
+  whose growth is breaking public API, following `RuleVerdict`.
+  `UNJUSTIFIED-ORACLE-CHANGE` is advisory in v1 and passes;
+  `MALFORMED-JUSTIFICATION` is excluded from `PASSING` and fails with no flag
+  set, on the same ground that excludes `malformed-rule-header` — a mistyped key
+  is an authoring error, not a finding about the codebase. The exclusion is
+  load-bearing: a `PASSING` set containing every member of its union makes the
+  failure predicate constant-false and hands the whole decision back to
+  `--strict`.
+
+  **What it does not do.** The verdict certifies that a reason was *recorded*,
+  never that the reason is good, and no model appears in the verdict path.
+  `weakened` is a declared pattern's match count compared across two revisions,
+  not a parsed syntax tree — a refactor merging two assertions is a false
+  positive, and an assertion gutted from `expect(x).toEqual(full)` to
+  `expect(x).toBeDefined()` is a false negative the count cannot see. It catches
+  deletion-shaped weakening and says so. A project declaring no `oracles` is told
+  so rather than shown a clean zero.
+
+  **CI gates it in both polarities, with its limits in the workflow comment.**
+  The negated arm gates `MALFORMED-JUSTIFICATION` only —
+  `UNJUSTIFIED-ORACLE-CHANGE` is advisory, exits 0, and is asserted by name in
+  the unit suite instead, so a regression silencing it alone would leave CI
+  green. The arm also asserts on output rather than exit code alone, because an
+  absent `oracles` key exits non-zero too and a bare negation would be satisfied
+  identically by "the verdict fired" and "nothing is configured".
+
+- **Journal schema `0.5`.** `decision` may carry `justifies`. `witness validate`
+  does not read the field — not even to reject a malformed one — and reports the
+  same findings for a journal carrying it as for one without; its meaning and
+  validation belong to `oracle`, its only consumer.
+
+  **The bump is owed to the new-verdict clause, not to the field.** `justifies`
+  alone is additive optional metadata and would have been exempt. But
+  `MALFORMED-JUSTIFICATION` reads it and fails a `decision` record on it, and the
+  exemption's condition is *no verdict reads it*, without qualification. Three
+  drafts of this change argued their way to no bump — that it tightens nothing
+  (true and irrelevant); that clause 4 means a verdict `witness validate` emits
+  (a qualifier the clause does not carry); and that "nothing previously valid
+  becomes invalid" is what every clause measures (false, and it collapses clause
+  4 into clause 3, erasing it). Recorded in `spec/witness-journal.md` because the
+  rule's own text says it has already decayed twice through restatement.
+
+  The bump tightens nothing: `0.5` is appended, every `0.4` journal stays valid,
+  and `witness validate` gains no finding. The version moves so a reader knows a
+  clean validation no longer means what it used to.
+
 - **Journal schema `0.4` — a journal that knows where it came from.** The
   header may now carry `branch`, `head`, and `worktree`, and a `verification`
   may carry `rev`, the commit its claim was checked against. `head` is defined

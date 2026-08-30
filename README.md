@@ -163,13 +163,14 @@ The [`[false-premise]` reviewer severity](plugin/reviewers/false-premise.md)
 catches bare-prose claims the anchors missed. And [eager mode](#if-you-just-ask-the-agent-to-do-things)
 retrofits documents that were never anchored at all.
 
-## Three verbs
+## Four verbs
 
 | Verb      | The question it answers      | How                                |
 | --------- | ---------------------------- | ---------------------------------- |
 | `check`   | Did the author look?         | Deterministic — it opens the file  |
 | `audit`   | Is the claim true?           | A model proposes, `check` disposes |
 | `witness` | Did the checking happen?     | Deterministic — a run's own journal, validated |
+| `oracle`  | Did the thing that grades the work get weaker, and did anybody say why? | Deterministic — a range diff against declared globs. Certifies that a reason was **recorded**, never that the reason is good |
 
 `check` is the gate and it certifies **form**: the text is at the cited
 location. It deliberately never certifies **entailment** — a real line, quoted
@@ -183,10 +184,33 @@ verification path. And `witness` validates the journal a multi-agent run leaves
 behind, because a run's own account of itself is exactly as trustworthy as a
 design doc.
 
+`oracle` asks the question the other three cannot: the artifact that decides
+whether work is done is writable by the thing being measured. When a change
+makes a test fail there are two ways back to green and they produce identical
+output — fix the code, or fix the test. Editing the test is frequently correct,
+so the check is not "did the oracle change" but **was the change accounted
+for**: `deleted`, `skipped` and `weakened` raise an obligation, discharged by a
+journal `decision` naming the same `{path, change}` pair. Git is the source
+rather than the journal's own `mutation` records, because those come from hooks
+that watch editing tools only — a `rm`, a `git rm` or a script-driven deletion
+leaves no record, and deletion is the highest-risk edit there is.
+
+Two honest limits. `weakened` is a declared pattern's match count compared
+across two revisions, not a parsed syntax tree: a refactor merging two
+assertions into one is a **false positive**, and an assertion gutted from
+`expect(x).toEqual(full)` to `expect(x).toBeDefined()` is a **false negative**
+the count cannot see. It catches deletion-shaped weakening, which is the common
+case, and never pretends to catch the rest — which is why it is advisory by
+default and why the message names the pattern and both counts, so a false
+positive is dismissible in seconds. And a project that declares no `oracles` is
+told so rather than shown a clean zero: an unconfigured project and a project
+whose oracle held still are different facts, and only one of them is evidence.
+
 ```sh
 nullius audit design.md                  # the claims, one dispatch each
 nullius audit design.md --emit-brief c1  # the starved brief for one claim
 nullius witness validate run.jsonl       # did every dispatch actually terminate?
+nullius oracle main...HEAD --journal run.jsonl  # did the graders get weaker unaccounted for?
 ```
 
 Anchors attach to **anything a human approves**. Pick your workflow — each

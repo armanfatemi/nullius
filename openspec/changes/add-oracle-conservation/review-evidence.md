@@ -1108,3 +1108,14 @@ review: `parseRange("main..")` fell through the range pattern into the
 bare-revision branch, which permits `.`, and silently became the revision
 `main..` diffed against `main..~1`. A malformed range answered with a confident
 wrong result rather than refused. Fixed with an explicit guard and a test.
+
+## Stage 5 — Verify chunk 3 (docs + close-out)
+
+build: pass
+type-check: pass
+test: pass — 873 passed, 6 failed, all six flagConformance/ugrep baseline. kit: 282.
+close-out 8.1: check 'openspec/**/*.md' clean
+close-out 8.2: check 'README.md' 'spec/**/*.md' --require-markers clean
+close-out 8.3: all twelve witness fixtures exit exactly as spec/witness-journal.md
+      says, including the new v0.5 pair (0 and 1 respectively)
+wiring .: pass
