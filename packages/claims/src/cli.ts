@@ -822,6 +822,18 @@ function runOracle(args: OracleArgs): number {
     return 2;
   }
 
+  // A run git could not complete must not read as a run that found nothing.
+  if (report.unreadable.length > 0) {
+    console.error(
+      "git could not be read for this range, so this run checked less than it appears to:",
+    );
+    for (const reason of report.unreadable) console.error(`  ! ${reason}`);
+    console.error(
+      "  Refusing to report a clean result from an incomplete read.",
+    );
+    return 2;
+  }
+
   for (const glob of report.weakeningUnchecked) {
     console.error(
       `note: '${glob}' declares no \`weakening\` pattern, so \`weakened\` went unchecked for it`,

@@ -8,11 +8,15 @@ import {
 
 describe("parseRange", () => {
   it("splits a two-dot range", () => {
-    expect(parseRange("main..HEAD")).toEqual({ base: "main", head: "HEAD" });
+    expect(parseRange("main..HEAD")).toEqual({ base: "main", head: "HEAD", sep: ".." });
   });
 
   it("splits a three-dot range", () => {
-    expect(parseRange("main...HEAD")).toEqual({ base: "main", head: "HEAD" });
+    expect(parseRange("main...HEAD")).toEqual({
+      base: "main",
+      head: "HEAD",
+      sep: "...",
+    });
   });
 
   // CI's negated arm runs an empty range, because MALFORMED-JUSTIFICATION is
@@ -22,11 +26,16 @@ describe("parseRange", () => {
     expect(parseRange("abc1234..abc1234")).toEqual({
       base: "abc1234",
       head: "abc1234",
+      sep: "..",
     });
   });
 
   it("reads a bare revision as that commit against its parent", () => {
-    expect(parseRange("abc1234")).toEqual({ base: "abc1234~1", head: "abc1234" });
+    expect(parseRange("abc1234")).toEqual({
+      base: "abc1234~1",
+      head: "abc1234",
+      sep: "..",
+    });
   });
 
   it("refuses anything flag-shaped", () => {
@@ -100,5 +109,56 @@ describe("collectJustifications", () => {
   it("skips an unparseable line without erroring", () => {
     const journal = ['{ not json', '{"kind":"decision","id":"d","justifies":{"path":"a","change":"deleted"}}'].join("\n");
     expect(collectJustifications(journal)).toHaveLength(1);
+  });
+});
+
+// Both of these parsed successfully before the endpoints were validated
+// individually. Neither reached a dangerous outcome — git errors on an
+// option-shaped rev and the read returns null — but "the subprocess rejected it
+// for us" is not a boundary, and the second silently produced a head nobody
+// typed.
+describe("parseRange validates each endpoint, not just the whole string", () => {
+  it("refuses an option-shaped head", () => {
+    // `--upload-pack=evil` carries an `=`, which the character class already
+    // refuses, so it never reaches the endpoint check. `--x` does.
+    const result = parseRange("a..--x");
+    expect(result).toHaveProperty("error");
+    expect((result as { error: string }).error).toContain("option-shaped");
+  });
+
+  it("refuses an option-shaped base", () => {
+    expect(parseRange("--x..b")).toHaveProperty("error");
+  });
+
+  it("refuses more than one range separator", () => {
+    const result = parseRange("a..b..c");
+    expect(result).toHaveProperty("error");
+    expect((result as { error: string }).error).toContain("more than one");
+  });
+
+  it("still accepts an ordinary three-dot range", () => {
+    expect(parseRange("main...HEAD")).toEqual({
+      base: "main",
+      head: "HEAD",
+      sep: "...",
+    });
+  });
+});
+
+// parseRange computed the separator and threw it away, so `main...HEAD` ran
+// `git diff main..HEAD`. Those are different questions: `a...b` is
+// merge-base(a,b)..b, so a commit landing on `a` after the fork point is not in
+// the range. The documented invocation was the one that misread — every test
+// added on main since the branch point would have read as `deleted`.
+describe("parseRange carries the separator", () => {
+  it("keeps ... distinct from ..", () => {
+    const two = parseRange("main..HEAD");
+    const three = parseRange("main...HEAD");
+    expect(two).toHaveProperty("sep", "..");
+    expect(three).toHaveProperty("sep", "...");
+  });
+
+  it("gives a bare revision a two-dot separator", () => {
+    expect(parseRange("abc1234")).toHaveProperty("sep", "..");
   });
 });

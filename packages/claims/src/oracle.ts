@@ -115,13 +115,29 @@ export interface RawJustification {
 }
 
 export interface OracleDeps {
-  /** The range's changed files, from `git diff --name-status`. */
-  diff: () => DiffEntry[];
-  /** File content at a revision, or null when the path is absent there. */
-  readAt: (path: string, side: "base" | "head") => string | null;
+  /**
+   * The range's changed files. `null` means git could not be read at all —
+   * which is a different fact from "nothing changed" and must not be collapsed
+   * into it.
+   */
+  diff: () => DiffEntry[] | null;
+  /**
+   * File content at a revision.
+   *
+   * `{ status: "absent" }` means the path genuinely is not there at that side.
+   * `{ status: "unreadable" }` means git could not answer. Distinguishing them
+   * is the whole point: an unreadable base makes every file look added, which
+   * silently skips `weakened` on all of them and produces a clean run.
+   */
+  readAt: (path: string, side: "base" | "head") => RevRead;
   /** Every `justifies` found on a `decision` record in the journal. */
   justifications: () => RawJustification[];
 }
+
+export type RevRead =
+  | { status: "read"; content: string }
+  | { status: "absent" }
+  | { status: "unreadable"; reason: string };
 
 export interface OracleReport {
   findings: OracleFinding[];
@@ -135,6 +151,12 @@ export interface OracleReport {
   weakeningUnchecked: string[];
   /** True when no journal was read, so no justification could discharge anything. */
   journalAbsent: boolean;
+  /**
+   * Reasons git could not be read, if any. Non-empty means the run is
+   * incomplete and its silence proves nothing — the caller must say so and must
+   * not exit clean.
+   */
+  unreadable: string[];
 }
 
 /**
@@ -180,10 +202,19 @@ export function globMatches(glob: string, path: string): boolean {
 function countMatches(content: string, pattern: string): number {
   const re = new RegExp(pattern, "g");
   let n = 0;
-  while (re.exec(content) !== null) {
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(content)) !== null) {
     n += 1;
-    // A zero-width match would otherwise spin here forever.
-    if (re.lastIndex === 0) break;
+    // Advance past a zero-width match, whatever offset it occurred at.
+    //
+    // An earlier guard tested `lastIndex === 0`, which catches only an empty
+    // match at the very start. A pattern that matches non-empty first and
+    // zero-width later — `a|x*` on "abc" — never advances `lastIndex` and spins
+    // forever. It is reachable from a valid config: `config.ts` compiles the
+    // pattern, which proves it is a regex, not that it always consumes input.
+    // A checker that hangs is worse than one that is wrong, because nothing in
+    // the output says which it is doing.
+    if (match[0] === "") re.lastIndex += 1;
   }
   return n;
 }
@@ -217,6 +248,7 @@ export function checkOracles(
       unconfigured: true,
       weakeningUnchecked,
       journalAbsent: options.journalProvided !== true,
+      unreadable: [],
     };
   }
 
@@ -263,7 +295,24 @@ export function checkOracles(
     discharged.set(j.path, set);
   }
 
-  for (const entry of deps.diff()) {
+  const unreadable: string[] = [];
+
+  const entries = deps.diff();
+  if (entries === null) {
+    // Zero findings because git could not be read is not zero findings. Say so
+    // and let the caller refuse to exit clean.
+    return {
+      findings,
+      justified,
+      advisory,
+      unconfigured: false,
+      weakeningUnchecked,
+      journalAbsent: options.journalProvided !== true,
+      unreadable: ["git could not produce a diff for this range"],
+    };
+  }
+
+  for (const entry of entries) {
     const matching = oracles.filter((o) => globMatches(o.glob, entry.path));
     if (matching.length === 0) continue;
 
@@ -275,18 +324,36 @@ export function checkOracles(
       const base = deps.readAt(entry.path, "base");
       const head = deps.readAt(entry.path, "head");
 
+      // An unreadable side is recorded rather than treated as an absent one.
+      // Treating it as absent is what makes `weakened` quietly unreachable for
+      // every path in a range whose base cannot be read.
+      if (base.status === "unreadable") {
+        unreadable.push(`${entry.path} at the base: ${base.reason}`);
+      }
+      if (head.status === "unreadable") {
+        unreadable.push(`${entry.path} at the head: ${head.reason}`);
+      }
+
+      const baseText = base.status === "read" ? base.content : null;
+      const headText = head.status === "read" ? head.content : null;
+
       for (const o of matching) {
-        if (o.skipMarker !== undefined && head !== null) {
-          const before = base === null ? 0 : countMatches(base, o.skipMarker);
-          const after = countMatches(head, o.skipMarker);
+        if (o.skipMarker !== undefined && headText !== null) {
+          // Only compare against a base that was genuinely read. A base that is
+          // absent counts as zero (the file is new); a base that could not be
+          // read counts as nothing at all.
+          if (base.status === "unreadable") continue;
+          const before =
+            baseText === null ? 0 : countMatches(baseText, o.skipMarker);
+          const after = countMatches(headText, o.skipMarker);
           if (after > before && !hard.includes("skipped")) hard.push("skipped");
         }
-        // A weakening needs both sides. An added file has no base to have been
-        // weakened from, and counting its assertions against zero would make
-        // every new test file a reduction.
-        if (o.weakening !== undefined && base !== null && head !== null) {
-          const before = countMatches(base, o.weakening);
-          const after = countMatches(head, o.weakening);
+        // A weakening needs both sides genuinely read. An added file has no base
+        // to have been weakened from, and counting its assertions against zero
+        // would make every new test file a reduction.
+        if (o.weakening !== undefined && baseText !== null && headText !== null) {
+          const before = countMatches(baseText, o.weakening);
+          const after = countMatches(headText, o.weakening);
           if (after < before && !hard.includes("weakened")) {
             hard.push("weakened");
           }
@@ -320,6 +387,7 @@ export function checkOracles(
     unconfigured: false,
     weakeningUnchecked,
     journalAbsent: options.journalProvided !== true,
+    unreadable,
   };
 }
 
@@ -338,9 +406,15 @@ function detailFor(
     const base = deps.readAt(path, "base");
     const head = deps.readAt(path, "head");
     for (const o of matching) {
-      if (o.weakening === undefined || base === null || head === null) continue;
-      const before = countMatches(base, o.weakening);
-      const after = countMatches(head, o.weakening);
+      if (
+        o.weakening === undefined ||
+        base.status !== "read" ||
+        head.status !== "read"
+      ) {
+        continue;
+      }
+      const before = countMatches(base.content, o.weakening);
+      const after = countMatches(head.content, o.weakening);
       if (after < before) {
         return `/${o.weakening}/ matched ${before} time(s) at the base and ${after} at the head — no decision accounts for it`;
       }

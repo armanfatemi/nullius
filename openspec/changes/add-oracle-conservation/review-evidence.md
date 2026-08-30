@@ -1197,3 +1197,83 @@ wiring .: pass
   reviewers catch a planted false *claim*. Nothing about a planted claim would
   have surfaced an unreviewable diff. The probe scored CAUGHT at iteration 4 and
   the review layer still had to find this by ordinary attention.
+
+## Stage 7 — Address must-fixes (kernel blockers)
+
+`checker-engineer` returned three blockers on the landed code, all real, all
+mine, and all the same shape: **the code produced a confident answer from an
+incomplete or misread input, and every gate I had stayed green.**
+
+## Blockers closed
+
+- **[blocker] Three-dot ranges were silently downgraded.** `parseRange` computed
+  the separator and discarded it, so `main...HEAD` ran `git diff main..HEAD`.
+  Those are different questions — `a...b` is merge-base(a,b)..b — and the
+  **documented invocation was the one that misread**: a test added on `main`
+  after the fork point would have read as `deleted` on the branch, and
+  assertions added on `main` as `weakened`. My own test asserted the lossy
+  behaviour rather than catching it, and CI only ever exercised `HEAD..HEAD`,
+  where the distinction cannot show. Fixed: `ParsedRange` carries `sep`, `diff`
+  passes it through, and the base side resolves via `git merge-base` when the
+  separator is `...`.
+
+- **[blocker] `countMatches` could hang forever.** The zero-width guard tested
+  `lastIndex === 0`, which catches an empty match only at offset 0. A pattern
+  matching non-empty first and zero-width later never advanced — `checker-engineer`
+  verified `a|x*` on "abc" spinning past 50 million iterations at `lastIndex === 1`.
+  Reachable from a valid config: `config.ts` compiles the pattern, which proves
+  it is a regex, not that it consumes input. Fixed by advancing on any empty
+  match. A checker that hangs is worse than one that is wrong, because nothing
+  in the output says which it is doing.
+
+- **[blocker] Git failures failed silently open.** `git()` returned `null` for
+  every failure — bad rev, timeout, git absent — and `readAt` mapped that onto
+  "the path is absent at that side". An unreadable base therefore made every
+  file look newly added, which skips `weakened` on all of them, and the run
+  exited 0 clean. `diff()` returned `[]` on failure: zero findings, green.
+  That is precisely the distinction `checkClaims.ts` spends `unverifiable-rev`
+  on, and precisely this repository's cardinal failure reproduced inside the
+  tool built to prevent it. Fixed: `RevRead` distinguishes `read` / `absent` /
+  `unreadable`, `diff()` returns `null` rather than `[]` when git cannot answer,
+  `OracleReport` carries `unreadable[]`, and the CLI prints what could not be
+  read and exits 2 rather than reporting a clean result from an incomplete one.
+
+Each has a regression test asserting it by name, not merely a fix.
+
+## Coordinator-found, same round
+
+Probing `parseRange` myself before the reviewer returned: `a..--x` parsed to an
+option-shaped head reaching `git show --x:path`, and `a..b..c` silently became
+head `b..c`. Both now refused, with each endpoint validated individually rather
+than only the whole string. The first failed closed only because git happened to
+error on it — "the subprocess rejected it for us" is not a boundary.
+
+## Concern accepted, not fixed
+
+`DiffEntry.from` is parsed and never consulted, so a rename *within* a declared
+glob skips `weakened` (the new path has no base) and can false-positive
+`skipped`. Carried to the PR as an open concern rather than fixed here: it needs
+a design answer about what a rename means to this check, and `oracle.ts` already
+documents rename *out* of a glob as deliberately unclassified in v1.
+
+## Coordinator corrections since last append
+
+- **[corrected-coordinator] I wrote a test that asserted the bug.**
+  `oracleGit.test.ts`'s "splits a three-dot range" asserted `{base, head}` and
+  was satisfied by an implementation that discarded the separator. It passed for
+  the entire life of the defect. A test written from the same misunderstanding as
+  the code confirms the misunderstanding — and it is worse than no test, because
+  it reads as coverage of exactly the thing it fails to check.
+
+- **[corrected-coordinator] Three of my gates were structurally incapable of
+  catching two of these.** CI exercises only `HEAD..HEAD`, where `..` and `...`
+  are indistinguishable; and no gate anywhere reads a failing git invocation,
+  because every fixture is designed to succeed. I built the CI arm around an
+  empty range for a good reason — `MALFORMED-JUSTIFICATION` needs no history —
+  and did not notice that choosing the one range where the separator cannot
+  matter left the separator untested.
+
+- **The probe could not have caught any of this.** The canary measures whether
+  reviewers catch a planted false *claim*. All three blockers are defects in
+  behaviour, invisible to a claim-level probe. It scored CAUGHT at iteration 4
+  and the review layer still had to find these by ordinary attention to code.

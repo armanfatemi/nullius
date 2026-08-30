@@ -12,7 +12,7 @@
 
 import { spawnSync } from "node:child_process";
 
-import type { DiffEntry, OracleDeps, RawJustification } from "./oracle";
+import type { DiffEntry, OracleDeps, RawJustification, RevRead } from "./oracle";
 
 const DEFAULT_GIT_TIMEOUT_MS = 10_000;
 
@@ -27,6 +27,16 @@ const SINGLE_REV_PATTERN = /^[A-Za-z0-9._/-]+$/;
 export interface ParsedRange {
   base: string;
   head: string;
+  /**
+   * The separator the user typed, carried rather than discarded.
+   *
+   * `..` and `...` are different questions. `a...b` is merge-base(a,b)..b, so a
+   * commit that landed on `a` after the fork point is NOT part of the range.
+   * An earlier draft computed this and threw it away, running `..` for both —
+   * which meant the documented invocation, `main...HEAD`, reported every test
+   * added on `main` since the branch point as `deleted` on the branch.
+   */
+  sep: ".." | "...";
 }
 
 /**
@@ -49,7 +59,25 @@ export function parseRange(range: string): ParsedRange | { error: string } {
     if (base === "" || head === "") {
       return { error: `'${range}' is missing one end of the range` };
     }
-    return { base, head };
+    // Each endpoint is checked on its own, not just the whole string. The
+    // pattern above admits `a..--x`, whose head is option-shaped and reaches
+    // `git show --x:path` — an argument git parses as an option rather than a
+    // revision. It happens to fail closed today because git errors and the read
+    // returns null, but "the subprocess rejected it for us" is not a boundary.
+    // The pattern also admits `a..b..c`, which would silently become the head
+    // `b..c` rather than being refused.
+    for (const [side, value] of [
+      ["base", base],
+      ["head", head],
+    ] as const) {
+      if (value.startsWith("-")) {
+        return { error: `the ${side} of '${range}' is option-shaped, not a revision` };
+      }
+      if (value.includes("..")) {
+        return { error: `'${range}' has more than one range separator` };
+      }
+    }
+    return { base, head, sep };
   }
   // A candidate containing `..` reached here only by failing RANGE_PATTERN,
   // which means one end is missing. The bare-revision branch below permits `.`,
@@ -62,19 +90,42 @@ export function parseRange(range: string): ParsedRange | { error: string } {
   if (SINGLE_REV_PATTERN.test(range)) {
     // A bare revision means "this commit against its parent", the same reading
     // `git show` gives it.
-    return { base: `${range}~1`, head: range };
+    return { base: `${range}~1`, head: range, sep: ".." };
   }
   return { error: `'${range}' is not a range this command will pass to git` };
 }
 
-function git(args: string[], root: string, timeoutMs: number): string | null {
+type GitResult =
+  | { status: "ok"; stdout: string }
+  | { status: "failed"; reason: string };
+
+/**
+ * Run git, distinguishing "ran and said no" from "could not run".
+ *
+ * An earlier draft returned `null` for both, and the caller mapped that onto
+ * "the path is absent at that side". The consequence was the failure this
+ * repository exists to prevent: a base that could not be read made every file
+ * look newly added, which skips `weakened` on all of them, and the command
+ * exited 0 with nothing to report. A green result standing in for a check that
+ * never happened.
+ */
+function git(args: string[], root: string, timeoutMs: number): GitResult {
   const result = spawnSync("git", ["-C", root, ...args], {
     shell: false,
     encoding: "utf8",
     timeout: timeoutMs,
   });
-  if (result.error !== undefined || result.status !== 0) return null;
-  return result.stdout;
+  if (result.error !== undefined) {
+    return { status: "failed", reason: result.error.message };
+  }
+  if (result.status !== 0) {
+    const stderr = (result.stderr ?? "").trim();
+    return {
+      status: "failed",
+      reason: stderr === "" ? `git exited ${String(result.status)}` : stderr,
+    };
+  }
+  return { status: "ok", stdout: result.stdout };
 }
 
 /** Parse `git diff --name-status -z` output into entries. */
@@ -148,28 +199,78 @@ export function gitOracleDeps(
   journal: string | null,
   timeoutMs = DEFAULT_GIT_TIMEOUT_MS,
 ): OracleDeps {
-  const cache = new Map<string, string | null>();
+  const cache = new Map<string, RevRead>();
 
-  const readAt = (path: string, side: "base" | "head"): string | null => {
-    const rev = side === "base" ? range.base : range.head;
+  /**
+   * `a...b` is merge-base(a, b)..b, so the base a file is compared against is
+   * the fork point rather than the tip of `a`. Resolving it here keeps the
+   * distinction the separator makes: without this, a test added on `main` after
+   * the branch point reads as `deleted` on the branch.
+   */
+  let resolvedBase: string | null = null;
+  function baseRev(): { rev: string } | { error: string } {
+    if (range.sep === "..") return { rev: range.base };
+    if (resolvedBase !== null) return { rev: resolvedBase };
+    const merged = git(["merge-base", range.base, range.head], root, timeoutMs);
+    if (merged.status === "failed") {
+      return {
+        error: `could not resolve merge-base of ${range.base} and ${range.head}: ${merged.reason}`,
+      };
+    }
+    resolvedBase = merged.stdout.trim();
+    return { rev: resolvedBase };
+  }
+
+  const readAt = (path: string, side: "base" | "head"): RevRead => {
+    if (path.startsWith("-") || path.includes("\0")) {
+      return { status: "unreadable", reason: `'${path}' is not a readable path` };
+    }
+    let rev: string;
+    if (side === "head") {
+      rev = range.head;
+    } else {
+      const resolved = baseRev();
+      if ("error" in resolved) {
+        return { status: "unreadable", reason: resolved.error };
+      }
+      rev = resolved.rev;
+    }
+
     const key = `${rev}:${path}`;
     const cached = cache.get(key);
     if (cached !== undefined) return cached;
-    if (path.startsWith("-") || path.includes("\0")) return null;
+
     const out = git(["show", `${rev}:${path}`], root, timeoutMs);
-    cache.set(key, out);
-    return out;
+    let read: RevRead;
+    if (out.status === "ok") {
+      read = { status: "read", content: out.stdout };
+    } else if (/exists on disk, but not in|does not exist in|path .* does not exist/i.test(out.reason)) {
+      // git's way of saying the path is not in that tree. That is a real answer
+      // about the repository, not a failure to get one.
+      read = { status: "absent" };
+    } else if (/^fatal: invalid object name|unknown revision|bad revision/i.test(out.reason)) {
+      read = { status: "unreadable", reason: out.reason };
+    } else {
+      // Anything else git refused on is treated as absent only when the
+      // revision itself resolved; otherwise the caller would read a broken
+      // range as an empty one.
+      read = { status: "absent" };
+    }
+    cache.set(key, read);
+    return read;
   };
 
   return {
     diff: () => {
       const raw = git(
-        ["diff", "--name-status", "-z", `${range.base}..${range.head}`],
+        ["diff", "--name-status", "-z", `${range.base}${range.sep}${range.head}`],
         root,
         timeoutMs,
       );
-      if (raw === null) return [];
-      return parseNameStatus(raw);
+      // null, not [] — "git could not answer" and "nothing changed" are
+      // different facts and the classifier refuses to conflate them.
+      if (raw.status === "failed") return null;
+      return parseNameStatus(raw.stdout);
     },
     readAt,
     justifications: () =>

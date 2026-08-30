@@ -22,13 +22,18 @@ import {
  * synthesis for a verb whose unit is a commit range.
  */
 function deps(
-  diff: DiffEntry[],
+  diff: DiffEntry[] | null,
   files: Record<string, { base?: string; head?: string }> = {},
   justifications: RawJustification[] = [],
 ): OracleDeps {
   return {
     diff: () => diff,
-    readAt: (path, side) => files[path]?.[side] ?? null,
+    readAt: (path, side) => {
+      const content = files[path]?.[side];
+      return content === undefined
+        ? { status: "absent" }
+        : { status: "read", content };
+    },
     justifications: () => justifications,
   };
 }
@@ -344,5 +349,73 @@ describe("source files are text, not binary", () => {
       .filter((name) => name.endsWith(".ts"))
       .filter((name) => readFileSync(join(dir, name), "utf8").includes("\0"));
     expect(offenders).toEqual([]);
+  });
+});
+
+/**
+ * Three defects found in post-review, each asserted here by name.
+ *
+ * All three shared a shape: the code produced a confident answer from an
+ * incomplete or misread input, and every existing gate stayed green.
+ */
+describe("post-review regressions", () => {
+  // countMatches' zero-width guard tested `lastIndex === 0`, which catches an
+  // empty match only at offset 0. `a|x*` matches "a" first, then zero-width at
+  // offset 1, and the loop never advanced — verified spinning past 50M
+  // iterations. A checker that hangs is worse than one that is wrong, because
+  // nothing in the output says which it is doing.
+  it("terminates on a pattern that matches zero-width after a non-empty match", () => {
+    const report = checkOracles(
+      [{ glob: "test/**/*.test.ts", weakening: "a|x*" }],
+      deps([{ path: "test/a.test.ts", status: "M" }], {
+        "test/a.test.ts": { base: "abcabc", head: "abc" },
+      }),
+    );
+    // Reaching this line at all is the assertion; the classification is
+    // secondary.
+    expect(report.unconfigured).toBe(false);
+  });
+
+  // git returning null for every failure was mapped onto "the path is absent at
+  // that side", so an unreadable base made every file look newly added —
+  // skipping `weakened` on all of them and exiting 0 clean.
+  it("records an unreadable side instead of treating it as absent", () => {
+    const report = checkOracles(
+      [{ glob: "test/**/*.test.ts", weakening: "\\bexpect\\(" }],
+      {
+        diff: () => [{ path: "test/a.test.ts", status: "M" }],
+        readAt: (_path, side) =>
+          side === "base"
+            ? { status: "unreadable", reason: "bad object" }
+            : { status: "read", content: "expect(a);" },
+        justifications: () => [],
+      },
+    );
+    expect(report.unreadable).toHaveLength(1);
+    expect(report.unreadable[0]).toContain("base");
+  });
+
+  // A diff git could not produce is not an empty diff. Returning [] for both
+  // meant a broken range reported zero findings and passed.
+  it("reports an unreadable diff rather than an empty one", () => {
+    const report = checkOracles(
+      [{ glob: "test/**/*.test.ts" }],
+      deps(null),
+    );
+    expect(report.unreadable).toHaveLength(1);
+    expect(report.findings).toEqual([]);
+  });
+
+  // The absent case must still behave as before: a file with no base is new,
+  // not unreadable, and raises nothing.
+  it("still treats a genuinely absent base as an added file", () => {
+    const report = checkOracles(
+      [{ glob: "test/**/*.test.ts", weakening: "\\bexpect\\(" }],
+      deps([{ path: "test/new.test.ts", status: "A" }], {
+        "test/new.test.ts": { head: "expect(a);" },
+      }),
+    );
+    expect(report.unreadable).toEqual([]);
+    expect(report.findings).toEqual([]);
   });
 });
