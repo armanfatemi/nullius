@@ -7,6 +7,7 @@ import {
   gitOracleDeps,
   parseNameStatus,
   parseRange,
+  type GitResult,
   type ParsedRange,
 } from "./oracleGit";
 
@@ -203,5 +204,75 @@ describe("gitOracleDeps distinguishes absent from unreadable", () => {
   it("reports a diff over an unresolvable range as null, not empty", () => {
     const range = parseRange("deadbeefdeadbeef..deadbeefdeadbeef") as ParsedRange;
     expect(gitOracleDeps(range, root, null).diff()).toBeNull();
+  });
+});
+
+/**
+ * The three-dot path, end to end.
+ *
+ * The original defect was `diff()` ignoring the separator, and no test that
+ * inspects only `parseRange`'s return value can see it — the bug lives in what
+ * reaches the subprocess. Asserting the argv is what closes that gap. CI runs
+ * only `HEAD..HEAD`, where merge-base(HEAD, HEAD) is HEAD and the two
+ * separators are indistinguishable, so CI is structurally blind to it too.
+ */
+describe("the range separator reaches git", () => {
+  function spy(results: Record<string, GitResult> = {}) {
+    const calls: string[][] = [];
+    const run = (args: string[]): GitResult => {
+      calls.push(args);
+      const key = args[0] ?? "";
+      return results[key] ?? { status: "ok", stdout: "" };
+    };
+    return { calls, run: run as (a: string[], r: string, t: number) => GitResult };
+  }
+
+  it("passes ... to git diff, not ..", () => {
+    const { calls, run } = spy();
+    const range = parseRange("main...HEAD") as ParsedRange;
+    gitOracleDeps(range, ".", null, 1000, run).diff();
+    expect(calls[0]).toEqual([
+      "diff",
+      "--name-status",
+      "-z",
+      "main...HEAD",
+    ]);
+  });
+
+  it("passes .. through unchanged", () => {
+    const { calls, run } = spy();
+    const range = parseRange("main..HEAD") as ParsedRange;
+    gitOracleDeps(range, ".", null, 1000, run).diff();
+    expect(calls[0]?.[3]).toBe("main..HEAD");
+  });
+
+  // For `a...b` the base side must be the fork point, not the tip of `a`.
+  // Reading at `main` instead would report every commit that landed on main
+  // after the branch point as a change on the branch.
+  it("resolves the base of a three-dot range via merge-base", () => {
+    const { calls, run } = spy({
+      "merge-base": { status: "ok", stdout: "abc1234\n" },
+    });
+    const range = parseRange("main...HEAD") as ParsedRange;
+    gitOracleDeps(range, ".", null, 1000, run).readAt("a.ts", "base");
+    expect(calls[0]).toEqual(["merge-base", "main", "HEAD"]);
+    expect(calls[1]).toEqual(["show", "abc1234:a.ts"]);
+  });
+
+  it("does not call merge-base for a two-dot range", () => {
+    const { calls, run } = spy();
+    const range = parseRange("main..HEAD") as ParsedRange;
+    gitOracleDeps(range, ".", null, 1000, run).readAt("a.ts", "base");
+    expect(calls.map((c) => c[0])).not.toContain("merge-base");
+    expect(calls[0]).toEqual(["show", "main:a.ts"]);
+  });
+
+  it("reports an unresolvable merge-base as unreadable rather than guessing", () => {
+    const { run } = spy({
+      "merge-base": { status: "failed", reason: "no merge base" },
+    });
+    const range = parseRange("main...HEAD") as ParsedRange;
+    const read = gitOracleDeps(range, ".", null, 1000, run).readAt("a.ts", "base");
+    expect(read.status).toBe("unreadable");
   });
 });

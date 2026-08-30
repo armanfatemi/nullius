@@ -364,16 +364,32 @@ describe("post-review regressions", () => {
   // offset 1, and the loop never advanced — verified spinning past 50M
   // iterations. A checker that hangs is worse than one that is wrong, because
   // nothing in the output says which it is doing.
-  it("terminates on a pattern that matches zero-width after a non-empty match", () => {
+  it("terminates on a zero-width-capable pattern AND counts it correctly", () => {
+    // `a|x*` matches "a" (non-empty), then zero-width everywhere else. Two "a"s
+    // at the base and one at the head is a real reduction, so the classifier
+    // must both terminate and call it `weakened`.
+    //
+    // Asserting only that the call returns would leave the fix half-checked:
+    // `countMatches` is unexported, so a guard that terminated by breaking out
+    // of the loop early — losing counts — would look identical to one that
+    // advances correctly. The verdict is the observable that distinguishes them.
     const report = checkOracles(
       [{ glob: "test/**/*.test.ts", weakening: "a|x*" }],
       deps([{ path: "test/a.test.ts", status: "M" }], {
-        "test/a.test.ts": { base: "abcabc", head: "abc" },
+        "test/a.test.ts": { base: "aba", head: "ab" },
       }),
     );
-    // Reaching this line at all is the assertion; the classification is
-    // secondary.
-    expect(report.unconfigured).toBe(false);
+    expect(report.findings.map((f) => f.change)).toEqual(["weakened"]);
+  });
+
+  it("does not report a reduction when a zero-width-capable pattern holds steady", () => {
+    const report = checkOracles(
+      [{ glob: "test/**/*.test.ts", weakening: "a|x*" }],
+      deps([{ path: "test/a.test.ts", status: "M" }], {
+        "test/a.test.ts": { base: "aba", head: "aab" },
+      }),
+    );
+    expect(report.findings).toEqual([]);
   });
 
   // git returning null for every failure was mapped onto "the path is absent at

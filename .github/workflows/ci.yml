@@ -267,3 +267,12 @@ jobs:
           ! node packages/claims/dist/cli.js oracle HEAD..HEAD
           node packages/claims/dist/cli.js oracle HEAD..HEAD 2>&1 \
             | grep -q 'no `oracles` declared'
+          # A real three-dot range against this repository's own history.
+          # HEAD..HEAD cannot see the separator at all — merge-base(HEAD,HEAD)
+          # is HEAD — so every arm above is blind to the defect where `diff()`
+          # ignored `sep` and ran `..` for both. This arm consumes the `...`
+          # path end to end and must exit 0 rather than 2, which is also a
+          # standing check that merge-base resolution works in a CI checkout.
+          node packages/claims/dist/cli.js oracle "$(git rev-parse HEAD)...HEAD" \
+            --config spec/fixtures/oracle-valid/nullius.config.json \
+            --journal spec/fixtures/oracle-valid/run.jsonl

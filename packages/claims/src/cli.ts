@@ -822,18 +822,6 @@ function runOracle(args: OracleArgs): number {
     return 2;
   }
 
-  // A run git could not complete must not read as a run that found nothing.
-  if (report.unreadable.length > 0) {
-    console.error(
-      "git could not be read for this range, so this run checked less than it appears to:",
-    );
-    for (const reason of report.unreadable) console.error(`  ! ${reason}`);
-    console.error(
-      "  Refusing to report a clean result from an incomplete read.",
-    );
-    return 2;
-  }
-
   for (const glob of report.weakeningUnchecked) {
     console.error(
       `note: '${glob}' declares no \`weakening\` pattern, so \`weakened\` went unchecked for it`,
@@ -867,6 +855,22 @@ function runOracle(args: OracleArgs): number {
 
   for (const path of report.advisory) {
     console.log(`advisory                   ${path}`);
+  }
+
+  // Reported after the findings, not instead of them. An earlier version
+  // returned here first, so a run with one unreadable file and a real
+  // unjustified change printed only the incompleteness notice and threw the
+  // finding away — a correct exit code delivered by discarding the thing the
+  // reader needed.
+  if (report.unreadable.length > 0) {
+    console.error(
+      "\ngit could not be read for this range, so this run checked less than it appears to:",
+    );
+    for (const reason of report.unreadable) console.error(`  ! ${reason}`);
+    console.error(
+      "  Refusing to report a clean result from an incomplete read; anything above is partial.",
+    );
+    return 2;
   }
 
   const hard = report.findings.filter((f) => isOracleFailure(f.verdict)).length;

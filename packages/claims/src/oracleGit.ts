@@ -16,6 +16,9 @@ import type { DiffEntry, OracleDeps, RawJustification, RevRead } from "./oracle"
 
 const DEFAULT_GIT_TIMEOUT_MS = 10_000;
 
+/** Room for a large golden file or a generated corpus; Node's default is 1 MiB. */
+const MAX_GIT_OUTPUT_BYTES = 64 * 1024 * 1024;
+
 /**
  * git's wording for "that path is not in that tree" — the one failure that is
  * an answer rather than an absence of one.
@@ -109,7 +112,7 @@ export function parseRange(range: string): ParsedRange | { error: string } {
   return { error: `'${range}' is not a range this command will pass to git` };
 }
 
-type GitResult =
+export type GitResult =
   | { status: "ok"; stdout: string }
   | { status: "failed"; reason: string };
 
@@ -128,6 +131,11 @@ function git(args: string[], root: string, timeoutMs: number): GitResult {
     shell: false,
     encoding: "utf8",
     timeout: timeoutMs,
+    // Node's default is 1 MiB, which an oracle file can plausibly exceed — a
+    // generated conformance corpus or a large golden file. Under the
+    // fail-closed default an ENOBUFS would become `unreadable` and exit 2 on
+    // every run: a permanent red enforcing a size limit nobody declared.
+    maxBuffer: MAX_GIT_OUTPUT_BYTES,
   });
   if (result.error !== undefined) {
     return { status: "failed", reason: result.error.message };
@@ -206,12 +214,20 @@ export function collectJustifications(journal: string): RawJustification[] {
   return out;
 }
 
-/** Live deps, reading the repository through git. */
+/**
+ * Live deps, reading the repository through git.
+ *
+ * `run` is injectable so a test can assert the argv git is actually handed.
+ * That is not ceremony: the defect this module shipped was `diff()` ignoring
+ * the range separator, and no test that inspects only `parseRange`'s return
+ * value can see it — the bug lives in what reaches the subprocess.
+ */
 export function gitOracleDeps(
   range: ParsedRange,
   root: string,
   journal: string | null,
   timeoutMs = DEFAULT_GIT_TIMEOUT_MS,
+  run: (args: string[], root: string, timeoutMs: number) => GitResult = git,
 ): OracleDeps {
   const cache = new Map<string, RevRead>();
 
@@ -225,7 +241,7 @@ export function gitOracleDeps(
   function baseRev(): { rev: string } | { error: string } {
     if (range.sep === "..") return { rev: range.base };
     if (resolvedBase !== null) return { rev: resolvedBase };
-    const merged = git(["merge-base", range.base, range.head], root, timeoutMs);
+    const merged = run(["merge-base", range.base, range.head], root, timeoutMs);
     if (merged.status === "failed") {
       return {
         error: `could not resolve merge-base of ${range.base} and ${range.head}: ${merged.reason}`,
@@ -254,7 +270,7 @@ export function gitOracleDeps(
     const cached = cache.get(key);
     if (cached !== undefined) return cached;
 
-    const out = git(["show", `${rev}:${path}`], root, timeoutMs);
+    const out = run(["show", `${rev}:${path}`], root, timeoutMs);
     let read: RevRead;
     if (out.status === "ok") {
       read = { status: "read", content: out.stdout };
@@ -279,7 +295,7 @@ export function gitOracleDeps(
 
   return {
     diff: () => {
-      const raw = git(
+      const raw = run(
         ["diff", "--name-status", "-z", `${range.base}${range.sep}${range.head}`],
         root,
         timeoutMs,

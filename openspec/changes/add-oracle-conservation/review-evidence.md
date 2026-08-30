@@ -1325,3 +1325,86 @@ over an unresolvable range returns `null` (not `[]`).
   read as correct locally and both silently disabled the check. The question that
   finds this class is not "is the logic right" but "which way does this fall when
   it does not know", and I have not been asking it unprompted.
+
+## Stage 7 — Post-review pass 2
+
+Three reviewers re-dispatched on the fix commits. `checker-engineer` and
+`test-engineer` returned; `architecture-reviewer` died to a machine-sleep API
+error before reporting (its question — whether `oracle` failing closed contradicts
+`checkClaims`'s deliberate fail-open — is carried to the PR as an open concern
+rather than silently dropped).
+
+## Confirmed closed
+
+- `checker-engineer` verified all three earlier blockers: `sep` is carried and
+  `merge-base` is the correct base for `a...b`, with memoization that caches only
+  success and an unrelated-histories failure landing as `unreadable`; the
+  zero-width guard terminates for every pattern with `lastIndex` strictly
+  increasing and ordinary counts unchanged; and `diff()` returning `null`
+  short-circuits to a populated `unreadable[]`.
+- `test-engineer` confirmed all four regression tests genuinely fail against the
+  pre-fix code — the zero-width one hangs, the other three throw or fail on a
+  missing field. Not decoration.
+- `checker-engineer` independently reached the fail-open-in-the-fix that the
+  coordinator had already found and committed, answering the question it was
+  asked directly: **"no, the fallback was not safe."** It reviewed the tree
+  before `b2cbf16` landed, so its second blocker ("the repair is uncommitted")
+  was already resolved when it reported.
+
+## Blockers closed this pass
+
+- **[blocker] Nothing tested the three-dot path end to end.** `test-engineer`.
+  The regression tests asserted only that `parseRange`'s *return value* carries
+  `sep` — but the defect lived in what reached the subprocess, so a change making
+  `diff()` ignore `range.sep` again would have passed every test in the file. CI
+  was blind for the same reason: `HEAD..HEAD` has merge-base(HEAD, HEAD) == HEAD,
+  so the separators are indistinguishable there. This is the same
+  written-from-the-same-assumption trap as the test that originally asserted the
+  bug, one level up.
+
+  Fixed by making the git runner injectable and asserting the argv: five tests
+  now pin that `...` reaches `git diff` verbatim, that `..` does not call
+  `merge-base` while `...` does, that the resolved merge-base is what `git show`
+  is handed, and that an unresolvable merge-base is `unreadable` rather than a
+  guess. Plus a CI arm running a real `<sha>...HEAD` against this repository.
+
+## Concerns closed
+
+- **The incompleteness notice discarded the findings.** `checker-engineer`. The
+  CLI returned 2 on any `unreadable` *before* printing anything, so a run with
+  one timed-out file and a real unjustified change printed only the notice — a
+  correct exit code delivered by throwing away the thing the reader needed. Now
+  reported after the findings, which are labelled partial.
+- **No `maxBuffer`.** `checker-engineer`. Node's 1 MiB default, against a
+  fail-closed classifier, meant any oracle-matched file over 1 MiB would exit 2
+  on every run — a permanent red enforcing a size limit nobody declared. Raised
+  to 64 MiB.
+- **The zero-width test asserted only termination.** `test-engineer`. Since
+  `countMatches` is unexported, a guard that terminated by breaking out early —
+  losing counts — would have looked identical. It now asserts the resulting
+  verdict, plus a negative case where the count holds steady.
+
+## Open, carried to the PR
+
+- `DiffEntry.from` is parsed and never consulted, so a rename *within* a declared
+  glob skips `weakened` and can false-positive `skipped`.
+- Whether `oracle`'s fail-closed exit 2 sits consistently beside `checkClaims`'s
+  deliberate fail-open `UNVERIFIABLE-REV`. Unreviewed — the agent asking it died.
+
+## Coordinator corrections since last append
+
+- **[corrected-coordinator] I wrote the same class of weak test twice in one
+  change.** First `"splits a three-dot range"`, which asserted `{base, head}` and
+  was satisfied by the implementation that discarded the separator. Then, fixing
+  it, `"parseRange carries the separator"` — which asserts the field exists and
+  still cannot see whether anything *uses* it. Both tests were written from the
+  same mental model as the code, so neither could falsify it. The reviewer had to
+  name it twice before I tested the actual boundary, which is the subprocess
+  argv.
+
+- **The recurring shape, now three for three.** Every defect I have introduced in
+  this change has been a *default or an omission* rather than a wrong rule:
+  `PASSING` defaulting to contain every member; `absent` defaulting to catch
+  every unmatched stderr; and tests defaulting to assert the shape I had in mind
+  rather than the behaviour at the boundary. Each read as correct locally, and
+  each disabled a check while leaving every gate green.
