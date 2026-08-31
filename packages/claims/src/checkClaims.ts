@@ -119,6 +119,15 @@ export interface CheckDeps {
    */
   readFileAtRev?: (path: string, rev: string) => RevRead;
   /**
+   * Whether this clone's history is truncated: `true` shallow, `false` full,
+   * `null` when the question could not be put at all.
+   *
+   * This decides whether an unresolvable commit is allowed to soften a FAILING
+   * verdict. Optional, and its absence means `null` — a caller that supplies no
+   * git reader supplies no probe either, and gets the fail-open path unchanged.
+   */
+  isShallowRepository?: () => boolean | null;
+  /**
    * Runs a search that `commandSafety` has already validated. Takes a parsed
    * plan rather than a string so that no layer below this one is ever in a
    * position to hand a command line to a shell.
@@ -402,12 +411,8 @@ function checkStamped(
   }
 
   if (atRev.status !== "ok") {
-    // Fail OPEN on the rev axis. The commit may be gone because the PR was
-    // squash-merged, because the clone is shallow, or because this is a fork —
-    // none of which is evidence about the author. The working tree still gets
-    // checked, and only its FAILING verdicts are softened: a checker that
-    // cannot read the history it was pointed at does not get to call anyone a
-    // fabricator.
+    // The rev axis could not be settled. The working tree still gets checked,
+    // and a PASSING verdict is simply borrowed.
     const fallback = checkUnstamped(claim, deps, driftWindow, minAnchorChars);
     if (!isFailure(fallback.verdict)) {
       // The verdict is borrowed; the repoint target is not. A stamped anchor
@@ -415,10 +420,31 @@ function checkStamped(
       // `--fix` must have nothing to act on under an old stamp.
       return { claim, verdict: fallback.verdict, detail: fallback.detail };
     }
+
     const why =
       atRev.status === "unknown-rev"
         ? `commit ${rev} is not in this clone`
         : atRev.reason;
+
+    // A FAILING verdict is a different question, because the rev is part of the
+    // document and the document is untrusted. Softening on the strength of the
+    // author's own rev let `@0000000` turn any invented citation green, which
+    // is strictly LESS work than opening the file — the inversion of the
+    // premise the fail-open was argued from.
+    //
+    // So the discriminator is the clone rather than the citation. A shallow
+    // clone genuinely cannot settle history and still refuses to accuse; so
+    // does a machine that could not be asked. A clone holding full history has
+    // produced a fact about the citation instead, and the verdict stands.
+    const shallow = deps.isShallowRepository?.() ?? null;
+    if (shallow === false) {
+      return {
+        claim,
+        verdict: fallback.verdict,
+        detail: `${fallback.detail} — and ${why}, though this clone has full history, so the stamp could not be honoured and cannot excuse it (if the branch was squash-merged, re-pin the anchor to the squash commit)`,
+      };
+    }
+
     return {
       claim,
       verdict: "unverifiable-rev",

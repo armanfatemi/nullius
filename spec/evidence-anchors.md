@@ -123,14 +123,42 @@ next week, which is the mutability the stamp exists to escape, and it is
 refused as `MALFORMED` rather than read as part of the filename.
 
 **Squash-merge, rebase and shallow clones destroy the object a stamp names.**
-When the commit cannot be resolved, the checker **fails open**: a failing
+When the commit cannot be resolved, the checker may **fail open**: a failing
 working-tree verdict is reported as the advisory `UNVERIFIABLE-REV` rather than
 as a fabrication, because a commit this clone never had is not evidence about
 the author. The cost is that a shallow checkout cannot settle history at all —
 so a workflow that gates rev-stamped documents should check out with
-`fetch-depth: 0`. There is a forgery surface here too (an author could hunt
-history for a commit where a claim happens to be true), but that is strictly
-more work than opening the file, so the authoring mechanism survives it.
+`fetch-depth: 0`.
+
+**Failing open is conditional on the clone, never on the citation.** There are
+two forgery surfaces here and they cost very different amounts.
+
+The expensive one: an author hunts history for a commit where a claim happens
+to be true. That is strictly more work than opening the file, so the authoring
+mechanism survives it — the argument holds, and this is the surface the spec
+originally weighed.
+
+The cheap one: an author names a commit that does not exist at all. Seven zeros
+is strictly *less* work than opening the file, which inverts the premise above
+entirely. Softening a failing verdict on the strength of a rev the author wrote
+made every gate optional at the document's discretion, and it is fixed rather
+than accepted.
+
+So the question asked is not "is this rev trustworthy" — it cannot be, it came
+from the document — but **can this clone read history at all**, which no
+document can influence:
+
+| Clone | Unresolvable commit, failing working-tree verdict |
+| --- | --- |
+| Shallow (`fetch-depth: 1`) | `UNVERIFIABLE-REV`, advisory — it genuinely cannot judge |
+| Shallowness undeterminable (no git) | `UNVERIFIABLE-REV`, advisory — it could not be asked |
+| Full history | the working-tree verdict stands, failures included |
+
+A passing working-tree verdict is unaffected in every row: a stamp can win an
+anchor the permanent gate, and it can never lose it the ordinary one. That is
+what keeps a squash-merged proposal honest rather than red — and where a squash
+does orphan a stamp on a full clone, the remedy is the documented one, re-pin
+the anchors to the squash commit.
 
 **Quote something that could be wrong, and that occurs once.** Matching is
 substring-based, so a one-character quote is trivially true and establishes
@@ -240,7 +268,7 @@ past the anchors.
 | `DRIFT`          | The quote's unique match is within the drift window (default ±3 lines) — file moved  | ✅      |
 | `WRONG-LINE`     | Distinctive text exists in the file, but not near the cited line — stale, not wrong  | ✅      |
 | `STALE`          | Rev-stamped: true at the commit it names, and the working tree has moved since       | ✅      |
-| `UNVERIFIABLE-REV` | Rev-stamped, and that commit is not in this clone — fails open, see below           | ✅      |
+| `UNVERIFIABLE-REV` | Rev-stamped, that commit is not in this clone, and this clone cannot read history — fails open, see below | ✅      |
 | `UNPINNED`       | The quote is neither distinctive nor on its cited line — it pins nothing down        | ❌      |
 | `FABRICATED`     | Text does not appear in the file at all — or, for a rev-stamped anchor, was not in it at that commit | ❌      |
 | `MISSING-FILE-AT-REV` | The cited file did not exist at the stamped commit                             | ❌      |

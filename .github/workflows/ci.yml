@@ -211,6 +211,23 @@ jobs:
       # one review failure that reports success, so the broken fixture must
       # keep failing; the unit test asserts WHICH verdicts fire, because the
       # exit code here stays 1 even when one of them goes quiet.
+      # The stamp fail-open, both polarities. Neither half alone is a gate:
+      # asserting only the failure would pass if the checker started accusing
+      # everyone, and asserting only the shallow case would pass if the bypass
+      # came back. The document is identical in both runs; only the clone
+      # differs, which is the whole claim this fix makes.
+      - name: nullius check (stamp fail-open, both polarities)
+        run: |
+          # Full history — the invented stamps must not excuse the fabrications.
+          ! node packages/claims/dist/cli.js check spec/fixtures/.stamp-failopen/forged.md
+
+          # Same document, shallow clone — must still refuse to accuse.
+          # Cloned from this checkout, so it needs no network and pins nothing.
+          git clone --quiet --depth 1 "file://$GITHUB_WORKSPACE" /tmp/shallow-probe
+          test "$(git -C /tmp/shallow-probe rev-parse --is-shallow-repository)" = "true"
+          cp spec/fixtures/.stamp-failopen/forged.md /tmp/shallow-probe/forged.md
+          ( cd /tmp/shallow-probe && node "$GITHUB_WORKSPACE/packages/claims/dist/cli.js" check forged.md )
+
       - name: nullius wiring (self)
         run: |
           node packages/claims/dist/cli.js wiring spec/fixtures/wiring-valid
