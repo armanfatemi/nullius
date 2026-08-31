@@ -4,6 +4,58 @@ Bare version headings are the kernel — `@nullius-inverba/claims` and its
 unscoped alias `evidence-anchors`, which ship together. Headings prefixed with
 a package name are that package's own release; the kit versions independently.
 
+## Unreleased
+
+### Fixed
+
+- **Security: the git lane no longer reads outside the root it was pointed at.**
+  In `<rev>:<path>` a bare path resolves from the top of the repository rather
+  than from the directory git was pointed at, so a checker running in a
+  subdirectory read files above its own root through the stamped lane while the
+  working-tree lane refused the same citation:
+
+  ```console
+  $ git -C sub show 049a447:above.txt
+  SECRET_TOKEN=hunter2
+  ```
+
+  Because the verdict turns on whether the quoted text matches, the exit code
+  answered "is my guess about that file right" — one bit per run, over a
+  directory nobody pointed the checker at. Blobs are now addressed as
+  `<rev>:./<path>`, which anchors resolution at the checked root. Where that
+  root IS the repository root — the documented usage, and what CI does — the
+  two forms are identical and nothing changes.
+
+  A test named for this property already existed and passed. It cites
+  `../../etc/passwd`, a **syntactic** escape the path guard rejects before any
+  read; the defect was a **semantic** one, a path with no `..` in it that git
+  resolved somewhere else. The test kept its name and gained the case it
+  claimed. (#71)
+
+- **A 40-character absent commit is no longer reported as a fabrication.**
+  git says `invalid object name` only for a rev shorter than 40 hex. At exactly
+  40 the argument is already a complete object id, so it skips the revision
+  complaint and reports a path problem — which the classifier read as "that
+  commit exists and lacks this file". One anchor therefore got two verdicts
+  depending on the LENGTH of its hash:
+
+  ```
+  app.ts:1@0000000                                   OK                   exit 0
+  app.ts:1@0000000000000000000000000000000000000000  MISSING-FILE-AT-REV  exit 1
+                                                     "this citation was never true"
+  ```
+
+  Same file, same quote — a quote genuinely present in the working tree. Since
+  `git rev-parse HEAD` and `$GITHUB_SHA` both print 40 characters, this accused
+  authors who used the most natural input available, with the verdict this
+  project asks reviewers to treat as most serious.
+
+  Existence is now asked with `git cat-file -e <rev>^{commit}`, which involves
+  no path and cannot be confused by one, and is cached per rev. stderr matching
+  remains only for what it is still the sole source of. The pre-existing test
+  used a 16-character SHA, which is exactly why this shipped; the new one
+  asserts 7, 16 and 40 agree. (#70)
+
 ## 0.9.0
 
 The `oracle` verb, a security fix for rev-stamped anchors, and the canary's

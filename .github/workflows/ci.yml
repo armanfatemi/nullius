@@ -228,6 +228,46 @@ jobs:
           cp spec/fixtures/.stamp-failopen/forged.md /tmp/shallow-probe/forged.md
           ( cd /tmp/shallow-probe && node "$GITHUB_WORKSPACE/packages/claims/dist/cli.js" check forged.md )
 
+      # An absent commit must mean the same thing at any hash length (#70).
+      # Both must pass: the short one alone would survive a fix that accused
+      # only long hashes, the long one alone would survive a checker that
+      # verified nothing. The pair is the assertion.
+      - name: nullius check (absent commit, hash length invariance)
+        run: |
+          node packages/claims/dist/cli.js check spec/fixtures/.rev-lane/short-sha.md
+          node packages/claims/dist/cli.js check spec/fixtures/.rev-lane/long-sha.md
+
+      # The git lane must answer to the same root as the working-tree lane
+      # (#71). Built inline rather than committed, because the defect is about
+      # a repository SHAPE — a checked root below the repository top — which a
+      # file in this tree cannot express.
+      - name: nullius check (git lane confinement)
+        run: |
+          set -euo pipefail
+          probe=$(mktemp -d)
+          git init -q -b main "$probe"
+          git -C "$probe" config user.email ci@example.com
+          git -C "$probe" config user.name CI
+          printf 'SECRET_TOKEN=hunter2\n' > "$probe/above.txt"
+          mkdir -p "$probe/sub"
+          printf 'ok\n' > "$probe/sub/local.txt"
+          git -C "$probe" add .
+          git -C "$probe" commit -qm first
+          rev=$(git -C "$probe" rev-parse --short HEAD)
+
+          # Cites a file ABOVE the directory the checker is pointed at, with no
+          # `..` in the path — so the path guard sees nothing wrong.
+          printf '**Evidence:** `above.txt:1@%s` — `SECRET_TOKEN=hunter2`\n' "$rev" \
+            > "$probe/sub/escape.md"
+          # Cites a file the checker legitimately can reach, so a lane that is
+          # merely broken fails this too.
+          printf '**Evidence:** `local.txt:1@%s` — `ok`\n' "$rev" \
+            > "$probe/sub/local.md"
+
+          cd "$probe/sub"
+          ! node "$GITHUB_WORKSPACE/packages/claims/dist/cli.js" check escape.md
+          node "$GITHUB_WORKSPACE/packages/claims/dist/cli.js" check local.md
+
       - name: nullius wiring (self)
         run: |
           node packages/claims/dist/cli.js wiring spec/fixtures/wiring-valid
