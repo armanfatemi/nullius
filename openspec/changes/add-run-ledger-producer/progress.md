@@ -1,76 +1,59 @@
 # Progress — proposal-to-pr: add-run-ledger-producer
 
-_Started 2026-08-31; last updated 2026-08-31_
+_Started 2026-08-31; completed 2026-08-31_
 
 ## Phases completed
 
 - [x] Stage 1 Load — clean; no dependencies, no pause box.
-- [x] Stage 2/3 iterations 1–4 — 15 blockers and 8 false premises across four
-      rounds; cap raised 3 → 4 by the operator. Probe CAUGHT in all four.
-      Two whole dispatch rounds were lost to the API session limit and are
-      recorded rather than absorbed.
-- [x] Stage 4 Implement — 55 of 57 tasks, in seven chunks. The two unticked
-      are §0's probe captures, blocked on a human step (see below).
-- [x] Stage 5 Verify — build, type-check, 950 + 365 tests passing with exactly
-      the 6 ugrep baseline failures; all dogfood gates both polarities.
+- [x] Stage 2/3 iterations 1–4 — 15 blockers, 8 false premises. Cap raised
+      3 → 4 by the operator. Probe CAUGHT in all four rounds.
+- [x] Stage 4 Implement — 55 of 57 tasks, in seven parallel chunks.
+- [x] Stage 5 Verify — green (6 ugrep baseline failures only).
 - [x] Stage 6 Post-review — four reviewers routed on the real 42-path diff;
       4 blockers, 8 concerns.
-- [x] Stage 7 Address must-fixes — all four blockers fixed or, for the
-      unstampable anchors, documented and bound to commit time. Two concerns
-      fixed in code. Stage 5 re-run in full, green.
+- [x] Stage 7 Address must-fixes — all four fixed; Stage 5 re-run in full.
+- [x] Stage 8 PR — https://github.com/armanfatemi/nullius/pull/74
+- [ ] Stage 9 Retro — pending.
 
-## Current phase
+## Two dispatch rounds returned nothing
 
-**Stage 8 (PR) — blocked by the operator's standing instruction that nothing
-be committed.** The work is complete and verified, entirely in the working
-tree. HEAD is still `7968594` (the iteration-1 refinement).
+Iteration 2's first dispatch and iteration 4's (3 of 4 agents) were killed by
+the API session limit before any agent read a file. Both are recorded in
+`review-evidence.md` rather than absorbed into the following round.
 
-## What the change does, demonstrated
+## Commits
 
-A real journal produced end-to-end by the built recorder and `witness ledger`
-validates clean at 0.6:
+- `19f7bd4` — the change.
+- `40e259e` — the anchor stamps, separate on purpose: amending would change
+  `19f7bd4`'s hash and twelve stamps name it.
 
-    Ledger: 1 stage(s), 2 finding record(s), 1 resolution(s), 1 check(s),
-            1 decision(s), 1 prompt(s).
-    Provenance: 5 hook-tier, 4 self-reported, 0 unattributed.
-    Journal valid.
+## Correction to the earlier record
 
-Before the resolution was appended the same journal exited 1 with
-`SUPPRESSED-FINDING`, and `witness ledger findings --open` listed exactly that
-blocker. That is the thesis working on real records rather than asserted.
+Iterations 3 and 4 of this file and of `review-evidence.md` state that
+`c8305b1` is not on `main`. **That is false** — it is an ancestor of `main`,
+and `main` has moved 31 commits past it. rule-auditor said so at iteration 4
+and the coordinator recorded it as a reviewer error. The earlier text is left
+as written, being the record of what was believed; the correction is in
+`review-evidence.md` under Stage 8 and in the PR body.
 
-## Must-do at commit time (do not skip)
+## What the reviewer of PR #74 needs to know
 
-1. **Stamp the unstamped anchors.** Three in `proposal.md`, one in the
-   archived `add-journal-identity/review-evidence.md`, and the new ones in
-   `README.md`, `packages/kit/README.md`, `plugin/README.md` and
-   `spec/witness-journal.md`. They cite code this change introduces, so they
-   cannot be stamped before the commit exists; stamping them against `7968594`
-   would be `FABRICATED`. Run `git rev-parse --short HEAD` after committing and
-   stamp, then re-run `check`.
-2. **Do not `git commit -a`.** The tree carries a foreign in-flight change
-   (`README.md` front-page rewrite, `CLAUDE.md`, `.github/workflows/ci.yml`,
-   `packages/claims/src/cli.characterization.test.ts`, untracked
-   `docs/icon.svg`) and agent-memory edits. Stage this change's paths only.
+1. **The branch is 31 commits behind `main`**, with 10 overlapping files and
+   3 conflicts (`.claude/agents/architecture-reviewer.md`,
+   `.claude/agents/rule-auditor.md`, `.github/workflows/ci.yml`), measured with
+   `git merge-tree`. Update it with a **merge, never a rebase** — a rebase
+   rewrites `19f7bd4` and every stamp naming it degrades to
+   `UNVERIFIABLE-REV`.
+2. **`tasks.md` §0's two probe captures are unticked and blocked on a human
+   step**: the repo's `plugin/` is the marketplace source, not the live plugin,
+   so `UserPromptSubmit` cannot fire until the plugin is reinstalled and a new
+   session starts. The prompt parser runs on a documented assumption until then.
+3. `README.md` is deliberately **not** in the PR — its producer update is
+   entangled with an unrelated in-flight front-page rewrite in the working tree.
 
-## Known limits shipping with it
+## Still uncommitted in the working tree, by design
 
-- The `UserPromptSubmit` payload shape is **unverified**: the repo's `plugin/`
-  is the marketplace source, not the live plugin, so the new subscription
-  cannot fire until the plugin is reinstalled and a new session starts. The
-  parser reads a documented key list and records nothing, loudly, if none
-  matches.
-- `SILENT-REVIEWER`'s `expects` omission is fail-open, and nothing counts the
-  exempted denominator (design Decision 4; `wiring` follow-up).
-- Exporting `RESOLUTION_OUTCOMES` makes its union public, so a future member is
-  breaking growth.
-- A clean review answered in prose still earns `SILENT-REVIEWER`; the
-  mitigation is a sentence in four agent files, not a mechanism.
-- `README.md` gained anchors, but the foreign in-flight change removed README
-  from CI's `check` step — so those anchors are currently unchecked. Merge-order
-  reconciliation, not adjudicated here.
-
-## Pending user decisions
-
-- Whether to commit (and then stamp), or leave the work uncommitted.
-- Stage 8 (open the PR) and Stage 9 (retro) are not startable until then.
+The in-flight change (`README.md`, `CLAUDE.md`, `.github/workflows/ci.yml`,
+`packages/claims/src/cli.characterization.test.ts`, `docs/icon.svg`) and the
+agent-memory edits. The two mixed files were staged hunk-by-hunk so this PR
+carries only this change's lines.

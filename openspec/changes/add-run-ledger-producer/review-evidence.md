@@ -868,3 +868,55 @@ Documented in a blockquote at the top of `proposal.md` and carried as a
   ADVISORY". True, but the move was in uncommitted work the reviewer could not
   verify from git, and it said so. Briefing a reviewer on a premise only I can
   see is a brief defect.
+
+## Stage 8 — PR, and a coordinator claim that was false
+
+PR: https://github.com/armanfatemi/nullius/pull/74 (base `main`, 4 commits).
+
+Committed as two commits, deliberately not one: `19f7bd4` carries the change,
+and `40e259e` carries the anchor stamps. Amending would have changed
+`19f7bd4`'s hash, and twelve stamps name it.
+
+Before pushing, the committed tree was extracted with `git archive` and the
+gates re-run against **it** rather than against the working tree, because the
+working tree carries an unrelated in-flight change whose edits are not in the
+commit. `check 'README.md' 'spec/**/*.md' --require-markers` → 48 markers,
+exit 0; `check 'openspec/**/*.md'` → 360, exit 0.
+
+## A claim I made four times, and it was false
+
+Throughout iterations 3 and 4 I stated — in this file, in `progress.md`, in
+reviewer briefs, and in the PR-risk framing — that `c8305b1` is "the tip of the
+unmerged `feat/add-canary-status-redaction`, not on `main`", and that every
+anchor stamped against it would degrade to `UNVERIFIABLE-REV` if that branch
+were squashed. **`c8305b1` is an ancestor of `main`.** `git merge-base --is-ancestor
+c8305b1 main` succeeds; `main` is now `d3c636e`, thirty-one commits further on.
+
+Worse than being wrong: rule-auditor told me so at iteration 4 — it wrote that
+`c8305b1` "is reachable from `main`" — and I recorded that as a *reviewer
+error* in the iteration-3 synthesis and repeated my own version. I corrected a
+reviewer who was right, from memory, without running the one command that
+settles it. That is the failure this repository is built to make impossible,
+committed by the coordinator against a reviewer who had done the checking.
+
+The consequence is benign and the correction is not: the stamps are safe, the
+squash risk I put in the PR body was imaginary, and the **real** risk is the
+one this error hid — the branch is 31 commits behind `main` with 10 overlapping
+files and 3 merge conflicts. That is in the PR body now, checked with
+`git merge-tree` rather than asserted.
+
+## Coordinator corrections since last append
+
+- The `c8305b1` claim above: false, stated repeatedly, and it overrode a
+  reviewer who had it right. Corrected in the PR body and here; `progress.md`
+  and the earlier syntheses in this file still contain the wrong version, and
+  are left as written because they are the record of what was believed then.
+- I briefed the docs chunk that `README.md` is checked in CI with
+  `--require-markers`. That was true of the committed `ci.yml` and false of the
+  working tree, where an in-flight change had removed it. The agent added
+  anchors to README satisfying the gate I named, and left the foreign hunk
+  alone — so README's new anchors are unchecked by the working-tree CI, and
+  README is excluded from this PR entirely. Recorded in the PR's open concerns.
+- `check --stamp` also stamped anchors in three files outside this change
+  (`spec/canary.md` and two probe READMEs). Reverted rather than kept: a
+  benign improvement is still a change nobody reviewed.
