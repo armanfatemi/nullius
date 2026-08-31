@@ -70,21 +70,44 @@ available within budget.
 - **WHEN** the transcript exceeds the byte cap or the read exceeds its time budget
 - **THEN** `usage` is absent, `model` is still recorded, and a note on stderr says why
 
-### Requirement: The header records the git user when git can answer
+### Requirement: Coordinator-authored records carry their own origin
 
-The recorder SHALL record `user: { name, email }` in the journal header from
-`git config`, resolved within the identity budget, and SHALL omit the field
-rather than write an empty value when git cannot answer.
+At schema `0.6` or later the validator SHALL require `origin: "self-reported"`
+on every `stage`, `resolution`, `decision` and `check` record and SHALL report
+`MALFORMED` when it is absent or carries any other value, so a journal whose
+header says `hooks` never presents a coordinator's account as the harness's.
+
+#### Scenario: a ledger command writes a resolution
+
+- **WHEN** `witness ledger resolution …` appends a record
+- **THEN** the record carries `origin: "self-reported"` and validates clean
+
+#### Scenario: a resolution without origin
+
+- **WHEN** a `0.6` journal carries a `resolution` with no `origin`
+- **THEN** `MALFORMED` is reported naming that record
+
+### Requirement: The header records the git user name when git can answer
+
+The recorder SHALL record `user: { name }` in the journal header from
+`git config user.name`, resolved within the identity budget, SHALL omit the
+field when git cannot answer, and the validator SHALL report `MALFORMED` for a
+blank `user.name` at schema `0.6` or later.
 
 #### Scenario: a configured repository
 
-- **WHEN** a session starts in a repository with `user.name` and `user.email` configured
-- **THEN** the header carries both under `user`
+- **WHEN** a session starts in a repository with `user.name` configured
+- **THEN** the header carries it under `user.name`
 
 #### Scenario: no git identity
 
 - **WHEN** `git config user.name` returns nothing or git is unavailable
 - **THEN** the header carries no `user` key, and the append proceeds
+
+#### Scenario: a blank name
+
+- **WHEN** a `0.6` header carries `user: { name: "" }`
+- **THEN** `MALFORMED` is reported naming the field
 
 ### Requirement: Operator prompts are recorded and joined to the work they caused
 
@@ -107,11 +130,22 @@ subsequent `dispatch` and `mutation` whose payload carries it.
 - **WHEN** the prompt exceeds the excerpt cap
 - **THEN** `text` is cut, `truncated` is true, and `chars` carries the original length
 
+#### Scenario: a malformed prompt record
+
+- **WHEN** a `0.6` journal carries a `prompt` with neither `text` nor both `chars` and `hash`, or a non-integer `chars`
+- **THEN** `MALFORMED` is reported naming the record
+
 ### Requirement: SILENT-REVIEWER is scoped to dispatches that expect findings at schema 0.6
 
 At journal version `0.6` or later the validator SHALL report `SILENT-REVIEWER`
-only for a dispatch carrying `expects: "findings"`, and SHALL keep the unscoped
-behaviour for journals declaring an earlier version.
+only for a dispatch carrying `expects: "findings"`, SHALL report `MALFORMED`
+for a dispatch whose `expects` is present with any other value, and SHALL keep
+the unscoped behaviour for journals declaring an earlier version.
+
+#### Scenario: an unknown expects value
+
+- **WHEN** a `0.6` journal has a dispatch with `expects: "reviews"`
+- **THEN** `MALFORMED` is reported for that dispatch rather than the verdict being skipped
 
 #### Scenario: an exploring agent returns prose at 0.6
 

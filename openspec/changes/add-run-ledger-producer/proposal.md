@@ -69,11 +69,12 @@ against it, which the original design named as its own standing risk.
 
 ## What changes
 
-- **Findings are extracted by code, at the hook.** Every reviewer in this
-  repository returns a declared contract — lines tagged `[blocker]`,
-  `[concern]`, `[looks-good]`, `[false-premise]`. The recorder parses those
-  lines from the subagent's return text at the terminal event and writes one
-  `finding` per tag, with `dispatch` set and `author` taken from the harness
+- **Findings are extracted by code, at the hook.** All four reviewers in this
+  repository declare a return contract of lines tagged `[blocker]`,
+  `[concern]`, `[looks-good]`; two of them (`rule-auditor`,
+  `architecture-reviewer`) also declare `[false-premise]`. The recorder parses
+  those lines from the subagent's return text at the terminal event and writes
+  one `finding` per tag, with `dispatch` set and `author` taken from the harness
   payload. These findings are hook-attested: the coordinator does not author
   them and cannot omit one.
 - **`nullius-kit witness ledger <kind>`** — a structured-record mode of the
@@ -81,7 +82,9 @@ against it, which the original design named as its own standing risk.
   `resolution`, `decision`, `check`. Flags map one-to-one onto the schema's
   fields; the record is validated against the same closed vocabularies the
   kernel enforces before it is appended, under the same lock, into the same
-  session journal.
+  session journal. **Each of those records carries its own
+  `origin: "self-reported"`**, required at schema `0.6`, so a journal whose
+  header says `hooks` never presents a coordinator's account as the harness's.
 - **Journal addressing from the coordinator's shell** uses
   `CLAUDE_CODE_SESSION_ID`, with `--session` as an explicit override. With
   neither, the command refuses — it never picks a journal by modification time.
@@ -95,29 +98,40 @@ against it, which the original design named as its own standing risk.
   reads the harness-written subagent transcript's per-turn usage under a byte
   and time budget, records `usage_source: "transcript"`, and omits the field
   entirely when the budget is exceeded. Absent is never estimated.
-- **The kit adopts a journal version at or above `0.3`** so the two ledger
-  verdicts apply to real journals — and, because that turns `SILENT-REVIEWER`
-  on for every `found` return including non-reviewer dispatches, the kernel
-  gains a version at which that verdict is scoped to dispatches the recorder
-  marked as expecting findings. See `design.md` Decision 4; this is the one
-  kernel change in the proposal.
-- **The git user in the header.** `user: { name, email }` resolved from
-  `git config` at session start inside the existing identity budget; omitted,
-  never blank, when git cannot answer. Additive header metadata no verdict
-  reads.
+- **Schema `0.6`.** The bump is owed by three of the four triggers on their
+  own: a new kind (`prompt`), a new required field on four kinds (per-record
+  `origin`) and a tightening (a blank `user.name` is `MALFORMED`). Riding on
+  it: the kit writes `0.6`, so the two ledger verdicts finally apply to real
+  journals; and because that turns `SILENT-REVIEWER` on for every `found`
+  return including non-reviewer dispatches, at `0.6` the verdict is scoped to
+  dispatches carrying `expects: "findings"` — a closed vocabulary; an unknown
+  value is `MALFORMED`, never a silent opt-out. See `design.md` Decision 4.
+- **The git user in the header.** `user: { name }` resolved from `git config`
+  at session start inside the existing identity budget; omitted when git
+  cannot answer, and `MALFORMED` when present and blank — the rule the other
+  identity fields already carry. `email` is not recorded: the only redactor is
+  in an unmerged downstream change, and a value that needs one should not be
+  written before it exists.
 - **`prompt` records — the operator's steering, hook-attested.** The plugin
   subscribes to `UserPromptSubmit`; the recorder writes one `prompt` record per
   submission (`id: p:<prompt_id>`, `text`, `chars`, `at`), and every
   `dispatch` and `mutation` written afterwards carries `prompt: p:<prompt_id>`
   from its own payload, so a report can show which instruction led to which
-  work. `prompt` is a new kind and rides the same `0.6` bump. Text is capped
-  and `truncated` when cut; `NULLIUS_WITNESS_PROMPTS=0` records `chars` and a
-  hash and omits `text`.
+  work. `prompt` is a new kind and is one of the reasons for `0.6`. Text is
+  capped and `truncated` when cut; `NULLIUS_WITNESS_PROMPTS=0` records `chars`
+  and a hash and omits `text`. If the captured `UserPromptSubmit` payload turns
+  out not to carry `prompt_id`, the record's id is derived from the payload
+  (`p:<hash of session, at, text>`), the `prompt` key on later records is left
+  absent, and a report orders by timestamp instead of joining — stated now so
+  the fallback is a design and not an improvisation.
 - **`proposal-to-pr` emits ledger records** at each stage transition
   (`stage`), for each addressed finding (`resolution`), for each design
   decision (`decision`), and for each verify chunk (`check`) — alongside the
   existing `evidence-append` calls, not replacing them.
-- **`JournalReport` counts ledger kinds**, the public-interface change the
+- **`JournalReport` gains a `ledger` block of counters** (`stages`, `findings`,
+  `resolutions`, `checks`, `decisions`, `prompts`) — namespaced, because
+  `JournalReport.findings` already exists as the array of validator findings.
+  `JournalSurvey` sums the same block. This is the public-interface change the
   original design deferred to "the change that gives these records a producer
   worth counting":
 
@@ -190,11 +204,12 @@ natural seam is the kernel scoping change (Decision 4) as its own prerequisite.
 
 ## Open questions
 
-1. **Does the `SILENT-REVIEWER` scoping in Decision 4 take a version bump?**
-   None of the four triggers fires literally — no new kind, no vocabulary
-   member, no tightening, no new verdict — but a verdict starts reading a field
-   it did not read before, which the exemption clause does not cover. The
-   proposal assumes a bump to `0.6` and asks `checker-engineer` to settle it.
+1. **Resolved in pre-review.** `0.6` is owed by triggers 1 and 3 regardless
+   (`prompt`; the `user.name` tightening; the per-record `origin` requirement).
+   The `SILENT-REVIEWER` scoping is a loosening — no numbered trigger fires,
+   but the rule's headline ("the set of valid records changes") is
+   direction-neutral and clause 3 names only one direction; the restatement in
+   `spec/witness-journal.md` gains clause 3's mirror as part of this change.
 2. **How is a probe verdict recorded?** `check.outcome` is closed to
    `pass`/`fail`, and `canary verify` has three outcomes. CAUGHT/MISSED map
    cleanly; TAINTED is a void round, not a failure. Candidates: omit the record
@@ -224,8 +239,11 @@ natural seam is the kernel scoping change (Decision 4) as its own prerequisite.
    The proposal argues the journal is different from a raw probe — the words
    are the operator's own, the file is local and gitignored, and the directory
    was created by a human — and ships text on with a documented off switch.
-   That is a consent decision and belongs to the operator's review of this
-   proposal as much as to Stage 2.
+   Pre-review noted the polarity inverts the probe switch (probes opt in,
+   prompts opt out) and routed the decision to the operator. **Settled by the
+   operator:** the request that added prompt records asked for the text so a
+   report can show the steering; hashed prompts would not serve it. Text stays
+   on by default; the switch stays documented in `.nullius/README.md`.
 6. **What does the `UserPromptSubmit` payload actually carry?** No probe of it
    exists in the corpus. Task 0 captures one before any parser is written, per
    the corpus discipline; field names in this proposal are assumptions until

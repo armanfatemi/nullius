@@ -76,11 +76,21 @@ the same session journal.
 **Rationale:** the value of the ledger verdicts is that they cross tiers. A
 hook-attested `report: found` checked against a hook-extracted `finding`
 checked against a coordinator-authored `resolution` is a chain where each link
-was written by a different party. That is what the journal header's `origin`
-field cannot express per record, and why the header stays `hooks`: the
-dispatch/report/mutation/finding records are the harness's account, and the
-four coordinator kinds are self-reported by definition — the schema already
-says so ("Those records need an author with intent").
+was written by a different party.
+
+**Provenance is per record where the tiers mix.** The header's `origin` is
+defined as "the agent had no opportunity to decline to write them", and the
+schema refuses a field whose ambiguity would be read as the better tier. So at
+`0.6` every `stage`, `resolution`, `decision` and `check` record carries
+`origin: "self-reported"` — **required**; absent or any other value is
+`MALFORMED` — and the header's `origin` is documented as the origin of every
+record that does not carry its own. `finding` records carry no per-record
+origin: the recorder wrote them from the harness payload, so the header's
+`hooks` is true of them. The alternative — a third header value such as
+`mixed` — was rejected: it says the journal is impure without saying which
+records are, which is the ambiguity the field exists to remove. This is one
+of the three triggers that owe `0.6` (a new required field on four kinds is
+trigger 3).
 
 ### 2. Extraction is a line grammar, not a classifier
 
@@ -131,13 +141,24 @@ say so rather than guess; the coordinator path inherits it.
 
 ### 4. Adopt a version at which the verdicts fire, and scope `SILENT-REVIEWER`
 
-**Chosen:** the kit writes `0.6`. The kernel adds `0.6` to `VERSIONS` with one
-behavioural change gated by the floor: `SILENT-REVIEWER` fires only for a
-dispatch carrying `expects: "findings"`. The recorder sets that key on the
+**Chosen:** the kit writes `0.6`. The kernel adds `0.6` to `VERSIONS`; at that
+floor `SILENT-REVIEWER` fires only for a dispatch carrying
+`expects: "findings"`. `expects` is a **closed vocabulary** with one member;
+a present value outside it is `MALFORMED` at ≥0.6, because the alternative —
+`raw.expects !== "findings"` skipping silently — lets one producer typo disarm
+the verdict repo-wide with no finding, and every other closed vocabulary in
+this validator reports rather than skips. The recorder sets the key on the
 `dispatch` record when the dispatched agent's definition file declares the tag
 contract (an `## Output format` section containing `[blocker]`), resolved from
 `.claude/agents/<subagent_type>.md` at `PreToolUse` — a filesystem read, not a
 judgement. Journals below `0.6` keep the unscoped verdict.
+
+**Known limit, accepted:** the denominator is editable in-session — deleting
+`[blocker]` from an agent's output section disarms the verdict for every later
+dispatch, and the journal records that only as an ordinary `mutation` of the
+agent file. The mitigation belongs to `wiring`, not here: a check that every
+agent named in a skill's `dispatches:` declares the tag contract. Recorded as
+a follow-up in `tasks.md` §6, not solved in this change.
 
 **Evidence:** `packages/claims/src/witness.ts:184@c8305b1` — `export const VERSIONS = ["0.1", "0.2", "0.3", "0.4", "0.5"] as const;`
 
@@ -157,9 +178,9 @@ judgement. Journals below `0.6` keep the unscoped verdict.
 ("an explicit nothing-found is how a reviewer proves it was not silent"). Under
 a producer that records every dispatch, that presumption has to be declared,
 and the recorder is the only party that can declare it from a file rather than
-from an opinion. Whether this takes a bump is Open question 1; the design
-assumes yes because a verdict begins reading a field, and the exemption is
-written for fields no verdict reads:
+from an opinion. The scoping itself is a loosening and fires no numbered
+trigger; it rides on a bump that is owed anyway (Decisions 1, 7 and 8), and
+the exemption is unavailable to it because a verdict now reads the field:
 
 **Evidence:** `spec/witness-journal.md:387@c8305b1` — `It does **not** bump for additive optional metadata that no verdict reads.`
 
@@ -172,7 +193,10 @@ cache_read, cache_creation, total}`) plus `usage_source: "payload" |
 copied onto the `report` at `SubagentStop`. Usage for asynchronous returns is
 summed from `message.usage` of assistant turns in `agent_transcript_path`,
 read before the lock is taken, under a byte cap and a wall-clock budget below
-the lock wait; over budget, the field is omitted and a note says so.
+the lock wait; over budget, the field is omitted and a note says so. Both
+budgets are parameters of the reader (the seam `identity.ts` already uses for
+`budgetMs`/`perCallMs`), so a test can force the under-cap-but-slow branch
+deterministically rather than reason about it.
 
 **Alternatives considered:**
 
@@ -186,19 +210,24 @@ the lock wait; over budget, the field is omitted and a note says so.
 transcript is a file the harness wrote and handed the recorder a path to; the
 agent had no opportunity to edit it, which is the hooks tier's criterion.
 
-### 6. `JournalReport` counts the ledger kinds and prompts
+### 6. `JournalReport` gains a namespaced `ledger` block
 
-**Chosen:** add `stages`, `findings`, `resolutions`, `checks`, `decisions`,
-`prompts` counters and print them in the validate summary. Additive fields on
-an exported interface; consumers that destructure named fields are unaffected.
+**Chosen:** `JournalReport.ledger = { stages, findings, resolutions, checks,
+decisions, prompts }`, printed in the validate summary, and `JournalSurvey`
+gains the same block summed across journals. Namespaced because
+`JournalReport.findings` already exists as the array of validator findings and
+is consumed as one in the kernel CLI, the kit CLI and `doctor`; a counter of
+the same name would be a breaking redefinition, not an addition. One new
+optional-to-read field on each exported interface is additive.
 
 ### 7. The git user is header identity, resolved where the other identity is
 
-**Chosen:** `resolveIdentity` also runs `git config user.name` and
-`git config user.email` inside the same per-call and total budgets, and the
-header gains `user: { name, email }`. Either half missing is omitted; an empty
-string is `MALFORMED` at `0.6`, matching the rule the other identity fields
-already carry. No verdict reads it.
+**Chosen:** `resolveIdentity` also runs `git config user.name` inside the same
+per-call and total budgets, and the header gains `user: { name }`. Missing is
+omitted; an empty string is `MALFORMED` at `0.6`, matching the rule the other
+identity fields carry — and that rule is a **tightening**, so this decision is
+one of the reasons `0.6` is a bump rather than a courtesy. `email` is not
+recorded (see the proposal); adding it later is additive.
 
 **Evidence:** `packages/kit/src/identity.ts:58@c8305b1` — `export const IDENTITY_BUDGET_MS = 600;`
 
@@ -209,10 +238,33 @@ already carry. No verdict reads it.
   who was steering, not who committed.
 - **Record on every record** — rejected: the operator does not change within a
   session; the header is where session-constant identity lives.
+- **Record `email` too** — rejected for now: the only redactor is in the
+  unmerged `add-pr-process-report`, and a guard that lives entirely downstream
+  is not a mechanism.
 
 **Rationale:** the field is a claim about the tree's operator, in the same
 class as `branch` and `worktree`, and gets their non-empty rule for the same
 reason: a blank compares equal to every other blank.
+
+### 9. The 0.6 fixture pair, and what the compatibility twin proves
+
+**Chosen:** three fixtures. `v0.6-run.jsonl` — every kind including `prompt`,
+per-record `origin` on the four coordinator kinds, an `expects: "findings"`
+dispatch with a `finding`, a dispatch **without** `expects` whose terminal is
+`found` and which no finding names, and a `user.name` header — must exit 0.
+`v0.6-broken-run.jsonl` — trips each new rejection by name: a `prompt` with
+neither `text` nor `chars`+`hash`, a non-integer `chars`, a blank `user.name`,
+a `resolution` with no `origin`, a dispatch with `expects: "reviews"`, and an
+`expects: "findings"` dispatch left silent — must exit 1. `v0.5-compat-run.jsonl`
+— the **same bytes as `v0.6-run.jsonl`** apart from the declared version — must
+exit **1**, because at 0.5 the unscoped `SILENT-REVIEWER` fires on the
+dispatch without `expects` and the `prompt` kind is unknown.
+
+**Rationale:** the 0.4 pair worked because the newer version was stricter, so
+"same bytes, older version passes" proved the floor. This bump loosens one
+verdict, so that pair is inverted: same bytes, newer version passes, older
+fails. A pair where both fail proves nothing about the direction of the
+predicate — which is exactly what a floor written backwards would look like.
 
 ### 8. Prompts are a record kind, joined by the harness's own key
 
@@ -270,9 +322,11 @@ The residual case is a hand-run older kernel, and the finding it prints names th
 
 Mirrored from `proposal.md`:
 
-1. Whether Decision 4's scoping is a bump (`checker-engineer` to settle).
+1. ~~Whether Decision 4's scoping is a bump~~ — resolved: 0.6 is owed by
+   triggers 1 and 3 regardless; the scoping rides along.
 2. How TAINTED probe rounds are recorded, if at all.
 3. Whether `CLAUDE_CODE_SESSION_ID` is present under every harness entry point.
 4. Whether transcript-derived usage belongs to the hooks tier.
-5. Whether prompt text is on by default (operator's consent call).
-6. The real field names of the `UserPromptSubmit` payload (probe first).
+5. ~~Whether prompt text is on by default~~ — settled by the operator: on.
+6. The real field names of the `UserPromptSubmit` payload (probe first); the
+   no-`prompt_id` fallback is stated in the proposal.
