@@ -386,7 +386,9 @@ the hooks check for the directory and exit silently otherwise. Set
 agent still cannot decline to be recorded; a person decides which repos keep
 journals.
 
-By default the hooks fetch the published recorder. To pin a local build, set
+By default the hooks fetch the published recorder, which is what this repo
+itself does. To pin a local build instead — while developing the kit, say, when
+you want your own sessions recorded by the code you are editing — set
 `NULLIUS_KIT_BIN` in `.claude/settings.json`:
 
 ```json
