@@ -103,14 +103,17 @@ is the durable fact and the memory entry was a symptom.)
 - `canary plant`'s already-registered refusal, and `loadActiveCanary`'s
   unsafe-path warning, no longer name them. Both are thrown rather than printed,
   which is why three rounds of searching for print sites passed over them.
-- **All seven go through one redacting accessor**, with `canary plant` as the
-  single explicit exception and the deferred guard row as a named second one.
+- **All nine go through one redacting accessor** — six in `cli.ts` and three in
+  `canary.ts` — with `canary plant` as the single explicit exception and the
+  deferred guard row as a named second one. Eleven renderings of a plant's
+  location exist in total: nine redacted, one deferred, one deliberate.
   This is the substance of the change. Enumerating call sites was tried three
-  times and shipped an incomplete set each time — eight surfaces now known,
-  surfacing at roughly two per review round, by a process with no way to know
-  when it was finished. The fifth review round searched exhaustively and found
-  no further site, which is the first evidence the set is closed.
-  `design.md` Decision 5 has the argument.
+  times and shipped an incomplete set each time, surfacing at roughly two per
+  review round, by a process with no way to know when it was finished. The
+  fifth review round searched exhaustively and found no further site, and
+  post-review confirmed the ledger against the shipped code — the count in an
+  earlier draft of this bullet was itself wrong, which is the argument for the
+  accessor stated one more time. `design.md` Decision 5 has the argument.
 - The coordinator does not lose anything it needs: `canary plant` already
   prints the location at plant time, and Stage 2 Step 3 already instructs
   recording it then — `status` was never the coordinator's source for this
@@ -151,6 +154,13 @@ is the durable fact and the memory entry was a symptom.)
   this change's own `review-evidence.md` records a reviewer reaching the plant
   that way during iteration 2. The reason it is deferred is that closing it
   correctly is a schema change, not that it does not matter.
+- **Not closing the out-of-scope warning's presence oracle.** Even redacted,
+  that warning fires exactly when the matched set does *not* contain the plant,
+  and `--probing` suppresses the guard row and the stale-registry warning but
+  not this one. `check --probing <one-document>` therefore still answers "is the
+  plant here" one bit at a time. Redaction removes the text, not the signal
+  carried by which message fires; closing it means changing when the warning is
+  emitted. Found at post-review, and it survives the guard-row follow-up.
 - **Not claiming to stop a determined reviewer.** The boundary this change
   enforces is *reachability through the tool's own commands*, and what it
   removes is incidental exposure — a reviewer running documented commands as

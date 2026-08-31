@@ -258,6 +258,12 @@ The five, all message strings:
 together with `canary status`'s presence branch (Decision 1), `check`'s two
 warnings (Decision 2), and `verify`'s CAUGHT/MISSED messages (Decision 3).
 
+(The running count in these decisions was itself wrong until post-review: the
+shipped ledger is nine redacted, one deferred, one deliberate reveal. The
+narrative below is kept as written because the sequence of discovery is the
+argument for Decision 5 — but the numbers in it are the numbers known at each
+round, not the final total.)
+
 **A seventh site, found at iteration 4, and why it was missed.** `plant` refuses
 when a canary is already registered, and names the existing one:
 

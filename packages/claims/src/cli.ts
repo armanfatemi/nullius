@@ -1106,7 +1106,7 @@ function runCheck(args: CheckArgs): number {
     );
     if (!matched) {
       console.error(
-        "warning: the registered canary points at a document outside the matched set — not read",
+        "warning: the registered canary points at a document outside the matched set — not read; run `canary clear` if it is stale",
       );
     } else if (!run.guardFired && !args.probing) {
       console.error(

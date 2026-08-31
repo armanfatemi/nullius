@@ -1008,3 +1008,181 @@ pre-change cli.ts strings (4 failures), and re-appending entry.doc to the
 unsafe-path warning (1 failure). Confirmed independently that canary.ts and
 cli.ts are unchanged after those passes, and that the six CLI-spawn tests
 genuinely execute rather than skipping past an unbuilt dist (28-32ms each).
+
+## Stage 6 — Post-review
+
+Post-review on the shipped diff (370 insertions, 5 code/doc files). Routed from
+`git diff --name-only main...HEAD` rather than from the proposal:
+architecture-reviewer, rule-auditor, test-engineer. One blocker, several
+concerns, and one reviewer claim that did not survive checking.
+
+## Blocker, fixed
+
+### B1. The CHANGELOG's leak ledger did not reconcile
+
+Raised by architecture-reviewer. The entry said "Eight commands did" and
+enumerated eight sites, but the shipped diff redacts a **ninth** —
+`packages/claims/src/canary.ts:209`, `loadActiveCanary`'s unsafe-path warning.
+It then called the deferred guard row "the shortest measured path of the
+eight," though the guard row is not among those eight, so the set was neither
+eight nor internally consistent.
+
+On a change whose entire subject is accurate leak accounting, an unreconciled
+ledger is the defect the change exists to prevent, committed in its own release
+note. The authoritative count, established by grepping the shipped code rather
+than by re-reading the plan:
+
+- **Nine redacted.** Six in `cli.ts` — `status` presence, `check`'s two canary
+  warnings, `verify`'s CAUGHT and MISSED, `clear`'s confirmation. Three in
+  `canary.ts` — `plant`'s already-registered refusal, `clearCanary`'s refusal,
+  `loadActiveCanary`'s unsafe-path warning.
+- **One deferred** — `canaryGuardResult`'s `CANARY-PRESENT` row.
+- **One deliberate reveal** — `canary plant`'s own success output.
+
+Eleven renderings in total. `CHANGELOG.md`, `proposal.md` and `design.md` are
+corrected to that ledger, and `proposal.md` now says the earlier count was
+itself wrong, because that is the accessor's argument restated.
+
+## The finding that outlasts this change
+
+### C1. The out-of-scope warning is a presence oracle even when redacted
+
+Raised by architecture-reviewer as a concern; verified empirically by the
+coordinator before being written down.
+
+`check`'s out-of-scope warning fires exactly when the matched set does *not*
+contain the plant. `--probing` suppresses the `CANARY-PRESENT` guard row and the
+stale-registry warning, but there is no `args.probing` term on this branch. So
+`check --probing <one-document>` answers "is the plant in this file" as a clean
+one-bit signal, needing no prior knowledge and no registry access.
+
+Measured on a live plant rather than reasoned from the source: probing a
+document without the plant fired the warning; probing the planted document did
+not. One versus zero.
+
+Two things make this worth recording rather than fixing here. It **survives the
+guard-row follow-up**, so the change's own stated remaining-work does not close
+it. And it is a different kind of leak from the nine: redaction removes the
+text, but not the signal carried by *which* message fires. Closing it means
+changing when the warning is emitted, which is a behaviour change with its own
+diagnostic cost and belongs in its own change.
+
+It is now disclosed as a third stated limit in `CHANGELOG.md` and as a Non-goal
+in `proposal.md`, rather than left for a reader to discover.
+
+## Concerns addressed
+
+- **C2** (architecture-reviewer). The out-of-scope warning had lost its remedy
+  entirely when `run \`canary status\`` was removed, ending at "not read".
+  `canary clear` is a valid, non-leaking remedy and is now offered.
+- **C3** (architecture-reviewer). `.claude/skills/proposal-to-pr/SKILL.md:586`
+  cited `packages/claims/src/canary.ts:328-329` for `verifyCanary`'s two match
+  paths; inserting `describeCanary` shifted them to 362-363, and line 328 is now
+  blank. Not an `**Evidence:**` anchor, so no checker would have caught it.
+  Corrected — the staleness was caused by this change.
+- **C4** (rule-auditor). The `existsSync(CLI)` guard on the six CLI-spawn tests
+  handles an *absent* `dist/` honestly but does nothing for a *stale* one, which
+  is the case `build-before-cli.md` actually names. Carried to the PR as an open
+  concern rather than fixed: the pattern is shared with
+  `cli.characterization.test.ts`, so it is pre-existing and repo-wide, and
+  narrowing it here would change a convention this change did not introduce.
+  test-engineer independently reached the same conclusion and the same disposal.
+
+## A reviewer claim that did not survive checking
+
+architecture-reviewer reported that the ninth redaction, `canary.ts:209`, "has
+no test," having grepped for the message string `unsafe path and was ignored`
+and found it only in the source.
+
+That is wrong, and the reason is instructive. The test at
+`packages/claims/src/canary.test.ts:429-455` binds its assertion to the *value*
+rather than the message text — `expect(loaded.warning).not.toContain(unsafeDoc)`
+and `.not.toContain(\`${unsafeDoc}:1\`)` — which is exactly what `tasks.md` 3.1
+required of every negative assertion in this change, precisely so a test cannot
+pass by matching prose. A grep for the prose therefore cannot find it. The
+finding is recorded because a search-shaped check missed a test that a
+value-bound assertion made stronger, which is worth knowing the next time a
+review reasons from grep output alone.
+
+## Independently confirmed by this round
+
+- **rule-auditor settled the anchor question the coordinator flagged as its own
+  most likely violation.** `spec/canary.md:51` and `:81` had their line numbers
+  changed (43→77, 49→83) after `describeCanary` shifted the file. It checked
+  `git show main:spec/canary.md` and confirmed neither anchor carries an `@rev`
+  in the base or in the edit, so there is no old stamp for a moved line to
+  contradict; `never-repoint-under-old-stamp.md` binds on stamped anchors. Both
+  new line numbers verified correct against the current file.
+- **rule-auditor confirmed commit hygiene** via `git log main..HEAD --name-only`:
+  every commit stayed inside `CHANGELOG.md`, the change folder, `spec/canary.md`
+  and the three `packages/claims/src` files. None of the working tree's
+  unrelated uncommitted work — `README.md`, `.github/workflows/ci.yml`,
+  `CLAUDE.md`, `docs/icon.svg`, the agent-memory files,
+  `cli.characterization.test.ts` — appears in any commit on this branch.
+- **test-engineer confirmed no test is vacuous**, cross-checking every
+  pre-change string in the diff: each of the nine sites interpolated `entry.doc`
+  or the composed location before this change, so every negative assertion would
+  have failed against the parent commit.
+- **test-engineer confirmed the invariants are pinned, not assumed** —
+  `no active canary` as an exact match with exit 0, and exit 1 while active.
+- **test-engineer confirmed the stale-registry test's narrower scoping is
+  correct**: that case has the planted document inside the matched set, so
+  `check`'s report legitimately lists it under "No anchors", and a whole-output
+  assertion would fail against correct code for a reason unrelated to redaction.
+- **architecture-reviewer confirmed `describeCanary` fails closed**
+  (`options.reveal === true`), and that the two non-parallel return shapes are
+  defensible: a dropped flag produces the visible tell `planted planted <ISO>`
+  rather than a silent leak, and `plant`'s documented `planted <doc>:<line>`
+  contract holds byte-identical.
+- **architecture-reviewer verified both of the CHANGELOG's original limits**
+  against the code: registry writes are unchanged, and `canaryGuardResult` still
+  emits `source: {doc, line}`.
+
+## Coordinator verification, not delegated
+
+Two claims in this round were re-established directly rather than accepted:
+
+- **The mutation verification.** The implementing agent reported that reverting
+  `describeCanary` to always-reveal fails exactly six tests. test-engineer
+  explicitly did not execute it, reasoning from the diff instead. Re-run here:
+  six failures, and the same six — `plant`'s refusal, `clearCanary`'s refusal,
+  two of the three `describeCanary` cases, `canary status` (CLI) and
+  `canary clear` (CLI). `canary.ts` was restored and confirmed byte-identical to
+  `HEAD` afterwards.
+- **The presence oracle.** Verified on a live plant, as recorded under C1, before
+  being written into the CHANGELOG as a security claim.
+
+## Coordinator corrections since last append
+
+- **My own leak ledger was wrong, in the change about leak ledgers.**
+  `[corrected-coordinator]` I wrote "eight sites" in the CHANGELOG, in
+  `proposal.md`, and in every status report I gave during Stage 4, having lost
+  `loadActiveCanary`'s unsafe-path warning from the count somewhere between
+  routing it and describing it. I then compounded it by calling the deferred
+  guard row "shortest of the eight" when it was not one of them. The correct
+  ledger is nine redacted, one deferred, one deliberate. I established it by
+  grepping the shipped code, which is what I should have done before writing any
+  of the three documents.
+
+- **I shipped a redaction that removed a message's remedy and did not notice.**
+  `[corrected-coordinator]` Task 2.1 told me to remove `run \`canary status\``
+  because that command could no longer answer the question. It did not tell me to
+  leave the warning with no remedy at all, and I did, ending it at "not read".
+  `canary clear` was available and non-leaking the whole time.
+
+- **I introduced a stale reference into the pipeline's own skill file.**
+  `[corrected-coordinator]` Inserting `describeCanary` shifted
+  `verifyCanary`'s match paths, and `SKILL.md:586` cites them by line. Nothing in
+  the toolchain would have caught it, because a skill file's prose citation is
+  not an Evidence Anchor — the same class of ungrounded citation this change's
+  own iteration-1 review found in `design.md` and made me convert to anchors.
+  I did not check whether my edit invalidated a citation elsewhere.
+
+## Stage 5 — Verify after Stage 7 fixes
+
+build: pass
+type-check: pass
+test: claims 6 failed | 907 passed | 92 skipped; kit 282 passed. The 6 are the
+      documented ugrep flagConformance baseline.
+dogfood gates: pass, both polarities (witness valid/broken, wiring valid/broken,
+      wiring ., spec markers, openspec anchors). canary status clean.
