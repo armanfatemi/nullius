@@ -6,11 +6,23 @@ updates:
       interval: weekly
     open-pull-requests-limit: 5
     groups:
-      # One PR for the dev toolchain rather than five. These do not ship —
-      # `files` in each package.json publishes only dist/ — so they are
+      # TypeScript is grouped alone because it fails independently of anything
+      # else here. `tsup --dts` builds types through rollup-plugin-dts, which
+      # reads TypeScript's internals, so a TS major breaks `pnpm build` before
+      # any test runs — TS 7 died on `useCaseSensitiveFileNames` in #65 and
+      # took vitest and @types/node down with it, both of which were fine on
+      # their own. A bump that needs a coordinated toolchain upgrade should not
+      # be able to hold back three that do not.
+      typescript:
+        patterns:
+          - typescript
+      # One PR for the rest of the dev toolchain rather than four. These do not
+      # ship — `files` in each package.json publishes only dist/ — so they are
       # reviewed as a batch.
       dev-dependencies:
         dependency-type: development
+        exclude-patterns:
+          - typescript
 
   - package-ecosystem: github-actions
     directory: /
