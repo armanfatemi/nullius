@@ -658,8 +658,13 @@ suite("CLI characterization — the zero-marker funnel", () => {
     expect(lastLine(human.stdout)).toBe(`next: ${report.summary.next}`);
   });
 
+  // Cites spec/evidence-anchors.md rather than README.md: CI gates
+  // `spec/**/*.md` under --require-markers, so that document cannot silently
+  // stop carrying markers without the check step failing first. README.md is
+  // the front door and carries none — it explains the convention rather than
+  // asserting anything about the code.
   it("does not fire when any matched document carries a marker", () => {
-    const result = run("check", "README.md");
+    const result = run("check", "spec/evidence-anchors.md");
 
     expect(result.code).toBe(0);
     expect(result.stdout).not.toContain("next: nullius audit");
@@ -699,14 +704,19 @@ suite("CLI characterization — --format json parity", () => {
     return { human, json, report };
   }
 
-  const readmeFirstLine = readFileSync(join(REPO_ROOT, "README.md"), "utf8").split("\n")[0] ?? "";
+  // LICENSE, not README.md. This citation has to verify as `ok` rather than
+  // `weak-anchor`, which means the quoted line must be UNIQUE in the cited
+  // file — and README.md's first line is `<p align="center">`, which repeats.
+  // "MIT License" occurs exactly once in LICENSE, and LICENSE is the file in
+  // this repo least likely to be rewritten.
+  const licenseFirstLine = readFileSync(join(REPO_ROOT, "LICENSE"), "utf8").split("\n")[0] ?? "";
 
   it("agrees on a passing document", () => {
     const root = scratch("nullius-parity-ok-");
     const doc = writeDoc(root, "ok.md", [
       "# Grounded",
       "",
-      `**Evidence:** \`README.md:1\` — \`${readmeFirstLine}\``,
+      `**Evidence:** \`LICENSE:1\` — \`${licenseFirstLine}\``,
     ]);
     const { human, report } = parity(doc);
 

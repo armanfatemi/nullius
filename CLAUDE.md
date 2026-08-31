@@ -54,7 +54,7 @@ Verify with the tool, never by hand — a line-by-line script only knows "does
 line N match" and misses `FABRICATED` / `WEAK-ANCHOR` / `UNPINNED` / `DRIFT`:
 
 ```sh
-node packages/claims/dist/cli.js check 'README.md' 'spec/**/*.md' --require-markers
+node packages/claims/dist/cli.js check 'spec/**/*.md' --require-markers
 node packages/claims/dist/cli.js check 'openspec/**/*.md'
 ```
 
