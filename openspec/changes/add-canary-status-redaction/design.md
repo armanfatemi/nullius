@@ -274,13 +274,22 @@ it.
 
 **Evidence:** `packages/claims/src/canary.ts:175@3b547b4` — ``      warning: `canary registry entry has an unsafe path and was ignored: ${entry.doc}`,``
 
-iteration 4's review reported this site as unreachable through `plant` because
-`canary.ts:283` rejects. That reasoning is wrong: line 283 validates the *new*
-document's path, while this warning is rethrown eleven lines earlier —
+iteration 4's review reported this site as unreachable through `plant`, on the
+grounds that a later line rejects. That reasoning is wrong: the rejection it
+meant validates the *new* document's path —
+
+**Evidence:** `packages/claims/src/canary.ts:282@3b547b4` — `  if (!docSafety.safe) throw new Error(`unsafe document path — ${docSafety.reason}`);`
+
+— while this warning is rethrown nine lines earlier, before execution ever
+reaches it:
 
 **Evidence:** `packages/claims/src/canary.ts:273@3b547b4` — `  if (warning !== undefined) throw new Error(warning);`
 
-— so `plant` does surface it. The conclusion survives for a different reason:
+So `plant` does surface it. (An earlier draft of this paragraph repeated the
+review's `canary.ts:283` and called the gap "eleven lines" — the citation was
+inherited rather than re-read, and the arithmetic was wrong under every reading.
+Corrected at iteration 5, in a paragraph whose whole subject is another party's
+citation being wrong.) The conclusion survives for a different reason:
 the warning only fires when the registry entry already holds an unsafe path,
 which requires someone to have written that registry by hand, and anyone who can
 write it can read it. It is routed through the accessor anyway, because "not
@@ -298,6 +307,22 @@ an incomplete set each time. The accessor converts "did the author remember
 every site?" into "does this site format an entry?", which is a question a
 reader can answer by looking at one function. It also means the seventh render
 site, whenever it is written, is redacted by default rather than by diligence.
+
+**A limitation this decision does not close, stated here rather than in the
+spec.** Nothing in the build prevents a future site from formatting a canary
+entry by hand. The accessor makes the redacted form the easy path and the
+reviewable one; a site that bypassed it would compile and pass. The mechanism
+that would enforce it — a lint asserting no `entry.doc` access outside the
+accessor — is rejected below, because it would fail on legitimate non-rendering
+uses such as `clearCanary`'s splice. So the completeness of the accessor's
+adoption is a review property, not a tested one.
+
+This was briefly written as a spec requirement at iteration 5. Two reviewers
+independently said that is the wrong home: it mandates no behaviour and would
+archive into the capability spec as a permanent non-obligation, and no
+precedent for a self-referential requirement exists anywhere in this
+repository's specs. Stating the gap is right; encoding it as an obligation is
+not.
 
 **Alternatives considered:**
 

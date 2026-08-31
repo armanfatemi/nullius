@@ -170,6 +170,22 @@ there to confirm.
       need the built CLI — the accessor is exported from `canary.ts` — and it is
       the test that pins the rule the other five rely on.
 
+- [ ] 3.9 Cover task 2b.8, `plant`'s already-registered refusal. **Import
+      test** — extend the existing case at
+      `packages/claims/src/canary.test.ts:141-144`, which already exercises this
+      exact throw with
+      `expect(() => plantCanary(root, "docs/design.md")).toThrow(/active canary/)`.
+      Add negative assertions that the message excludes `entry.doc` and the
+      composed location string.
+- [ ] 3.10 Cover task 2b.9, `loadActiveCanary`'s unsafe-path warning. **Import
+      test** — extend the existing case at
+      `packages/claims/src/canary.test.ts:327-344`,
+      "rejects a registry entry whose path fails path safety", which already
+      hand-writes a `.git/nullius/canaries.json` carrying `doc: "/etc/passwd"`
+      and calls `loadActiveCanary` directly. Add a negative assertion that
+      `loaded.warning` excludes that path. That existing test is also the proof
+      this condition is constructible: it already constructs it.
+
 ## 4. Fixtures and CI gate
 
 - [ ] 4.1 The CI dogfood gate's `nullius canary (self)` step calls
@@ -193,7 +209,7 @@ there to confirm.
 
 ## 6. Verification
 
-- [ ] 6.1 **`pnpm build` FIRST, before the test suite.** Six of the eight tests
+- [ ] 6.1 **`pnpm build` FIRST, before the test suite.** Six of the ten tests
       in section 3 — 3.1 through 3.6 — exercise `cli.ts`'s handlers, which are
       unexported: the file ends in `process.exit(main())`, so those tests must
       spawn the built `dist/cli.js`, the pattern
@@ -205,7 +221,10 @@ there to confirm.
       direct-call test at `packages/claims/src/canary.test.ts:274-284`, so 3.7
       can be written as an import test and should be — do not write it as a
       slower spawn test on the strength of the earlier claim.
-      The build-first ordering stands regardless, on the six that do need it.
+      Tasks 3.7 through 3.10 are all import tests: `clearCanary`, `plantCanary`
+      and `loadActiveCanary` are exported and each already has a direct-call
+      precedent in `packages/claims/src/canary.test.ts`. The build-first
+      ordering stands regardless, on the six that do need it.
       Getting this backwards is what `.claude/rules/build-before-cli.md`
       describes, and the earlier draft reproduced it inside this plan's own
       verification section.

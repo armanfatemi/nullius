@@ -100,11 +100,17 @@ is the durable fact and the memory entry was a symptom.)
   other messages advertise.
 - `clearCanary`'s refusal message, raised when the registered line no longer
   carries the planted claim, no longer names them.
-- **All five go through one redacting accessor**, with `canary plant` as the
-  single explicit exception. This is the substance of the change. Enumerating
-  call sites was tried three times and shipped an incomplete set each time —
-  six surfaces surfaced at roughly two per review round, by a process with no
-  way to know when it was finished. `design.md` Decision 5 has the argument.
+- `canary plant`'s already-registered refusal, and `loadActiveCanary`'s
+  unsafe-path warning, no longer name them. Both are thrown rather than printed,
+  which is why three rounds of searching for print sites passed over them.
+- **All seven go through one redacting accessor**, with `canary plant` as the
+  single explicit exception and the deferred guard row as a named second one.
+  This is the substance of the change. Enumerating call sites was tried three
+  times and shipped an incomplete set each time — eight surfaces now known,
+  surfacing at roughly two per review round, by a process with no way to know
+  when it was finished. The fifth review round searched exhaustively and found
+  no further site, which is the first evidence the set is closed.
+  `design.md` Decision 5 has the argument.
 - The coordinator does not lose anything it needs: `canary plant` already
   prints the location at plant time, and Stage 2 Step 3 already instructs
   recording it then — `status` was never the coordinator's source for this
@@ -138,9 +144,13 @@ is the durable fact and the memory entry was a symptom.)
   JSON schema — a different kind of fix from the five message strings this
   change covers, needing an additive field rather than a sentinel, and a
   reviewer whose remit is the kernel's contracts. Split into a follow-up at
-  iteration 3; `design.md` Decision 4 carries the argument. It is also the
-  least informative of the six surfaces: it adds the line to a document the
-  reader already knows, because they just asked `check` to read it.
+  iteration 3; `design.md` Decision 4 carries the argument. **This change therefore ships
+  with the shortest measured path still open**, and says so rather than calling
+  it harmless: under `check 'openspec/**/*.md'`, the gate `CLAUDE.md` documents,
+  the guard row names which document carries the plant as well as the line, and
+  this change's own `review-evidence.md` records a reviewer reaching the plant
+  that way during iteration 2. The reason it is deferred is that closing it
+  correctly is a schema change, not that it does not matter.
 - **Not claiming to stop a determined reviewer.** The boundary this change
   enforces is *reachability through the tool's own commands*, and what it
   removes is incidental exposure — a reviewer running documented commands as

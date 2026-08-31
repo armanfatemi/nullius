@@ -74,9 +74,18 @@ what happened and what the operator should do next.
 ### Requirement: one accessor renders a registered canary, with plant as the sole exception
 
 Every rendering of a registered canary for human output SHALL go through a
-single accessor that omits the document and line by default. `canary plant`
-SHALL be the only caller that requests the unredacted form, and SHALL do so
-through an explicit, named option rather than by formatting the entry itself.
+single accessor that omits the document and line by default, with exactly two
+exceptions, both named here.
+
+`canary plant` SHALL be the only caller that requests the unredacted form, and
+SHALL do so through an explicit, named option rather than by formatting the
+entry itself.
+
+`canaryGuardResult` SHALL remain outside this requirement until the follow-up
+change that redacts the `CANARY-PRESENT` guard row. It renders the plant's line
+through a structured field that reaches the published JSON schema, so it cannot
+be corrected by the same mechanism, and this specification does not claim
+otherwise.
 
 This SHALL hold for messages raised as errors as well as messages printed to a
 console. Both classes exist today, and the error-raised ones are why an earlier
@@ -98,21 +107,3 @@ appears to serve.
 
 - **WHEN** `canary plant` succeeds
 - **THEN** it prints the planted document and line, because the coordinator records them at that moment
-
-### Requirement: the accessor's completeness is a review property, not a tested one
-
-This specification SHALL NOT be read as claiming that a future rendering site is
-prevented from formatting a canary entry by hand. Nothing in the build enforces
-that; the accessor makes the redacted form the easy path and the reviewable one,
-and a site that bypasses it would compile and pass.
-
-The mechanism that would enforce it — a lint asserting no `entry.doc` access
-outside the accessor — is rejected in `design.md` Decision 5, because it would
-fail on legitimate non-rendering uses such as `clearCanary`'s splice. This
-requirement exists so the gap is stated rather than left for a reader to infer
-from the accessor's existence.
-
-#### Scenario: A bypassing site is caught by review, not by a check
-
-- **WHEN** a new site formats a canary entry's document or line without the accessor
-- **THEN** no automated gate fails, and the omission is visible only to a reader of the diff
