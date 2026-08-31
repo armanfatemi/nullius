@@ -87,17 +87,17 @@ untouched.
   documented workflow), and the redacted message still answers that
   question. Removing output entirely would regress a real, unrelated use
   case to fix a probe-specific concern.
-- **Redact in `canary verify`'s CAUGHT/MISSED messages too**, closing that
-  vector in the same change — considered and deferred to `proposal.md`'s
-  Non-goals: `verify` is exclusively a coordinator action, no observed run
-  used it as a leak, and bundling an unobserved fix with an observed one
-  makes this change's justification weaker for the part that has evidence.
+- **Redact in `canary verify`'s CAUGHT/MISSED messages too** — this bullet
+  originally deferred that to Non-goals on the grounds that `verify` is
+  exclusively a coordinator action. **Superseded by Decision 3**, which found
+  that reasoning to be a convention mistaken for a guard. `verify` is in scope.
 
-**Rationale:** The fix removes exactly the information a reviewer would need
-to fake detection, and nothing else — it is scoped to the leak that was
-actually observed being exploited (per `proposal.md`'s Problem section),
-rather than a general "canary output should be secret" policy that would
-also break the legitimate human-debugging use case `status` exists for.
+**Rationale:** The fix removes exactly the information a reviewer would need to
+fake detection, and nothing else. Note that this decision was drafted when
+`status` was believed to be the only leaking surface; Decisions 2, 3 and 4 are
+the record of that belief being wrong three times in succession. What survives
+from it is the shape of the fix — redact the location, keep the command and its
+exit codes — not its claim about scope.
 
 ### 2. Redact the plant's document from `check`'s two canary warnings as well
 
@@ -142,13 +142,89 @@ without naming where.
   trades a leak for a silence, and the stale-registry warning is the only signal
   a human gets that the registry has desynchronized from the tree.
 
-**`canary verify` remains unredacted, and this is now a two-against-one split
-rather than a one-against-one**, so it needs the stronger argument
-`proposal.md`'s Non-goals gave it: `verify` is invoked only by the coordinator,
-at Stage 2 Step 5, *after* the review has already been written and scored. There
-is no ordering in which a reviewer's report could benefit from reading it.
-`status` and `check` are both commands a reviewer runs *during* the review.
-The split is on when the command runs, not on how secret its output is.
+### 3. The boundary is reachability, not convention — so `verify` is in scope too
+
+**Rewritten at refinement iteration 2.** Iteration 1's version of this section
+argued that `canary verify` could stay unredacted because it "is invoked only by
+the coordinator, at Stage 2 Step 5, after the review has already been written
+and scored," and that "there is no ordering in which a reviewer's report could
+benefit from reading it."
+
+**That argument was wrong, and it is recorded here rather than quietly deleted
+because the way it was wrong is the point.** It described a convention in a
+skill document as though it were a guard in code. Nothing sequences `verify`.
+The handler reads the registry, prints the location on both outcomes, and never
+clears the entry:
+
+**Evidence:** `packages/claims/src/cli.ts:1322@3f64b6e` — ``        console.log(`CANARY-CAUGHT — the review flagged ${entry.doc}:${entry.line}`);``
+
+**Evidence:** `packages/claims/src/cli.ts:1326@3f64b6e` — `          `CANARY-MISSED — nothing in the review references ${entry.doc}:${entry.line} or the planted claim`,`
+
+It takes a report-file operand and nothing else, so a reviewer can write one
+line to a scratch file, run `verify` on it, and be handed the plant's document
+and line. The score it costs them is a `MISSED` against a file that was never a
+review.
+
+**Chosen boundary: a command is in scope if a reviewer can reach the location
+through it.** By that test all four surfaces are in scope — `status`, both of
+`check`'s warnings, `check`'s `CANARY-PRESENT` guard row (Decision 4), and
+`verify`'s two messages. The redaction is applied uniformly rather than
+per-command, so the next renderer of a registry entry does not silently
+reintroduce the leak.
+
+**What this boundary does not claim.** `.git/nullius/canaries.json` stays
+readable by `cat`, as `proposal.md`'s Non-goals already conceded, so a
+determined reviewer is not in the threat model and this change does not pretend
+otherwise. What it removes is *incidental* exposure: the case where a reviewer
+running the repository's own documented commands, as part of an ordinary review,
+is handed the answer without having sought it. Both of this change's own
+pre-review rounds produced exactly that case, which is the evidence the boundary
+rests on.
+
+### 4. The `CANARY-PRESENT` guard row carries the plant's line, and must stop
+
+**Added at refinement iteration 2.** This is the shortest path of the four and
+the one both pre-review rounds actually travelled. The guard result is built
+with the plant's line as its source:
+
+**Evidence:** `packages/claims/src/canary.ts:367@3f64b6e` — `    claim: { kind: "canary", source: { doc, line: entry.line } },`
+
+which `check` renders as an ordinary result row naming the document and the
+exact line.
+
+**The redaction must happen here, at construction, not at rendering.** The same
+`source` field feeds `--format json`, so a fix applied only to the human
+formatter would leave `check --format json` reporting the location — the same
+whack-a-mole this change has already played three times.
+
+**Chosen:** `canaryGuardResult` stops putting `entry.line` into `source.line`
+and uses `0`, meaning *document-level, no specific line*. There is no existing
+`line: 0` convention in the package and nothing validates `line > 0` — both
+checked — so this introduces the sentinel rather than borrowing one, and it is
+called out here for that reason rather than left as an implementation detail.
+
+**Why the guard loses nothing it needs.** Its own remedy is `canary clear`,
+which takes no argument and needs no line number:
+
+**Evidence:** `packages/claims/src/canary.ts:369@3f64b6e`
+
+```ts
+    detail: `a registered canary is planted in this document (planted ${entry.plantedAt}) — run \`canary clear\` before approval, or \`check --probing\` during a probe`,
+```
+
+The document stays named — it is the document the reader just asked `check` to
+read, and it heads the group the row prints under, so suppressing it would cost
+the guard its legibility while hiding nothing.
+
+**Alternatives considered:**
+
+- **Suppress the row entirely when a canary is present.** Rejected: `check`
+  would then fail with no stated reason, which is worse than a located warning.
+- **Redact in the human formatter only.** Rejected: `--format json` carries the
+  same `source`, and a JSON consumer is exactly the sort of reader that would
+  quietly keep working while the guarantee stopped holding.
+- **Use `line: 1`.** Rejected as actively misleading — it points at real content
+  in the document, which the sentinel is meant not to do.
 
 ## Open questions
 

@@ -48,6 +48,31 @@ open, because `check` prints the document itself.
 - [ ] 2.3 Both remain `console.error` at their current severity. This change
       redacts what they say, never whether they fire.
 
+## 2b. Redact the guard row and `canary verify`
+
+Added at refinement iteration 2; see `design.md` Decisions 3 and 4. These are
+the third and fourth leaking surfaces, found after Decision 2 was written.
+
+- [ ] 2b.1 In `packages/claims/src/canary.ts`, change `canaryGuardResult` to
+      build its result with `source: { doc, line: 0 }` instead of
+      `line: entry.line`. `0` means document-level, no specific line.
+      **This is a new sentinel** — no `line: 0` convention exists in the
+      package today and nothing validates `line > 0` (both checked at design
+      time). Document the meaning in the function's doc comment, which already
+      describes the result as document-level.
+- [ ] 2b.2 Confirm the redaction survives `--format json`. The same `source`
+      field feeds both renderers, which is why 2b.1 edits the construction
+      rather than the formatter — but confirm it rather than assume it, because
+      "the fix was applied at the wrong layer" is the defect this task exists
+      to avoid.
+- [ ] 2b.3 In `packages/claims/src/cli.ts`, drop `${entry.doc}:${entry.line}`
+      from `canary verify`'s CAUGHT and MISSED messages. Both still say which
+      outcome was scored; neither says where. Exit codes unchanged
+      (`0` caught, `1` missed, `3` tainted, `2` unusable).
+- [ ] 2b.4 Leave `canary plant`'s output alone — it prints the location by
+      design, at the one moment the coordinator legitimately needs it, and
+      `SKILL.md` Stage 2 Step 3 instructs recording it then.
+
 ## 3. Unit tests
 
 **No CLI-level test for `canary status` exists today.** Pre-review checked
@@ -64,9 +89,12 @@ there to confirm.
       contain the planted document's path.
       **Bind the negative assertion to the actual planted values** — assert
       against `entry.doc` and against the composed `` `${entry.doc}:${entry.line}` ``.
-      A bare `.not.toContain(":")` passes vacuously against the fixed code,
-      because `plantedAt` is an ISO timestamp and contains colons; it would
-      prove nothing while looking like a regression test.
+      Do NOT use a bare `.not.toContain(":")`: the fixed message still embeds
+      `entry.plantedAt`, an ISO timestamp containing colons, so that assertion
+      would FAIL against correctly-fixed code. (An earlier draft of this task
+      said it would "pass vacuously" — that was backwards, and the two failure
+      modes are opposite. The binding recommendation above was always the right
+      one; only its rationale was wrong.)
 - [ ] 3.2 Add CLI-level coverage of the **absence** branch: output is exactly
       `no active canary`, exit code `0`. This branch is unchanged by this
       change, which is the point — it pins the half that must not move.
@@ -77,6 +105,25 @@ there to confirm.
       fires under its triggering condition and that neither output contains the
       registered canary's document path. Bind negatively to `entry.doc`, per
       3.1's reasoning.
+      **How to construct each condition**, since one is not obvious:
+      the out-of-scope warning needs a canary registered against a document
+      outside the glob `check` is given — plant, then check a different path.
+      The stale-registry warning needs a matched document whose planted claim
+      has been removed while the registry entry survives, with `--probing` off;
+      there is no CLI sequence that produces this, because `clearCanary`
+      (`packages/claims/src/canary.ts:340-350`) removes the planted line and
+      deletes the registry atomically. The test must hand-edit the document to
+      strip the planted line, leaving `.git/nullius/canaries.json` in place.
+      Both are constructible against the temp-repo fixture pattern already used
+      in `packages/claims/src/canary.test.ts`.
+- [ ] 3.5 Add coverage for the `CANARY-PRESENT` guard row (task 2b.1): plant a
+      canary, run `check` over a glob that matches the planted document, and
+      assert the result's source line is not the planted line. Assert this for
+      **both** the human format and `--format json` — the json assertion is the
+      one that catches a fix applied at the renderer instead of at the result.
+- [ ] 3.6 Add coverage for `canary verify`'s two messages (task 2b.3): assert
+      neither CAUGHT nor MISSED output contains `entry.doc`, and assert both
+      still return their existing exit codes.
 
 ## 4. Fixtures and CI gate
 

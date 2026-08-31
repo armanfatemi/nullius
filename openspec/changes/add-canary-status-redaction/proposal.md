@@ -73,6 +73,18 @@ use it, not less.
   and the first stops directing the reader to `canary status`, which after
   this change can no longer answer it. Both warnings keep their diagnostic
   content: something is registered, and it is in an unexpected state.
+- `check`'s `CANARY-PRESENT` guard row no longer carries the plant's line. The
+  redaction is applied where the result is constructed, so it holds for
+  `--format json` as well as for human output. The guard keeps naming the
+  document and keeps `canary clear` as its remedy — a remedy that never needed
+  a line number.
+- `canary verify`'s CAUGHT and MISSED messages no longer name the plant's
+  document or line. Exit codes are unchanged.
+
+Four surfaces, found one per review round. They are fixed together, and through
+one shared redaction rather than four independent edits, because the pattern
+this change kept rediscovering is that any renderer of a registry entry is free
+to print its location.
 - The coordinator does not lose anything it needs: `canary plant` already
   prints the location at plant time, and Stage 2 Step 3 already instructs
   recording it then — `status` was never the coordinator's source for this
@@ -101,13 +113,17 @@ use it, not less.
   location) but does not redact the sections themselves. A redaction
   convention for historical probe sections is a different fix, to a
   different file, and is out of scope here.
-- **Not touching `canary verify`'s CAUGHT/MISSED messages**, which also print
-  `entry.doc:entry.line`. The boundary is *when the command runs*, not how
-  secret its output is: `verify` is invoked only by the coordinator at Stage 2
-  Step 5, after the review has already been written and scored, so no ordering
-  exists in which a reviewer's report could benefit from reading it. `status`
-  and `check` are both commands a reviewer runs *during* the review, which is
-  what puts them in scope and leaves `verify` out.
+- **Not claiming to stop a determined reviewer.** The boundary this change
+  enforces is *reachability through the tool's own commands*, and what it
+  removes is incidental exposure — a reviewer running documented commands as
+  part of an ordinary review being handed the plant's location without having
+  sought it. Someone willing to read the registry file directly is outside the
+  threat model, and this change does not pretend otherwise.
+
+  (An earlier draft carried a Non-goal here excluding `canary verify` on the
+  grounds that it is coordinator-only. That was withdrawn at refinement
+  iteration 2: nothing sequences `verify`, so the exclusion described a
+  convention rather than a guard. `design.md` Decision 3 has the detail.)
 
 ## Dependencies
 
