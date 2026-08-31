@@ -188,7 +188,7 @@ there to confirm.
 
 ## 4. Fixtures and CI gate
 
-- [ ] 4.1 The CI dogfood gate's `nullius canary (self)` step calls
+- [x] 4.1 The CI dogfood gate's `nullius canary (self)` step calls
       `canary status` only *after* `canary clear`
       (`.github/workflows/ci.yml:199-200`), so it exercises the absence branch
       this change does not touch. Confirmed at pre-review by two reviewers
@@ -202,14 +202,14 @@ there to confirm.
       format, update it to match. Re-check the two Evidence Anchors already in
       that file (`spec/canary.md:51`, `spec/canary.md:81`, citing `canary.ts` —
       not `cli.ts`, so likely unaffected, but confirm rather than assume).
-- [ ] 5.2 CHANGELOG.md: a `### Fixed` entry naming the leak this closes,
+- [x] 5.2 CHANGELOG.md: a `### Fixed` entry naming the leak this closes,
       framed the way `CHANGELOG.md`'s existing security/consent-adjacent
       fixes are framed (e.g. kit 0.2.0's `.nullius/` consent-boundary entry)
       — a behavior change made for a concrete reason, not a routine tweak.
 
 ## 6. Verification
 
-- [ ] 6.1 **`pnpm build` FIRST, before the test suite.** Six of the ten tests
+- [x] 6.1 **`pnpm build` FIRST, before the test suite.** Six of the ten tests
       in section 3 — 3.1 through 3.6 — exercise `cli.ts`'s handlers, which are
       unexported: the file ends in `process.exit(main())`, so those tests must
       spawn the built `dist/cli.js`, the pattern
@@ -228,13 +228,13 @@ there to confirm.
       Getting this backwards is what `.claude/rules/build-before-cli.md`
       describes, and the earlier draft reproduced it inside this plan's own
       verification section.
-- [ ] 6.2 Full test suite and type-check. Baseline is six `flagConformance`
+- [x] 6.2 Full test suite and type-check. Baseline is six `flagConformance`
       failures on a machine where `grep` is ugrep; any other count is real, and
       the flag table is never the thing to edit.
-- [ ] 6.3 Both anchor gates, per `CLAUDE.md`:
+- [x] 6.3 Both anchor gates, per `CLAUDE.md`:
       `check 'README.md' 'spec/**/*.md' --require-markers` and
       `check 'openspec/**/*.md'`.
-- [ ] 6.4 Manually plant a canary, then run each of `canary status`, `check`
+- [x] 6.4 Manually plant a canary, then run each of `canary status`, `check`
       against a glob that excludes the planted document, and `canary clear`.
       Confirm none of the three names a document or line. Then confirm
       `canary plant`'s own output still DOES — the exception is the point, and

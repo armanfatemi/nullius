@@ -6,6 +6,38 @@ a package name are that package's own release; the kit versions independently.
 
 ## Unreleased
 
+### Fixed
+
+- **The canary told reviewers where it was planted.** The probe measures whether
+  a reviewer found a false claim by *reading* a document, so any command that
+  prints the plant's location answers that question for them. Eight commands did,
+  and the leak was not hypothetical: across prior runs, two of five scored rounds
+  reached the plant through the registry rather than by reading, and the
+  reviewers' own reports said so. It recurred twice while this fix was under
+  review, through `canary status` and then through `check`.
+
+  Every rendering of a registered canary now goes through one accessor,
+  `describeCanary`, which omits the document and line by default. `canary plant`
+  is the sole exception and asks for the location by name, at the one moment a
+  coordinator legitimately records it; its output is unchanged. `status`,
+  `clear`, `verify`'s CAUGHT and MISSED, `check`'s two canary warnings, `plant`'s
+  already-registered refusal and `clearCanary`'s refusal all now report presence
+  and plant time without location. Exit codes are unchanged everywhere, as is
+  `no active canary`.
+
+  The unredacted form is a function parameter rather than a CLI flag on purpose.
+  A `--reveal` flag would be reachable from the shell by the reviewer the
+  redaction exists to stop, which makes it a documented bypass rather than a
+  control.
+
+  Two limits stated plainly, because a redaction that overclaims is worse than
+  none. `.git/nullius/canaries.json` remains readable, so this stops incidental
+  exposure during ordinary review work, not a determined reader. And `check`'s
+  `CANARY-PRESENT` guard row still carries the plant's line — the shortest
+  measured path of the eight — because it leaks through a structured field on the
+  published JSON schema and needs an additive field rather than a message edit.
+  That is a follow-up, and until it lands the vector is open.
+
 ### Added
 
 - **`nullius oracle <range>` — conservation of the thing that grades the work.**
