@@ -7,3 +7,8 @@ coverage/
 # meant to be read live under spec/fixtures/ and are committed deliberately.
 .nullius/runs/
 .nullius/probes/
+
+# Retrospectives are candid internal records of how a run actually went.
+# Publishing one changes what gets written into it, so they stay local; the
+# next run's retro-writer reads them from the working tree either way.
+.claude/retrospectives/*.md
