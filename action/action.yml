@@ -44,7 +44,7 @@ inputs:
       pinning this action without pinning its checker is not a pin: every run
       would fetch npm's `latest`, and a breaking CLI change would reach every
       caller the day it published. Set to `latest` to opt into that instead.
-    default: '0.8.0'
+    default: '0.9.0'
 
 runs:
   using: composite
