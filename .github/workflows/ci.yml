@@ -14,7 +14,7 @@ jobs:
     # The job's real cost is about two minutes.
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # This repo's own documents carry rev-stamped anchors, which are
           # settled with `git show` against the commit they name. A shallow
