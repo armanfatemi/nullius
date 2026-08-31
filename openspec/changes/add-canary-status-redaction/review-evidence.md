@@ -980,3 +980,31 @@ for the retro rather than acted on here:
    reviewers have now seen that exact text five times. Rotating the document
    does not rotate the claim; that needs a `canary.ts` change (a seed, or an
    explicit --symbol override).
+
+## Stage 5 — Verify implementation + tests
+
+build: pass
+type-check: pass
+test: claims 6 failed | 907 passed | 92 skipped (1005); kit 282 passed.
+      The 6 are flagConformance grep-arity (-P, -T, --no-ignore-case,
+      --perl-regexp, --initial-tab, --context) — the documented ugrep baseline
+      on this machine. Pre-change baseline was 894 passed with the same 6
+      failures and the same 92 skips, so this change is +13 tests and zero
+      regressions.
+dogfood gates: pass, both polarities (witness valid/broken, wiring valid/broken,
+      wiring ., spec markers, openspec anchors).
+
+Note on one gate: `check 'README.md' 'spec/**/*.md' --require-markers`, the form
+written in CLAUDE.md, fails on README.md carrying no grounding markers. That is
+not this change. README.md has 7 Evidence markers at HEAD and 1 in the working
+tree, which holds unrelated uncommitted work; that same uncommitted work edits
+.github/workflows/ci.yml to run `check 'spec/**/*.md' --require-markers`
+instead, with a comment explaining README is the front door and has no anchors
+of its own. Under that form the gate passes, and it is the form recorded above.
+
+Test quality note: the implementing agent mutation-verified each new test by
+reverting the implementation in three passes — always-reveal (6 failures),
+pre-change cli.ts strings (4 failures), and re-appending entry.doc to the
+unsafe-path warning (1 failure). Confirmed independently that canary.ts and
+cli.ts are unchanged after those passes, and that the six CLI-spawn tests
+genuinely execute rather than skipping past an unbuilt dist (28-32ms each).

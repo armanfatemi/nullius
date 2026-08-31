@@ -104,7 +104,7 @@ is complete.** It has not been complete once.
 - [x] 2b.10 **Do not touch `canaryGuardResult`.** The `CANARY-PRESENT` guard
       row is deferred to a follow-up change (`design.md` Decision 4). Leaving
       it alone is also what keeps the existing assertion at
-      `packages/claims/src/canary.test.ts:296-306` valid — it pins that
+      `packages/claims/src/canary.test.ts:398-408` valid — it pins that
       result's source line, and an earlier draft of this plan would have broken
       it without saying so.
 
@@ -119,7 +119,7 @@ rather than adding to existing coverage — the earlier draft asked the
 implementer to "confirm existing tests are unaffected," and those tests are not
 there to confirm.
 
-- [ ] 3.1 Add CLI-level coverage of `canary status`'s **presence** branch:
+- [x] 3.1 Add CLI-level coverage of `canary status`'s **presence** branch:
       assert the output contains the `plantedAt` value, and assert it does NOT
       contain the planted document's path.
       **Bind the negative assertion to the actual planted values** — assert
@@ -130,13 +130,13 @@ there to confirm.
       said it would "pass vacuously" — that was backwards, and the two failure
       modes are opposite. The binding recommendation above was always the right
       one; only its rationale was wrong.)
-- [ ] 3.2 Add CLI-level coverage of the **absence** branch: output is exactly
+- [x] 3.2 Add CLI-level coverage of the **absence** branch: output is exactly
       `no active canary`, exit code `0`. This branch is unchanged by this
       change, which is the point — it pins the half that must not move.
-- [ ] 3.3 Assert the presence branch still exits `1`. Every consumer named in
+- [x] 3.3 Assert the presence branch still exits `1`. Every consumer named in
       `design.md` Context reads this exit code and nothing else, so it is the
       contract most likely to be broken silently.
-- [ ] 3.4 Add coverage for the two `check` warnings from section 2: assert each
+- [x] 3.4 Add coverage for the two `check` warnings from section 2: assert each
       fires under its triggering condition and that neither output contains the
       registered canary's document path. Bind negatively to `entry.doc`, per
       3.1's reasoning.
@@ -151,35 +151,35 @@ there to confirm.
       strip the planted line, leaving `.git/nullius/canaries.json` in place.
       Both are constructible against the temp-repo fixture pattern already used
       in `packages/claims/src/canary.test.ts`.
-- [ ] 3.5 Add coverage for `canary verify`'s two messages (task 2b.4): assert
+- [x] 3.5 Add coverage for `canary verify`'s two messages (task 2b.4): assert
       neither CAUGHT nor MISSED output contains `entry.doc`, and assert both
       still return their existing exit codes. The MISSED case is the one a
       reviewer would actually use as a side channel — it needs only a scratch
       file — so construct it that way.
-- [ ] 3.6 Add coverage for `canary clear`'s confirmation (task 2b.5): assert the
+- [x] 3.6 Add coverage for `canary clear`'s confirmation (task 2b.5): assert the
       output does not contain `entry.doc`, and that `clear` still reports
       success and still removes the planted line.
-- [ ] 3.7 Add coverage for `clearCanary`'s refusal message (task 2b.6): register
+- [x] 3.7 Add coverage for `clearCanary`'s refusal message (task 2b.6): register
       a canary, hand-edit the document so the registered line no longer carries
       the planted claim, and assert the thrown message does not contain
       `entry.doc` while still telling the operator what to do. This is the same
       hand-edited setup 3.4's stale-registry case needs; share it.
-- [ ] 3.8 Add a direct unit test of the accessor from task 2b.1: the redacted
+- [x] 3.8 Add a direct unit test of the accessor from task 2b.1: the redacted
       form contains `plantedAt` and neither `doc` nor `line`, and the explicit
       unredacted form contains all three. This is the one test that does NOT
       need the built CLI — the accessor is exported from `canary.ts` — and it is
       the test that pins the rule the other five rely on.
 
-- [ ] 3.9 Cover task 2b.8, `plant`'s already-registered refusal. **Import
+- [x] 3.9 Cover task 2b.8, `plant`'s already-registered refusal. **Import
       test** — extend the existing case at
-      `packages/claims/src/canary.test.ts:141-144`, which already exercises this
+      `packages/claims/src/canary.test.ts:180-183`, which already exercises this
       exact throw with
       `expect(() => plantCanary(root, "docs/design.md")).toThrow(/active canary/)`.
       Add negative assertions that the message excludes `entry.doc` and the
       composed location string.
-- [ ] 3.10 Cover task 2b.9, `loadActiveCanary`'s unsafe-path warning. **Import
+- [x] 3.10 Cover task 2b.9, `loadActiveCanary`'s unsafe-path warning. **Import
       test** — extend the existing case at
-      `packages/claims/src/canary.test.ts:327-344`,
+      `packages/claims/src/canary.test.ts:429-446`,
       "rejects a registry entry whose path fails path safety", which already
       hand-writes a `.git/nullius/canaries.json` carrying `doc: "/etc/passwd"`
       and calls `loadActiveCanary` directly. Add a negative assertion that
@@ -218,7 +218,7 @@ there to confirm.
       An earlier draft of this task claimed 3.1-3.7 all need the CLI and that
       3.8 was the sole exception. That was wrong on both counts: `clearCanary`
       is exported (`packages/claims/src/canary.ts:334`) and already has a
-      direct-call test at `packages/claims/src/canary.test.ts:274-284`, so 3.7
+      direct-call test at `packages/claims/src/canary.test.ts:313-323`, so 3.7
       can be written as an import test and should be — do not write it as a
       slower spawn test on the strength of the earlier claim.
       Tasks 3.7 through 3.10 are all import tests: `clearCanary`, `plantCanary`
