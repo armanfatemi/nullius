@@ -151,6 +151,10 @@ export function revFileReader(root?: string, timeoutMs = DEFAULT_GIT_TIMEOUT_MS)
   // many claims against the same commit and the same file, and each of those
   // would otherwise be its own process.
   const cache = new Map<string, RevRead>();
+  // And one existence probe per REV, which is coarser: forty claims stamped
+  // against one commit ask once. A document with no stamps never asks, because
+  // nothing outside this reader calls it.
+  const revExists = new Map<string, boolean>();
 
   return (path: string, rev: string): RevRead => {
     const key = `${rev}:${path}`;
@@ -170,7 +174,14 @@ export function revFileReader(root?: string, timeoutMs = DEFAULT_GIT_TIMEOUT_MS)
     }
 
     const base = root ?? process.cwd();
-    const result = spawnSync("git", ["-C", base, "show", `${rev}:${path}`], {
+    // `./` is load-bearing. In `<rev>:<path>` a BARE path resolves from the top
+    // of the repository, not from the directory git was pointed at — so a
+    // checker running in a subdirectory would read files above its own root
+    // through this lane while the working-tree lane refused the same citation.
+    // The `./` form anchors resolution at `-C base`. Where base IS the
+    // repository root the two are identical, so the documented usage is
+    // unchanged; this only closes the case where they differ.
+    const result = spawnSync("git", ["-C", base, "show", `${rev}:./${path}`], {
       shell: false,
       encoding: "utf8",
       maxBuffer: STAGE_MAX_BUFFER,
@@ -200,6 +211,15 @@ export function revFileReader(root?: string, timeoutMs = DEFAULT_GIT_TIMEOUT_MS)
     if (stderr.includes("not a git repository")) {
       return { status: "unavailable", reason: "not a git repository" };
     }
+    // Existence is ASKED, not read off the failure message. git only says
+    // `invalid object name` for a rev shorter than 40 hex; at exactly 40 the
+    // argument is already a complete object id, so it skips the revision
+    // complaint and reports a path problem instead — which the patterns below
+    // would read as "the commit exists and lacks this file". That made one
+    // anchor's verdict depend on the LENGTH of its hash, and accused authors
+    // who used `git rev-parse HEAD`, which prints 40. `cat-file -e` involves
+    // no path, so it cannot be confused by one.
+    if (!commitExists(base, rev)) return { status: "unknown-rev" };
     if (
       stderr.includes("unknown revision") ||
       stderr.includes("invalid object name") ||
@@ -220,6 +240,31 @@ export function revFileReader(root?: string, timeoutMs = DEFAULT_GIT_TIMEOUT_MS)
       reason: (result.stderr ?? "").trim().split("\n")[0] ?? "git show failed",
     };
   }
+
+  /**
+   * Whether `rev` names a commit in this repository. Cached per rev.
+   *
+   * `^{commit}` is deliberate: it refuses a rev that resolves to a tree or a
+   * blob, which a stamp must never name. A non-zero exit is read as absent,
+   * which is the safe direction — an absent commit takes the fail-open path
+   * and is judged against the clone, never asserted as a fact about the file.
+   */
+  function commitExists(base: string, rev: string): boolean {
+    const cached = revExists.get(rev);
+    if (cached !== undefined) return cached;
+    const probe = spawnSync("git", ["-C", base, "cat-file", "-e", `${rev}^{commit}`], {
+      shell: false,
+      encoding: "utf8",
+      maxBuffer: STAGE_MAX_BUFFER,
+      timeout: timeoutMs,
+      killSignal: "SIGKILL",
+      input: "",
+      env: childEnv(),
+    });
+    const exists = !probe.error && probe.status === 0;
+    revExists.set(rev, exists);
+    return exists;
+  }
 }
 
 /**
@@ -233,6 +278,44 @@ export function revFileReader(root?: string, timeoutMs = DEFAULT_GIT_TIMEOUT_MS)
  * tree; the stamp is the one part of an anchor that becomes a HARD failure
  * when it is wrong.
  */
+/**
+ * Whether this clone's history is truncated.
+ *
+ * This is the discriminator `checkStamped` needs, and its whole value is that
+ * a document cannot influence it. "Is this rev trustworthy" is answered with a
+ * rev the author supplied; "can this clone read history at all" is answered by
+ * the checkout, once, before any citation is read.
+ *
+ * Three-valued on purpose. `null` means the question could not be put — git is
+ * missing, this is not a repository, the call timed out — and a caller holding
+ * `null` must fail open exactly as it always did, because it has learned
+ * nothing. Collapsing that into `false` would turn every machine without git
+ * into a machine that accuses authors.
+ */
+export function isShallowRepository(
+  root?: string,
+  timeoutMs = DEFAULT_GIT_TIMEOUT_MS,
+): boolean | null {
+  const base = root ?? process.cwd();
+  const result = spawnSync("git", ["-C", base, "rev-parse", "--is-shallow-repository"], {
+    shell: false,
+    encoding: "utf8",
+    maxBuffer: STAGE_MAX_BUFFER,
+    timeout: timeoutMs,
+    killSignal: "SIGKILL",
+    input: "",
+    env: childEnv(),
+  });
+
+  if (result.error || result.status !== 0) return null;
+  const answer = (result.stdout ?? "").trim();
+  // Anything other than the two words git documents is treated as no answer.
+  // A future git that grows a third response must not be read as "not shallow".
+  if (answer === "true") return true;
+  if (answer === "false") return false;
+  return null;
+}
+
 export function headRev(root?: string, timeoutMs = DEFAULT_GIT_TIMEOUT_MS): string | null {
   const base = root ?? process.cwd();
   const result = spawnSync("git", ["-C", base, "rev-parse", "--short", "HEAD"], {

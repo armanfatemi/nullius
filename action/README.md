@@ -45,7 +45,7 @@ jobs:
 | `require-markers` | `false` | Fail when the docs check finds no grounding markers at all                                                    |
 | `comment`         | `true`  | Upsert a single PR comment (updated in place on every run)                                                    |
 | `github-token`    | `''`    | Token for the comment; omit to skip commenting                                                                |
-| `claims-version`  | `0.8.0` | Checker version to run. Pinned, so `@v1` means one thing; set `latest` to float                              |
+| `claims-version`  | `0.9.1` | Checker version to run. Pinned, so `@v1` means one thing; set `latest` to float                              |
 
 Pinning this action without pinning its checker would not be a pin: every run
 would fetch npm's `latest`, and a breaking CLI change would reach every caller

@@ -41,10 +41,17 @@ function unstamped(line: number, text: string): PresenceClaim {
   };
 }
 
-function deps(current: string[] | null, atRev: RevRead): CheckDeps {
+function deps(
+  current: string[] | null,
+  atRev: RevRead,
+  // Omitted means the probe was not supplied at all, which is the "could not
+  // ask" case and must behave exactly as it did before the probe existed.
+  shallow?: boolean | null,
+): CheckDeps {
   return {
     readFileLines: () => current,
     readFileAtRev: () => atRev,
+    ...(shallow === undefined ? {} : { isShallowRepository: () => shallow }),
     runSearch: () => ({ ok: true, count: 0 }),
   };
 }
@@ -147,7 +154,7 @@ describe("rev-stamped anchors — the rot axis", () => {
 });
 
 describe("rev-stamped anchors — an unreadable commit fails open", () => {
-  it("does not call an author a fabricator when the commit is not in the clone", () => {
+  it("does not call an author a fabricator when it cannot tell if the clone is shallow", () => {
     const [result] = checkClaims(
       [stamped(2, "  const attempts = 5;")],
       deps(["unrelated"], { status: "unknown-rev" }),
@@ -201,6 +208,20 @@ describe("rev-stamped anchors — an unreadable commit fails open", () => {
 
     expect(result?.verdict).toBe("unsafe-path");
     expect(read).toBe(0);
+  });
+
+  // The case above is a SYNTACTIC escape — `..` — which the path guard rejects
+  // before any read. It is not the only way out, and this test's name has
+  // always claimed both. A path with no `..` in it escaped through git's own
+  // resolution instead, because `<rev>:<path>` is relative to the repository
+  // top rather than to the directory git was pointed at (#71). That is fixed
+  // in `revFileReader`; asserted end to end in the real-repository suite below.
+  it("refuses an ordinary-looking path that resolves outside the root", () => {
+    const outside = revFileReader(__dirname)("package.json", "HEAD~0");
+
+    // Whatever this returns, it must not be a verified read of the repository
+    // root's package.json from a reader pointed at src/.
+    expect(outside.status).not.toBe("ok");
   });
 });
 
@@ -332,6 +353,59 @@ describe("revFileReader against a real repository", () => {
     expect(read.status).toBe("unavailable");
   });
 
+  // #70. git only says `invalid object name` for a rev shorter than 40 hex; at
+  // exactly 40 it reports a PATH problem instead, which the old classifier read
+  // as "the commit exists and lacks this file". The verdict therefore depended
+  // on the length of the hash. The 40-character case is the one that shipped,
+  // because the test above it uses 16.
+  it.each([
+    ["7 characters", "0000000"],
+    ["16 characters", "0123456789abcdef"],
+    ["40 characters", "0000000000000000000000000000000000000000"],
+  ])("reports an absent commit written with %s as unknown-rev", (_label, rev) => {
+    const { root } = repo();
+
+    expect(revFileReader(root)("src/app.ts", rev).status).toBe("unknown-rev");
+  });
+
+  it("gives an absent commit the same verdict at 7 and at 40 characters", () => {
+    const { root } = repo();
+    const read = revFileReader(root);
+
+    // `git rev-parse HEAD` and $GITHUB_SHA both print 40, so the long form is
+    // what an author naturally writes. It must not be the punished one.
+    expect(read("src/app.ts", "0000000000000000000000000000000000000000").status).toBe(
+      read("src/app.ts", "0000000").status,
+    );
+  });
+
+  // #71. `<rev>:<path>` resolves a BARE path from the top of the repository, so
+  // this lane read files above the directory it was pointed at while the
+  // working-tree lane refused them. No `..` is involved — the path guard never
+  // sees anything wrong, because nothing IS syntactically wrong.
+  it("does not read a path above the root it was pointed at", () => {
+    const { root, first } = repo();
+    writeFileSync(join(root, "above.txt"), "SECRET_TOKEN=hunter2\n");
+    mkdirSync(join(root, "sub"), { recursive: true });
+    writeFileSync(join(root, "sub", "local.txt"), "ok\n");
+    execFileSync("git", ["-C", root, "add", "."], { encoding: "utf8" });
+    execFileSync("git", ["-C", root, "commit", "-qm", "second"], { encoding: "utf8" });
+    const second = execFileSync("git", ["-C", root, "rev-parse", "--short", "HEAD"], {
+      encoding: "utf8",
+    }).trim();
+
+    // Pointed at the subdirectory: `above.txt` is outside it.
+    const fromSub = revFileReader(join(root, "sub"))("above.txt", second);
+
+    expect(fromSub.status).not.toBe("ok");
+    // And the file it SHOULD be able to reach still resolves, so this is
+    // confinement rather than the lane simply breaking.
+    expect(revFileReader(join(root, "sub"))("local.txt", second).status).toBe("ok");
+    // Unchanged at the repository root, which is the documented usage.
+    expect(revFileReader(root)("above.txt", second).status).toBe("ok");
+    expect(first).not.toBe(second);
+  });
+
   it("drives a real end-to-end check: deleted code is stale, invention fails", () => {
     const { root, first } = repo();
     writeFileSync(join(root, "src", "app.ts"), "export function retry() {}\n");
@@ -381,5 +455,80 @@ describe("git is spawned once per commit and file, not once per anchor", () => {
     rmSync(join(root, ".git"), { recursive: true, force: true });
 
     expect(reader("src/app.ts", first).status).toBe("ok");
+  });
+});
+
+/**
+ * The rev in a citation is written by the author of the document under test.
+ * Softening a FAILING verdict on the strength of that rev made `@0000000` a
+ * universal bypass: strictly less work than opening the file, which is the
+ * inversion of the premise the fail-open was argued from.
+ *
+ * So the discriminator is the clone, which no document can influence. These
+ * cases pin all three answers it can give.
+ */
+describe("rev-stamped anchors — an unresolvable stamp cannot rescue a failure", () => {
+  const INVENTED = "  const attempts = 500000;";
+
+  it("fails a fabricated claim when the clone has full history", () => {
+    const [result] = checkClaims(
+      [stamped(2, INVENTED)],
+      deps(AT_REV, { status: "unknown-rev" }, false),
+    );
+
+    expect(result?.verdict).toBe("fabricated");
+    expect(isFailure("fabricated")).toBe(true);
+    expect(result?.detail).toContain("this clone has full history");
+    expect(result?.detail).toContain("re-pin the anchor to the squash commit");
+  });
+
+  it("still refuses to accuse when the clone is shallow", () => {
+    const [result] = checkClaims(
+      [stamped(2, INVENTED)],
+      deps(AT_REV, { status: "unknown-rev" }, true),
+    );
+
+    expect(result?.verdict).toBe("unverifiable-rev");
+    expect(isFailure("unverifiable-rev")).toBe(false);
+    expect(result?.detail).toContain("fetch-depth: 0");
+  });
+
+  it("still refuses to accuse when the probe cannot answer", () => {
+    const [result] = checkClaims(
+      [stamped(2, INVENTED)],
+      deps(AT_REV, { status: "unknown-rev" }, null),
+    );
+
+    expect(result?.verdict).toBe("unverifiable-rev");
+  });
+
+  it("leaves an honest anchor passing on a full clone, which is the whole point", () => {
+    // The quote IS in the working tree. A squash-merged proposal must not be
+    // turned red by this change — that is the failure rev-stamp-change-anchors
+    // exists to prevent, and it is the reason the discriminator is the clone
+    // rather than a blanket refusal to soften.
+    const [result] = checkClaims(
+      [stamped(2, "  const attempts = 5;")],
+      deps(AT_REV, { status: "unknown-rev" }, false),
+    );
+
+    expect(result?.verdict).toBe("ok");
+    expect(isFailure("ok")).toBe(false);
+  });
+
+  it("never spawns the probe when the working-tree verdict already passes", () => {
+    let asked = 0;
+    const [result] = checkClaims([stamped(2, "  const attempts = 5;")], {
+      readFileLines: () => AT_REV,
+      readFileAtRev: () => ({ status: "unknown-rev" }),
+      isShallowRepository: () => {
+        asked += 1;
+        return false;
+      },
+      runSearch: () => ({ ok: true, count: 0 }),
+    });
+
+    expect(result?.verdict).toBe("ok");
+    expect(asked).toBe(0);
   });
 });

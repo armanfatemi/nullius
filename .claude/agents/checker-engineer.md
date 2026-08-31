@@ -111,7 +111,7 @@ explicitly is what discharges `SILENT-REVIEWER`.
 - packages/claims/src/witness.ts — not touched by this diff.
 ```
 
-`proposal-to-pr` now exists and consumes this shape (`.claude/skills/proposal-to-pr/SKILL.md`): its Stage 2 and Stage 6 decisions turn on the severity markers, the synthesis of your report is appended to the change's committed `review-evidence.md`, that file seeds the PR body, and `retro-writer` reads it to count what each reviewer actually caught. That is review-spine's own sequence completed — the roster landed first, and the machine that dispatches it got its own plan after (`docs/superpowers/plans/2026-08-22-review-spine.md:15`). A human still reads your report as well, so the shape has two audiences now rather than one; keep to it exactly.
+`proposal-to-pr` now exists and consumes this shape (`.claude/skills/proposal-to-pr/SKILL.md`): its Stage 2 and Stage 6 decisions turn on the severity markers, the synthesis of your report is appended to the change's committed `review-evidence.md`, that file seeds the PR body, and `retro-writer` reads it to count what each reviewer actually caught. That is review-spine's own sequence completed — the roster landed first, and the machine that dispatches it got its own plan after. A human still reads your report as well, so the shape has two audiences now rather than one; keep to it exactly.
 
 **Severity discipline:** your findings are not sourced from a `severity:` field the way `rule-auditor`'s are, so the weight is yours to argue explicitly each time:
 

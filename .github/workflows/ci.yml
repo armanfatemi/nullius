@@ -14,16 +14,16 @@ jobs:
     # The job's real cost is about two minutes.
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # This repo's own documents carry rev-stamped anchors, which are
           # settled with `git show` against the commit they name. A shallow
           # clone does not have it, and the gate would quietly fail open.
           fetch-depth: 0
 
-      - uses: pnpm/action-setup@v4 # reads packageManager from package.json
+      - uses: pnpm/action-setup@v6 # reads packageManager from package.json
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -252,12 +252,18 @@ jobs:
           # to make. The provenance line is where that is visible.
           grep -q '3 self-reported' "$work/answered.log"
 
-      # Dogfood: the README carries live Evidence Anchors into this repo's own
-      # source. If the code drifts out from under the README's claims, this
-      # step says so — the tool checking the docs of the tool.
+      # Dogfood: the specs carry live Evidence Anchors into this repo's own
+      # source. If the code drifts out from under their claims, this step says
+      # so — the tool checking the docs of the tool.
+      #
+      # README.md is deliberately NOT here. It is the front door: an explanation
+      # of the convention rather than an assertion about the code, and it shows
+      # the anchor grammar in fenced examples that the parser (correctly) ignores.
+      # With no anchors of its own, --require-markers would fail it for being
+      # what it is.
       - name: nullius check (self)
         run: |
-          node packages/claims/dist/cli.js check 'README.md' 'spec/**/*.md' --require-markers
+          node packages/claims/dist/cli.js check 'spec/**/*.md' --require-markers
           # Change proposals cite code they are ABOUT TO MODIFY, so they rot in
           # a way the spec does not: a design doc that quotes a line as the
           # reason to delete it is FABRICATED the moment the change lands. That
@@ -294,6 +300,63 @@ jobs:
       # one review failure that reports success, so the broken fixture must
       # keep failing; the unit test asserts WHICH verdicts fire, because the
       # exit code here stays 1 even when one of them goes quiet.
+      # The stamp fail-open, both polarities. Neither half alone is a gate:
+      # asserting only the failure would pass if the checker started accusing
+      # everyone, and asserting only the shallow case would pass if the bypass
+      # came back. The document is identical in both runs; only the clone
+      # differs, which is the whole claim this fix makes.
+      - name: nullius check (stamp fail-open, both polarities)
+        run: |
+          # Full history — the invented stamps must not excuse the fabrications.
+          ! node packages/claims/dist/cli.js check spec/fixtures/.stamp-failopen/forged.md
+
+          # Same document, shallow clone — must still refuse to accuse.
+          # Cloned from this checkout, so it needs no network and pins nothing.
+          git clone --quiet --depth 1 "file://$GITHUB_WORKSPACE" /tmp/shallow-probe
+          test "$(git -C /tmp/shallow-probe rev-parse --is-shallow-repository)" = "true"
+          cp spec/fixtures/.stamp-failopen/forged.md /tmp/shallow-probe/forged.md
+          ( cd /tmp/shallow-probe && node "$GITHUB_WORKSPACE/packages/claims/dist/cli.js" check forged.md )
+
+      # An absent commit must mean the same thing at any hash length (#70).
+      # Both must pass: the short one alone would survive a fix that accused
+      # only long hashes, the long one alone would survive a checker that
+      # verified nothing. The pair is the assertion.
+      - name: nullius check (absent commit, hash length invariance)
+        run: |
+          node packages/claims/dist/cli.js check spec/fixtures/.rev-lane/short-sha.md
+          node packages/claims/dist/cli.js check spec/fixtures/.rev-lane/long-sha.md
+
+      # The git lane must answer to the same root as the working-tree lane
+      # (#71). Built inline rather than committed, because the defect is about
+      # a repository SHAPE — a checked root below the repository top — which a
+      # file in this tree cannot express.
+      - name: nullius check (git lane confinement)
+        run: |
+          set -euo pipefail
+          probe=$(mktemp -d)
+          git init -q -b main "$probe"
+          git -C "$probe" config user.email ci@example.com
+          git -C "$probe" config user.name CI
+          printf 'SECRET_TOKEN=hunter2\n' > "$probe/above.txt"
+          mkdir -p "$probe/sub"
+          printf 'ok\n' > "$probe/sub/local.txt"
+          git -C "$probe" add .
+          git -C "$probe" commit -qm first
+          rev=$(git -C "$probe" rev-parse --short HEAD)
+
+          # Cites a file ABOVE the directory the checker is pointed at, with no
+          # `..` in the path — so the path guard sees nothing wrong.
+          printf '**Evidence:** `above.txt:1@%s` — `SECRET_TOKEN=hunter2`\n' "$rev" \
+            > "$probe/sub/escape.md"
+          # Cites a file the checker legitimately can reach, so a lane that is
+          # merely broken fails this too.
+          printf '**Evidence:** `local.txt:1@%s` — `ok`\n' "$rev" \
+            > "$probe/sub/local.md"
+
+          cd "$probe/sub"
+          ! node "$GITHUB_WORKSPACE/packages/claims/dist/cli.js" check escape.md
+          node "$GITHUB_WORKSPACE/packages/claims/dist/cli.js" check local.md
+
       - name: nullius wiring (self)
         run: |
           node packages/claims/dist/cli.js wiring spec/fixtures/wiring-valid

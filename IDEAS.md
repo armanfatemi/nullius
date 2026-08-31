@@ -1,7 +1,7 @@
 # Idea backlog — epistemic accounting for agent systems
 
-_Working notes, committed. Source thinking: the essay draft
-"Nobody Opposed the Delay" (`third-mainverb/essays-drafts/nobody-opposed-the-delay.md`),
+_Working notes, committed. Source thinking: the essay
+["Nobody Opposed the Delay"](https://armanfatemi.substack.com/p/nobody-opposed-the-delay),
 which nullius was extracted from. Two tracks below: the article-derived
 proposal set (headed to / tracked as GitHub issues), and the creative
 extensions beyond the article._

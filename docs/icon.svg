@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="nullius">
+  <title>nullius</title>
+  <!--
+    The mark is the thesis: a quotation (grey — an assertion, not yet knowledge)
+    whose tail resolves into a checkmark (mint — a verdict a machine produced by
+    re-reading the file). Palette matches the README: bg #1F2125, mint #3DD581,
+    muted #9AA0A6.
+  -->
+  <rect width="512" height="512" rx="116" fill="#1F2125"/>
+  <rect x="1.5" y="1.5" width="509" height="509" rx="114.5" fill="none" stroke="#2E3136" stroke-width="3"/>
+
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <!-- the claim -->
+    <g stroke="#9AA0A6" stroke-width="40">
+      <path d="M150 130 Q150 186 116 228"/>
+      <path d="M246 130 Q246 186 212 228"/>
+    </g>
+    <!-- the verdict -->
+    <path d="M176 290 L244 382 L400 186" stroke="#3DD581" stroke-width="44"/>
+  </g>
+</svg>

@@ -54,7 +54,7 @@ Verify with the tool, never by hand — a line-by-line script only knows "does
 line N match" and misses `FABRICATED` / `WEAK-ANCHOR` / `UNPINNED` / `DRIFT`:
 
 ```sh
-node packages/claims/dist/cli.js check 'README.md' 'spec/**/*.md' --require-markers
+node packages/claims/dist/cli.js check 'spec/**/*.md' --require-markers
 node packages/claims/dist/cli.js check 'openspec/**/*.md'
 ```
 
@@ -74,7 +74,15 @@ even if your new verdict never fires.
 ## This repo records its own runs
 
 `.nullius/` is the opt-in marker; see `.nullius/README.md`. Hooks come from the
-**plugin**, and `.claude/settings.json` carries only `NULLIUS_KIT_BIN`.
+**plugin**, and `.claude/settings.json` carries only plugin enablement.
+
+**The witness hooks run the PUBLISHED kit**, not this working tree. There is no
+`NULLIUS_KIT_BIN` here, so they take the default `npx -y @nullius-inverba/kit`
+path — the one real users take, which nothing else in this repo exercises. The
+trade is deliberate and worth knowing: a change to `packages/kit/src/**` is not
+exercised by this repo's own recording until it is published. The checker gates
+are unaffected; every one of them still runs `node packages/claims/dist/cli.js`
+against the working tree, so `build-before-cli` applies exactly as before.
 
 **Never write witness hook entries into `.claude/settings.json`.** One delivery
 mechanism per artifact: duplicating a plugin-delivered hook gives `doctor` two

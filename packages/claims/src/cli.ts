@@ -62,7 +62,13 @@ import { DEMO_DOC_PATH, demoResults, writeDemoFixture } from "./demo";
 import { buildEagerPrompt } from "./eagerPrompt";
 import { parseClaims, parsePresenceMarker } from "./parseClaims";
 import { planRewrites, type Rewrite, type RewritePlan } from "./rewrite";
-import { fileLinesReader, headRev, revFileReader, searchRunner } from "./runners";
+import {
+  fileLinesReader,
+  headRev,
+  isShallowRepository,
+  revFileReader,
+  searchRunner,
+} from "./runners";
 import { checkRuleCoverage, isRuleCoverageFailure } from "./ruleCoverage";
 import { checkRule, isRuleFailure, parseRuleHeader, selectRules } from "./rules";
 import { scanRules } from "./rulesScan";
@@ -244,6 +250,21 @@ spec: ${SPEC_URL}`;
 function helpFor(command: string | undefined): string {
   const block = command === undefined ? undefined : COMMAND_HELP.get(command);
   return block === undefined ? USAGE : `${block}\n\nspec: ${SPEC_URL}`;
+}
+
+/**
+ * `isShallowRepository`, asked at most once per run and only if something asks.
+ *
+ * A property of the checkout cannot change while the checkout is being read,
+ * so re-spawning git per anchor would buy nothing; and a run with no stamped
+ * anchors that fail should not spawn git at all.
+ */
+function onceShallow(root?: string): () => boolean | null {
+  let answer: boolean | null | undefined;
+  return () => {
+    if (answer === undefined) answer = isShallowRepository(root);
+    return answer;
+  };
 }
 
 function loadConfig(explicitPath: string | undefined): ClaimsConfig {
@@ -1014,6 +1035,7 @@ function runRules(args: RulesArgs): number {
   const deps = {
     readFileLines: fileLinesReader(args.root),
     readFileAtRev: revFileReader(args.root),
+    isShallowRepository: onceShallow(args.root),
     runSearch: searchRunner(args.root),
   };
 
@@ -1115,6 +1137,9 @@ function runCheck(args: CheckArgs): number {
     // Only consulted by `path:line@rev` anchors; an unstamped anchor never
     // shells out to git.
     readFileAtRev: revFileReader(),
+    // Decides whether an unresolvable commit may soften a FAILING verdict.
+    // Consulted only on that branch, so a run with no stamps never spawns it.
+    isShallowRepository: onceShallow(),
     runSearch: searchRunner(undefined, config.searchTimeoutMs),
   };
 

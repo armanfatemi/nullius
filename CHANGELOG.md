@@ -4,9 +4,121 @@ Bare version headings are the kernel — `@nullius-inverba/claims` and its
 unscoped alias `evidence-anchors`, which ship together. Headings prefixed with
 a package name are that package's own release; the kit versions independently.
 
-## Unreleased
+## 0.9.1
+
+Two security fixes in the rev-stamped lane, both reported 2026-08-19 and both
+shipped in 0.9.0. `@nullius-inverba/kit` is unchanged at 0.4.0: its source did
+not move, it does not reach the corrected code, and its `^0.9.0` range already
+resolves to this release.
 
 ### Fixed
+
+- **Security: the git lane no longer reads outside the root it was pointed at.**
+  In `<rev>:<path>` a bare path resolves from the top of the repository rather
+  than from the directory git was pointed at, so a checker running in a
+  subdirectory read files above its own root through the stamped lane while the
+  working-tree lane refused the same citation:
+
+  ```console
+  $ git -C sub show 049a447:above.txt
+  SECRET_TOKEN=hunter2
+  ```
+
+  Because the verdict turns on whether the quoted text matches, the exit code
+  answered "is my guess about that file right" — one bit per run, over a
+  directory nobody pointed the checker at. Blobs are now addressed as
+  `<rev>:./<path>`, which anchors resolution at the checked root. Where that
+  root IS the repository root — the documented usage, and what CI does — the
+  two forms are identical and nothing changes.
+
+  A test named for this property already existed and passed. It cites
+  `../../etc/passwd`, a **syntactic** escape the path guard rejects before any
+  read; the defect was a **semantic** one, a path with no `..` in it that git
+  resolved somewhere else. The test kept its name and gained the case it
+  claimed. (#71)
+
+- **A 40-character absent commit is no longer reported as a fabrication.**
+  git says `invalid object name` only for a rev shorter than 40 hex. At exactly
+  40 the argument is already a complete object id, so it skips the revision
+  complaint and reports a path problem — which the classifier read as "that
+  commit exists and lacks this file". One anchor therefore got two verdicts
+  depending on the LENGTH of its hash:
+
+  ```
+  app.ts:1@0000000                                   OK                   exit 0
+  app.ts:1@0000000000000000000000000000000000000000  MISSING-FILE-AT-REV  exit 1
+                                                     "this citation was never true"
+  ```
+
+  Same file, same quote — a quote genuinely present in the working tree. Since
+  `git rev-parse HEAD` and `$GITHUB_SHA` both print 40 characters, this accused
+  authors who used the most natural input available, with the verdict this
+  project asks reviewers to treat as most serious.
+
+  Existence is now asked with `git cat-file -e <rev>^{commit}`, which involves
+  no path and cannot be confused by one, and is cached per rev. stderr matching
+  remains only for what it is still the sole source of. The pre-existing test
+  used a 16-character SHA, which is exactly why this shipped; the new one
+  asserts 7, 16 and 40 agree. (#70)
+
+## 0.9.0
+
+The `oracle` verb, a security fix for rev-stamped anchors, and the canary's
+location leak closed. `@nullius-inverba/kit` moves 0.3.0 → 0.4.0 alongside it —
+its own bullets are folded into the sections below rather than a separate
+heading, following the 0.8.0 precedent.
+
+> **0.8.0 was never published.** Its version was bumped and its notes written,
+> but the publish step did not run, so npm went 0.7.0 → 0.9.0 and
+> `@nullius-inverba/kit` went 0.2.0 → 0.4.0. The 0.8.0 and kit 0.3.0 sections
+> below describe real states of the code and are kept as written; everything in
+> them ships here for the first time.
+
+### Fixed
+
+- **Security: an unresolvable `@rev` no longer rescues a failing anchor.**
+  A rev stamp is part of the document, and on a pull request the document is
+  written by the party being checked. Naming a commit the clone could not
+  resolve softened a **failing** working-tree verdict to the advisory
+  `UNVERIFIABLE-REV`, which passes — so appending `@0000000` to any invented
+  citation turned a red run green. A document in which every claim was
+  fabricated exited 0 and printed "All 3 grounding marker(s) verified", under
+  `--require-markers` too.
+
+  This is described plainly because it is already public: the finding and an
+  earlier, unmerged fix have sat on a branch of this repository since
+  2026-08-19. Understating it in the release notes would misrepresent what
+  users were running.
+
+  The fail-open itself was correct and is kept. A commit this clone never had
+  is not evidence about the author — the clone may be shallow, the PR may come
+  from a fork, the branch may have been squash-merged — and a checker that
+  cannot read the history it was pointed at does not get to call anyone a
+  fabricator. Refusing to soften anything would have reported `FABRICATED` for
+  a squash-merged proposal that cited code it then modified, which is the
+  outcome `rev-stamp-change-anchors` exists to prevent.
+
+  So the discriminator moved off the citation and onto the clone, which no
+  document can influence. `check` now asks `git rev-parse
+  --is-shallow-repository` once per run, and only on the branch where a stamped
+  anchor has already failed:
+
+  | Clone | Unresolvable commit, failing working-tree verdict |
+  | --- | --- |
+  | Shallow | `UNVERIFIABLE-REV`, advisory — unchanged |
+  | Cannot be determined (no git) | `UNVERIFIABLE-REV`, advisory — unchanged |
+  | Full history | the working-tree verdict stands, failures included |
+
+  A **passing** working-tree verdict is unaffected in every row: a stamp can win
+  an anchor the permanent gate, and it can never lose it the ordinary one.
+
+  If a squash orphans a stamp on a full-history clone, the remedy is the one
+  already documented — re-pin the anchors to the squash commit.
+
+  Because `actions/checkout` defaults to `fetch-depth: 1`, most CI runs are
+  shallow and therefore behave exactly as before. Set `fetch-depth: 0` to arm
+  the gate; that has always been this project's advice for rev-stamped
+  documents, and it is now what makes the difference.
 
 - **The canary told reviewers where it was planted.** The probe measures whether
   a reviewer found a false claim by *reading* a document, so any command that
@@ -412,6 +524,9 @@ a package name are that package's own release; the kit versions independently.
   semantic now lives, declared per dispatch and read from a file.
 
 ## 0.8.0
+
+> Never published to npm — see the note under 0.9.0. Everything here first
+> reached users in 0.9.0.
 
 Deterministic rule compliance and a journal check for it, a review-layer
 canary, wiring validation, and a round of authoring ergonomics for `check`

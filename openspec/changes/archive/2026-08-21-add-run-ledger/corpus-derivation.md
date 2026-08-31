@@ -11,8 +11,8 @@ This file is that derivation. It is the evidence `design.md` cites.
 
 ## Provenance and honesty about the count
 
-The corpus is `review-evidence.md` under `openspec/changes/` in a sibling
-project (`mainverb`), **outside this repo**. Counts here are observations from
+The corpus is `review-evidence.md` under `openspec/changes/` in a private
+sibling project, **outside this repo**. Counts here are observations from
 a specific run, not anchored claims — they cannot be re-verified from this
 repository, and they will drift as that project moves.
 
