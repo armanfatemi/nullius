@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/armanfatemi/nullius/security/advisories/new
+    about: Do not open a public issue. Report privately here — see SECURITY.md.
+  - name: How to contribute
+    url: https://github.com/armanfatemi/nullius/blob/main/CONTRIBUTING.md
+    about: Setup, the house conventions, and the one test failure that is not your fault.

@@ -798,6 +798,25 @@ any reviewer reads it.
 
 ---
 
+## 🤝 Contributing
+
+Issues and pushback are welcome — including on the conventions themselves.
+
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** — setup, the house rules, and the one
+  test failure that is not your fault (6 `flagConformance` tests fail on macOS
+  with ugrep installed; that is environmental, and the table should not be
+  changed to match).
+- **[SECURITY.md](SECURITY.md)** — checked documents are untrusted input, so
+  the interesting boundary is everything a document can reach. Report privately;
+  never in a public issue.
+- **[Code of conduct](CODE_OF_CONDUCT.md)** — criticise work, not people.
+
+PRs land as **merge commits, never squashed**: a squash orphans the commits that
+rev-stamped anchors name, and the checker then fails open — a disarmed gate and
+a satisfied one produce the same green check.
+
+---
+
 ## License
 
 MIT © Arman Fatemi

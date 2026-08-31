@@ -53,7 +53,8 @@ the export never had, and `retro-writer` is the renderer witness has not built.
 
 - **D1 — Scope.** Port the review/retro spine, the proposal → PR machine, and
   `intent-to-proposal`. Do not port `implement-task` triage or `bug-fix-tdd`;
-  the installed superpowers skills already cover ad-hoc work.
+  ad-hoc work does not need a pipeline, and a stage that fires on everything
+  stops being read.
   `intent-to-proposal` was added to scope after Phase 0 shipped, on the
   operator's judgement that it is the piece they need most for daily work. An
   earlier reading of this port mapped it onto the existing `openspec-propose`
@@ -165,12 +166,13 @@ edit away from having two answers, and the three invariants above that no
 candidate list anticipated are exactly what the prose reviewer is left holding
 once the linter's share is taken out.
 
-**Boundary with superpowers.** Four of the pipeline's nine stages overlap an
-installed superpowers skill, and two process stacks with competing opinions on
-one moment is how both get ignored. The change folder is the discriminator:
-work with an `openspec/changes/<name>/` runs `proposal-to-pr`, anything else
-runs superpowers. Stage 4 delegates to `superpowers:test-driven-development`
-rather than carrying its own testing doctrine.
+**When the pipeline runs at all.** The change folder is the discriminator:
+work with an `openspec/changes/<name>/` runs `proposal-to-pr`, and anything
+else does not. Nine stages aimed at a one-line fix is how a process gets
+routed around, so the gate is the folder rather than anyone's judgement in the
+moment. Stage 4 carries its own testing doctrine; it used to delegate that to
+an external skill, and a stage that delegates to something absent owns nothing
+while appearing to own it.
 
 ## Phase 1a — `intent-to-proposal`
 

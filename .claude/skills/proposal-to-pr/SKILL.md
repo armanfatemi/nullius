@@ -725,10 +725,24 @@ State transition: `stage: refine` → `stage: pre-review`.
 
 Goal: walk `tasks.md` and produce code, one task at a time.
 
-**Testing doctrine is not carried here.** Use the `superpowers:test-driven-development`
-skill for the write-a-failing-test-first discipline; this stage owns sequencing,
-dispatch and commit boundaries, nothing more. Two copies of testing doctrine is
-two things to keep in sync, and the pipeline is not where that copy belongs.
+**Testing doctrine is carried here.** It used to be delegated to an installed
+`superpowers:test-driven-development` skill. That dependency is gone, and a stage
+that delegates to something absent owns nothing while appearing to own it. The
+original argument for delegating — two copies is two things to keep in sync —
+was an argument for exactly one copy, and this is now the one:
+
+- **Write the failing test first, and run it.** A test that has never been
+  observed failing has not been shown to test anything; watch it fail for the
+  reason you expect before you make it pass.
+- **A new verdict needs a fixture that trips it AND a unit test naming it.** A
+  negated exit code says *some* verdict fired, never *which* — see
+  `.claude/rules/verdict-needs-fixture-and-test.md`.
+- **`pnpm build` before any CLI run.** An unbuilt tree checks the previous
+  build and reports success — see `.claude/rules/build-before-cli.md`.
+- **Six `flagConformance` failures are the known ugrep baseline** on macOS.
+  Do not chase them, and never edit the flag table to match a local binary.
+
+Beyond that, this stage owns sequencing, dispatch and commit boundaries.
 
 Pre-flight:
 
@@ -1159,20 +1173,13 @@ artefacts. The whole reason it is a separate agent is that your account of the
 run — at the end of a long session, with the early mistakes compacted away — is
 the least reliable input available.
 
-Commit the retro on the feature branch so it travels with the PR, and verify
-the push actually landed before declaring the run done — a push fails (stale
-ref, network, auth) exactly as easily as any other git command, and nothing
-else in this stage would notice a silent failure:
+**Do not commit the retro.** `.claude/retrospectives/` is git-ignored: a
+retrospective is a candid internal record of how a run actually went, and
+publishing it changes what gets written into it. The file stays in the working
+tree, where the next run's `retro-writer` reads it exactly as before.
 
-```bash
-git add .claude/retrospectives/<the-one-file-it-named>
-git commit -m "docs: retrospective for <change>"
-git push
-```
-
-Stage the single path the agent returned, never the directory and never `-A`.
-The working tree holds untracked local scratch, and a directory add sweeps it
-into a commit that then has to be amended.
+Nothing to push, so nothing here can fail silently. Report the path the agent
+returned and mark the run `done`.
 
 **Check `git push`'s exit code before transitioning to `done`.** A non-zero
 exit means the retro is committed locally but not on the PR's branch — the
