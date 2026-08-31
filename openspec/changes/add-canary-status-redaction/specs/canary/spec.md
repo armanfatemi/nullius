@@ -79,7 +79,15 @@ SHALL be the only caller that requests the unredacted form, and SHALL do so
 through an explicit, named option rather than by formatting the entry itself.
 
 This SHALL hold for messages raised as errors as well as messages printed to a
-console.
+console. Both classes exist today, and the error-raised ones are why an earlier
+enumeration of this change's scope was short by two: a `throw` does not look
+like a print to a search for print sites.
+
+No command-line flag SHALL reach the unredacted form. The distinction is the
+reason the option is a function parameter rather than a flag: a parameter is
+unreachable from a shell, whereas a `--reveal` flag would be a
+reviewer-accessible bypass of the redaction and would defeat the requirement it
+appears to serve.
 
 #### Scenario: A new rendering site is redacted without being enumerated
 
@@ -90,3 +98,21 @@ console.
 
 - **WHEN** `canary plant` succeeds
 - **THEN** it prints the planted document and line, because the coordinator records them at that moment
+
+### Requirement: the accessor's completeness is a review property, not a tested one
+
+This specification SHALL NOT be read as claiming that a future rendering site is
+prevented from formatting a canary entry by hand. Nothing in the build enforces
+that; the accessor makes the redacted form the easy path and the reviewable one,
+and a site that bypasses it would compile and pass.
+
+The mechanism that would enforce it — a lint asserting no `entry.doc` access
+outside the accessor — is rejected in `design.md` Decision 5, because it would
+fail on legitimate non-rendering uses such as `clearCanary`'s splice. This
+requirement exists so the gap is stated rather than left for a reader to infer
+from the accessor's existence.
+
+#### Scenario: A bypassing site is caught by review, not by a check
+
+- **WHEN** a new site formats a canary entry's document or line without the accessor
+- **THEN** no automated gate fails, and the omission is visible only to a reader of the diff

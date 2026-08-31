@@ -216,16 +216,26 @@ additive field marking the result document-level, which renderers honour — not
 a sentinel overloading `line`. That is a published-schema decision and belongs
 with a reviewer whose remit is the kernel's contracts.
 
-**Two further reasons the split is along a real seam, not convenience:**
+**This change therefore ships with a known, measured leak still open, and says
+so rather than dressing it up.** An earlier draft of this section argued the
+guard row was "the least informative of the six," on the reasoning that it only
+adds a line to a document the reader already knows. That is false under the gate
+`CLAUDE.md` documents: `check 'openspec/**/*.md'` matches many documents, and the
+row names which one carries the plant as well as the line. This change's own
+evidence file records it happening — the row appeared as
+`CANARY-PRESENT openspec/changes/add-canary-status-redaction/design.md:6` under
+a folder glob, and it is how a reviewer reached the plant during iteration 2.
 
-- The guard row is the *least* informative of the six. It adds the plant's line
-  to a document the reader already knows, because they just asked `check` to
-  read it. The other five can disclose the document itself.
-- Deferring it removes this change's only breaking edit. `canaryGuardResult`
-  keeps its current behaviour, so the existing assertion at
-  `packages/claims/src/canary.test.ts:296-306` — which pins that result's source
-  line and which iteration 3's review flagged as unaccounted for — is left
-  untouched rather than needing a coordinated update.
+So the honest statement is: the guard row is the shortest measured path, it
+stays open after this change, and the reason is that closing it correctly is a
+published-schema change rather than a message edit. Not that it does not matter.
+
+The remaining argument for splitting is unaffected by any of that: deferring
+removes this change's only breaking edit. `canaryGuardResult` keeps its current
+behaviour, so the existing assertion at
+`packages/claims/src/canary.test.ts:296-306` — which pins that result's source
+line, and which iteration 3's review flagged as unaccounted for — is left
+untouched rather than needing a coordinated update.
 
 ### 5. One redacting accessor, not six edits
 
@@ -247,6 +257,35 @@ The five, all message strings:
 
 together with `canary status`'s presence branch (Decision 1), `check`'s two
 warnings (Decision 2), and `verify`'s CAUGHT/MISSED messages (Decision 3).
+
+**A seventh site, found at iteration 4, and why it was missed.** `plant` refuses
+when a canary is already registered, and names the existing one:
+
+**Evidence:** `packages/claims/src/canary.ts:276@3b547b4` — ``      `an active canary is already registered (${active.doc}:${active.line}) — run \`canary status\` or \`canary clear\` first`,``
+
+A reviewer reaches this by running `canary plant` against any file. It throws
+before writing, so nothing records the attempt, and the message advertises two
+of the commands this change redacts. It is a `throw` rather than a `console`
+call, which is precisely why three rounds of grep-driven enumeration passed over
+it.
+
+**An eighth site, and a correction to the review that found it.**
+`loadActiveCanary` warns when the registry entry's path is unsafe, naming it:
+
+**Evidence:** `packages/claims/src/canary.ts:175@3b547b4` — ``      warning: `canary registry entry has an unsafe path and was ignored: ${entry.doc}`,``
+
+iteration 4's review reported this site as unreachable through `plant` because
+`canary.ts:283` rejects. That reasoning is wrong: line 283 validates the *new*
+document's path, while this warning is rethrown eleven lines earlier —
+
+**Evidence:** `packages/claims/src/canary.ts:273@3b547b4` — `  if (warning !== undefined) throw new Error(warning);`
+
+— so `plant` does surface it. The conclusion survives for a different reason:
+the warning only fires when the registry entry already holds an unsafe path,
+which requires someone to have written that registry by hand, and anyone who can
+write it can read it. It is routed through the accessor anyway, because "not
+currently exploitable" is a weaker property than "cannot leak," and the whole
+point of Decision 5 is to stop deciding this site by site.
 
 **`canary plant` is the one exception, and it is explicit.** It prints the
 location at the only moment the coordinator legitimately needs it, and

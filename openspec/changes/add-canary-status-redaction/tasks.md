@@ -52,10 +52,20 @@ open, because `check` prints the document itself.
 
 ## 2b. One redacting accessor, and the remaining message sites
 
-Rewritten at refinement iteration 3; see `design.md` Decision 5. Enumerating
-call sites was tried three times and missed two surfaces. These tasks build the
-accessor first, then route every site through it, so section 1 and section 2
-become callers rather than independent edits.
+Rewritten at refinement iteration 3; extended at iteration 4. See `design.md`
+Decision 5.
+
+**Do task 2b.1 FIRST — before tasks 1.1 and 2.1.** The section numbering is
+historical, not an order. This change is mechanism-first: the accessor is the
+deliverable and every message site is a caller. Writing the redacted strings by
+hand first and adding the accessor afterwards produces the same enumeration this
+change exists to replace, with a helper bolted on at the end.
+
+Enumerating call sites was tried three times and missed a surface each time —
+seven now known, plus an eighth routed through for safety. That history is why
+the accessor's contract is universal while this list is not: **if you find a
+render site not listed here, route it and add it, rather than assuming the list
+is complete.** It has not been complete once.
 
 - [ ] 2b.1 In `packages/claims/src/canary.ts`, add an accessor that renders a
       `CanaryEntry` for human output in redacted form — presence and
@@ -79,7 +89,19 @@ become callers rather than independent edits.
       exception from 2b.1. It prints the location at the one moment the
       coordinator legitimately needs it, and `SKILL.md` Stage 2 Step 3
       instructs recording it then.
-- [ ] 2b.8 **Do not touch `canaryGuardResult`.** The `CANARY-PRESENT` guard
+- [ ] 2b.8 Route `plant`'s already-registered refusal through it
+      (`packages/claims/src/canary.ts:276`). Found at iteration 4. A reviewer
+      reaches it by running `canary plant` against any file: it throws before
+      writing, so nothing records the attempt, and the message names two of the
+      commands this change redacts. Another `throw`, which is why three rounds
+      of grep-driven enumeration missed it.
+- [ ] 2b.9 Route `loadActiveCanary`'s unsafe-path warning through it
+      (`packages/claims/src/canary.ts:175`). Not currently exploitable — it
+      fires only when the registry already holds an unsafe path, which someone
+      must have written by hand, and whoever can write the registry can read it.
+      Routed anyway: "not currently exploitable" is weaker than "cannot leak,"
+      and deciding this site by site is the habit Decision 5 replaces.
+- [ ] 2b.10 **Do not touch `canaryGuardResult`.** The `CANARY-PRESENT` guard
       row is deferred to a follow-up change (`design.md` Decision 4). Leaving
       it alone is also what keeps the existing assertion at
       `packages/claims/src/canary.test.ts:296-306` valid — it pins that
@@ -171,16 +193,22 @@ there to confirm.
 
 ## 6. Verification
 
-- [ ] 6.1 **`pnpm build` FIRST, before the test suite.** Tasks 3.1-3.7 are
-      CLI-level tests: `packages/claims/src/cli.ts` exports nothing and ends in
-      `process.exit(main())`, so they cannot import it and must spawn the built
-      `dist/cli.js` — the pattern `packages/claims/src/cli.characterization.test.ts`
-      already uses, whose own header states it requires a build. An earlier
-      draft of this section ran the suite first and rebuilt only before the
-      manual check, which would have scored every new test against the binary
-      built at task 0.1, before any edit in this change existed. That is
-      `.claude/rules/build-before-cli.md`'s exact failure, reproduced inside
-      this plan's own verification section.
+- [ ] 6.1 **`pnpm build` FIRST, before the test suite.** Six of the eight tests
+      in section 3 — 3.1 through 3.6 — exercise `cli.ts`'s handlers, which are
+      unexported: the file ends in `process.exit(main())`, so those tests must
+      spawn the built `dist/cli.js`, the pattern
+      `packages/claims/src/cli.characterization.test.ts` already uses and whose
+      own header states it requires a build.
+      An earlier draft of this task claimed 3.1-3.7 all need the CLI and that
+      3.8 was the sole exception. That was wrong on both counts: `clearCanary`
+      is exported (`packages/claims/src/canary.ts:334`) and already has a
+      direct-call test at `packages/claims/src/canary.test.ts:274-284`, so 3.7
+      can be written as an import test and should be — do not write it as a
+      slower spawn test on the strength of the earlier claim.
+      The build-first ordering stands regardless, on the six that do need it.
+      Getting this backwards is what `.claude/rules/build-before-cli.md`
+      describes, and the earlier draft reproduced it inside this plan's own
+      verification section.
 - [ ] 6.2 Full test suite and type-check. Baseline is six `flagConformance`
       failures on a machine where `grep` is ugrep; any other count is real, and
       the flag table is never the thing to edit.
