@@ -163,12 +163,18 @@ jobs:
           while read -r line; do node -e 'JSON.parse(process.argv[1])' "$line"; done < "$journal"
           node packages/claims/dist/cli.js witness validate "$journal"
 
-      # Dogfood: the README carries live Evidence Anchors into this repo's own
-      # source. If the code drifts out from under the README's claims, this
-      # step says so — the tool checking the docs of the tool.
+      # Dogfood: the specs carry live Evidence Anchors into this repo's own
+      # source. If the code drifts out from under their claims, this step says
+      # so — the tool checking the docs of the tool.
+      #
+      # README.md is deliberately NOT here. It is the front door: an explanation
+      # of the convention rather than an assertion about the code, and it shows
+      # the anchor grammar in fenced examples that the parser (correctly) ignores.
+      # With no anchors of its own, --require-markers would fail it for being
+      # what it is.
       - name: nullius check (self)
         run: |
-          node packages/claims/dist/cli.js check 'README.md' 'spec/**/*.md' --require-markers
+          node packages/claims/dist/cli.js check 'spec/**/*.md' --require-markers
           # Change proposals cite code they are ABOUT TO MODIFY, so they rot in
           # a way the spec does not: a design doc that quotes a line as the
           # reason to delete it is FABRICATED the moment the change lands. That
