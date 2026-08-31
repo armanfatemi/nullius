@@ -15,20 +15,20 @@ See `design.md` Decisions 4 and 5.
 
 ## 0. Prerequisites / setup
 
-- [ ] 0.1 `pnpm build` and confirm the baseline (765 kernel tests, 6 known
+- [x] 0.1 `pnpm build` and confirm the baseline (765 kernel tests, 6 known
       ugrep-baseline `flagConformance` failures, per `CLAUDE.md`).
-- [ ] 0.2 Re-confirm all three consumer sites named in `design.md` Context
+- [x] 0.2 Re-confirm all three consumer sites named in `design.md` Context
       still read the command the way this proposal assumes (CI's
       `canary status` line, SKILL.md's two references) — a quick grep, not a
       rewrite, since a stale line reference here would misdirect the fix.
 
 ## 1. Redact the presence branch
 
-- [ ] 1.1 Change `packages/claims/src/cli.ts`'s `status` handler's presence
+- [x] 1.1 Change `packages/claims/src/cli.ts`'s `status` handler's presence
       branch to print `active canary (planted ${entry.plantedAt})`, dropping
       `entry.doc`/`entry.line` from the message. Exit code and the absence
       branch (`"no active canary"`) unchanged.
-- [ ] 1.2 Update the command's own `--help` text (`nullius canary --help`,
+- [x] 1.2 Update the command's own `--help` text (`nullius canary --help`,
       the `status` line) if it currently documents the message format in a
       way that would now be inaccurate.
 
@@ -38,16 +38,16 @@ Added at refinement iteration 1; see `design.md` Decision 2. Pre-review
 established that redacting `status` alone leaves a shorter path to the plant
 open, because `check` prints the document itself.
 
-- [ ] 2.1 In `packages/claims/src/cli.ts`, drop `${activeCanary.doc}` from the
+- [x] 2.1 In `packages/claims/src/cli.ts`, drop `${activeCanary.doc}` from the
       outside-the-matched-set warning, and remove its `run \`canary status\``
       remedy — after task 1.1 that command cannot answer it. Keep the warning
       itself: "a registered canary points at a document outside the matched
       set" is still the diagnostic a human needs.
-- [ ] 2.2 In the same block, drop `${activeCanary.doc}` from the stale-registry
+- [x] 2.2 In the same block, drop `${activeCanary.doc}` from the stale-registry
       warning. Keep the `delete .git/nullius/canaries.json` remedy — it does not
       require knowing which document, and it is the only signal a human gets
       that the registry has desynchronized from the tree.
-- [ ] 2.3 Both remain `console.error` at their current severity. This change
+- [x] 2.3 Both remain `console.error` at their current severity. This change
       redacts what they say, never whether they fire.
 
 ## 2b. One redacting accessor, and the remaining message sites
@@ -67,41 +67,41 @@ the accessor's contract is universal while this list is not: **if you find a
 render site not listed here, route it and add it, rather than assuming the list
 is complete.** It has not been complete once.
 
-- [ ] 2b.1 In `packages/claims/src/canary.ts`, add an accessor that renders a
+- [x] 2b.1 In `packages/claims/src/canary.ts`, add an accessor that renders a
       `CanaryEntry` for human output in redacted form — presence and
       `plantedAt`, never `doc` or `line`. Give it an explicit, named way to
       request the unredacted form, used by `canary plant` alone. `plant` must
       read as a declared exception, not as a site somebody forgot.
-- [ ] 2b.2 Route `canary status`'s presence branch (task 1.1) through it.
-- [ ] 2b.3 Route `check`'s two warnings (tasks 2.1, 2.2) through it.
-- [ ] 2b.4 Route `canary verify`'s CAUGHT and MISSED messages through it.
+- [x] 2b.2 Route `canary status`'s presence branch (task 1.1) through it.
+- [x] 2b.3 Route `check`'s two warnings (tasks 2.1, 2.2) through it.
+- [x] 2b.4 Route `canary verify`'s CAUGHT and MISSED messages through it.
       Exit codes unchanged (`0` caught, `1` missed, `3` tainted, `2` unusable).
-- [ ] 2b.5 Route `canary clear`'s confirmation through it
+- [x] 2b.5 Route `canary clear`'s confirmation through it
       (`packages/claims/src/cli.ts:1348`). `clear` takes no operand, so this is
       the shortest path of the six and the one the other messages advertise as
       their remedy.
-- [ ] 2b.6 Route `clearCanary`'s refusal message through it
+- [x] 2b.6 Route `clearCanary`'s refusal message through it
       (`packages/claims/src/canary.ts:344`). Note this is a thrown `Error`
       message, not a `console` call — confirm the accessor is usable there
       before assuming it is, since it is the one site that is not a direct
       print.
-- [ ] 2b.7 Leave `canary plant`'s own output unredacted, through the explicit
+- [x] 2b.7 Leave `canary plant`'s own output unredacted, through the explicit
       exception from 2b.1. It prints the location at the one moment the
       coordinator legitimately needs it, and `SKILL.md` Stage 2 Step 3
       instructs recording it then.
-- [ ] 2b.8 Route `plant`'s already-registered refusal through it
+- [x] 2b.8 Route `plant`'s already-registered refusal through it
       (`packages/claims/src/canary.ts:276`). Found at iteration 4. A reviewer
       reaches it by running `canary plant` against any file: it throws before
       writing, so nothing records the attempt, and the message names two of the
       commands this change redacts. Another `throw`, which is why three rounds
       of grep-driven enumeration missed it.
-- [ ] 2b.9 Route `loadActiveCanary`'s unsafe-path warning through it
+- [x] 2b.9 Route `loadActiveCanary`'s unsafe-path warning through it
       (`packages/claims/src/canary.ts:175`). Not currently exploitable — it
       fires only when the registry already holds an unsafe path, which someone
       must have written by hand, and whoever can write the registry can read it.
       Routed anyway: "not currently exploitable" is weaker than "cannot leak,"
       and deciding this site by site is the habit Decision 5 replaces.
-- [ ] 2b.10 **Do not touch `canaryGuardResult`.** The `CANARY-PRESENT` guard
+- [x] 2b.10 **Do not touch `canaryGuardResult`.** The `CANARY-PRESENT` guard
       row is deferred to a follow-up change (`design.md` Decision 4). Leaving
       it alone is also what keeps the existing assertion at
       `packages/claims/src/canary.test.ts:296-306` valid — it pins that
@@ -198,7 +198,7 @@ there to confirm.
 
 ## 5. Documentation
 
-- [ ] 5.1 `spec/canary.md`: if it documents `status`'s or `check`'s output
+- [x] 5.1 `spec/canary.md`: if it documents `status`'s or `check`'s output
       format, update it to match. Re-check the two Evidence Anchors already in
       that file (`spec/canary.md:51`, `spec/canary.md:81`, citing `canary.ts` —
       not `cli.ts`, so likely unaffected, but confirm rather than assume).

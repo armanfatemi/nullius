@@ -40,6 +40,40 @@ export interface CanaryEntry {
 
 export type VerifyOutcome = "caught" | "missed" | "tainted";
 
+/**
+ * The one place a registered canary is rendered for a human to read.
+ *
+ * The probe measures whether a reviewer found a planted claim by *reading* the
+ * document. Any command that prints the plant's location answers that question
+ * for them, so the location is omitted by default and every message that
+ * mentions a registered canary comes through here.
+ *
+ * This is a function parameter rather than a CLI flag on purpose. A
+ * `--reveal`-style flag would be reachable from the shell by the very reviewer
+ * the redaction exists to stop, which would make it a documented bypass rather
+ * than a control. `plant` is the sole caller that passes `reveal`, at the one
+ * moment the coordinator legitimately records where the claim went.
+ *
+ * The two forms answer different questions and are not parallel by accident.
+ * Redacted answers "is one planted, and since when" — enough for the scriptable
+ * guard and for a human checking environment state. Revealed answers "where",
+ * which only `plant` is entitled to ask.
+ *
+ * The rule is deliberately not enforced by a lint. A check for `entry.doc`
+ * access outside this function would fire on `clearCanary`'s splice and on the
+ * guard's own comparison, both of which need the location and neither of which
+ * prints it. So adoption is a review property, and the reason it is written
+ * down here is that nothing else will catch a site that bypasses it.
+ */
+export function describeCanary(
+  entry: CanaryEntry,
+  options: { reveal?: boolean } = {},
+): string {
+  return options.reveal === true
+    ? `${entry.doc}:${entry.line}`
+    : `planted ${entry.plantedAt}`;
+}
+
 const REGISTRY_REL = join("nullius", "canaries.json");
 
 /**
@@ -172,7 +206,7 @@ export function loadActiveCanary(root: string): {
   if (!isSafeRepoPath(entry.doc).safe) {
     return {
       entry: null,
-      warning: `canary registry entry has an unsafe path and was ignored: ${entry.doc}`,
+      warning: "canary registry entry has an unsafe path and was ignored",
     };
   }
 
@@ -273,7 +307,7 @@ export function plantCanary(root: string, rawDoc: string): CanaryEntry {
   if (warning !== undefined) throw new Error(warning);
   if (active !== null) {
     throw new Error(
-      `an active canary is already registered (${active.doc}:${active.line}) — run \`canary status\` or \`canary clear\` first`,
+      `an active canary is already registered (${describeCanary(active)}) — run \`canary clear\` first`,
     );
   }
 
@@ -341,7 +375,7 @@ export function clearCanary(root: string, entry: CanaryEntry): void {
   const lines = readFileSync(docAbs, "utf8").split("\n");
   if (lines[entry.line - 1] !== entry.text) {
     throw new Error(
-      `the registered line no longer carries the planted claim (${entry.doc}:${entry.line}) — clear refused; restore the line or remove it by hand, then delete the registry`,
+      `the registered line no longer carries the planted claim (${describeCanary(entry)}) — clear refused; restore the line or remove it by hand, then delete the registry`,
     );
   }
 
