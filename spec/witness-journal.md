@@ -542,7 +542,7 @@ the rule.
 On a journal declaring `0.6` or later, the verdict considers **only** dispatches
 carrying `expects: "findings"`. Every other dispatch is skipped:
 
-**Evidence:** `packages/claims/src/witness.ts:1572` — `        !EXPECTATIONS.some((expectation) => expectation === record.raw.expects)`
+**Evidence:** `packages/claims/src/witness.ts:1572@19f7bd4` — `        !EXPECTATIONS.some((expectation) => expectation === record.raw.expects)`
 
 Below `0.6` the loop is unchanged. Those journals have no `expects` to read, and
 scoping them would retire the verdict for every journal already written.

@@ -198,7 +198,7 @@ never a journal record. Where a harness runs subagents synchronously,
 At a subagent's terminal the recorder scans the **untruncated** return text for
 lines in the reviewer tag grammar, and writes one `finding` record per match:
 
-**Evidence:** `packages/kit/src/record.ts:234` — `const TAG_LINE = /^\s*-\s*\[(blocker|concern|looks-good|false-premise)\]\s+(.+)$/;`
+**Evidence:** `packages/kit/src/record.ts:234@19f7bd4` — `const TAG_LINE = /^\s*-\s*\[(blocker|concern|looks-good|false-premise)\]\s+(.+)$/;`
 
 `severity` is the tag, `author` is the dispatched agent's name, `text` is the
 rest of the line, and `dispatch` joins the finding to the terminal it came out
@@ -255,7 +255,7 @@ answers.
 
 **Every record it writes carries its own origin:**
 
-**Evidence:** `packages/kit/src/cli.ts:127` — `const RECORD_ORIGIN = "self-reported";`
+**Evidence:** `packages/kit/src/cli.ts:127@19f7bd4` — `const RECORD_ORIGIN = "self-reported";`
 
 Never the header's `hooks`. The header's origin is the origin of records that
 carry none of their own, so a coordinator's record under a `hooks` header would
@@ -301,7 +301,7 @@ records. That third number is the one worth reading: records with no origin of
 their own, under a header whose origin is absent, belong to nobody, and counting
 them as hook-tier would be the flattering read the field exists to remove.
 
-**Evidence:** `packages/kit/src/journalFile.ts:77` — `export const SCHEMA_VERSION = "0.6";`
+**Evidence:** `packages/kit/src/journalFile.ts:77@19f7bd4` — `export const SCHEMA_VERSION = "0.6";`
 
 Internally consistent is not evidence of process, and output that lets the two
 blur is output that will be read as the flattering one.

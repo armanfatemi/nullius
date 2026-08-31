@@ -72,13 +72,18 @@ first has shipped.
 
 What has not shipped, stated so the checker says when that stops being true:
 
-**Evidence:** `grep -rn 'harvest' packages/claims/src/ packages/kit/src/` → 0 results
+Three of these rows went loud and had gone unread, which is the correction this
+table exists to force and had failed to make on its own — again. `canary` and
+`rules select` **shipped**, so their absence anchors were asserting the
+opposite of the truth and are retired here. The `harvest` anchor was matching
+`harvestFalseClaim` in `canary.ts` — an unrelated function — so the claim
+(`witness harvest` is unbuilt) was true while its evidence was not; the search
+is narrowed to the thing it is actually about. Note that `IDEAS.md` is in no CI
+glob, which is why all three could sit wrong for so long.
 
-**Evidence:** `grep -rn 'canary' packages/claims/src/ packages/kit/src/` → 0 results
+**Evidence:** `grep -rn 'witness harvest' packages/claims/src/ packages/kit/src/` → 0 results
 
 **Evidence:** `grep -rn 'advocate' plugin/commands/ plugin/skills/` → 0 results
-
-**Evidence:** `grep -rni 'rules select' packages/claims/src/` → 0 results
 
 **Evidence:** `grep -rn 'REVENANT' packages/claims/src/` → 0 results
 
@@ -297,7 +302,7 @@ contract, and no agent that is not so named declares it.** `wiring` already
 reads `dispatches:` and resolves each entry to an agent file, so the list and
 the files are both in hand; what it does not do is look inside them.
 
-**Evidence:** `packages/claims/src/wiringScan.ts:181` — `    dispatches: declaredList(front, "dispatches"),`
+**Evidence:** `packages/claims/src/wiringScan.ts:181@19f7bd4` — `    dispatches: declaredList(front, "dispatches"),`
 
 **Evidence:** `grep -rn 'blocker' packages/claims/src/wiring.ts packages/claims/src/wiringScan.ts` → 0 results
 
@@ -354,7 +359,7 @@ dropped, and `add-run-ledger-producer` (schema `0.6`) closed the first of them:
 
   **Evidence:** `packages/kit/src/record.ts:749` — `export function extractFindings(`
 
-  **Evidence:** `packages/kit/src/cli.ts:762` — `const LEDGER_KINDS = ["stage", "resolution", "decision", "check"] as const;`
+  **Evidence:** `packages/kit/src/cli.ts:762@19f7bd4` — `const LEDGER_KINDS = ["stage", "resolution", "decision", "check"] as const;`
 
 - **`witness harvest`** — still unbuilt. Renders `review-evidence.md` and
   `implementation-log.md` into the change folder deterministically, no model in

@@ -539,7 +539,7 @@ return and emits the kind, which is what makes the producer bump landable.
 inside one, so a quoted anchor is a citation that looks like grounding and is
 gated by nothing.)
 
-**Evidence:** `packages/kit/src/record.ts:766` — `      kind: "finding",`
+**Evidence:** `packages/kit/src/record.ts:766@19f7bd4` — `      kind: "finding",`
 
 So under any schema at `0.3` or later, the two verdicts behind the ledger gate
 behave structurally, not statistically: `SUPPRESSED-FINDING` is unreachable

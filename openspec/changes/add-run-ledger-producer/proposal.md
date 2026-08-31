@@ -2,21 +2,19 @@
 
 > **Depends on:** None
 
-> **Three anchors in this file are deliberately unstamped, and must be stamped
-> in the commit that lands the implementation.** They cite code *this change
-> introduces* — `packages/kit/src/record.ts`, `plugin/hooks/hooks.json`,
-> `packages/kit/src/cli.ts` — which is uncommitted at the time of writing, so
-> there is no commit that contains the quoted text. Stamping them against the
-> current `HEAD` would assert the text was there at a commit where it verifiably
-> was not, which is `FABRICATED`: the verdict meaning the author did not open the
-> file. An unstamped anchor verifies against the working tree and is merely
-> weaker; a falsely stamped one is an accusation the checker would be right to
-> make. `rev-stamp-change-anchors` assumes the cited code already exists, which
-> is the ordinary case; this is the one it does not cover. The same applies to
-> the superseding anchor added to
-> `openspec/changes/archive/2026-08-30-add-journal-identity/review-evidence.md`,
-> and to the new unstamped anchors in `README.md`, `packages/kit/README.md`,
-> `plugin/README.md` and `spec/witness-journal.md`.
+> **Some anchors here cite code this change itself introduces, and are stamped
+> `@19f7bd4` — the implementation commit, not the commit this proposal was
+> drafted against.** They could not be stamped when written: the code did not
+> exist in any commit, and stamping against the then-current `HEAD` would have
+> asserted the text was there at a commit where it verifiably was not — which is
+> `FABRICATED`, the verdict meaning the author did not open the file, and
+> strictly worse than an unstamped anchor that verifies against the working
+> tree. So they were left unstamped, the gap was recorded as a must-do, and
+> `check --stamp` filled them in once the implementation landed. That flag only
+> stamps an anchor that holds at `HEAD` *and* in the working tree, so no claim
+> was widened by stamping it. `rev-stamp-change-anchors` assumes the cited code
+> already exists, which is the ordinary case; a proposal that cites its own
+> output is the case it does not cover, and this is how that is handled.
 
 ## Problem
 
@@ -34,7 +32,7 @@ rather than the absence anchor this proposal opened with (which reported
 `COUNT-MISMATCH` the moment the code landed, exactly as the gap-map
 convention intends):
 
-**Evidence:** `packages/kit/src/record.ts:766` — `      kind: "finding",`
+**Evidence:** `packages/kit/src/record.ts:766@19f7bd4` — `      kind: "finding",`
 
 So the account of what reviewers raised, what the coordinator answered, and
 why an approach was chosen lives only in `review-evidence.md` — coordinator
@@ -75,7 +73,7 @@ operator:
 And the one event that carries the operator's words, `UserPromptSubmit`, was
 subscribed by nothing. This change adds the subscription:
 
-**Evidence:** `plugin/hooks/hooks.json:3` — `    "UserPromptSubmit": [`
+**Evidence:** `plugin/hooks/hooks.json:3@19f7bd4` — `    "UserPromptSubmit": [`
 
 Its payload shape is still unrecorded, which is why task §0 captures a probe
 before the parser is trusted — and why this anchor is left live rather than
@@ -286,7 +284,7 @@ natural seam is the kernel scoping change (Decision 4) as its own prerequisite.
    override for when it is absent, and a refusal rather than a guess when
    neither is available:
 
-   **Evidence:** `packages/kit/src/cli.ts:168` — `The journal is addressed by --session, else $CLAUDE_CODE_SESSION_ID, and by`
+   **Evidence:** `packages/kit/src/cli.ts:168@19f7bd4` — `The journal is addressed by --session, else $CLAUDE_CODE_SESSION_ID, and by`
 
    No recorded probe carries it, because a hook payload is JSON on stdin and
    carries no environment at all — so the corpus can never settle this, and

@@ -80,7 +80,7 @@ Two limits worth knowing before you rely on this:
   which event fired or on anyone remembering it next time `hooks.json` grows an
   entry:
 
-  **Evidence:** `plugin/hooks/witness-record.sh:77` — `$bound $runner witness record --root "$root" >&2 || status=$?`
+  **Evidence:** `plugin/hooks/witness-record.sh:77@19f7bd4` — `$bound $runner witness record --root "$root" >&2 || status=$?`
 
 ### The time bound lives in the script, and degrades rather than fails
 
@@ -96,7 +96,7 @@ a mechanism. Set `NULLIUS_WITNESS_TIMEOUT` (seconds, default 15) to change it.
 rather than delegated, and the runner is invoked exactly as it would be without
 it** — the wrapper variable is simply empty:
 
-**Evidence:** `plugin/hooks/witness-record.sh:60` — `  bound=""`
+**Evidence:** `plugin/hooks/witness-record.sh:60@19f7bd4` — `  bound=""`
 
 macOS is the case that matters: it ships no `timeout`, and coreutils
 installs it as `gtimeout`. This is a deliberate degradation and not a silent
