@@ -1102,6 +1102,7 @@ describe("version tables stay in sync", () => {
       [{ kind: "resolution", id: "r1", finding: "f1", outcome: "fixed", text: "t" }, "0.3"],
       [{ kind: "check", id: "c1", command: "x", outcome: "pass", text: "t" }, "0.3"],
       [{ kind: "decision", id: "d1", choice: "x", rationale: "y" }, "0.3"],
+      [{ kind: "prompt", id: "p1", text: "ship it" }, "0.6"],
     ];
 
     for (const [record, version] of cases) {
@@ -1678,8 +1679,11 @@ describe("survey — aggregates reports, never merges journals", () => {
 // nothing about what validate accepts — the claim the design makes, asserted
 // here rather than left to the fixture's exit code.
 describe("schema 0.5 — the oracle-conservation bump", () => {
+  // A slice, so this stays an assertion about 0.5's position rather than one
+  // that has to be edited at every later bump. The whole list is pinned in the
+  // 0.6 block below.
   it("appends 0.5 without displacing any earlier version", () => {
-    expect(VERSIONS).toEqual(["0.1", "0.2", "0.3", "0.4", "0.5"]);
+    expect(VERSIONS.slice(0, 5)).toEqual(["0.1", "0.2", "0.3", "0.4", "0.5"]);
   });
 
   it("accepts a 0.5 journal", () => {
@@ -1750,10 +1754,500 @@ describe("schema 0.5 — the oracle-conservation bump", () => {
     ).toEqual([]);
   });
 
-  it("still refuses a version above 0.5", () => {
+  it("still refuses a version above the newest this build reads", () => {
     const report = validateJournal(
-      '{"kind":"journal","version":"0.6","origin":"self-reported","session":"s"}',
+      '{"kind":"journal","version":"0.7","origin":"self-reported","session":"s"}',
     );
     expect(report.findings.some((f) => isJournalFailure(f.verdict))).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Schema 0.6 — the run-ledger producer. A new kind (`prompt`), a required
+// per-record `origin` on the four coordinator kinds, a header `user`, a closed
+// `expects` on `dispatch`, and the two counter blocks. The one loosening —
+// SILENT-REVIEWER scoped to dispatches that declared a review contract — is
+// pinned in both directions here, because the 0.5 compatibility twin's exit
+// code cannot say which of its two failures fired.
+// ---------------------------------------------------------------------------
+
+const V06 = { kind: "journal", version: "0.6", origin: "hooks", session: "s" };
+const V05 = { kind: "journal", version: "0.5", origin: "hooks", session: "s" };
+const SELF = { origin: "self-reported" };
+
+describe("VERSIONS pins 0.6 last", () => {
+  it("appends 0.6 without displacing any earlier version", () => {
+    expect(VERSIONS).toEqual(["0.1", "0.2", "0.3", "0.4", "0.5", "0.6"]);
+  });
+});
+
+// The floor is a loosening in one direction only, so it is asserted in both.
+// A scoping written as `expects !== undefined` passes the first two of these
+// and fails nothing else in the suite.
+describe("schema 0.6 scopes SILENT-REVIEWER to dispatches that expect findings", () => {
+  const REVIEWER = { kind: "dispatch", id: "d1", task: "review it", expects: "findings" };
+  const UNSCOPED = { kind: "dispatch", id: "d1", task: "search the consumers" };
+  const FOUND = {
+    kind: "report",
+    id: "r1",
+    dispatch: "d1",
+    outcome: "found",
+    findings: ["the precheck does not block"],
+  };
+
+  it("fires at 0.6 on an expects: findings dispatch that filed no finding", () => {
+    expect(verdicts(journal(V06, REVIEWER, FOUND))).toEqual(["silent-reviewer"]);
+  });
+
+  it("does not fire at 0.6 on the same records without expects", () => {
+    expect(verdicts(journal(V06, UNSCOPED, FOUND))).toEqual([]);
+  });
+
+  // The lower boundary, and the assertion the inverted fixture pair cannot
+  // make on its own: at 0.5 the verdict is unscoped, so the identical records
+  // still earn it. If this ever goes quiet, the loosening leaked downward.
+  it("fires at 0.5 on the same records, where nothing scopes it", () => {
+    expect(verdicts(journal(V05, UNSCOPED, FOUND))).toEqual(["silent-reviewer"]);
+  });
+
+  it("is still discharged at 0.6 by a looks-good finding", () => {
+    expect(
+      verdicts(
+        journal(V06, REVIEWER, FOUND, {
+          kind: "finding",
+          id: "f1",
+          dispatch: "d1",
+          severity: "looks-good",
+          author: "rule-auditor",
+          text: "read the rule files, nothing to raise",
+        }),
+      ),
+    ).toEqual([]);
+  });
+
+  // SUPPRESSED-FINDING reads no `expects` and must not have acquired one: it
+  // walks the findings, not the dispatches, and the two loops share a gate.
+  it("leaves SUPPRESSED-FINDING unscoped at 0.6", () => {
+    expect(
+      verdicts(
+        journal(V06, {
+          kind: "finding",
+          id: "f1",
+          severity: "blocker",
+          author: "rule-auditor",
+          text: "a blocker nothing answers",
+        }),
+      ),
+    ).toEqual(["suppressed-finding"]);
+  });
+});
+
+describe("schema 0.6 — expects is a closed vocabulary", () => {
+  it("refuses a value outside it and names the dispatch", () => {
+    const report = validateJournal(
+      journal(V06, { kind: "dispatch", id: "d1", task: "t", expects: "reviews" }, {
+        kind: "report",
+        id: "r1",
+        dispatch: "d1",
+        outcome: "empty",
+        statement: "None.",
+      }),
+    );
+
+    expect(report.findings.map((f) => f.verdict)).toEqual(["malformed"]);
+    expect(report.findings[0]?.subject).toBe("d1");
+    expect(report.findings[0]?.detail).toContain('"expects" is "reviews"');
+  });
+
+  it("accepts an absent expects at 0.6", () => {
+    expect(
+      verdicts(
+        journal(V06, DISPATCH, {
+          kind: "report",
+          id: "r1",
+          dispatch: "d1",
+          outcome: "empty",
+          statement: "None.",
+        }),
+      ),
+    ).toEqual([]);
+  });
+
+  it("ignores an unknown expects below 0.6", () => {
+    expect(
+      verdicts(
+        journal(V05, { kind: "dispatch", id: "d1", task: "t", expects: "reviews" }, {
+          kind: "report",
+          id: "r1",
+          dispatch: "d1",
+          outcome: "empty",
+          statement: "None.",
+        }),
+      ),
+    ).toEqual([]);
+  });
+});
+
+describe("schema 0.6 — the prompt kind", () => {
+  it("accepts a prompt carrying text", () => {
+    expect(verdicts(journal(V06, { kind: "prompt", id: "p1", text: "ship the ledger" }))).toEqual(
+      [],
+    );
+  });
+
+  it("accepts the hashed mode — chars and hash, no text", () => {
+    expect(
+      verdicts(journal(V06, { kind: "prompt", id: "p1", chars: 0, hash: "9f2b1c" })),
+    ).toEqual([]);
+  });
+
+  it("refuses a prompt with neither text nor chars and hash", () => {
+    const report = validateJournal(journal(V06, { kind: "prompt", id: "p1", at: "now" }));
+
+    expect(report.findings.map((f) => f.verdict)).toEqual(["malformed"]);
+    expect(report.findings[0]?.subject).toBe("p1");
+    expect(report.findings[0]?.detail).toContain('needs non-empty "text"');
+  });
+
+  it("refuses a prompt with chars and no hash", () => {
+    expect(verdicts(journal(V06, { kind: "prompt", id: "p1", chars: 12 }))).toEqual(["malformed"]);
+  });
+
+  it("refuses a prompt whose chars is not an integer", () => {
+    const report = validateJournal(
+      journal(V06, { kind: "prompt", id: "p1", chars: 1.5, hash: "9f2b1c" }),
+    );
+
+    expect(report.findings.map((f) => f.verdict)).toEqual(["malformed"]);
+    expect(report.findings[0]?.detail).toContain('"chars" is 1.5');
+  });
+
+  it("refuses a negative chars", () => {
+    expect(verdicts(journal(V06, { kind: "prompt", id: "p1", chars: -1, hash: "9f2b1c" }))).toEqual(
+      ["malformed"],
+    );
+  });
+
+  it("ignores truncated, at and session on a prompt", () => {
+    expect(
+      verdicts(
+        journal(V06, {
+          kind: "prompt",
+          id: "p1",
+          text: "ship it",
+          chars: 7,
+          truncated: true,
+          at: "2026-08-31T00:00:00Z",
+          session: "s",
+        }),
+      ),
+    ).toEqual([]);
+  });
+});
+
+describe("schema 0.6 — the four coordinator kinds carry their own origin", () => {
+  const CASES: ReadonlyArray<readonly [string, object]> = [
+    ["stage", { kind: "stage", id: "x", phase: "verify" }],
+    ["decision", { kind: "decision", id: "x", choice: "c", rationale: "r" }],
+    ["check", { kind: "check", id: "x", command: "pnpm test", outcome: "pass", text: "green" }],
+  ];
+
+  it("refuses a coordinator kind with no origin, and names the record", () => {
+    for (const [kind, record] of CASES) {
+      const report = validateJournal(journal(V06, record));
+
+      expect(report.findings.map((f) => f.verdict)).toEqual(["malformed"]);
+      expect(report.findings[0]?.subject).toBe("x");
+      expect(report.findings[0]?.detail).toContain(`a ${kind} needs "origin"`);
+    }
+  });
+
+  // Wrong-but-present is the case the header's own ORIGINS list would have
+  // waved through, which is why the per-record check does not reuse it.
+  it("refuses a coordinator kind claiming origin: hooks", () => {
+    for (const [kind, record] of CASES) {
+      const report = validateJournal(journal(V06, { ...record, origin: "hooks" }));
+
+      expect(report.findings.map((f) => f.verdict)).toEqual(["malformed"]);
+      expect(report.findings[0]?.detail).toContain(`"origin" is "hooks" on a ${kind}`);
+    }
+  });
+
+  it("refuses a resolution with no origin", () => {
+    const report = validateJournal(
+      journal(
+        V06,
+        { kind: "finding", id: "f1", severity: "concern", author: "a", text: "t" },
+        { kind: "resolution", id: "res1", finding: "f1", outcome: "fixed", text: "done" },
+      ),
+    );
+
+    expect(report.findings.map((f) => f.verdict)).toEqual(["malformed"]);
+    expect(report.findings[0]?.detail).toContain('a resolution needs "origin"');
+  });
+
+  it("accepts all four when they carry origin: self-reported", () => {
+    expect(
+      verdicts(
+        journal(
+          V06,
+          { kind: "stage", id: "s1", phase: "verify", ...SELF },
+          { kind: "finding", id: "f1", severity: "concern", author: "a", text: "t" },
+          { kind: "resolution", id: "res1", finding: "f1", outcome: "fixed", text: "done", ...SELF },
+          { kind: "check", id: "c1", command: "pnpm test", outcome: "pass", text: "green", ...SELF },
+          { kind: "decision", id: "dec1", choice: "c", rationale: "r", ...SELF },
+        ),
+      ),
+    ).toEqual([]);
+  });
+
+  // `finding` is deliberately absent from the requirement: the recorder writes
+  // it from the harness payload, so the header's hooks is true of it.
+  it("does not require an origin on a finding", () => {
+    expect(
+      verdicts(journal(V06, { kind: "finding", id: "f1", severity: "concern", author: "a", text: "t" })),
+    ).toEqual([]);
+  });
+
+  it("requires none of it below 0.6", () => {
+    expect(
+      verdicts(
+        journal(
+          V05,
+          { kind: "stage", id: "s1", phase: "verify" },
+          { kind: "decision", id: "dec1", choice: "c", rationale: "r", origin: "hooks" },
+        ),
+      ),
+    ).toEqual([]);
+  });
+});
+
+describe("schema 0.6 — the header names the operator", () => {
+  const withUser = (header: object, user: unknown) =>
+    validateJournal(journal({ ...header, user }));
+
+  it("records user.name at 0.6", () => {
+    const report = withUser(V06, { name: "Arman Fatemi" });
+
+    expect(report.findings).toEqual([]);
+    expect(report.header?.user).toEqual({ name: "Arman Fatemi" });
+  });
+
+  // Recorded at every declared version, like branch/head/worktree. Only the
+  // rejection is gated.
+  it("records user.name at 0.5 too", () => {
+    const report = withUser(V05, { name: "Arman Fatemi" });
+
+    expect(report.findings).toEqual([]);
+    expect(report.header?.user).toEqual({ name: "Arman Fatemi" });
+  });
+
+  it("refuses a blank user.name at 0.6 and names the field", () => {
+    const report = withUser(V06, { name: "   " });
+
+    expect(report.findings.map((f) => f.verdict)).toEqual(["malformed"]);
+    expect(report.findings[0]?.detail).toContain('"user" is');
+    expect(report.header?.user).toBeUndefined();
+  });
+
+  // An unrecognised shape fails closed, for the reason `expects` does: a
+  // producer writing the wrong shape holds a wrong model of the field, and
+  // dropping it silently is how that model survives.
+  it("refuses a user that is a bare string at 0.6", () => {
+    const report = withUser(V06, "Arman");
+
+    expect(report.findings.map((f) => f.verdict)).toEqual(["malformed"]);
+    expect(report.findings[0]?.detail).toContain('"user" is "Arman"');
+  });
+
+  it("refuses a user object carrying no name at 0.6", () => {
+    const report = withUser(V06, {});
+
+    expect(report.findings.map((f) => f.verdict)).toEqual(["malformed"]);
+    expect(report.findings[0]?.detail).toContain('"user" is {}');
+  });
+
+  it("reports nothing when user is absent at 0.6", () => {
+    const report = validateJournal(journal(V06));
+
+    expect(report.findings).toEqual([]);
+    expect(report.header?.user).toBeUndefined();
+  });
+
+  // Below the floor a bad shape is recorded as absent and reported not at all
+  // — the 0.4 and 0.5 journals already written do not become invalid because
+  // the validator learned a newer schema.
+  it("records a bad shape as absent below 0.6, and reports nothing", () => {
+    for (const bad of ["Arman", {}, { name: "" }]) {
+      const report = withUser(V05, bad);
+
+      expect(report.findings).toEqual([]);
+      expect(report.header?.user).toBeUndefined();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The two counter blocks. Both are `null` below 0.6 and populated at or above
+// it, decided inside witness.ts — cli.ts renders on presence and compares no
+// versions.
+// ---------------------------------------------------------------------------
+
+const LEDGER_RECORDS: readonly object[] = [
+  { kind: "prompt", id: "p1", text: "ship the ledger" },
+  { kind: "dispatch", id: "d1", task: "review it", expects: "findings", prompt: "p1" },
+  { kind: "report", id: "r1", dispatch: "d1", outcome: "found", findings: ["x"] },
+  { kind: "finding", id: "f1", dispatch: "d1", severity: "blocker", author: "rule-auditor", text: "t" },
+  { kind: "stage", id: "s1", phase: "verify", origin: "self-reported" },
+  {
+    kind: "resolution",
+    id: "res1",
+    finding: "f1",
+    outcome: "fixed",
+    text: "fixed it",
+    origin: "self-reported",
+  },
+  {
+    kind: "check",
+    id: "c1",
+    command: "pnpm test",
+    outcome: "pass",
+    text: "green",
+    origin: "self-reported",
+  },
+  { kind: "decision", id: "dec1", choice: "c", rationale: "r", origin: "self-reported" },
+];
+
+describe("schema 0.6 — the ledger and provenance blocks", () => {
+  it("counts each ledger kind at 0.6", () => {
+    const report = validateJournal(journal(V06, ...LEDGER_RECORDS));
+
+    expect(report.findings).toEqual([]);
+    expect(report.ledger).toEqual({
+      stages: 1,
+      findings: 1,
+      resolutions: 1,
+      checks: 1,
+      decisions: 1,
+      prompts: 1,
+    });
+  });
+
+  // The counter is namespaced because JournalReport.findings is already the
+  // array of validator findings and is consumed as one in three CLIs.
+  it("keeps the finding counter under ledger, never beside the validator findings", () => {
+    const report = validateJournal(journal(V06, ...LEDGER_RECORDS));
+
+    expect(Array.isArray(report.findings)).toBe(true);
+    expect(report.ledger?.findings).toBe(1);
+  });
+
+  it("splits the records by tier under a hooks header", () => {
+    const report = validateJournal(journal(V06, ...LEDGER_RECORDS));
+
+    expect(report.provenance).toEqual({ hooks: 4, selfReported: 4, unattributed: 0 });
+  });
+
+  // The partition's denominator, pinned. `records` counts the header and the
+  // provenance loop does not, so the sum is `records - 1` on any journal that
+  // has one. Asserting the three counts in isolation cannot catch this being
+  // described wrongly, and it was: both the interface's doc comment and the
+  // CLI's printed line claimed the sum WAS the record count, which is off by
+  // exactly one on every 0.6 journal.
+  // A coordinator kind with NO origin is MALFORMED for the same reason as one
+  // with an unreadable origin, so it must not fall through to the header's tier
+  // and buy `hooks`. The journal fails either way, so this is invisible in
+  // `validate` and visible in `survey`, which aggregates failing journals.
+  it("counts a coordinator kind with no origin as unattributed, never as hook-tier", () => {
+    const report = validateJournal(
+      journal(V06, { kind: "stage", id: "s9", phase: "verify" }),
+    );
+
+    expect(report.provenance).toEqual({ hooks: 0, selfReported: 0, unattributed: 1 });
+  });
+
+  it("partitions every record except the header, so the sum is one short of records read", () => {
+    const report = validateJournal(journal(V06, ...LEDGER_RECORDS));
+    const { hooks, selfReported, unattributed } = report.provenance ?? {
+      hooks: -1,
+      selfReported: 0,
+      unattributed: 0,
+    };
+
+    expect(hooks + selfReported + unattributed).toBe(report.records - 1);
+  });
+
+  // The branch the old header sentence never had to name: records with no
+  // origin of their own, under a header that claims none, belong to nobody.
+  it("counts records with no origin of their own as unattributed when the header claims none", () => {
+    const report = validateJournal(
+      journal({ kind: "journal", version: "0.6", session: "s" }, ...LEDGER_RECORDS),
+    );
+
+    expect(report.provenance).toEqual({ hooks: 0, selfReported: 4, unattributed: 4 });
+  });
+
+  it("leaves both blocks null at 0.5", () => {
+    const report = validateJournal(
+      journal(V05, DISPATCH, {
+        kind: "report",
+        id: "r1",
+        dispatch: "d1",
+        outcome: "empty",
+        statement: "None.",
+      }),
+    );
+
+    expect(report.ledger).toBeNull();
+    expect(report.provenance).toBeNull();
+  });
+
+  it("leaves both blocks null on a journal whose schema it cannot read", () => {
+    const report = validateJournal(journal({ kind: "journal", version: "9.9" }));
+
+    expect(report.ledger).toBeNull();
+    expect(report.provenance).toBeNull();
+  });
+});
+
+describe("survey — the 0.6 blocks are null when nothing reached the floor", () => {
+  const clean05 = journal(V05, DISPATCH, {
+    kind: "report",
+    id: "r1",
+    dispatch: "d1",
+    outcome: "empty",
+    statement: "None.",
+  });
+
+  // A sum is not an absence. Summing over zero qualifying journals yields
+  // zeros, and "0 stages, 0 findings…" over an all-0.5 survey is a claim about
+  // journals that were never counted.
+  it("is null, not zeroed, for a survey of only sub-0.6 journals", () => {
+    const survey = surveyJournals([
+      { path: "a.jsonl", content: clean05 },
+      { path: "b.jsonl", content: clean05 },
+    ]);
+
+    expect(survey.count).toBe(2);
+    expect(survey.ledger).toBeNull();
+    expect(survey.provenance).toBeNull();
+  });
+
+  it("sums only the journals that reached the floor", () => {
+    const survey = surveyJournals([
+      { path: "a.jsonl", content: clean05 },
+      { path: "b.jsonl", content: journal(V06, ...LEDGER_RECORDS) },
+      { path: "c.jsonl", content: journal(V06, ...LEDGER_RECORDS) },
+    ]);
+
+    expect(survey.ledger).toEqual({
+      stages: 2,
+      findings: 2,
+      resolutions: 2,
+      checks: 2,
+      decisions: 2,
+      prompts: 2,
+    });
+    expect(survey.provenance).toEqual({ hooks: 8, selfReported: 8, unattributed: 0 });
   });
 });

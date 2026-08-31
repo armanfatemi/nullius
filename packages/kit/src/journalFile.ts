@@ -38,15 +38,56 @@ import { dirname, join } from "node:path";
 
 import { validateJournal, type JournalOrigin } from "@nullius-inverba/claims";
 
-import type { JournalDraft, OpenDispatch } from "./record";
+import type { AgentLink, JournalDraft, OpenDispatch } from "./record";
 
 /** One file per session, beside the repo it describes. */
 export const RUNS_DIR = join(".nullius", "runs");
 
 export const LOCK_SUFFIX = ".lock";
 
-/** How long to wait for another writer before refusing. */
-const DEFAULT_WAIT_MS = 2_000;
+/**
+ * The schema this build writes.
+ *
+ * It sat at `0.2` for three validator versions, and the lag was deliberate:
+ * a journal declaring a version an older standalone kernel does not know is
+ * met with `UNSUPPORTED-VERSION` and then nothing at all, so the producer only
+ * moves when it has something to say that the old floor cannot carry. The
+ * header's identity fields needed no bump, because unknown header keys are
+ * ignored at every version and read at every version — they landed at `0.2`
+ * and were read the day they landed.
+ *
+ * `0.6` is the first version this producer *cannot* stay below, and the reason
+ * is that three of the things it now writes are only meaningful at that floor:
+ *
+ *  - `prompt` is a new kind. Below `0.6` it is an unknown kind, which is
+ *    MALFORMED — the record would be rejected rather than ignored.
+ *  - `stage`/`resolution`/`decision`/`check` written by `witness ledger` carry
+ *    `origin: "self-reported"`, and only at `0.6` does the validator require
+ *    and read it. Below the floor the field is ignored, so a coordinator's
+ *    account of its own run would be laundered by a header that says `hooks`.
+ *  - `expects: "findings"` scopes SILENT-REVIEWER. Below `0.6` the verdict is
+ *    unscoped and fires on every untagged return, which is the calibration
+ *    failure this change exists to avoid.
+ *
+ * It lives here rather than in `cli.ts` because this module writes the header,
+ * and because `doctor`'s live proof validates a journal it assembles itself:
+ * with two copies of the number, that proof would keep certifying a version
+ * the producer had stopped writing.
+ */
+export const SCHEMA_VERSION = "0.6";
+
+/**
+ * How long to wait for another writer before refusing.
+ *
+ * Exported because it is a ceiling other work has to stay under, not merely a
+ * local constant: anything a hook does before taking the lock — resolving
+ * identity, reading a subagent transcript — has to finish well inside this, or
+ * the append it was preparing is refused rather than delayed. `record.ts`'s
+ * `TRANSCRIPT_BUDGET_MS` duplicates a smaller number on purpose (that module is
+ * deliberately free of `node:fs` and cannot import this one); the relation is
+ * asserted in `journalFile.test.ts`.
+ */
+export const DEFAULT_WAIT_MS = 2_000;
 
 /** A lock older than this outlived its process. Hooks are short. */
 const STALE_LOCK_MS = 30_000;
@@ -72,6 +113,19 @@ export interface JournalHeaderDraft {
   branch?: string | null;
   head?: string | null;
   worktree?: string | null;
+  /**
+   * Who git says is steering the tree — `git config user.name`.
+   *
+   * Nested, and therefore not one of the three above: `identityFields` is a
+   * flat `Record<string, string>` loop and cannot carry an object, which is
+   * how this field spent its first chunk being resolved by `identity.ts` and
+   * then dropped on the floor by the writer.
+   *
+   * ABSENT, never blank. At `0.6` the validator reports MALFORMED for a `user`
+   * that is present but carries no non-empty `name`, so a producer that wrote
+   * `user: { name: "" }` would be emitting journals its own validator rejects.
+   */
+  user?: { name: string } | null;
 }
 
 export interface AppendOutcome {
@@ -240,10 +294,23 @@ export function linksPathFor(journalFile: string): string {
   return journalFile.replace(/\.jsonl$/, "") + ".links.json";
 }
 
+/**
+ * Bind an agent id to the dispatch it was launched for, and to the model the
+ * harness resolved for it.
+ *
+ * The model rides here because the launch acknowledgement is the only event
+ * that states it for an asynchronous dispatch — `SubagentStop`, which is where
+ * the `report` is written, carries no model at all. Without this the field is
+ * unrecoverable for exactly the dispatch shape this repository's pipeline uses.
+ *
+ * `link` takes the bare-string form as well, which is a dispatch id and no
+ * model. That is the shape every sidecar written before this existed uses, and
+ * `resolveLink` still reads it.
+ */
 export function recordLink(
   linksFile: string,
   agentId: string,
-  dispatch: string,
+  link: AgentLink,
   options: AppendOptions = {},
 ): AppendOutcome {
   return withLock(
@@ -255,7 +322,12 @@ export function recordLink(
         // Read-modify-write under the lock: parallel launches bind their own
         // agents at the same moment, and last-write-wins would drop one.
         const links = readLinks(linksFile);
-        links[agentId] = dispatch;
+        // The bare string when there is no model to record, so a sidecar keeps
+        // the shape it has always had unless there is something new in it.
+        // `{ dispatch, model: null }` would be a second way of saying nothing.
+        const dispatch = typeof link === "string" ? link : link.dispatch;
+        const model = typeof link === "string" ? null : (link.model ?? null);
+        links[agentId] = model === null ? dispatch : { dispatch, model };
         // Write elsewhere and rename into place. `writeFileSync` truncates
         // first, and a reader landing in that window parses nothing, resolves
         // no dispatch, and lets a subagent that reported be sealed as one that
@@ -274,22 +346,33 @@ export function recordLink(
 }
 
 /**
- * The dispatch an agent id was launched for.
+ * The dispatch an agent id was launched for, and the model it was launched on.
  *
  * Takes the lock, and falls back to an unlocked read when it cannot — which is
  * safe only because writes land by rename: there is no window in which the file
  * is half-written, so the fallback sees a complete file or none. Refusing to
  * read here would be the expensive failure, since an unresolved link turns a
  * subagent that reported into one recorded as never having come back.
+ *
+ * Always the two-part shape, whichever shape the file used. A sidecar written
+ * before the model existed says `"d:toolu_A"`, and it resolves to
+ * `{ dispatch: "d:toolu_A", model: null }` — "no model was recorded", which is
+ * the truth about that file and not the same as a model this build failed to
+ * read. Both come out as an absent `report.model`, and the journal says nothing
+ * either way rather than guessing which.
  */
 export function resolveLink(
   linksFile: string,
   agentId: string,
   options: AppendOptions = {},
-): string | null {
-  const read = (): string | null => {
+): { dispatch: string; model: string | null } | null {
+  const read = (): { dispatch: string; model: string | null } | null => {
     const found = readLinks(linksFile)[agentId];
-    return typeof found === "string" ? found : null;
+    if (typeof found === "string") return { dispatch: found, model: null };
+    if (typeof found !== "object" || found === null || Array.isArray(found)) return null;
+    const { dispatch, model } = found as { dispatch?: unknown; model?: unknown };
+    if (typeof dispatch !== "string" || dispatch.length === 0) return null;
+    return { dispatch, model: typeof model === "string" && model.length > 0 ? model : null };
   };
   return withLock(linksFile, options.waitMs ?? DEFAULT_WAIT_MS, read, read);
 }
@@ -299,12 +382,16 @@ export function resolveLink(
  * been launched yet. An unreadable one is not ordinary: writes are atomic, so
  * a file that fails to parse is corrupt rather than mid-write, and the caller
  * is told through the null it gets back that no dispatch could be joined.
+ *
+ * Values are `unknown` rather than `string` because both entry shapes are
+ * live: the bare dispatch id every sidecar used before `report.model` existed,
+ * and the `{ dispatch, model }` object written since. `resolveLink` narrows.
  */
-function readLinks(linksFile: string): Record<string, string> {
+function readLinks(linksFile: string): Record<string, unknown> {
   try {
     const parsed: unknown = JSON.parse(readFileSync(linksFile, "utf8"));
     return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
-      ? (parsed as Record<string, string>)
+      ? (parsed as Record<string, unknown>)
       : {};
   } catch {
     return {};
@@ -331,6 +418,7 @@ function headerRecord(header: JournalHeaderDraft): JournalDraft {
     ...(header.session === null ? {} : { session: header.session }),
     ...(header.source === null ? {} : { source: header.source }),
     ...identityFields(header),
+    ...userField(header),
   };
 }
 
@@ -341,6 +429,24 @@ function identityFields(header: JournalHeaderDraft): Record<string, string> {
     if (typeof value === "string" && value.length > 0) fields[key] = value;
   }
   return fields;
+}
+
+/**
+ * The operator, when git named one.
+ *
+ * Its own function rather than a fourth entry in the loop above, because the
+ * loop is typed `Record<string, string>` and this value is an object — the
+ * exact reason `user` could be resolved and still never reach a header.
+ *
+ * A blank or absent name omits the KEY, not just the name. `user: {}` and
+ * `user: { name: "" }` are both MALFORMED at 0.6, so either would make this
+ * producer write journals that fail its own validator; and a blank name
+ * compares equal to every other blank, which is worse than saying nothing.
+ */
+function userField(header: JournalHeaderDraft): { user?: { name: string } } {
+  const name = header.user?.name;
+  if (typeof name !== "string" || name.trim().length === 0) return {};
+  return { user: { name } };
 }
 
 /**

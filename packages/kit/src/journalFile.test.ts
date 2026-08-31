@@ -21,8 +21,11 @@ import {
   recordLink,
   releaseLock,
   resolveLink,
+  DEFAULT_WAIT_MS,
   LOCK_SUFFIX,
+  SCHEMA_VERSION,
 } from "./journalFile";
+import { TRANSCRIPT_BUDGET_MS } from "./record";
 
 const HEADER = { version: "0.2", origin: "hooks" as const, session: "sess-1", source: "startup" };
 
@@ -98,6 +101,56 @@ describe("appending", () => {
   });
 });
 
+describe("the header's operator", () => {
+  it("carries user.name when identity resolved one", () => {
+    const file = journalPathFor(root, "sess-1");
+    appendRecords(file, [{ kind: "dispatch", id: "d1" }], {
+      ...HEADER,
+      user: { name: "Arman Fatemi" },
+    });
+
+    expect(JSON.parse(lines(file)[0] ?? "")["user"]).toEqual({ name: "Arman Fatemi" });
+  });
+
+  it("omits the key entirely for a blank name, rather than writing one", () => {
+    // The 0.6 kernel reports MALFORMED for a present-but-blank user.name, so a
+    // producer that wrote `user: { name: "" }` would emit journals its own
+    // validator rejects. Absent is the supported way to say git had no answer.
+    const file = journalPathFor(root, "sess-1");
+    appendRecords(file, [{ kind: "dispatch", id: "d1" }], { ...HEADER, user: { name: "   " } });
+
+    expect(Object.keys(JSON.parse(lines(file)[0] ?? ""))).not.toContain("user");
+  });
+
+  it("omits the key when identity resolved no user at all", () => {
+    const file = journalPathFor(root, "sess-1");
+    appendRecords(file, [{ kind: "dispatch", id: "d1" }], HEADER);
+
+    expect(Object.keys(JSON.parse(lines(file)[0] ?? ""))).not.toContain("user");
+  });
+});
+
+describe("what a hook may do before it takes the lock", () => {
+  it("keeps the transcript read strictly under the lock's wait deadline", () => {
+    // The number is duplicated in record.ts on purpose: that module is
+    // deliberately free of node:fs and importing this one would pull the
+    // filesystem into it. This is the assertion that keeps the duplicate
+    // honest. A transcript read that could outlast DEFAULT_WAIT_MS would not
+    // delay the append it is preparing — it would get it REFUSED, and the
+    // records would be lost rather than late.
+    expect(TRANSCRIPT_BUDGET_MS).toBeLessThan(DEFAULT_WAIT_MS);
+  });
+});
+
+describe("the schema this build writes", () => {
+  it("declares 0.6, the floor its own records need", () => {
+    // Below 0.6 a `prompt` is an unknown kind, per-record `origin` is ignored,
+    // and SILENT-REVIEWER is unscoped. All three are things this producer now
+    // writes, so the version is not a preference.
+    expect(SCHEMA_VERSION).toBe("0.6");
+  });
+});
+
 describe("the append lock", () => {
   it("refuses rather than interleaving when another writer holds the lock", () => {
     const file = journalPathFor(root, "sess-1");
@@ -162,7 +215,10 @@ describe("the launch link", () => {
     const links = linksPathFor(journalPathFor(root, "sess-1"));
     recordLink(links, "ab210a2c41e64ee5f", "d:toolu_01ABC");
 
-    expect(resolveLink(links, "ab210a2c41e64ee5f")).toBe("d:toolu_01ABC");
+    expect(resolveLink(links, "ab210a2c41e64ee5f")).toEqual({
+      dispatch: "d:toolu_01ABC",
+      model: null,
+    });
   });
 
   it("keeps links for parallel subagents apart", () => {
@@ -170,8 +226,46 @@ describe("the launch link", () => {
     recordLink(links, "agent-one", "d:toolu_A");
     recordLink(links, "agent-two", "d:toolu_B");
 
-    expect(resolveLink(links, "agent-one")).toBe("d:toolu_A");
-    expect(resolveLink(links, "agent-two")).toBe("d:toolu_B");
+    expect(resolveLink(links, "agent-one")?.dispatch).toBe("d:toolu_A");
+    expect(resolveLink(links, "agent-two")?.dispatch).toBe("d:toolu_B");
+  });
+
+  it("carries the model the launch acknowledgement resolved", () => {
+    // The acknowledgement is the ONLY event that names the model for an
+    // asynchronous dispatch — SubagentStop, where the report is written,
+    // carries none. A sidecar that dropped it would make report.model
+    // unrecoverable for every dispatch this repository actually makes.
+    const links = linksPathFor(journalPathFor(root, "sess-1"));
+    recordLink(links, "agent-one", { dispatch: "d:toolu_A", model: "claude-haiku-4-5-20251001" });
+
+    expect(resolveLink(links, "agent-one")).toEqual({
+      dispatch: "d:toolu_A",
+      model: "claude-haiku-4-5-20251001",
+    });
+  });
+
+  it("still reads a sidecar entry written as a bare dispatch id", () => {
+    // The shape every sidecar used before the model existed. A session that
+    // spans the upgrade has both shapes in one file, and reading the old one as
+    // "no link" would seal a subagent that reported as one that never came
+    // back — the single error this journal exists to prevent.
+    const links = linksPathFor(journalPathFor(root, "sess-1"));
+    mkdirSync(dirname(links), { recursive: true });
+    writeFileSync(links, JSON.stringify({ legacy: "d:toolu_OLD" }), "utf8");
+    recordLink(links, "current", { dispatch: "d:toolu_NEW", model: "claude-opus-4-5" });
+
+    expect(resolveLink(links, "legacy")).toEqual({ dispatch: "d:toolu_OLD", model: null });
+    expect(resolveLink(links, "current")).toEqual({
+      dispatch: "d:toolu_NEW",
+      model: "claude-opus-4-5",
+    });
+  });
+
+  it("writes no model key when there is no model, so the file keeps its old shape", () => {
+    const links = linksPathFor(journalPathFor(root, "sess-1"));
+    recordLink(links, "agent-one", { dispatch: "d:toolu_A", model: null });
+
+    expect(JSON.parse(readFileSync(links, "utf8"))).toEqual({ "agent-one": "d:toolu_A" });
   });
 
   it("resolves nothing for an agent it never saw launched", () => {

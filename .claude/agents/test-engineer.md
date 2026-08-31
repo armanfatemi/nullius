@@ -52,6 +52,12 @@ A unit test added alongside a bug fix, run only against the post-fix code, prove
 
 ## Output format
 
+**A review with nothing to raise returns at least one `[looks-good]` line.** An
+untagged "nothing to report" is recorded as silence, not as a clean bill: the
+recorder extracts findings from these tag lines, and a return that carries none
+is indistinguishable from a reviewer that never looked. Saying the nothing
+explicitly is what discharges `SILENT-REVIEWER`.
+
 ```
 ## Coverage review — <subject (branch / proposal / planned paths)>
 

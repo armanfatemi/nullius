@@ -1,0 +1,9 @@
+{"kind":"journal","version":"0.6","origin":"hooks","session":"9b41c0d5-27ae-4f3c-8b06-1d7e5a92c4f8","source":"startup","branch":"feat/add-run-ledger-producer","head":"7968594","worktree":"5c2d9b71e4a08f36","user":{"name":""}}
+{"kind":"prompt","id":"p:onlyanid","at":"2026-08-31T09:14:02Z"}
+{"kind":"prompt","id":"p:fractionalchars","chars":12.5,"hash":"7d03f1c9a2b4","at":"2026-08-31T09:15:11Z"}
+{"kind":"stage","id":"s1","phase":"verify","iteration":1,"change":"add-run-ledger-producer"}
+{"kind":"check","id":"c1","origin":"hooks","command":"pnpm test","outcome":"pass","text":"Every suite green apart from the six known ugrep flag-conformance failures."}
+{"kind":"dispatch","id":"d1","expects":"reviews","task":"rule-audit the proposal against .claude/rules"}
+{"kind":"report","id":"r1","dispatch":"d1","outcome":"empty","statement":"None. The proposal cites no rule this audit could fault."}
+{"kind":"dispatch","id":"d2","expects":"findings","task":"architecture-review the diff"}
+{"kind":"report","id":"r2","dispatch":"d2","outcome":"found","findings":["the summary renders a version comparison in cli.ts"]}

@@ -1,7 +1,8 @@
 /**
- * Where a run began: the branch, the head commit, and an identity for the
- * worktree. Resolved once per session, before the append lock is taken, and
- * handed to the journal header as data.
+ * Where a run began: the branch, the head commit, an identity for the
+ * worktree, and the name git answers to for the person steering. Resolved once
+ * per session, before the append lock is taken, and handed to the journal
+ * header as data.
  *
  * Three constraints shape everything in this file, and each one has a failure
  * behind it.
@@ -25,7 +26,10 @@
  * `DEFAULT_GIT_TIMEOUT_MS` is 10 000 ms — five times the deadline at which a
  * waiting hook's append is refused outright — so it is deliberately not reused
  * here. The budget below is in the hundreds of milliseconds. A `rev-parse`
- * that has not answered inside it is treated exactly like a git failure.
+ * that has not answered inside it is treated exactly like a git failure. Every
+ * call this file makes — including the `git config` that reads the user's name
+ * — shares ONE total budget. A second budget for a new field would be a second
+ * deadline, and the number that has to stay under the lock's is the sum.
  *
  * `revFileReader` in the kernel is not the reuse candidate for any of this: it
  * reads *a file at a rev* and cannot answer branch, head or worktree. What is
@@ -101,6 +105,23 @@ export interface JournalIdentity {
   branch: string | null;
   head: string | null;
   worktree: string | null;
+  /**
+   * Who git says is steering this tree — `git config user.name`, nested rather
+   * than flat.
+   *
+   * ABSENT, never blank. The other three fields are `string | null` because
+   * their key is dropped downstream when the value is null; this one is
+   * optional because it is an object, and `user: {}` or `user: { name: "" }`
+   * are both shapes the 0.6 header check rejects outright. A blank name
+   * compares equal to every other blank, so writing one is worse than writing
+   * nothing: it turns "git had no answer" into a value a reader can group by.
+   *
+   * `email` is deliberately not resolved. It is the identifying half, the only
+   * redactor for it lives in an unmerged change, and a guard that lives
+   * entirely downstream of the producer is not a mechanism. Adding it later is
+   * additive; taking it back out of committed journals is not.
+   */
+  user?: { name: string };
 }
 
 /** What a directory git cannot speak for resolves to. */
@@ -131,7 +152,7 @@ export function resolveIdentity(
   const [toplevel, commonDir] = paths.split("\n");
   if (toplevel === undefined || toplevel.length === 0) return NO_IDENTITY;
 
-  return {
+  const identity: JournalIdentity = {
     // `symbolic-ref` rather than `rev-parse --abbrev-ref HEAD`, because the
     // latter prints the literal string "HEAD" on a detached head. That is a
     // sentinel invented by the producer and indistinguishable, to a reader,
@@ -142,6 +163,21 @@ export function resolveIdentity(
     head: git("rev-parse", "HEAD"),
     worktree: worktreeId(resolveGitDir(root, commonDir), toplevel),
   };
+
+  // Asked LAST, and that ordering is the whole of its priority. Every call
+  // here shares one deadline, so a new field can only ever be paid for out of
+  // what the older ones left — put this first and a slow `config` would start
+  // costing `branch` and `head`, which are what the journal is actually for.
+  //
+  // `--get` rather than bare `config user.name`, so the argument vector cannot
+  // be read as a write: `git config user.name Bob` SETS it. Nothing in this
+  // module is allowed to modify the repository it is describing, and the flag
+  // is what makes that true of the vector rather than true of the caller.
+  //
+  // `runGit` already collapses "empty stdout" into null, which is the blank
+  // case: a `user.name = ` in the config exits 0 and prints a newline.
+  const name = git("config", "--get", "user.name");
+  return name === null ? identity : { ...identity, user: { name } };
 }
 
 /**

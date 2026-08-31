@@ -57,6 +57,17 @@ export {
   isJournalFailure,
   surveyJournals,
   validateJournal,
+  // v0.6. The schema's closed vocabularies, named here so a producer can refuse
+  // a bad value BEFORE it appends rather than learning about it from the next
+  // `validate`. They are the definition the validator enforces, so a second
+  // copy in the producer is drift by construction — and drift in the direction
+  // no test can see, since a copy silently refuses a member the kernel added.
+  // `VERSIONS` stays out of this list on the opposite reasoning: it is exported
+  // from `witness.ts` only for a unit test, and a caller that compares versions
+  // itself is the second copy of a floor this kernel decides once.
+  CHECK_OUTCOMES,
+  RESOLUTION_OUTCOMES,
+  SEVERITIES,
   TERMINAL_RECORD_KINDS,
   type JournalFinding,
   type JournalHeader,
@@ -64,6 +75,11 @@ export {
   type JournalReport,
   type JournalSurvey,
   type JournalVerdict,
+  // v0.6. `JournalReport` and `JournalSurvey` are already public and both now
+  // reference these, so a consumer that cannot name them cannot write a type
+  // annotation for a field it can already read.
+  type LedgerCounts,
+  type ProvenanceCounts,
   type SurveyedJournal,
 } from "./witness";
 export {

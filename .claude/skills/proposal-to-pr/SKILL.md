@@ -67,8 +67,15 @@ root**, and both run out of `dist/`:
 
 ```
 node packages/kit/dist/cli.js pipeline <subcommand> [<change>]
+node packages/kit/dist/cli.js witness ledger <kind> [flags]
 node packages/claims/dist/cli.js <check|witness|wiring|canary> ...
 ```
+
+Still two binaries; the kit has a second verb. `pipeline` moves this run's own
+state and evidence, and `witness ledger` writes the run journal the validator
+reads — a different file, a different audience, and a different lifetime. Keep
+them apart in your head: a `state-set` that fails costs you a resume, and a
+missing ledger record costs the record that the step happened at all.
 
 Shell state does not survive between tool calls, so do not stash these in a
 variable and expect it to be there next call — write them out each time, or
@@ -105,6 +112,32 @@ evidence-print <change>       print accumulated review evidence; exit 1 if
 progress-write <change>       overwrite progress.md from stdin
 ```
 
+And the kit's other verb, `witness ledger` — the coordinator's own records in
+the run journal. Not a `pipeline` subcommand, and it takes flags rather than
+positional arguments:
+
+```
+witness ledger stage       --phase <name> [--iteration <n>] [--change <name>]
+                           [--pr <ref>]
+witness ledger resolution  --finding <id> --outcome <resolved|fixed|dropped|
+                           duplicate|deferred|folded-in|accepted|rejected|
+                           out-of-scope|deviation-accepted> --text <why>
+                           [--merges-into <id>]
+witness ledger decision    --choice <what> --rationale <why> [--resolves <ref>]
+                           [--departed-from <what>]
+witness ledger check       --command <what ran> --outcome pass|fail
+                           --text <what it showed> [--counts name=N,...]
+witness ledger findings    [--open]   list this session's findings; --open
+                           shows only the blockers no resolution answers
+```
+
+Every one of them also takes `--session <id>` and `--root <dir>`. **There is no
+`finding` kind, deliberately.** Findings are extracted by the recorder from
+what an agent actually returned; a coordinator-authored one would claim the
+harness tier for the coordinator's own account, which is exactly the comparison
+`SUPPRESSED-FINDING` exists to make. Ask for the ids with `findings --open` and
+answer them with `resolution`.
+
 **Exit codes are the contract.** `pause-check`, `blocked-commands` and
 `dep-status` return 1 when they find something. Read the code, not the prose on
 stdout.
@@ -118,6 +151,42 @@ reason. `route-paths` does the same for a stdin payload that carried no paths.
 `show` catches an incomplete change on the way in, but a resume re-enters at a
 later stage without re-running it, so never treat a silent exit 0 from an
 earlier stage as covering these.
+
+### Why the ledger exists, and why it is not a second `evidence-append`
+
+`review-evidence.md` is the narrative: what the reviewers said, in your words,
+for a human to read in the PR. The journal is the mechanical record: what the
+harness saw happen, and what you claim you did about it, in a form a checker
+re-reads. **Both, always. The ledger never replaces an `evidence-append`.**
+
+They are different tiers and that is the entire point. The recorder's hooks
+wrote the `dispatch` and `report` records whether or not you found them
+convenient, and it pulled each `[blocker]` line out of what the agent actually
+returned. Your `resolution` records are the other side of that: a claim, made by
+the party with the motive, checked against evidence it did not write. When you
+close a blocker in prose and never write the resolution, `witness validate`
+reports `SUPPRESSED-FINDING` and names the finding — which is the one check a
+synthesis written by the same agent that did the work cannot perform on itself.
+
+So the failure this section is guarding against is not "the journal is
+incomplete". It is a run that reads clean in `review-evidence.md` precisely
+because the omission and the account of the omission were written by the same
+hand.
+
+**Addressing the journal.** Every `witness ledger` call needs a session, and it
+will not guess: `--session <id>`, else `CLAUDE_CODE_SESSION_ID`, else exit 2
+naming both. It never picks the newest journal by modification time — two
+worktrees or a resumed session make "newest" a different journal from yours, and
+a record in the wrong session is indistinguishable from one the right session
+wrote. If the environment variable is not set in your shell, read the id off the
+journal the recorder is already writing (`ls .nullius/runs/*.jsonl`) and pass
+`--session` explicitly on every call.
+
+**If recording is not on in this repository, the ledger calls fail and the run
+continues.** They are records about the run, not gates on it. Note the failure
+in the next `evidence-append` — a stage that could not be recorded is a fact
+worth one line — and do not stop the pipeline for it. What you must not do is
+skip the calls on the assumption that they would have failed.
 
 ## Hard rules (do not violate)
 
@@ -203,6 +272,26 @@ session reads them alongside `progress.md` and knows exactly where to pick up.
 
 On a fresh invocation with no stage argument, resume from the stored stage,
 defaulting to Stage 1 when no state exists.
+
+**Every stage transition also writes a `stage` record to the run journal**,
+beside the `state-set` — one extra line, at the same moment:
+
+```bash
+node packages/kit/dist/cli.js pipeline state-set <change> stage verify
+node packages/kit/dist/cli.js witness ledger stage --phase verify \
+  --iteration <n> --change <change> --session <id>
+```
+
+The two are not redundant. The state file is *current* — last-write-wins, wiped
+by `state-reset`, never committed — so it answers "where am I" and cannot answer
+"where have I been". A run that entered Stage 5 four times and a run that
+entered it once look identical in it. The journal is append-only, so the `stage`
+records are the sequence, in a file that also holds the dispatches and the
+findings and can be read against them afterwards. `--iteration` is what makes a
+Stage 2 → Stage 3 → Stage 2 loop legible rather than a repeated phase name.
+
+Add `--pr <url>` on the Stage 8 transition once the PR exists, so the journal
+carries the join to the artefact the run produced.
 
 ### Evidence-append contract — every narrative append ends with corrections
 
@@ -702,9 +791,76 @@ For each blocker:
 2. Edit the appropriate file. Quote the blocker in the commit message body.
 3. Some blockers need user judgement. Surface the question with options and
    pause. **Do not silently pick a side on a design call.**
+4. **Write a `resolution` record for it.** One per finding addressed, whatever
+   the outcome — including the ones you decline.
 
 Re-run `openspec validate <change>` after editing — a requirement whose SHALL
 wrapped to line 2 fails there, not here.
+
+### Recording what you did with each finding
+
+Ask the journal which blockers are open. Do not work from the synthesis you
+wrote, and do not invent ids:
+
+```bash
+node packages/kit/dist/cli.js witness ledger findings --open --session <id>
+```
+
+Each line is `id`, `severity`, `author`, `text`, tab-separated. These are the
+`[blocker]` lines the recorder pulled out of what the reviewers actually
+returned, so the list can contain a blocker your synthesis lost — which is the
+reason to read it here rather than trust the synthesis.
+
+Then, per id:
+
+```bash
+node packages/kit/dist/cli.js witness ledger resolution --finding <id> \
+  --outcome fixed --text 'what changed, and why that answers it' --session <id>
+```
+
+`--outcome` is a closed vocabulary — `resolved`, `fixed`, `dropped`,
+`duplicate`, `deferred`, `folded-in`, `accepted`, `rejected`, `out-of-scope`,
+`deviation-accepted` — and a value outside it is refused **before** anything is
+written, so a typo costs a re-run rather than a journal that fails its own
+check.
+
+`duplicate` and `folded-in` require `--merges-into <id>`, and the command
+refuses them without it. That is not bookkeeping: a merge transfers the
+obligation rather than discharging it, so `findings --open` follows the chain
+and the finding stays open until whatever it folded into is answered. A merge
+naming no survivor is a blocker disappearing with a label on it.
+
+**`--text` carries the reason, not the verdict.** "Fixed" is already in
+`--outcome`; the text is the sentence a reviewer would need in order to
+disagree with you.
+
+**Declining a finding still gets a record.** `rejected` with the reason is a
+position someone can argue with. Silence is the outcome `SUPPRESSED-FINDING`
+was written to catch, and it is caught by name.
+
+Re-run `findings --open` after the loop. **It must come back empty**, and if it
+does not, you addressed something in prose that you did not address in the
+journal — go back rather than proceeding.
+
+### Design decisions get a `decision` record
+
+Whenever this stage settles a design call and writes it into `design.md`:
+
+```bash
+node packages/kit/dist/cli.js witness ledger decision \
+  --choice 'what was chosen' \
+  --rationale 'why, including what it was chosen over' \
+  --resolves 'Decision 4' --session <id>
+```
+
+`--resolves` names the heading in `design.md`, so the journal and the document
+point at each other and a decision that reached the design doc without reaching
+the journal — or the reverse — is visible. Add `--departed-from` when the choice
+overrides something the proposal or a reviewer had asked for; that is the case
+nobody reconstructs later from the diff.
+
+A decision surfaced to the user and answered by them is still a decision: record
+it, with the user's answer as the rationale.
 
 After edits, increment `iteration` and loop back to Stage 2. Note that Stage 2
 re-plants a canary each round; that is intended, and each round's probe is
@@ -898,6 +1054,36 @@ dogfood gates: pass, both polarities
 EOF
 ```
 
+And the same four facts as `check` records — one per line of that block, mirroring
+it rather than summarising it:
+
+```bash
+node packages/kit/dist/cli.js witness ledger check --command 'pnpm build' \
+  --outcome pass --text 'compiled clean' --session <id>
+node packages/kit/dist/cli.js witness ledger check --command 'pnpm type-check' \
+  --outcome pass --text 'no errors' --session <id>
+node packages/kit/dist/cli.js witness ledger check --command 'pnpm test' \
+  --outcome pass --text 'N files; the 6 flagConformance failures are the ugrep baseline' \
+  --counts 'files=N,failures=6' --session <id>
+node packages/kit/dist/cli.js witness ledger check --command 'dogfood gates' \
+  --outcome pass --text 'both polarities; every must-fail fixture still failed' \
+  --session <id>
+```
+
+**`--outcome` is `pass` or `fail`, and a failed chunk gets a `fail` record.**
+This is the one place the temptation runs the other way: the auto-fix loop
+re-runs until green, so the natural thing is to record the green run and nothing
+else. Then the journal says the check passed, which is true, and says nothing
+about the three attempts before it — and "passed first time" and "passed after
+the fixer rewrote the assertion" become the same record. Write the `fail` when it
+fails, then the `pass` when it passes. The journal is append-only precisely so
+that the earlier one survives.
+
+`--counts` is for numbers a later reader would otherwise have to take from prose:
+test file counts, failure counts, how many fixtures ran. Keep the ugrep baseline
+in there rather than only in the text — six is a number that means something
+specific, and a run reporting five or seven is a different fact.
+
 State transition: back to Stage 4 if tasks remain; else `stage: post-review`.
 
 ---
@@ -988,6 +1174,28 @@ the verdict gets reclassified as noise.
 `[concern]` findings from Stage 6 are **not** fixed automatically. They are
 listed in the PR body so the human reviewer sees them.
 
+### Resolutions, again, and this is the round that matters
+
+Run the same loop Stage 3 describes — `witness ledger findings --open`, then one
+`resolution` per id — over Stage 6's findings. Same command, same closed
+vocabulary, same rule that a declined finding gets a `rejected` record rather
+than silence.
+
+It matters more here. Stage 3's findings are about a proposal nobody has merged;
+Stage 6's are about the diff that is one step from a PR, and this is the last
+stage before the run starts writing a document a human will approve. An
+unanswered blocker that survives this loop reaches the human as a PR body that
+reads complete.
+
+The `[concern]` findings are the ones to be careful with. They are not fixed
+here, and "not fixed" is not "not addressed" — each one gets a `deferred` or
+`out-of-scope` resolution whose text says where it went, which is the same list
+you are about to paste into the PR body. `SUPPRESSED-FINDING` only fires on
+blockers, so nothing will tell you when a concern goes missing between here and
+the PR; the record is the only place that stays.
+
+Re-run `findings --open` before leaving this stage. Empty, or you are not done.
+
 State transition: `stage: address-must-fixes` → `stage: pr`.
 
 ---
@@ -999,7 +1207,18 @@ State transition: `stage: address-must-fixes` → `stage: pr`.
 ```bash
 node packages/claims/dist/cli.js canary status    # must print "no active canary"
 node packages/claims/dist/cli.js check 'openspec/changes/<change>/**/*.md'
+node packages/kit/dist/cli.js witness ledger findings --open --session <id>
+node packages/claims/dist/cli.js witness validate .nullius/runs/<id>.jsonl
 ```
+
+The last two are the run checking its own account of itself before a human is
+asked to read it. `findings --open` must come back empty; `witness validate`
+must exit 0, and a `SUPPRESSED-FINDING` in its output names the exact blocker
+this run answered in prose and nowhere else. Fix it by writing the missing
+`resolution` — with its real outcome, which may well be `rejected` — never by
+skipping the check. If recording was never on in this repository there is no
+journal to validate, and that is a fact for the PR body rather than a gate:
+say so under `## Verification` rather than leaving the impression it passed.
 
 A proposal whose anchors already rotted must never reach review. This is the
 same gate CI runs, so failing it here costs seconds and failing it there costs a

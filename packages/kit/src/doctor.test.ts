@@ -14,6 +14,8 @@ import {
   type Check,
 } from "./doctor";
 
+import { SCHEMA_VERSION } from "./journalFile";
+
 function scratch(): string {
   return mkdtempSync(join(tmpdir(), "nullius-doctor-"));
 }
@@ -779,5 +781,118 @@ describe("captureChecks — the quantifier does not include what it could not re
     // rendering directly rather than trusting the call site to stay put.
     expect(detail).toContain("enables capture");
     expect(detail).not.toContain(".claude/settings.json (sets nothing)");
+  });
+});
+
+describe("doctor — what the settings files say about prompt recording", () => {
+  function promptCheck(root: string): Check | undefined {
+    return check(root).checks.find((entry) => entry.name === "prompt recording");
+  }
+
+  it("reports the default as recorded, scoped to what it could read", () => {
+    const result = promptCheck(scratch());
+
+    // A fact, never a verdict: which of the two modes is correct is the
+    // operator's privacy decision, and there is nothing here to pass or fail.
+    expect(result?.status).toBe("fact");
+    expect(result?.detail).toContain("prompts: recorded");
+    // Scoped, because a shell export into the harness is invisible from here.
+    // "prompts are recorded" would be a claim about the running harness made
+    // from three file reads.
+    expect(result?.detail).toContain("unless the harness's environment says otherwise");
+  });
+
+  it("names the file that turns prompt text off, and calls it hashed only", () => {
+    const root = scratch();
+    mkdirSync(join(root, ".claude"), { recursive: true });
+    writeFileSync(
+      join(root, ".claude", "settings.json"),
+      JSON.stringify({ env: { NULLIUS_WITNESS_PROMPTS: "0" } }),
+    );
+
+    const result = promptCheck(root);
+
+    expect(result?.status).toBe("fact");
+    expect(result?.detail).toContain(".claude/settings.json says prompts: hashed only");
+  });
+
+  it("reports a file that sets any other value as recording text", () => {
+    const root = scratch();
+    mkdirSync(join(root, ".claude"), { recursive: true });
+    writeFileSync(
+      join(root, ".claude", "settings.json"),
+      JSON.stringify({ env: { NULLIUS_WITNESS_PROMPTS: "1" } }),
+    );
+
+    // The recorder's rule is "anything but exactly 0 records the text", and
+    // this check has to state the same rule rather than a friendlier one.
+    expect(promptCheck(root)?.detail).toContain("prompts: recorded");
+  });
+
+  it("is not checkable when the only settings file will not parse", () => {
+    const root = scratch();
+    mkdirSync(join(root, ".claude"), { recursive: true });
+    writeFileSync(join(root, ".claude", "settings.local.json"), "{ not json");
+
+    expect(promptCheck(root)?.status).toBe("unknown");
+  });
+
+  it("runs before the live proof", () => {
+    const checks = check(scratch()).checks;
+    const promptAt = checks.findIndex((entry) => entry.name === "prompt recording");
+    const proofAt = checks.findIndex((entry) => entry.name === "live proof");
+
+    expect(promptAt).toBeGreaterThanOrEqual(0);
+    expect(promptAt).toBeLessThan(proofAt);
+  });
+});
+
+describe("doctor — the managed-hooks check knows which events this build records", () => {
+  function settings(root: string, event: string): void {
+    mkdirSync(join(root, ".claude"), { recursive: true });
+    writeFileSync(
+      join(root, ".claude", "settings.json"),
+      JSON.stringify({
+        hooks: {
+          [event]: [{ hooks: [{ type: "command", command: "npx nullius-kit witness record" }] }],
+        },
+      }),
+    );
+  }
+
+  it("says nothing extra about UserPromptSubmit, which this build records", () => {
+    const root = scratch();
+    settings(root, "UserPromptSubmit");
+
+    const entry = find(check(root).checks, "UserPromptSubmit");
+
+    expect(entry).toBeDefined();
+    expect(entry?.detail).not.toContain("does not read");
+  });
+
+  it("notes a hook wired to an event nothing here reads", () => {
+    const root = scratch();
+    settings(root, "PreCompact");
+
+    // The hook runs perfectly and records nothing, and the only symptom is an
+    // absence — which is the failure doctor exists to make loud. Still not a
+    // failure: a newer kit may read it, and calling that a fault would be a
+    // claim about a build this tool is not running.
+    const entry = find(check(root).checks, "PreCompact");
+
+    expect(entry?.detail).toContain("this build's recorder does not read PreCompact");
+    expect(entry?.status).not.toBe("fail");
+  });
+});
+
+describe("doctor — the live proof runs the version the producer writes", () => {
+  it("validates a journal at the kit's own schema version, not a frozen one", () => {
+    const proof = liveProof()[0];
+
+    // A hardcoded version here is how the live proof came to certify 0.2
+    // journals long after the producer had moved: a green round trip against a
+    // floor nothing in the tree writes any more.
+    expect(proof?.status).toBe("pass");
+    expect(SCHEMA_VERSION).toBe("0.6");
   });
 });

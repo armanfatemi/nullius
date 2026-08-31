@@ -93,6 +93,54 @@ describe("resolving where a run began", () => {
     expect(identity.worktree).toMatch(/^[0-9a-f]{16}$/);
   });
 
+  it("names the operator git is configured to attribute this tree's work to", () => {
+    repoAt(root);
+    git(root, "config", "user.name", "Ada Lovelace");
+
+    // Nested, not flat, and `email` is deliberately not here: the name is the
+    // steering claim, the address is the identifying half, and the only
+    // redactor for it lives downstream in an unmerged change.
+    expect(resolveIdentity(root).user).toEqual({ name: "Ada Lovelace" });
+  });
+
+  it("omits the user rather than recording a blank one", () => {
+    repoAt(root);
+    // Not unset — configured, and configured to nothing. `git config --get`
+    // exits 0 and prints an empty line for this, so it is a success that has
+    // nothing to say, which is exactly the case a naive read would write out.
+    git(root, "config", "user.name", "");
+
+    const identity = resolveIdentity(root);
+
+    // A blank name compares equal to every other blank, so writing one turns
+    // "git had no answer" into a value a reader can group runs by.
+    expect(identity.user).toBeUndefined();
+    expect(Object.keys(identity)).not.toContain("user");
+    // And the omission is this field's, not a wholesale git failure.
+    expect(identity.branch).toBe("main");
+  });
+
+  it("omits the user when the config read fails outright", () => {
+    repoAt(root);
+    const shim = gitWithoutConfigOnPath(realGitPath());
+    let identity: JournalIdentity;
+    try {
+      // Budgets raised well past the defaults on purpose. The shim puts a
+      // whole extra shell in front of every call, so under load the real
+      // budget expires and the test would report NO_IDENTITY — a pass turning
+      // into a failure about timing, in a test that is about a failing
+      // subcommand. The budget has its own test below.
+      identity = resolveIdentity(root, 5_000, 20_000);
+    } finally {
+      shim.restore();
+    }
+
+    expect(Object.keys(identity)).not.toContain("user");
+    // Constraint 1: a git failure costs one key and nothing else.
+    expect(identity.branch).toBe("main");
+    expect(identity.head).not.toBeNull();
+  });
+
   it("answers from a subdirectory, because a hook's cwd is wherever it is", () => {
     repoAt(root);
     const sub = join(root, "packages", "deep");
@@ -245,6 +293,28 @@ describe("git failure is never a recording failure", () => {
     expect(Object.keys(header)).not.toContain("worktree");
   });
 
+  it("reads the user out of the same total budget, not a second one", () => {
+    repoAt(root);
+    // Only the gating `rev-parse` answers; every later call hangs. So the
+    // whole run costs the TOTAL budget under a shared deadline, and would cost
+    // one per-call timeout per field under a per-field one.
+    const shim = sluggishGitOnPath(root);
+    const started = Date.now();
+    let identity: JournalIdentity;
+    try {
+      identity = resolveIdentity(root, 250, 300);
+    } finally {
+      shim.restore();
+    }
+    const elapsed = Date.now() - started;
+
+    expect(identity.branch).toBeNull();
+    expect(Object.keys(identity)).not.toContain("user");
+    // Three hanging calls at 250 ms each is 750 ms — what a `user` field with
+    // a budget of its own would cost. The shared deadline caps the lot at 300.
+    expect(elapsed).toBeLessThan(600);
+  });
+
   it("leaves every field absent when there is no git binary to run", () => {
     repoAt(root);
     const empty = mkdtempSync(join(tmpdir(), "nullius-nogit-"));
@@ -271,6 +341,77 @@ describe("git failure is never a recording failure", () => {
 function slowGitOnPath(): { restore: () => void } {
   const bin = mkdtempSync(join(tmpdir(), "nullius-slowgit-"));
   writeFileSync(join(bin, "git"), "#!/bin/sh\nexec sleep 5\n", { mode: 0o755 });
+  const saved = process.env["PATH"];
+  process.env["PATH"] = `${bin}:${saved ?? ""}`;
+  return {
+    restore: () => {
+      process.env["PATH"] = saved;
+      rmSync(bin, { recursive: true, force: true });
+    },
+  };
+}
+
+/**
+ * A `git` that answers the gating `rev-parse` at once and then hangs.
+ *
+ * `slowGitOnPath` above hangs on the FIRST call, which short-circuits the
+ * resolver and exercises exactly one timeout. To say anything about the total
+ * budget the gate has to pass, so the calls after it are the ones competing
+ * for what is left.
+ */
+function sluggishGitOnPath(toplevel: string): { restore: () => void } {
+  const bin = mkdtempSync(join(tmpdir(), "nullius-sluggishgit-"));
+  writeFileSync(
+    join(bin, "git"),
+    [
+      "#!/bin/sh",
+      "# Drop the leading `-C <root>` the caller always passes.",
+      "shift 2",
+      'case "$1 $2" in',
+      // A common dir that does not exist, so `worktree` resolves to null
+      // without any further git call and the timing stays about the budget.
+      `  "rev-parse --show-toplevel") printf '%s\\n%s\\n' "${toplevel}" "/nonexistent-git-dir"; exit 0 ;;`,
+      "esac",
+      "# `exec`, so the SIGKILL lands on the sleeping process itself.",
+      "exec sleep 5",
+    ].join("\n"),
+    { mode: 0o755 },
+  );
+  const saved = process.env["PATH"];
+  process.env["PATH"] = `${bin}:${saved ?? ""}`;
+  return {
+    restore: () => {
+      process.env["PATH"] = saved;
+      rmSync(bin, { recursive: true, force: true });
+    },
+  };
+}
+
+/** Where the real git lives — resolved before any shim is put in front of it. */
+function realGitPath(): string {
+  const found = spawnSync("sh", ["-c", "command -v git"], { encoding: "utf8" });
+  const path = (found.stdout ?? "").trim();
+  if (path.length === 0) throw new Error("no git on PATH");
+  return path;
+}
+
+/** A `git` that is entirely ordinary except that `config` fails. */
+function gitWithoutConfigOnPath(realGit: string): { restore: () => void } {
+  const bin = mkdtempSync(join(tmpdir(), "nullius-noconfiggit-"));
+  writeFileSync(
+    join(bin, "git"),
+    [
+      "#!/bin/sh",
+      "# Delegate everything to the real git, except the one subcommand under",
+      "# test — so the other fields still resolve and a lost `user` is",
+      "# attributable to this failure rather than to a broken shim.",
+      'for arg in "$@"; do',
+      '  if [ "$arg" = "config" ]; then exit 1; fi',
+      "done",
+      `exec ${realGit} "$@"`,
+    ].join("\n"),
+    { mode: 0o755 },
+  );
   const saved = process.env["PATH"];
   process.env["PATH"] = `${bin}:${saved ?? ""}`;
   return {

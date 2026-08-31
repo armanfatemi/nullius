@@ -73,6 +73,8 @@ import {
   surveyJournals,
   validateJournal,
   type JournalReport,
+  type LedgerCounts,
+  type ProvenanceCounts,
 } from "./witness";
 
 const SPEC_URL =
@@ -495,6 +497,12 @@ function runWitness(args: WitnessArgs): number {
   console.log(
     `Outcomes: ${report.outcomes.found} found, ${report.outcomes.empty} explicitly empty, ${report.outcomes.noReport} never reported.`,
   );
+  // Rendered on PRESENCE, never on a version comparison. `versionAtLeast` is
+  // private to witness.ts on purpose: the floor is decided once, in the
+  // kernel, and a second copy here would be a second chance to write it
+  // backwards. A null block means this journal's schema has no ledger to
+  // count, which is not the same claim as a block of zeros.
+  if (report.ledger !== null) console.log(`Ledger: ${ledgerCounts(report.ledger)}.`);
   console.log(provenance(report));
   if (args.expectRules !== undefined) {
     console.log(
@@ -636,6 +644,23 @@ function runWitnessSurvey(args: WitnessArgs): number {
   console.log(
     `Outcomes across ${survey.count} independently validated journal(s): ${survey.outcomes.found} found, ${survey.outcomes.empty} explicitly empty, ${survey.outcomes.noReport} never reported.`,
   );
+  // On presence, exactly as `validate` renders it — and with its own
+  // denominator, which is NOT `survey.count`. These blocks are summed over the
+  // journals that carry them, so printing them against the surveyed total
+  // would attribute the sums to journals nobody counted. The qualifying
+  // journals are found the same way: by asking each report whether its block
+  // is there, never by comparing a version.
+  const qualifying = survey.journals.filter((journal) => journal.report.ledger !== null).length;
+  if (survey.ledger !== null) {
+    console.log(
+      `Ledger over the ${qualifying} of ${survey.count} surveyed journal(s) that carry one: ${ledgerCounts(survey.ledger)}.`,
+    );
+  }
+  if (survey.provenance !== null) {
+    console.log(
+      `Provenance over those same ${qualifying} journal(s): ${provenanceCounts(survey.provenance)}.`,
+    );
+  }
   if (survey.silent.length > 0) {
     // Named, not merely counted: "3 journals reached no terminal" tells you a
     // number, and the thing you need is which files to go and look at.
@@ -676,14 +701,55 @@ function provenance(report: JournalReport): string {
   if (header === null) {
     return "Schema 0.1 (no header): this journal does not record who wrote it, so nothing here claims a harness did.";
   }
-  switch (header.origin) {
-    case "hooks":
-      return `Schema ${header.version}, origin: hooks — records emitted by the harness runtime, which the agent had no opportunity to decline.`;
-    case "self-reported":
-      return `Schema ${header.version}, origin: self-reported — written by the agent it describes. Valid means internally consistent; it is not evidence that the run went this way.`;
-    default:
-      return `Schema ${header.version}, origin: unrecorded — see the MALFORMED finding on the header.`;
-  }
+  // Presence of the counts is what says the header's origin no longer speaks
+  // for the whole file — from 0.6 the four coordinator kinds carry their own.
+  // The kernel decides that; this renders it. When the block is null every
+  // branch below is byte-for-byte what it has always printed.
+  const counts = report.provenance;
+  const scoped = counts !== null;
+  const sentence = ((): string => {
+    switch (header.origin) {
+      case "hooks":
+        return scoped
+          ? `Schema ${header.version}, origin: hooks — records carrying no origin of their own were emitted by the harness runtime, which the agent had no opportunity to decline.`
+          : `Schema ${header.version}, origin: hooks — records emitted by the harness runtime, which the agent had no opportunity to decline.`;
+      case "self-reported":
+        return scoped
+          ? `Schema ${header.version}, origin: self-reported — records carrying no origin of their own were written by the agent they describe. Valid means internally consistent; it is not evidence that the run went this way.`
+          : `Schema ${header.version}, origin: self-reported — written by the agent it describes. Valid means internally consistent; it is not evidence that the run went this way.`;
+      default:
+        return `Schema ${header.version}, origin: unrecorded — see the MALFORMED finding on the header.`;
+    }
+  })();
+  if (counts === null) return sentence;
+  // A partition, printed as one: the three add up to every record the
+  // validator could read APART FROM THE HEADER, so a tier cannot go missing
+  // between them. Not the `N record(s) read` number printed above, which
+  // counts the header too — the difference is exactly one, and claiming
+  // otherwise would imply some tier owns the header.
+  return `${sentence}\nProvenance: ${provenanceCounts(counts)}.`;
+}
+
+/**
+ * The v0.6 ledger counters, without a label: `validate` counts one journal
+ * and `survey` counts a subset of many, so each writes its own denominator
+ * around this and the numbers themselves are written once.
+ *
+ * "finding record(s)", never "finding(s)": the summary already counts the
+ * validator's own findings, and two different numbers under one word is how a
+ * reader learns to trust neither.
+ */
+function ledgerCounts(counts: LedgerCounts): string {
+  return `${counts.stages} stage(s), ${counts.findings} finding record(s), ${counts.resolutions} resolution(s), ${counts.checks} check(s), ${counts.decisions} decision(s), ${counts.prompts} prompt(s)`;
+}
+
+/**
+ * The v0.6 provenance partition, same rule. `unattributed` is named rather
+ * than folded into `hooks` — that fold is exactly the flattering default
+ * per-record origin exists to remove.
+ */
+function provenanceCounts(counts: ProvenanceCounts): string {
+  return `${counts.hooks} hook-tier, ${counts.selfReported} self-reported, ${counts.unattributed} unattributed`;
 }
 
 function runWiring(args: WiringArgs): number {

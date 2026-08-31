@@ -2,6 +2,22 @@
 
 > **Depends on:** None
 
+> **Three anchors in this file are deliberately unstamped, and must be stamped
+> in the commit that lands the implementation.** They cite code *this change
+> introduces* — `packages/kit/src/record.ts`, `plugin/hooks/hooks.json`,
+> `packages/kit/src/cli.ts` — which is uncommitted at the time of writing, so
+> there is no commit that contains the quoted text. Stamping them against the
+> current `HEAD` would assert the text was there at a commit where it verifiably
+> was not, which is `FABRICATED`: the verdict meaning the author did not open the
+> file. An unstamped anchor verifies against the working tree and is merely
+> weaker; a falsely stamped one is an accusation the checker would be right to
+> make. `rev-stamp-change-anchors` assumes the cited code already exists, which
+> is the ordinary case; this is the one it does not cover. The same applies to
+> the superseding anchor added to
+> `openspec/changes/archive/2026-08-30-add-journal-identity/review-evidence.md`,
+> and to the new unstamped anchors in `README.md`, `packages/kit/README.md`,
+> `plugin/README.md` and `spec/witness-journal.md`.
+
 ## Problem
 
 Schema v0.3 of the witness journal defined five ledger kinds — `stage`,
@@ -11,10 +27,14 @@ deferred the producer explicitly:
 
 **Evidence:** `openspec/changes/archive/2026-08-21-add-run-ledger/proposal.md:80@c8305b1` — `- **The self-reported producer** — a skill instructing pipeline agents to emit`
 
-Nothing has emitted one since. The kit writes exactly four kinds and no ledger
-kind anywhere:
+Nothing had emitted one since: the kit wrote exactly four kinds — `dispatch`,
+`report`, `mutation`, `append` — and no ledger kind anywhere. This change is
+what closes that, so the anchor below is a presence anchor on the new emitter
+rather than the absence anchor this proposal opened with (which reported
+`COUNT-MISMATCH` the moment the code landed, exactly as the gap-map
+convention intends):
 
-**Evidence:** `grep -rnE 'kind: "(finding|resolution|decision|stage|check)"' packages/kit/src` → 0 results
+**Evidence:** `packages/kit/src/record.ts:766` — `      kind: "finding",`
 
 So the account of what reviewers raised, what the coordinator answered, and
 why an approach was chosen lives only in `review-evidence.md` — coordinator
@@ -40,7 +60,10 @@ synchronous return, and the recorder reads neither:
 
 **Evidence:** `spec/fixtures/probes/claude-code-workflow/PostToolUse-Agent.json:31@c8305b1` — `    "totalTokens": 36283,`
 
-**Evidence:** `grep -rniE 'totalTokens|resolvedModel' packages/kit/src` → 0 results
+The recorder read neither before this change; it now reads the resolved model
+off the launch acknowledgement:
+
+**Evidence:** `grep -rn 'resolvedModel' packages/kit/src/record.ts` → 3 results
 
 Third, the human is absent from the record. A journal says which agents ran
 and what they touched, but not who was steering or what they said. The header
@@ -49,10 +72,16 @@ operator:
 
 **Evidence:** `packages/kit/src/identity.ts:142@c8305b1` — `    head: git("rev-parse", "HEAD"),`
 
-And the one event that carries the operator's words, `UserPromptSubmit`, is
-neither subscribed by the plugin nor recorded in the probe corpus:
+And the one event that carries the operator's words, `UserPromptSubmit`, was
+subscribed by nothing. This change adds the subscription:
 
-**Evidence:** `grep -rn 'UserPromptSubmit' plugin spec packages/kit/src docs README.md` → 0 results
+**Evidence:** `plugin/hooks/hooks.json:3` — `    "UserPromptSubmit": [`
+
+Its payload shape is still unrecorded, which is why task §0 captures a probe
+before the parser is trusted — and why this anchor is left live rather than
+retired: it goes loud the moment the corpus gains one.
+
+**Evidence:** `grep -rn 'UserPromptSubmit' spec/fixtures/probes` → 0 results
 
 Every tool-call payload already carries the join key that would tie a prompt
 to the dispatches and edits it caused (`SessionStart` does not, and need not):
@@ -98,14 +127,39 @@ against it, which the original design named as its own standing risk.
   reads the harness-written subagent transcript's per-turn usage under a byte
   and time budget, records `usage_source: "transcript"`, and omits the field
   entirely when the budget is exceeded. Absent is never estimated.
-- **Schema `0.6`.** The bump is owed by three of the four triggers on their
-  own: a new kind (`prompt`), a new required field on four kinds (per-record
-  `origin`) and a tightening (a blank `user.name` is `MALFORMED`). Riding on
-  it: the kit writes `0.6`, so the two ledger verdicts finally apply to real
-  journals; and because that turns `SILENT-REVIEWER` on for every `found`
-  return including non-reviewer dispatches, at `0.6` the verdict is scoped to
-  dispatches carrying `expects: "findings"` — a closed vocabulary; an unknown
-  value is `MALFORMED`, never a silent opt-out. See `design.md` Decision 4.
+- **Schema `0.6`.** The bump is owed by two triggers, for three reasons: a new
+  kind (`prompt`, trigger 1); a new required field on four kinds (per-record
+  `origin`, trigger 3); and a tightening (a blank `user.name` is `MALFORMED`,
+  trigger 3). The rule also gains a fifth trigger — a **loosening** is equally
+  a change to the set of valid records — appended rather than inserted, so the
+  clause numbers other documents cite do not move; `spec/witness-journal.md`
+  is settled as the one canonical statement. Riding on it: the kit writes `0.6`,
+  so the two ledger verdicts finally apply to real journals; and because that
+  turns `SILENT-REVIEWER` on for every `found` return including non-reviewer
+  dispatches, at `0.6` the verdict is scoped to dispatches carrying
+  `expects: "findings"` — a closed vocabulary; an unknown value is
+  `MALFORMED`, never a silent opt-out. See `design.md` Decision 4.
+- **The validator says which records are whose.** At `0.6` the `validate` and
+  `survey` summaries print hook-tier and self-reported record counts
+  separately, and the header sentence that today reads "records emitted by
+  the harness runtime, which the agent had no opportunity to decline" is
+  scoped to the records that carry no origin of their own. A per-record
+  provenance rule the summary contradicts would be a rule in prose only.
+- **A clean review is a tagged review.** The four reviewer agent files'
+  `## Output format` sections state that a review with nothing to raise
+  returns at least one `[looks-good]` line — the schema's own discharge for
+  `SILENT-REVIEWER` — so an untagged "nothing to report" is a contract
+  violation the verdict is right to name, not a false positive it must
+  tolerate.
+- **The hook script's stdout goes to stderr, and its bound stays in the
+  script.** `UserPromptSubmit` is the one event whose hook stdout the harness
+  feeds back to the model as context, and the recorder is run through `npx`,
+  which can print. The script redirects the runner's stdout for every event, so
+  nothing the recorder or its launcher prints reaches the conversation. The
+  same event runs synchronously on every human prompt, so the runner is
+  time-bounded — in the script, not by a harness `timeout` key: this
+  repository's fail-open guarantee is the script's own `exit 0`, and a
+  harness-killed process never reaches it.
 - **The git user in the header.** `user: { name }` resolved from `git config`
   at session start inside the existing identity budget; omitted when git
   cannot answer, and `MALFORMED` when present and blank — the rule the other
@@ -129,9 +183,11 @@ against it, which the original design named as its own standing risk.
   decision (`decision`), and for each verify chunk (`check`) — alongside the
   existing `evidence-append` calls, not replacing them.
 - **`JournalReport` gains a `ledger` block of counters** (`stages`, `findings`,
-  `resolutions`, `checks`, `decisions`, `prompts`) — namespaced, because
-  `JournalReport.findings` already exists as the array of validator findings.
-  `JournalSurvey` sums the same block. This is the public-interface change the
+  `resolutions`, `checks`, `decisions`, `prompts`) and a `provenance` block
+  (`hooks`, `selfReported`, `unattributed`) — namespaced, because
+  `JournalReport.findings` already exists as the array of validator findings;
+  both `null` below `0.6`, so the summary changes shape once and an older
+  journal's output is unchanged. `JournalSurvey` sums the same blocks. This is the public-interface change the
   original design deferred to "the change that gives these records a producer
   worth counting":
 
@@ -162,6 +218,15 @@ against it, which the original design named as its own standing risk.
 - **Deciding what a prompt record may travel to a pull request.** Journals are
   local and gitignored; what leaves the machine is `add-pr-process-report`'s
   bundling decision, not the recorder's.
+- **Validating the `prompt` join key.** `dispatch.prompt` and `mutation.prompt`
+  are read by no verdict; a value naming no `prompt` record validates clean.
+  Stated so the omission is a decision: the key exists for a renderer, and a
+  verdict over it would be a new verdict with its own bump.
+- **Making a hand-appended `finding` distinguishable from a hook-extracted
+  one.** They are byte-identical in the file; `witness ledger` refusing the
+  kind is a command-surface convention. The journal is local and the recorder
+  is the only writer this change ships; a file-level mechanism (sealing,
+  signing) is `add-journal-sealing`'s territory.
 
 ## Dependencies
 
@@ -190,10 +255,10 @@ None.
 
 |                                |                                        |
 | ------------------------------ | -------------------------------------- |
-| Estimated tasks                | ~46                                    |
-| Packages or surfaces touched   | 6 (packages/kit, packages/claims, plugin/hooks, spec/, .claude/skills/proposal-to-pr, .github/workflows) |
+| Estimated tasks                | ~56                                    |
+| Packages or surfaces touched   | 7 (packages/kit, packages/claims, plugin/hooks, spec/, openspec/specs/witness, .claude/skills/proposal-to-pr + .claude/agents, .github/workflows) |
 | Risk                           | HIGH                                   |
-| Expected sessions to implement | 2                                      |
+| Expected sessions to implement | 3                                      |
 
 The surface count exceeds the split threshold. It is kept as one change
 because the pieces are not independently shippable: adopting a ≥0.3 journal
@@ -215,11 +280,20 @@ natural seam is the kernel scoping change (Decision 4) as its own prerequisite.
    cleanly; TAINTED is a void round, not a failure. Candidates: omit the record
    on TAINTED and record a `decision` explaining the void; or leave probe
    verdicts in `review-evidence.md` only. Resolve in Stage 3.
-3. **Is `CLAUDE_CODE_SESSION_ID` exported by every harness entry point?**
-   Observed in this repository's sessions and matching the live journal; not
-   found in any recorded probe or in-repo document:
+3. **Is `CLAUDE_CODE_SESSION_ID` exported by every harness entry point?** Still
+   open. It was observed in this repository's sessions, matching the live
+   journal, and `witness ledger` now reads it — with `--session` as the
+   override for when it is absent, and a refusal rather than a guess when
+   neither is available:
 
-   **Evidence:** `grep -rn 'CLAUDE_CODE_SESSION_ID' packages plugin .claude/skills spec` → 0 results
+   **Evidence:** `packages/kit/src/cli.ts:168` — `The journal is addressed by --session, else $CLAUDE_CODE_SESSION_ID, and by`
+
+   No recorded probe carries it, because a hook payload is JSON on stdin and
+   carries no environment at all — so the corpus can never settle this, and
+   the absence below is a permanent property of the evidence rather than a gap
+   waiting to close:
+
+   **Evidence:** `grep -rn 'CLAUDE_CODE_SESSION_ID' spec/fixtures/probes` → 0 results
 
    `--session` exists so the command works without it; whether the skill can
    rely on the variable being present is empirical.
