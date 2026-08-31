@@ -41,10 +41,17 @@ function unstamped(line: number, text: string): PresenceClaim {
   };
 }
 
-function deps(current: string[] | null, atRev: RevRead): CheckDeps {
+function deps(
+  current: string[] | null,
+  atRev: RevRead,
+  // Omitted means the probe was not supplied at all, which is the "could not
+  // ask" case and must behave exactly as it did before the probe existed.
+  shallow?: boolean | null,
+): CheckDeps {
   return {
     readFileLines: () => current,
     readFileAtRev: () => atRev,
+    ...(shallow === undefined ? {} : { isShallowRepository: () => shallow }),
     runSearch: () => ({ ok: true, count: 0 }),
   };
 }
@@ -147,7 +154,7 @@ describe("rev-stamped anchors — the rot axis", () => {
 });
 
 describe("rev-stamped anchors — an unreadable commit fails open", () => {
-  it("does not call an author a fabricator when the commit is not in the clone", () => {
+  it("does not call an author a fabricator when it cannot tell if the clone is shallow", () => {
     const [result] = checkClaims(
       [stamped(2, "  const attempts = 5;")],
       deps(["unrelated"], { status: "unknown-rev" }),
@@ -381,5 +388,80 @@ describe("git is spawned once per commit and file, not once per anchor", () => {
     rmSync(join(root, ".git"), { recursive: true, force: true });
 
     expect(reader("src/app.ts", first).status).toBe("ok");
+  });
+});
+
+/**
+ * The rev in a citation is written by the author of the document under test.
+ * Softening a FAILING verdict on the strength of that rev made `@0000000` a
+ * universal bypass: strictly less work than opening the file, which is the
+ * inversion of the premise the fail-open was argued from.
+ *
+ * So the discriminator is the clone, which no document can influence. These
+ * cases pin all three answers it can give.
+ */
+describe("rev-stamped anchors — an unresolvable stamp cannot rescue a failure", () => {
+  const INVENTED = "  const attempts = 500000;";
+
+  it("fails a fabricated claim when the clone has full history", () => {
+    const [result] = checkClaims(
+      [stamped(2, INVENTED)],
+      deps(AT_REV, { status: "unknown-rev" }, false),
+    );
+
+    expect(result?.verdict).toBe("fabricated");
+    expect(isFailure("fabricated")).toBe(true);
+    expect(result?.detail).toContain("this clone has full history");
+    expect(result?.detail).toContain("re-pin the anchor to the squash commit");
+  });
+
+  it("still refuses to accuse when the clone is shallow", () => {
+    const [result] = checkClaims(
+      [stamped(2, INVENTED)],
+      deps(AT_REV, { status: "unknown-rev" }, true),
+    );
+
+    expect(result?.verdict).toBe("unverifiable-rev");
+    expect(isFailure("unverifiable-rev")).toBe(false);
+    expect(result?.detail).toContain("fetch-depth: 0");
+  });
+
+  it("still refuses to accuse when the probe cannot answer", () => {
+    const [result] = checkClaims(
+      [stamped(2, INVENTED)],
+      deps(AT_REV, { status: "unknown-rev" }, null),
+    );
+
+    expect(result?.verdict).toBe("unverifiable-rev");
+  });
+
+  it("leaves an honest anchor passing on a full clone, which is the whole point", () => {
+    // The quote IS in the working tree. A squash-merged proposal must not be
+    // turned red by this change — that is the failure rev-stamp-change-anchors
+    // exists to prevent, and it is the reason the discriminator is the clone
+    // rather than a blanket refusal to soften.
+    const [result] = checkClaims(
+      [stamped(2, "  const attempts = 5;")],
+      deps(AT_REV, { status: "unknown-rev" }, false),
+    );
+
+    expect(result?.verdict).toBe("ok");
+    expect(isFailure("ok")).toBe(false);
+  });
+
+  it("never spawns the probe when the working-tree verdict already passes", () => {
+    let asked = 0;
+    const [result] = checkClaims([stamped(2, "  const attempts = 5;")], {
+      readFileLines: () => AT_REV,
+      readFileAtRev: () => ({ status: "unknown-rev" }),
+      isShallowRepository: () => {
+        asked += 1;
+        return false;
+      },
+      runSearch: () => ({ ok: true, count: 0 }),
+    });
+
+    expect(result?.verdict).toBe("ok");
+    expect(asked).toBe(0);
   });
 });

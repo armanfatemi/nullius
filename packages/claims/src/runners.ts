@@ -233,6 +233,44 @@ export function revFileReader(root?: string, timeoutMs = DEFAULT_GIT_TIMEOUT_MS)
  * tree; the stamp is the one part of an anchor that becomes a HARD failure
  * when it is wrong.
  */
+/**
+ * Whether this clone's history is truncated.
+ *
+ * This is the discriminator `checkStamped` needs, and its whole value is that
+ * a document cannot influence it. "Is this rev trustworthy" is answered with a
+ * rev the author supplied; "can this clone read history at all" is answered by
+ * the checkout, once, before any citation is read.
+ *
+ * Three-valued on purpose. `null` means the question could not be put — git is
+ * missing, this is not a repository, the call timed out — and a caller holding
+ * `null` must fail open exactly as it always did, because it has learned
+ * nothing. Collapsing that into `false` would turn every machine without git
+ * into a machine that accuses authors.
+ */
+export function isShallowRepository(
+  root?: string,
+  timeoutMs = DEFAULT_GIT_TIMEOUT_MS,
+): boolean | null {
+  const base = root ?? process.cwd();
+  const result = spawnSync("git", ["-C", base, "rev-parse", "--is-shallow-repository"], {
+    shell: false,
+    encoding: "utf8",
+    maxBuffer: STAGE_MAX_BUFFER,
+    timeout: timeoutMs,
+    killSignal: "SIGKILL",
+    input: "",
+    env: childEnv(),
+  });
+
+  if (result.error || result.status !== 0) return null;
+  const answer = (result.stdout ?? "").trim();
+  // Anything other than the two words git documents is treated as no answer.
+  // A future git that grows a third response must not be read as "not shallow".
+  if (answer === "true") return true;
+  if (answer === "false") return false;
+  return null;
+}
+
 export function headRev(root?: string, timeoutMs = DEFAULT_GIT_TIMEOUT_MS): string | null {
   const base = root ?? process.cwd();
   const result = spawnSync("git", ["-C", base, "rev-parse", "--short", "HEAD"], {
