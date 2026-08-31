@@ -209,6 +209,20 @@ describe("rev-stamped anchors — an unreadable commit fails open", () => {
     expect(result?.verdict).toBe("unsafe-path");
     expect(read).toBe(0);
   });
+
+  // The case above is a SYNTACTIC escape — `..` — which the path guard rejects
+  // before any read. It is not the only way out, and this test's name has
+  // always claimed both. A path with no `..` in it escaped through git's own
+  // resolution instead, because `<rev>:<path>` is relative to the repository
+  // top rather than to the directory git was pointed at (#71). That is fixed
+  // in `revFileReader`; asserted end to end in the real-repository suite below.
+  it("refuses an ordinary-looking path that resolves outside the root", () => {
+    const outside = revFileReader(__dirname)("package.json", "HEAD~0");
+
+    // Whatever this returns, it must not be a verified read of the repository
+    // root's package.json from a reader pointed at src/.
+    expect(outside.status).not.toBe("ok");
+  });
 });
 
 describe("an unstamped anchor is unchanged", () => {
@@ -337,6 +351,59 @@ describe("revFileReader against a real repository", () => {
     const read = revFileReader(root)("src/app.ts", "main; rm -rf /");
 
     expect(read.status).toBe("unavailable");
+  });
+
+  // #70. git only says `invalid object name` for a rev shorter than 40 hex; at
+  // exactly 40 it reports a PATH problem instead, which the old classifier read
+  // as "the commit exists and lacks this file". The verdict therefore depended
+  // on the length of the hash. The 40-character case is the one that shipped,
+  // because the test above it uses 16.
+  it.each([
+    ["7 characters", "0000000"],
+    ["16 characters", "0123456789abcdef"],
+    ["40 characters", "0000000000000000000000000000000000000000"],
+  ])("reports an absent commit written with %s as unknown-rev", (_label, rev) => {
+    const { root } = repo();
+
+    expect(revFileReader(root)("src/app.ts", rev).status).toBe("unknown-rev");
+  });
+
+  it("gives an absent commit the same verdict at 7 and at 40 characters", () => {
+    const { root } = repo();
+    const read = revFileReader(root);
+
+    // `git rev-parse HEAD` and $GITHUB_SHA both print 40, so the long form is
+    // what an author naturally writes. It must not be the punished one.
+    expect(read("src/app.ts", "0000000000000000000000000000000000000000").status).toBe(
+      read("src/app.ts", "0000000").status,
+    );
+  });
+
+  // #71. `<rev>:<path>` resolves a BARE path from the top of the repository, so
+  // this lane read files above the directory it was pointed at while the
+  // working-tree lane refused them. No `..` is involved — the path guard never
+  // sees anything wrong, because nothing IS syntactically wrong.
+  it("does not read a path above the root it was pointed at", () => {
+    const { root, first } = repo();
+    writeFileSync(join(root, "above.txt"), "SECRET_TOKEN=hunter2\n");
+    mkdirSync(join(root, "sub"), { recursive: true });
+    writeFileSync(join(root, "sub", "local.txt"), "ok\n");
+    execFileSync("git", ["-C", root, "add", "."], { encoding: "utf8" });
+    execFileSync("git", ["-C", root, "commit", "-qm", "second"], { encoding: "utf8" });
+    const second = execFileSync("git", ["-C", root, "rev-parse", "--short", "HEAD"], {
+      encoding: "utf8",
+    }).trim();
+
+    // Pointed at the subdirectory: `above.txt` is outside it.
+    const fromSub = revFileReader(join(root, "sub"))("above.txt", second);
+
+    expect(fromSub.status).not.toBe("ok");
+    // And the file it SHOULD be able to reach still resolves, so this is
+    // confinement rather than the lane simply breaking.
+    expect(revFileReader(join(root, "sub"))("local.txt", second).status).toBe("ok");
+    // Unchanged at the repository root, which is the documented usage.
+    expect(revFileReader(root)("above.txt", second).status).toBe("ok");
+    expect(first).not.toBe(second);
   });
 
   it("drives a real end-to-end check: deleted code is stale, invention fails", () => {
