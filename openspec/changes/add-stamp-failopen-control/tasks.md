@@ -19,30 +19,30 @@ repository-level probe. Two existing tests are rewritten. See `design.md`.
 
 ## Tasks
 
-- [ ] 1.1 Add a cached `isShallowRepository` probe to `runners.ts`, spawning
+- [x] 1.1 Add a cached `isShallowRepository` probe to `runners.ts`, spawning
       `git rev-parse --is-shallow-repository` under the existing git timeout.
       Return `null` — not `false` — when git cannot be run, so "cannot probe" is
       distinguishable from "not shallow".
-- [ ] 1.2 Thread the probe into `CheckDeps` as an optional dependency, so a
+- [x] 1.2 Thread the probe into `CheckDeps` as an optional dependency, so a
       caller that supplies no git reader also supplies no probe and the
       existing fail-open path is what runs.
-- [ ] 2.1 In `checkStamped`'s `atRev.status !== "ok"` branch: when the fallback
+- [x] 2.1 In `checkStamped`'s `atRev.status !== "ok"` branch: when the fallback
       verdict passes, keep today's behaviour. When it fails, soften to
       `unverifiable-rev` ONLY if the probe reports shallow or cannot answer;
       otherwise return the fallback's failing verdict, with a detail naming
       the unresolvable commit and pointing at the re-pin remedy.
-- [ ] 2.2 Count stamps that could not be honoured and surface the total in the
+- [x] 2.2 Count stamps that could not be honoured and surface the total in the
       report summary. It is advisory and never changes an exit code.
-- [ ] 3.1 Fixture: a document whose every claim is invented and stamped
+- [x] 3.1 Fixture: a document whose every claim is invented and stamped
       `@0000000`. It must FAIL on a full-history clone.
-- [ ] 3.2 Unit tests asserting by name — the bypass document returns
+- [x] 3.2 Unit tests asserting by name — the bypass document returns
       `fabricated` on a full clone, and `unverifiable-rev` on a shallow one.
       An exit code alone cannot tell these apart
       (`.claude/rules/verdict-needs-fixture-and-test.md`).
-- [ ] 3.3 Rewrite the two `revAnchors.test.ts` cases that pin the old
+- [x] 3.3 Rewrite the two `revAnchors.test.ts` cases that pin the old
       behaviour, preserving what they protected as the shallow-clone scenario.
-- [ ] 4.1 Correct the forgery paragraph in `spec/evidence-anchors.md` per
+- [x] 4.1 Correct the forgery paragraph in `spec/evidence-anchors.md` per
       Decision 5, and add the new verdict semantics to its verdict table.
-- [ ] 4.2 CHANGELOG entry recording this as a security fix, with the bypass
+- [x] 4.2 CHANGELOG entry recording this as a security fix, with the bypass
       spelled out — it is already public, so describing it costs nothing and
       omitting it would misrepresent the release.

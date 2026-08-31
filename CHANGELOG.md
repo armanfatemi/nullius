@@ -8,6 +8,50 @@ a package name are that package's own release; the kit versions independently.
 
 ### Fixed
 
+- **Security: an unresolvable `@rev` no longer rescues a failing anchor.**
+  A rev stamp is part of the document, and on a pull request the document is
+  written by the party being checked. Naming a commit the clone could not
+  resolve softened a **failing** working-tree verdict to the advisory
+  `UNVERIFIABLE-REV`, which passes — so appending `@0000000` to any invented
+  citation turned a red run green. A document in which every claim was
+  fabricated exited 0 and printed "All 3 grounding marker(s) verified", under
+  `--require-markers` too.
+
+  This is described plainly because it is already public: the finding and an
+  earlier, unmerged fix have sat on a branch of this repository since
+  2026-08-19. Understating it in the release notes would misrepresent what
+  users were running.
+
+  The fail-open itself was correct and is kept. A commit this clone never had
+  is not evidence about the author — the clone may be shallow, the PR may come
+  from a fork, the branch may have been squash-merged — and a checker that
+  cannot read the history it was pointed at does not get to call anyone a
+  fabricator. Refusing to soften anything would have reported `FABRICATED` for
+  a squash-merged proposal that cited code it then modified, which is the
+  outcome `rev-stamp-change-anchors` exists to prevent.
+
+  So the discriminator moved off the citation and onto the clone, which no
+  document can influence. `check` now asks `git rev-parse
+  --is-shallow-repository` once per run, and only on the branch where a stamped
+  anchor has already failed:
+
+  | Clone | Unresolvable commit, failing working-tree verdict |
+  | --- | --- |
+  | Shallow | `UNVERIFIABLE-REV`, advisory — unchanged |
+  | Cannot be determined (no git) | `UNVERIFIABLE-REV`, advisory — unchanged |
+  | Full history | the working-tree verdict stands, failures included |
+
+  A **passing** working-tree verdict is unaffected in every row: a stamp can win
+  an anchor the permanent gate, and it can never lose it the ordinary one.
+
+  If a squash orphans a stamp on a full-history clone, the remedy is the one
+  already documented — re-pin the anchors to the squash commit.
+
+  Because `actions/checkout` defaults to `fetch-depth: 1`, most CI runs are
+  shallow and therefore behave exactly as before. Set `fetch-depth: 0` to arm
+  the gate; that has always been this project's advice for rev-stamped
+  documents, and it is now what makes the difference.
+
 - **The canary told reviewers where it was planted.** The probe measures whether
   a reviewer found a false claim by *reading* a document, so any command that
   prints the plant's location answers that question for them. Nine did, and the
