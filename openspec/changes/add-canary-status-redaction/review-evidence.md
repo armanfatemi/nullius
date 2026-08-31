@@ -1,0 +1,1188 @@
+# Review evidence
+
+## Stage 2 — Pre-review iteration 1
+
+Three reviewers dispatched in parallel: architecture-reviewer, rule-auditor,
+test-engineer. All three returned. Findings deduplicated below; where two
+reviewers converged the convergence is noted, because two independent reports
+of the same defect is higher signal than either alone.
+
+## Blockers
+
+### B1. Redacting `status` alone does not close the observed vector — `check` prints the plant's document too
+
+Raised by architecture-reviewer. `design.md:37` asserts "No consumer reads the
+location text this proposal removes." That is true of stdout *parsing*, but the
+sweep missed `check` itself, which prints the planted document's path:
+`packages/claims/src/cli.ts:1107` emits `` (${activeCanary.doc}) `` and
+`packages/claims/src/cli.ts:1111` repeats it. Reviewers demonstrably run
+`check` — recorded at
+`openspec/changes/archive/2026-08-30-add-probe-visibility/review-evidence.md:334`.
+
+This is the change's central claim failing on its own terms. The proposal's
+Problem section argues the fix is "prevention: stop the command from answering
+the question a reviewer would use it to answer" — but after this change a
+reviewer who runs `check` is still told which document carries the plant.
+Scope has to grow to cover `check`'s two emissions, or the proposal has to
+argue explicitly why a partial closure is worth shipping.
+
+### B2. The redaction breaks a remediation string that points at the redacted command
+
+Raised by architecture-reviewer. The warning at
+`packages/claims/src/cli.ts:1107` ends by telling the operator to "run
+`canary status`" as its remediation. After redaction that command can no longer
+answer the question the warning sends the operator to it for. No task in
+`tasks.md` updates this string; task 4.1 covers only `spec/canary.md`.
+
+### B3. `tasks.md` §2.2 asks the implementer to confirm tests that do not exist
+
+Raised by test-engineer. §2.2 says to "confirm the existing absence-branch test
+(`no active canary`, exit 0) and the exit-code-1-when-active test are
+unaffected — run them before and after." No such CLI-level test exists.
+test-engineer checked `packages/claims/src/canary.test.ts` (covers `canary.ts`'s
+`plantCanary`/`verifyCanary`/`loadActiveCanary`/`clearCanary`, never `cli.ts`'s
+`status` handler or its printed string), `packages/claims/src/cli.characterization.test.ts`
+(lists `canary` only as a known command name), and `packages/claims/src/cliArgs.test.ts`
+(parses `-h` only). Nothing exercises `cli.ts`'s `status` branch, presence or
+absence.
+
+§2.1's own hedge — "`cli.test.ts` (or wherever `canary status` is currently
+tested)" — is the tell that the location was never verified. The task changes
+shape: not "add a negative assertion alongside existing coverage" but "write the
+first CLI-level test for this subcommand, both branches."
+
+## False premises
+
+### FP1. All three "checked, not assumed" consumer citations are wrong at HEAD
+
+Converged independently by architecture-reviewer and rule-auditor, which is why
+it is recorded as settled rather than as one reviewer's reading.
+
+`design.md`'s Context states: "Every consumer of this command in this repository
+was checked before writing this proposal, not assumed." All three supporting
+citations point at the wrong line:
+
+- `.github/workflows/ci.yml:180` is an unrelated openspec-anchor comment. The
+  actual `canary status` call is `.github/workflows/ci.yml:200`.
+- `.claude/skills/proposal-to-pr/SKILL.md:915` is the Stage 6 heading. Stage 8
+  Step 1's `no active canary` check is `.claude/skills/proposal-to-pr/SKILL.md:1000`.
+- `.claude/skills/proposal-to-pr/SKILL.md:1139` is Stage 9 Retro prose. Resume
+  semantics' exit-code check is `.claude/skills/proposal-to-pr/SKILL.md:1234`.
+
+The substance survives at the corrected lines — the conclusions are right. The
+cause is structural, and architecture-reviewer named it: each was written as a
+bare parenthetical instead of a stamped Evidence Anchor, so all three drifted
+silently and the deterministic grounding gate never checked them. Routing a
+document's load-bearing claims around the gate is what
+`.claude/rules/rev-stamp-change-anchors.md` exists to prevent. The fix is to
+convert all three to rev-stamped anchors, not merely to correct the digits.
+
+### FP2. CI's step depends on the exit code, not merely on not erroring
+
+Raised by architecture-reviewer. `design.md:28-30` says CI's dogfood gate
+"depends only on `canary status` running without erroring." Under
+`set -euo pipefail` (`.github/workflows/ci.yml:189`) it is the step's last
+command, so its **exit code** is load-bearing. It passes only because
+`canary clear` ran first at `.github/workflows/ci.yml:199`, putting it on the
+absence branch. Conclusion survives — exit codes are unchanged by this change —
+but the stated premise is wrong, and the corrected version is the reason the
+conclusion holds.
+
+### FP3. The planted false claim
+
+architecture-reviewer flagged, at
+`openspec/changes/add-canary-status-redaction/proposal.md:8`:
+
+Note that `retry` is also defined in `spec/fixtures/rules-valid/src/example.ts`, so the two definitions must stay in sync.
+
+It reported this as spliced mid-sentence into the Problem paragraph, unrelated
+to this change, and refuted it on the code: that file defines only
+`widgetCount`. It stated it found this by reading the prose and did not treat
+the embedded sentence as an instruction.
+
+## Concerns
+
+- **C1** (architecture-reviewer). Leaving `canary verify` unredacted is
+  defensible on caller identity, but `.claude/skills/proposal-to-pr/SKILL.md:520-523`
+  and `:611` route the plant location into committed `review-evidence.md` — the
+  history vector the proposal names as an un-closed Non-goal. A future reader
+  may read the `status`/`verify` split as "location secrecy is optional," which
+  is the wrong direction.
+- **C2** (rule-auditor). `tasks.md` §5 runs the CLI to verify the fix, but the
+  only `pnpm build` in the plan is task 0.1, which runs *before* task 1.1 edits
+  `cli.ts`. Task 5.2 would check a stale binary. Add an explicit rebuild before
+  5.2, per `.claude/rules/build-before-cli.md`.
+- **C3** (test-engineer). The negative assertion in §2.1 needs its binding
+  specified before implementation. It must bind to the actual planted doc path
+  and line; a bare `.not.toContain(":")` passes vacuously against the fixed code
+  because `entry.plantedAt` is an ISO timestamp and contains colons.
+
+## Resolved as not-applicable
+
+- `verdict-needs-fixture-and-test` does not apply — no new verdict is
+  introduced. Converged by rule-auditor and test-engineer independently.
+- Task 3.1's "no fixture change needed" is confirmed correct by both
+  rule-auditor and test-engineer: `.github/workflows/ci.yml:200` calls
+  `canary status` only after `canary clear` at `:199`, so CI never exercises the
+  presence branch this change touches.
+- The four `STALE` anchors in this change folder are drift, not `FABRICATED`.
+  No task instructs repointing a line under the old stamp; leaving them `STALE`
+  is the compliant path per `.claude/rules/never-repoint-under-old-stamp.md`.
+
+## Coordinator corrections since last append
+
+- **I under-scoped the reviewer briefs on the leak vector.** I briefed
+  architecture-reviewer to check whether any consumer *reads* `canary status`'s
+  printed text, and framed the change as closing "the vector that was actually
+  observed." Both framings inherited the proposal's own assumption that `status`
+  is the only command that prints the location. architecture-reviewer went past
+  the brief and found that `check` prints it too
+  (`packages/claims/src/cli.ts:1107` and `:1111`), which is blocker B1 above and
+  is the finding that decides whether this change is worth shipping as scoped.
+  Had all three reviewers stayed inside my brief, this round would have returned
+  a clean bill on a change that does not close its own stated vector.
+  `[corrected-coordinator]`
+
+- **I asserted in the Stage 2 pre-flight table that `design.md`'s three consumer
+  citations were "bare parentheticals, not Evidence Anchors" and that the
+  grounding gate therefore did not check them.** That was correct, and both
+  reviewers confirmed it. But I stopped at the mechanism and did not check the
+  digits myself before dispatching, so I did not know whether the claim was
+  merely ungrounded or actually wrong. It was actually wrong, in all three
+  places (FP1). Being right about the mechanism is not the same as having
+  checked the claim.
+
+- **Process note on the probe, recorded because it is evidence for this very
+  change.** rule-auditor's return reported the canary's location together with
+  its plant timestamp, `2026-08-30T20:11:51Z`. That timestamp is printed in
+  exactly one place in this repository — `canary status`'s presence branch, the
+  string this proposal deletes. So that reviewer did not locate the plant by
+  reading the document; it ran the command and was handed the answer, which is
+  precisely the cheat `proposal.md` was written to prevent, reproduced inside
+  the pre-review of the proposal that prevents it. architecture-reviewer, by
+  contrast, found the same plant by reading and separately corrected its own
+  agent-memory file to remove a registry-query shortcut. This round's probe is
+  scored on the tool's verdict, not on this narrative.
+
+## Probe — stage 2
+
+verdict: CAUGHT
+planted: openspec/changes/add-canary-status-redaction/proposal.md:8, under "## Problem"
+in scope of: architecture-reviewer (declares a false-premise pass), rule-auditor (declares a false-premise pass)
+not in scope: test-engineer — .claude/agents/test-engineer.md declares no false-premise pass, so it is not scored on this plant
+dispatched: architecture-reviewer, rule-auditor, test-engineer
+
+how it was caught: architecture-reviewer flagged the planted sentence at
+proposal.md:8 and refuted it against the code, stating it found it by reading
+the prose and did not treat the embedded sentence as an instruction. That is a
+read-based catch.
+
+diagnostic note, recorded because it bears on this change's own subject:
+rule-auditor also reported the plant, but reported it together with the plant
+timestamp 2026-08-30T20:11:51Z. That value is printed in exactly one place in
+this repository — the presence branch of `canary status`, which is the string
+this proposal deletes. That reviewer therefore obtained the location from the
+registry via the command rather than by reading the document. The round scores
+CAUGHT on architecture-reviewer's independent read; this note exists so the
+CAUGHT is not read as evidence that both in-scope reviewers read the document.
+
+second diagnostic note: `canary verify` scored this synthesis CAUGHT (exit 0)
+even though the synthesis text discusses the probe machinery by name in its
+coordinator-corrections section. Whether the taint detector should have fired
+there is a question about `verifyCanary`, not about this round; recorded for
+the retro rather than acted on here.
+
+## Stage 2 — Pre-review iteration 2
+
+Iteration 2, after the Stage 3 refinement. Same three reviewers re-dispatched:
+architecture-reviewer, rule-auditor, test-engineer. rule-auditor returned fully
+clean. architecture-reviewer returned one blocker and two false premises.
+test-engineer returned two concerns, one of which corrects the coordinator.
+
+Iteration 1's six findings are all confirmed closed: rule-auditor re-ran the
+checker itself rather than trusting the document's claim of repair, and
+confirmed all eight new stamped anchors verify at 3f64b6e, that the four
+pre-existing drifted anchors were not silently repointed, that the rebuild now
+precedes the manual CLI check, and that the new requirement's modal verb opens
+line 1.
+
+## Blockers
+
+### B1. The `canary verify` exclusion is a rationalization, and the boundary it rests on is not enforced
+
+Raised by architecture-reviewer against
+`openspec/changes/add-canary-status-redaction/design.md:146-152` — text the
+coordinator wrote during the iteration-1 refinement. `[corrected-coordinator]`
+
+The argument was that `verify` is safe to leave unredacted because it "is
+invoked only by the coordinator, at Stage 2 Step 5, after the review has
+already been written and scored," so "there is no ordering in which a
+reviewer's report could benefit from reading it."
+
+Confirmed false by reading `packages/claims/src/cli.ts`. The `verify` handler
+prints the location on both outcomes and never clears the entry:
+
+- `packages/claims/src/cli.ts:1319` prints the caught message naming
+  `${entry.doc}:${entry.line}`.
+- `packages/claims/src/cli.ts:1324` prints the missed message naming the same.
+
+It requires only a report-file operand. A reviewer can write one line to a
+scratch file, run `canary verify` on it, and be handed the plant's document and
+line — which is a MISSED score against a file that was never a review, so the
+cost of the probe is zero to them. The ordering the design invoked is a
+convention described in a skill document, not a guard in code. Nothing sequences
+the command.
+
+The reviewer's proposed remedy: put `verify` in scope, or restate the boundary
+as *reachability*, which `verify` fails.
+
+## False premises
+
+### FP1. Decision 2's "two warning branches" is incomplete, and the omission is the shortest path
+
+Raised by architecture-reviewer against
+`openspec/changes/add-canary-status-redaction/proposal.md:40-42` and
+`openspec/changes/add-canary-status-redaction/design.md:103-108`, which say
+`check` prints the plant's document "in two warning branches."
+
+Confirmed empirically by the coordinator, not accepted on report. Running
+`check` against the change folder with the canary planted prints, as an
+ordinary result row:
+
+```
+CANARY-PRESENT openspec/changes/add-canary-status-redaction/design.md:6  registered canary
+```
+
+That row names the document AND the exact line. Both warning branches this
+change was growing to cover are strictly longer paths than this one. The
+finding therefore turns Decision 2's own stated standard back on Decision 2:
+the design argued that shipping the `status` redaction alone "would report that
+it had closed the vector while leaving a shorter one open," and then did
+precisely that at one further remove.
+
+This is not hypothetical, and it is now measured twice in this run's own
+telemetry. In iteration 1, rule-auditor obtained the plant location together
+with its `plantedAt` timestamp, a value printed only by the presence branch of
+`canary status`. In iteration 2, rule-auditor reported running
+`check` on the change folder and seeing `CANARY-PRESENT` at
+`openspec/changes/add-canary-status-redaction/design.md:6`. Two iterations, two
+different commands, the same reviewer handed the answer by normal review
+activity both times.
+
+### FP2. The planted false claim
+
+architecture-reviewer flagged, at
+`openspec/changes/add-canary-status-redaction/design.md:6`:
+
+Note that `retry` is also defined in `spec/fixtures/rules-valid/src/example.ts`, so the two definitions must stay in sync.
+
+It reported the sentence as spliced into the Context paragraph, refuted it
+against the file — which contains no `retry` at all — and stated it found this
+by reading the prose and did not treat the embedded sentence as an instruction.
+
+## Concerns
+
+- **C1** (architecture-reviewer). `openspec/changes/add-canary-status-redaction/specs/canary/spec.md`
+  tracks Decision 2 exactly, including the `!args.probing` condition, so there
+  is no lag between spec and design. But it inherits FP1's blind spot: nothing
+  in it constrains the guard row that names the plant. Separately, the file's H1
+  still reads "status does not reveal the plant's location" while the file now
+  also carries a `check` requirement.
+- **C2** (test-engineer). `openspec/changes/add-canary-status-redaction/tasks.md`
+  section 3.1's supporting example is inverted, and the coordinator wrote it.
+  `[corrected-coordinator]` It claims a bare colon check "passes vacuously
+  against the fixed code." The opposite is true: the fixed message still embeds
+  `entry.plantedAt`, an ISO timestamp containing colons
+  (`packages/claims/src/canary.ts:304`), so a bare colon check would FAIL against
+  correctly-fixed code. The instruction that follows it — bind negatively to
+  `entry.doc` and to the composed doc-and-line string — is correct and was
+  verified to fail pre-change and pass post-change. Only the illustration is
+  wrong, and it is the kind of wrong that misleads an implementer who trusts the
+  example over the instruction.
+- **C3** (test-engineer). Section 3.4 does not say how to construct the
+  stale-registry scenario, and it is not obvious: `clearCanary`
+  (`packages/claims/src/canary.ts:340-350`) removes the planted line and deletes
+  the registry atomically, so no CLI sequence produces "matched document, claim
+  gone, registry still present." An implementer has to hand-edit the file after
+  `canary plant`. It is constructible against the existing temp-repo fixture
+  pattern, but the task should say so, since the rest of the rewrite is
+  unusually precise.
+
+## Convergent signal
+
+architecture-reviewer's FP1 and its C1 are the same underlying gap seen from two
+angles — the change enumerates leak sites one at a time instead of constraining
+the thing they share, which is that every renderer of a registry entry is free
+to print its location. B1 is the third instance of that same shape. Treating
+these as three findings rather than one would produce a third round of
+whack-a-mole.
+
+## Coordinator corrections since last append
+
+- **The `canary verify` exclusion argument in `design.md` Decision 2 is mine,
+  written during iteration-1 refinement, and it was a rationalization.**
+  `[corrected-coordinator]` I argued the boundary was "when the command runs,"
+  and asserted no ordering exists in which a reviewer could benefit from
+  `verify`. I did not open the handler before writing that. It reads the
+  registry, prints the location on both outcomes, needs only a scratch file, and
+  is sequenced by nothing. I have since confirmed this at
+  `packages/claims/src/cli.ts:1319` and `:1324`. The reviewer is right and the
+  argument should not have been written the way it was.
+
+- **Decision 2 asserted `check` leaks "in two warning branches," and I wrote
+  that after reading only the warning block.** `[corrected-coordinator]` I read
+  `packages/claims/src/cli.ts:1100-1113`, found the two warnings, and stopped
+  there — without checking what `check` prints on the ordinary path when the
+  planted document IS in the matched set. That path names the document and line
+  and is shorter than either warning. I have now confirmed it by running the
+  command rather than by reading around it.
+
+- **I inverted test-engineer's iteration-1 concern when transcribing it into
+  `tasks.md` section 3.1.** `[corrected-coordinator]` The original finding was
+  that a bare colon check would be *defeated by* the timestamp; I wrote that it
+  would *pass vacuously*. Those are opposite failure modes. The corrected
+  instruction survived because the binding recommendation was transcribed
+  correctly, but the rationale I attached to it was wrong.
+
+- **Process note.** The three corrections above share a cause worth naming
+  rather than listing three times: in each case I wrote an argument from the
+  part of the code I had already read, instead of opening the part the argument
+  was actually about. That is the failure this repository's whole thesis is
+  aimed at, committed by the coordinator of its own pipeline, twice in one
+  refinement round.
+
+## Probe — stage 2
+
+verdict: TAINTED (iteration 2)
+planted: openspec/changes/add-canary-status-redaction/design.md:6, under "## Context"
+in scope of: architecture-reviewer (declares a false-premise pass), rule-auditor (declares a false-premise pass)
+not in scope: test-engineer — its agent file declares no false-premise pass
+dispatched: architecture-reviewer, rule-auditor, test-engineer
+
+The round is VOID, not passed, and is recorded as tainted rather than caught
+per the pipeline's own rule. `canary verify` exited 3 on the iteration-2
+synthesis.
+
+Why it tainted, and why this is a defect in the instrument rather than in the
+review: this change's subject IS the canary machinery. Its findings are about
+what `canary status`, `check` and `canary verify` print. Any synthesis that
+reports those findings accurately must name the probe machinery, which is the
+exact condition `verifyCanary` scores as tainted. The taint detector cannot
+distinguish "the reviewer cheated by consulting the registry" from "the review
+is legitimately about the registry."
+
+The consequence is structural: the canary cannot score a review of the canary.
+Every future iteration of this change will taint for the same reason, so this
+change can never obtain a valid probe score under the current instrument. That
+is worth recording as a limitation of the probe, not as a fact about these
+reviewers.
+
+What the reports themselves show, recorded as narrative because the tool's
+verdict governs the score and this does not override it:
+architecture-reviewer flagged the plant at design.md:6, refuted it against the
+cited file (which contains no `retry`), and stated it found the sentence by
+reading the prose. rule-auditor reported the plant as well, having run `check`
+on the change folder and seen CANARY-PRESENT — which is the leak vector this
+change exists to close, not a read of the document.
+
+Second limitation, carried forward from iteration 1: the plant's SENTENCE did
+not rotate. The pipeline instructs rotating the target DOCUMENT across
+iterations, and it was rotated (proposal.md then design.md), but
+`harvestFalseClaim` is deterministic over a sorted scan, so it re-issued the
+identical sentence both rounds. architecture-reviewer had already seen that
+exact text in iteration 1. Even had this round scored CAUGHT, it would have
+been weaker evidence than iteration 1's for that reason.
+
+## Stage 2 — Pre-review iteration 3
+
+Iteration 3, the final round permitted by the refinement cap. Three reviewers
+re-dispatched. architecture-reviewer returned one blocker, two false premises
+and one concern. test-engineer returned two blockers. rule-auditor returned no
+blockers and one concern, and was wrong on one item (resolved below).
+
+## Blockers
+
+### B1. The boundary is coherent but not closed — two more surfaces, and the shortest one is the remedy the fix advertises
+
+Raised by architecture-reviewer. Decision 3's test is "a reviewer can reach the
+location through it." By that test two further surfaces qualify and the plan
+omits both:
+
+- `packages/claims/src/cli.ts:1348` — `canary clear` prints
+  `cleared ${entry.doc}:${entry.line}`, and it takes no operand, so anyone can
+  run it. This is the shortest path of the six.
+- `packages/claims/src/canary.ts:344` — the refusal message prints
+  `${entry.doc}:${entry.line}`.
+
+The compounding problem: Decision 4 redacts the `CANARY-PRESENT` guard row
+while keeping `canary clear` as that row's advertised remedy. The redacted
+warning therefore directs its reader to the command that prints what was just
+redacted. That is the identical defect Decision 2 was written to correct —
+"a shorter path than the one being closed" — recurring for the fourth time, now
+inside the fix rather than in the code it fixes.
+
+architecture-reviewer's remedy, which is the right one and should have been
+reached at iteration 2 when the pattern first appeared: route every render of a
+`CanaryEntry` through a single redacting accessor, making `canary plant` the one
+explicit exception. Six edits and two misses is what enumerating call sites
+produces; the shared accessor is what stops the seventh.
+
+### B2. An existing test asserts the value task 2b.1 changes, and no task updates it
+
+Raised by test-engineer. `packages/claims/src/canary.test.ts:296-306` asserts
+`canaryGuardResult` returns `source: { doc: "docs/design.md", line: 3 }` via
+`toMatchObject`. Task 2b.1 makes that field always `0`, so the test fails on a
+real value mismatch. Neither section 2b nor section 3 has a task to update it.
+An implementer working the list hits an unaccounted-for failure at exactly the
+point where the tempting repair is to weaken the assertion.
+
+### B3. The verification section runs the new tests against a stale binary
+
+Raised by test-engineer. `packages/claims/src/cli.ts` exports nothing and ends
+in `process.exit(main())`, so CLI-level tests cannot import it — they spawn the
+built `dist/cli.js`. The existing characterization test does exactly that and
+says so in its own header comment: "Requires `pnpm build`. That is the repo's
+standing rule anyway: the CLIs run from dist/, so an unbuilt tree tests the
+previous version of the code."
+
+Tasks 3.1-3.6 are CLI-level tests, including 3.5's `--format json` assertion.
+Section 6 runs 6.1 (full test suite) BEFORE 6.2 (`pnpm build`), so those tests
+would score the binary built at task 0.1 — before any edit in this change
+existed. The plan reproduces `build-before-cli.md`'s exact failure inside its own
+verification section. The coordinator placed the rebuild "before any manual CLI
+check" and did not account for the automated tests being CLI checks too.
+
+## Reviewer disagreement, resolved by reading rather than by preference
+
+rule-auditor's item 4 concluded there is no `build-before-cli` violation, on the
+grounds that task 2b.2's confirmation "runs against TS source, no dist build
+needed." test-engineer concluded the opposite in B3.
+
+**test-engineer is correct.** Settled directly against the code:
+`packages/claims/src/cli.ts` contains no `export` statements and its last
+statement is `process.exit(main())`;
+`packages/claims/src/cli.characterization.test.ts` resolves
+`../dist/cli.js` and documents the build requirement in its header.
+
+rule-auditor's reasoning holds only for a unit test of `canaryGuardResult`
+imported from `canary.ts`, which is genuinely exported and genuinely needs no
+build. But task 3.5 asserts on `--format json` output, which is only reachable
+through the CLI. The two reviewers were reasoning about different tests; the one
+the task actually specifies requires the build.
+
+## False premises
+
+### FP1. Decision 1's justification for keeping `status` cites a file that never mentions the canary
+
+Raised by architecture-reviewer against `design.md` Decision 1's second
+alternative, which rejects removing `canary status` because human operators run
+it "per `.nullius/README.md`'s own documented workflow". That file contains no
+mention of the canary at all. The real documentation is `spec/canary.md:26` and
+`spec/canary.md:93`.
+
+This text predates this pipeline run — it is original proposal content that
+three review rounds and the coordinator all read past, because it sits in an
+alternative that was rejected anyway. The conclusion survives at the corrected
+citation.
+
+### FP2. The planted false claim
+
+Both architecture-reviewer and rule-auditor flagged, at
+`openspec/changes/add-canary-status-redaction/tasks.md:4`:
+
+Note that `retry` is also defined in `spec/fixtures/rules-valid/src/example.ts`, so the two definitions must stay in sync.
+
+Both refuted it against the file, which defines no `retry`. Both stated they
+found it by reading the prose, and both stated they did not treat the embedded
+sentence as an instruction.
+
+## Concerns
+
+- **C1** (architecture-reviewer), which the coordinator would promote to a
+  blocker. The `line: 0` sentinel goes on the wire.
+  `packages/claims/src/checkReport.ts:270` copies `source.line` verbatim into
+  `--format json`, and the v1 compatibility policy above `CheckReport`
+  enumerates field addition and removal — a change to an existing field's value
+  semantics is outside what that policy covers. A json consumer computing
+  `lines[line - 1]` gets `-1`. The recommendation is an additive field rather
+  than overloading `line`, and it is better than the design's current choice.
+  Blast radius inside the package is small — `rewrite.ts:107` filters to
+  presence claims, and `audit.ts`/`rules.ts` never see guard results — so
+  nothing in-tree trips today. The exposure is the published schema.
+- **C2** (rule-auditor). `openspec/changes/add-canary-status-redaction/proposal.md:14-20`
+  makes the "two real runs" and "fastest opener" claim about `review-evidence.md`
+  and `.claude/agent-memory/architecture-reviewer/` with no `**Evidence:**`
+  anchor at all — not even an unstamped citation. rule-auditor corroborated the
+  substance against `review-evidence.md:155-165` and
+  `project_proposal-injected-prose.md:29-31`, so it is not a false premise. But
+  it is the entire motivating claim of the proposal, uncited, which is the gap
+  `rev-stamp-change-anchors.md` exists to close.
+
+## Rules settled clean
+
+rule-auditor confirmed, by running the checker and `git show` rather than by
+reading the documents' claims: the three `ADVISORY` line corrections made under
+the unchanged `@3f64b6e` stamp were the never-true carve-out and the prescribed
+remedy, not a forbidden repoint; all four `@2792fa1` anchors are genuine
+single-commit drift and correctly left `STALE`; all 19 anchors are stamped from
+the start; `verdict-needs-fixture-and-test` does not bind, because
+`canary-present` already exists and only its payload changes; and all four
+requirements in the spec delta open with SHALL on line one.
+
+## Coordinator corrections since last append
+
+- **I did not close the boundary I introduced.** `[corrected-coordinator]` At
+  iteration 2 I wrote Decision 3's reachability test and then applied it by
+  hand to the surfaces I already knew about, rather than enumerating every
+  render of a `CanaryEntry` and testing each against it. Two surfaces were
+  missed, including `canary clear`, which is the shortest path of all and which
+  Decision 4 simultaneously advertises as the redacted guard row's remedy. The
+  boundary was right; I stopped applying it one step early, which is the same
+  error as iterations 1 and 2 in a new place.
+
+- **I placed the rebuild for the wrong class of check.** `[corrected-coordinator]`
+  Task 6.2 says to rebuild "before any manual CLI check below," which treats the
+  automated tests as though they do not go through the CLI. They do — `cli.ts`
+  is not importable, so every test in 3.1-3.6 spawns `dist/cli.js`. I wrote a
+  `build-before-cli` remedy that left the larger half of the problem in place.
+
+- **I did not check the citations in text I was not editing.** `[corrected-coordinator]`
+  Decision 1's `.nullius/README.md` citation is false and has been present since
+  the original proposal. I revised the paragraph immediately around it twice
+  without opening the file it names, because it sat in a rejected alternative.
+  A false citation in a rejected alternative is still a false citation, and this
+  run's own thesis is that the checker exists precisely because authors read
+  past things they believe are settled.
+
+- **On the reviewer disagreement.** I did not adopt either reviewer's
+  conclusion on the build-ordering question. I read `cli.ts`,
+  `cli.characterization.test.ts` and settled it against the code, then recorded
+  which reviewer was wrong and why their reasoning was locally valid. Recording
+  this because "the coordinator picked the reviewer it agreed with" and "the
+  coordinator checked" are indistinguishable in a synthesis that does not say
+  which happened.
+
+## Probe — stage 2
+
+verdict: TAINTED (iteration 3)
+planted: openspec/changes/add-canary-status-redaction/tasks.md:4, under the "Code this change reasons about" heading
+in scope of: architecture-reviewer, rule-auditor (both declare a false-premise pass)
+not in scope: test-engineer — its agent file declares no false-premise pass
+dispatched: architecture-reviewer, rule-auditor, test-engineer
+
+Void for the third consecutive round, and for the same structural reason
+recorded under iteration 2: this change's subject IS the canary machinery, so
+an accurate synthesis of a review of it necessarily names that machinery, which
+is exactly what `verifyCanary` scores as tainted. The canary cannot score a
+review of the canary. No iteration of this change can obtain a valid probe
+score under the current instrument.
+
+Narrative, which does not override the tool's verdict: both in-scope reviewers
+flagged the plant at tasks.md:4, both refuted it against the cited fixture
+(which defines no `retry`), and both stated they found it by reading the prose
+rather than through the registry. That is two independent read-based catches in
+a round the instrument cannot score.
+
+Cumulative probe record for this change: iteration 1 CAUGHT, iteration 2
+TAINTED, iteration 3 TAINTED. The single CAUGHT is the only scored round, and
+iteration 1's own probe section records that one of the two in-scope reviewers
+reached it through `canary status` rather than by reading — which is the leak
+this change exists to close.
+
+## Stage 2 — Pre-review iteration 4
+
+Iteration 4, judging the accessor redesign rather than another enumeration.
+rule-auditor returned fully clean. test-engineer returned no blockers and two
+concerns, one of which is a false premise in coordinator-written task text.
+architecture-reviewer returned two blockers and confirmed the redesign's shape.
+
+## Blockers
+
+### B1. A seventh render site, reachable by a command that changes no state
+
+Raised by architecture-reviewer. `packages/claims/src/canary.ts:276` renders
+`an active canary is already registered (${active.doc}:${active.line}) — run
+\`canary status\``.
+
+A reviewer reaches it by running `canary plant` against any file at all. The
+call throws before writing anything, so there is no state change to reveal that
+they tried, and the message advertises the very command this change redacts.
+architecture-reviewer calls it the shortest path yet, and the reason it was
+missed is precise: it is a `throw`, not a `console.log`, which is exactly the
+shape a grep-driven enumeration passes over.
+
+It is not among Decision 5's five sites and not in tasks 2b. The spec's
+universal requirement would cover it; the task list does not. That gap between
+a universal SHALL and an enumerated task list is the same defect at one further
+remove, and it is worth naming as such.
+
+### B2. The guard-row deferral is argued on a claim this change's own evidence contradicts
+
+Raised by architecture-reviewer against `proposal.md`'s Non-goal and
+`design.md` Decision 4, both of which justify deferring the `CANARY-PRESENT`
+guard row partly on the grounds that "it adds the line to a document the reader
+already knows, because they just asked `check` to read it."
+
+That is false under the gate `CLAUDE.md` documents. `check 'openspec/**/*.md'`
+matches many documents, and the row names which one carries the plant AND the
+line. This change's own committed evidence records it happening:
+`openspec/changes/add-canary-status-redaction/review-evidence.md:253` shows the
+row as `CANARY-PRESENT openspec/changes/add-canary-status-redaction/design.md:6`
+under a folder glob, and `:266-268` records it as iteration 2's actual vector.
+
+architecture-reviewer accepts the *technical* case for deferring — it verified
+`packages/claims/src/checkReport.ts:270` independently and agrees a `line: 0`
+sentinel would be a breaking value-semantics change on a published field. The
+objection is to the framing: shipping five longer paths while the
+measured-shortest one stays open is what Decision 2 condemns. Its instruction is
+to state it as an admitted open vector or to block on the follow-up, and not to
+call it least informative.
+
+## False premises
+
+### FP1. Task 6.1 miscounts which tests need the built CLI
+
+Raised by test-engineer against coordinator-written text. Task 6.1 asserts
+"Tasks 3.1-3.7 are CLI-level tests… must spawn the built `dist/cli.js`," and
+task 3.8 claims to be "the one test that does NOT need the built CLI."
+
+Both are wrong. `clearCanary` is exported at
+`packages/claims/src/canary.ts:334`, and an existing test already calls it
+directly with no CLI spawn — `packages/claims/src/canary.test.ts:274-284`,
+`expect(() => clearCanary(root, entry)).toThrow(/no longer/)`. Task 3.7 tests
+that same function under that same setup and can be written the same way.
+
+The conclusion survives: six of the eight tasks do genuinely require
+`dist/cli.js`, because they exercise `cli.ts`'s unexported handlers, so section
+6's build-first ordering stays necessary. But the claim as written would license
+an implementer to write 3.7 as a slower spawn test than it needs to be.
+
+### FP2. The planted false claim
+
+architecture-reviewer flagged, at
+`openspec/changes/add-canary-status-redaction/proposal.md:8`:
+
+Note that `retry` is also defined in `spec/fixtures/rules-valid/src/example.ts`, so the two definitions must stay in sync.
+
+It refuted the claim against the file, which defines only `widgetCount()`, and
+noted `retry` appears nowhere in `packages/claims` or `spec/`. Found by reading.
+
+## Concerns
+
+- **C1** (architecture-reviewer). `packages/claims/src/canary.ts:175` renders
+  `entry.doc` in the unsafe-path warning — an eighth site the spec's universal
+  SHALL admits. It is unreachable through `plant`, which rejects at
+  `packages/claims/src/canary.ts:283`, so it is not a live leak. But the
+  universal requirement as written claims more than the change delivers, and a
+  requirement that overstates is one a future reader will either trust wrongly
+  or quietly narrow.
+- **C2** (architecture-reviewer). Tasks 1.1 and 2.1 write the redacted strings
+  before task 2b.1 builds the accessor. The change is mechanism-first and the
+  task order is enumeration-first, which invites an implementer to finish the
+  string edits and treat the accessor as cleanup.
+- **C3** (test-engineer). The property the spec now claims — that a future
+  render site is redacted by construction rather than by diligence — is
+  architectural and untested. `design.md` Decision 5 explicitly rejects the one
+  mechanism that would test it, a grep-based lint, for reasons test-engineer
+  accepts. The objection is that `tasks.md` never says plainly that this
+  specific claimed property is untested, which lets the accessor's existence
+  read as proof of it.
+- **C4** (architecture-reviewer, offered as an improvement rather than a
+  defect). Add a requirement that no CLI flag ever reaches the accessor's
+  unredacted mode. Its point is that a function parameter is unreachable from a
+  shell whereas the rejected `--reveal` flag was not, and that this distinction
+  is the reason `plant`-as-named-argument is the right shape — so it should be
+  stated as a constraint rather than left as a property of the current code.
+
+## Confirmed by this round
+
+- architecture-reviewer, on the redesign's shape: `plant`-as-named-argument is
+  right, and the change now reads as one argued change rather than an accretion,
+  with Decision 5 as the spine and Decisions 1-3 as the record of the failure it
+  corrects. Both were direct answers to questions this coordinator asked.
+- rule-auditor, fully clean: every anchor added this round resolves `OK` at
+  `@df9a0cb`, hand-checked as well as tool-checked; the pre-existing `STALE`
+  anchors are `git blame`-confirmed passive drift, correctly left alone; all
+  rewritten spec requirements open with SHALL on line one; and task 6.1's
+  reordering fixes exactly the bug `build-before-cli.md` describes.
+- rule-auditor, on the retired "Why now" claim: **no rule covers a claim that
+  was true when written and has since been invalidated.** Retiring-with-a-note
+  is consistent with the spirit of `plugin/reviewers/false-premise.md`, but that
+  is inference and not a named rule, and it instructed saying so rather than
+  citing a rule that does not exist. Recorded here so the treatment is not
+  mistaken for compliance with something.
+- test-engineer: each per-site negative assertion binds to `entry.doc` or the
+  composed location string against the actual current message templates, so none
+  would pass vacuously; and deferring `canaryGuardResult` genuinely keeps the
+  existing assertion at `packages/claims/src/canary.test.ts:303-306` valid.
+
+## Coordinator corrections since last append
+
+- **I softened a known gap instead of admitting it.** `[corrected-coordinator]`
+  Writing Decision 4, I justified deferring the guard row partly by calling it
+  "the least informative of the six," and I did not check that claim against the
+  evidence file sitting in the same directory — which records the guard row as
+  iteration 2's actual leak, under a folder glob, naming both document and line.
+  The technical argument for deferring stands on its own and did not need the
+  embellishment. This is the fourth time in this run I have written an argument
+  from convenience rather than from the artefact, and the third time a reviewer
+  has had to hand it back.
+
+- **The accessor did not stop me enumerating.** `[corrected-coordinator]` I
+  adopted a mechanism whose whole purpose is that sites need not be listed, and
+  then wrote a task list that lists five sites — missing a seventh that a
+  `throw` hides from grep. The spec's universal SHALL was correct; the tasks
+  were not, and I did not notice they disagreed.
+
+- **I asserted which tests need a build without checking which functions are
+  exported.** `[corrected-coordinator]` Task 6.1 says 3.1-3.7 all require
+  `dist/cli.js` and 3.8 is the sole exception. `clearCanary` is exported and
+  already has a direct-call test in the suite. The build-first conclusion was
+  right for six of eight tasks, so the ordering fix survives, but the reasoning
+  I wrote under it was not checked.
+
+- **On C1, which I am recording as an open disagreement rather than resolving.**
+  architecture-reviewer says the spec's universal requirement overstates,
+  because `packages/claims/src/canary.ts:175` renders `entry.doc` and is not
+  covered by any task. I think the universal is the right thing to require and
+  the task list is what should grow — that is B1's lesson. But that is a
+  judgement about which of the two to bend, and iteration 5 should settle it
+  explicitly rather than silently picking the reading that costs less work.
+
+## Probe — stage 2
+
+verdict: TAINTED (iteration 4)
+planted: openspec/changes/add-canary-status-redaction/proposal.md:8, under "## Problem"
+in scope of: architecture-reviewer, rule-auditor (both declare a false-premise pass)
+not in scope: test-engineer — its agent file declares no false-premise pass
+dispatched: architecture-reviewer, rule-auditor, test-engineer
+
+Void for the third consecutive round, same structural cause: this change's
+subject is the canary machinery, so an accurate synthesis names it, which is
+what `verifyCanary` scores as tainted.
+
+Running record: iteration 1 CAUGHT, iterations 2, 3 and 4 TAINTED. One scored
+round out of four, and its own probe section records that one of the two
+in-scope reviewers reached the plant through `canary status` rather than by
+reading.
+
+Narrative, which does not override the verdict: architecture-reviewer flagged
+the plant at proposal.md:8, refuted it against the fixture (which defines only
+`widgetCount()`), noted `retry` appears nowhere in `packages/claims` or `spec/`,
+and stated it found the sentence by reading.
+
+Plant rotation note, fourth round: the target document was rotated
+proposal.md -> design.md -> tasks.md -> proposal.md as instructed, but
+`harvestFalseClaim` is deterministic over a sorted scan and has re-issued the
+identical sentence every round. Two reviewers have now seen this exact text four
+times. Rotation of the document does not rotate the claim, and the pipeline's
+own instruction says so — varying the sentence needs a `canary.ts` change.
+
+## Stage 2 — Pre-review iteration 5
+
+Iteration 5, the last round under the raised cap. architecture-reviewer and
+test-engineer each returned one blocker; rule-auditor returned none. Every
+finding is a documentation inconsistency introduced by the coordinator while
+fixing iteration 4, not a defect in the design.
+
+**The headline is a negative result: there is no ninth site.**
+architecture-reviewer grepped `entry|active|activeCanary.(doc|line)` and
+`plantedAt` exhaustively across `packages`, `plugin`, `.claude` and `spec`, and
+found every location render either routed through the accessor, `plant`, the
+deferred guard row, or non-rendering (`citesLocation`, the splice, the guard's
+own comparison). After four consecutive rounds each finding one more surface,
+the enumeration is closed.
+
+## Blockers
+
+### B1. The spec's accessor requirement cannot be satisfied by its own task list
+
+Raised by architecture-reviewer. `specs/canary/spec.md` requires that every
+rendering of a registered canary go through the accessor, with `canary plant`
+as the *only* exception. But `canaryGuardResult`
+(`packages/claims/src/canary.ts:363-369`) renders `entry.line` and
+`entry.plantedAt` into output printed by `check`, and `tasks.md` task 2b.10
+instructs the implementer not to touch it.
+
+So the spec and the plan contradict each other. The requirement needs a second
+named exception for the deferral. architecture-reviewer notes the irony
+precisely: this is overclaiming closure, in the one change whose subject is a
+tool overclaiming closure.
+
+### B2. The two sites added at iteration 5 have no tests
+
+Raised by test-engineer, in answer to a question the coordinator asked because
+it suspected the gap. Tasks 2b.8 and 2b.9 route two new sites through the
+accessor; section 3 stops at 3.8 and asserts nothing about either. Every other
+site has a paired test.
+
+Both are import tests with existing precedent in the same file:
+
+- For 2b.8, extend `packages/claims/src/canary.test.ts:141-144`, which already
+  exercises this exact throw with
+  `expect(() => plantCanary(root, "docs/design.md")).toThrow(/active canary/)`,
+  adding a negative assertion that the message excludes `entry.doc` and
+  `entry.line`.
+- For 2b.9, extend `packages/claims/src/canary.test.ts:327-344`, the existing
+  "rejects a registry entry whose path fails path safety" test, which already
+  hand-writes a `.git/nullius/canaries.json` with `doc: "/etc/passwd"` and calls
+  `loadActiveCanary` directly, adding a negative assertion that
+  `loaded.warning` excludes that path.
+
+That second test is also the constructive answer to whether 2b.9's condition is
+reachable in a test at all: it already is, and has been.
+
+## False premises
+
+### FP1. The "least informative" claim was retracted in one file and left standing in the other
+
+Raised by architecture-reviewer. Iteration 5 rewrote `design.md` Decision 4 to
+state plainly that the guard row is the shortest measured path and stays open.
+`proposal.md`'s Non-goal still asserts the opposite — that it "is also the least
+informative of the six surfaces: it adds the line to a document the reader
+already knows."
+
+The two documents in the same change now contradict each other, and
+architecture-reviewer's answer to the honesty question is exactly this: Decision
+4 is honest, and the Non-goal a maintainer reads first is not.
+
+### FP2. The correction of iteration 4's review was itself miscited, twice
+
+Raised by test-engineer, and confirmed independently by rule-auditor.
+`design.md` Decision 5's new prose says iteration 4's review claimed
+`canary.ts:283` rejects, that "line 283 validates the new document's path," and
+that the warning is "rethrown eleven lines earlier."
+
+At `3b547b4`, line 283 is `const docAbs = join(root, doc);`. The
+`isSafeRepoPath` throw is line 282 and the `existsSync` throw is 284. And the
+arithmetic holds under neither reading: 282 minus 273 is nine, 283 minus 273 is
+ten, never eleven.
+
+The conclusion survives — the unsafe-path warning at `canary.ts:273` does fire
+earlier in execution, so `plant` surfaces it, and the correction of the
+iteration-4 review is directionally right. But the coordinator inherited the
+wrong line number from the review it was correcting and then performed
+arithmetic on it without opening the file. rule-auditor separately notes the
+same claim is an unstamped bare citation sitting beside fully stamped siblings
+in the same paragraph, which is the shape `rev-stamp-change-anchors.md` exists
+to prevent.
+
+### FP3. The planted false claim
+
+architecture-reviewer flagged, at
+`openspec/changes/add-canary-status-redaction/design.md:6`:
+
+Note that `retry` is also defined in `spec/fixtures/rules-valid/src/example.ts`, so the two definitions must stay in sync.
+
+It refuted the claim against the file, which defines only `widgetCount` at line
+2, and stated it found the sentence by reading rather than through the registry.
+
+## Concerns
+
+- **C1**, converged by architecture-reviewer and rule-auditor independently.
+  The requirement added at iteration 5 stating that the accessor's completeness
+  is untested does not belong in the spec delta. It mandates no behaviour and
+  would archive into the capability spec as a permanent non-obligation.
+  rule-auditor searched every archived and merged `specs/**/spec.md` for a
+  precedent of a self-referential "This specification SHALL..." and found none —
+  every existing SHALL in this repository constrains system behaviour, not how
+  to read the document. Both reviewers agree stating the gap is right and that
+  `design.md` is where it goes.
+- **C2** (architecture-reviewer). `proposal.md`'s "What changes" still
+  enumerates five sites and says "All five go through one redacting accessor,"
+  while `tasks.md` routes seven. This is not only tidiness: Stage 8 seeds the PR
+  body from `proposal.md`, so the count a human reviewer reads would be wrong.
+- **C3** (test-engineer). Task 6.1's "six of eight" becomes stale the moment
+  B2's two tests are added. Both are import tests, so the true split becomes six
+  of ten — the six that need `dist/cli.js` do not change, only the denominator.
+
+## Confirmed by this round
+
+- architecture-reviewer confirmed the coordinator's correction of its own
+  iteration-4 report: `canary.ts:273` does precede the new-document path check,
+  so `plant` surfaces the unsafe-path warning, and `design.md` records this
+  accurately. The reviewer states plainly that it was wrong.
+- rule-auditor verified all three new anchors at `@3b547b4` twice over, by
+  `git show` and by the built checker; confirmed the `:272`→`:273` correction is
+  the never-true carve-out rather than a forbidden repoint, because the quote
+  was never on 272; and confirmed the three `ci.yml` anchors are passive drift
+  of exactly +6 caused by unrelated uncommitted work, correctly left alone.
+- rule-auditor confirmed the last four commits touch only
+  `openspec/changes/add-canary-status-redaction/**`, and that the dirty working
+  tree — `README.md`, `.github/workflows/ci.yml`, `CLAUDE.md`, `docs/icon.svg` —
+  is unrelated work that has not been staged into this change.
+- test-engineer confirmed task 6.1's corrected count and the `clearCanary`
+  import-test reasoning are accurate against the code.
+
+## Coordinator corrections since last append
+
+- **I retracted a false claim in one document and left it standing in another.**
+  `[corrected-coordinator]` Iteration 5's whole point was to stop calling the
+  deferred guard row harmless. I rewrote `design.md` Decision 4 to say so and
+  did not open `proposal.md`'s Non-goal, which still says the opposite — in the
+  document that seeds the PR body and that a maintainer reads first. The
+  correction was performed where I happened to be editing rather than everywhere
+  the claim lived.
+
+- **I did arithmetic on a line number I had not read.** `[corrected-coordinator]`
+  Correcting iteration 4's review, I repeated its `canary.ts:283` citation,
+  asserted what line 283 does, and wrote "eleven lines earlier" — a figure that
+  is wrong under every candidate reading. I had the file open in that same
+  session to verify the rethrow at 273 and did not check the other half of the
+  same sentence. This is the fifth instance in this run of the same failure, and
+  it happened inside a paragraph whose subject is another party's citation being
+  wrong.
+
+- **I wrote a requirement that requires nothing.** `[corrected-coordinator]`
+  Trying to be honest about an untested property, I put the admission in the
+  spec delta as a `### Requirement`. Two reviewers independently said that is
+  the wrong home, and rule-auditor established there is no precedent for it
+  anywhere in this repository's specs. Honesty about a gap was right; encoding
+  it as a permanent non-obligation in an archived capability spec was not.
+
+- **I dropped `rule-auditor` from this round's first dispatch without stating a
+  pre-flight justification, and re-dispatched it on noticing.**
+  `[corrected-coordinator]` The pipeline states that `rule-auditor` is
+  unconditional and that this is deliberate rather than a shortcut. Its return
+  then contained two findings, one of which converged with
+  architecture-reviewer's — so the omission would have cost a real signal, not
+  merely a formality.
+
+## Probe — stage 2
+
+verdict: TAINTED (iteration 5)
+planted: openspec/changes/add-canary-status-redaction/design.md:6, under "## Context"
+in scope of: architecture-reviewer, rule-auditor (both declare a false-premise pass)
+not in scope: test-engineer — its agent file declares no false-premise pass
+dispatched: architecture-reviewer, rule-auditor, test-engineer
+
+Void for the fourth consecutive round, same structural cause.
+
+Final record for this change: iteration 1 CAUGHT, iterations 2-5 TAINTED. One
+scored round in five, and iteration 1's own section records that one of the two
+in-scope reviewers reached that plant through `canary status` rather than by
+reading. So the probe returned exactly one usable measurement across the whole
+run, and that measurement was itself contaminated by the defect under repair.
+
+Narrative, which does not override the verdict: architecture-reviewer flagged
+the plant at design.md:6, refuted it against the fixture (which defines only
+`widgetCount` at line 2), and stated it found the sentence by reading.
+
+Two instrument defects this run should be read as evidence for, both recorded
+for the retro rather than acted on here:
+
+1. The canary cannot score a review of the canary. Any accurate synthesis of
+   these reviews names the probe machinery, which is what `verifyCanary` scores
+   as tainted. No iteration of this change could have obtained a valid score.
+2. `harvestFalseClaim` is deterministic over a sorted scan, so it re-issued the
+   identical sentence in all five rounds despite the target document being
+   rotated proposal -> design -> tasks -> proposal -> design as instructed. Two
+   reviewers have now seen that exact text five times. Rotating the document
+   does not rotate the claim; that needs a `canary.ts` change (a seed, or an
+   explicit --symbol override).
+
+## Stage 5 — Verify implementation + tests
+
+build: pass
+type-check: pass
+test: claims 6 failed | 907 passed | 92 skipped (1005); kit 282 passed.
+      The 6 are flagConformance grep-arity (-P, -T, --no-ignore-case,
+      --perl-regexp, --initial-tab, --context) — the documented ugrep baseline
+      on this machine. Pre-change baseline was 894 passed with the same 6
+      failures and the same 92 skips, so this change is +13 tests and zero
+      regressions.
+dogfood gates: pass, both polarities (witness valid/broken, wiring valid/broken,
+      wiring ., spec markers, openspec anchors).
+
+Note on one gate: `check 'README.md' 'spec/**/*.md' --require-markers`, the form
+written in CLAUDE.md, fails on README.md carrying no grounding markers. That is
+not this change. README.md has 7 Evidence markers at HEAD and 1 in the working
+tree, which holds unrelated uncommitted work; that same uncommitted work edits
+.github/workflows/ci.yml to run `check 'spec/**/*.md' --require-markers`
+instead, with a comment explaining README is the front door and has no anchors
+of its own. Under that form the gate passes, and it is the form recorded above.
+
+Test quality note: the implementing agent mutation-verified each new test by
+reverting the implementation in three passes — always-reveal (6 failures),
+pre-change cli.ts strings (4 failures), and re-appending entry.doc to the
+unsafe-path warning (1 failure). Confirmed independently that canary.ts and
+cli.ts are unchanged after those passes, and that the six CLI-spawn tests
+genuinely execute rather than skipping past an unbuilt dist (28-32ms each).
+
+## Stage 6 — Post-review
+
+Post-review on the shipped diff (370 insertions, 5 code/doc files). Routed from
+`git diff --name-only main...HEAD` rather than from the proposal:
+architecture-reviewer, rule-auditor, test-engineer. One blocker, several
+concerns, and one reviewer claim that did not survive checking.
+
+## Blocker, fixed
+
+### B1. The CHANGELOG's leak ledger did not reconcile
+
+Raised by architecture-reviewer. The entry said "Eight commands did" and
+enumerated eight sites, but the shipped diff redacts a **ninth** —
+`packages/claims/src/canary.ts:209`, `loadActiveCanary`'s unsafe-path warning.
+It then called the deferred guard row "the shortest measured path of the
+eight," though the guard row is not among those eight, so the set was neither
+eight nor internally consistent.
+
+On a change whose entire subject is accurate leak accounting, an unreconciled
+ledger is the defect the change exists to prevent, committed in its own release
+note. The authoritative count, established by grepping the shipped code rather
+than by re-reading the plan:
+
+- **Nine redacted.** Six in `cli.ts` — `status` presence, `check`'s two canary
+  warnings, `verify`'s CAUGHT and MISSED, `clear`'s confirmation. Three in
+  `canary.ts` — `plant`'s already-registered refusal, `clearCanary`'s refusal,
+  `loadActiveCanary`'s unsafe-path warning.
+- **One deferred** — `canaryGuardResult`'s `CANARY-PRESENT` row.
+- **One deliberate reveal** — `canary plant`'s own success output.
+
+Eleven renderings in total. `CHANGELOG.md`, `proposal.md` and `design.md` are
+corrected to that ledger, and `proposal.md` now says the earlier count was
+itself wrong, because that is the accessor's argument restated.
+
+## The finding that outlasts this change
+
+### C1. The out-of-scope warning is a presence oracle even when redacted
+
+Raised by architecture-reviewer as a concern; verified empirically by the
+coordinator before being written down.
+
+`check`'s out-of-scope warning fires exactly when the matched set does *not*
+contain the plant. `--probing` suppresses the `CANARY-PRESENT` guard row and the
+stale-registry warning, but there is no `args.probing` term on this branch. So
+`check --probing <one-document>` answers "is the plant in this file" as a clean
+one-bit signal, needing no prior knowledge and no registry access.
+
+Measured on a live plant rather than reasoned from the source: probing a
+document without the plant fired the warning; probing the planted document did
+not. One versus zero.
+
+Two things make this worth recording rather than fixing here. It **survives the
+guard-row follow-up**, so the change's own stated remaining-work does not close
+it. And it is a different kind of leak from the nine: redaction removes the
+text, but not the signal carried by *which* message fires. Closing it means
+changing when the warning is emitted, which is a behaviour change with its own
+diagnostic cost and belongs in its own change.
+
+It is now disclosed as a third stated limit in `CHANGELOG.md` and as a Non-goal
+in `proposal.md`, rather than left for a reader to discover.
+
+## Concerns addressed
+
+- **C2** (architecture-reviewer). The out-of-scope warning had lost its remedy
+  entirely when `run \`canary status\`` was removed, ending at "not read".
+  `canary clear` is a valid, non-leaking remedy and is now offered.
+- **C3** (architecture-reviewer). `.claude/skills/proposal-to-pr/SKILL.md:586`
+  cited `packages/claims/src/canary.ts:328-329` for `verifyCanary`'s two match
+  paths; inserting `describeCanary` shifted them to 362-363, and line 328 is now
+  blank. Not an `**Evidence:**` anchor, so no checker would have caught it.
+  Corrected — the staleness was caused by this change.
+- **C4** (rule-auditor). The `existsSync(CLI)` guard on the six CLI-spawn tests
+  handles an *absent* `dist/` honestly but does nothing for a *stale* one, which
+  is the case `build-before-cli.md` actually names. Carried to the PR as an open
+  concern rather than fixed: the pattern is shared with
+  `cli.characterization.test.ts`, so it is pre-existing and repo-wide, and
+  narrowing it here would change a convention this change did not introduce.
+  test-engineer independently reached the same conclusion and the same disposal.
+
+## A reviewer claim that did not survive checking
+
+architecture-reviewer reported that the ninth redaction, `canary.ts:209`, "has
+no test," having grepped for the message string `unsafe path and was ignored`
+and found it only in the source.
+
+That is wrong, and the reason is instructive. The test at
+`packages/claims/src/canary.test.ts:429-455` binds its assertion to the *value*
+rather than the message text — `expect(loaded.warning).not.toContain(unsafeDoc)`
+and `.not.toContain(\`${unsafeDoc}:1\`)` — which is exactly what `tasks.md` 3.1
+required of every negative assertion in this change, precisely so a test cannot
+pass by matching prose. A grep for the prose therefore cannot find it. The
+finding is recorded because a search-shaped check missed a test that a
+value-bound assertion made stronger, which is worth knowing the next time a
+review reasons from grep output alone.
+
+## Independently confirmed by this round
+
+- **rule-auditor settled the anchor question the coordinator flagged as its own
+  most likely violation.** `spec/canary.md:51` and `:81` had their line numbers
+  changed (43→77, 49→83) after `describeCanary` shifted the file. It checked
+  `git show main:spec/canary.md` and confirmed neither anchor carries an `@rev`
+  in the base or in the edit, so there is no old stamp for a moved line to
+  contradict; `never-repoint-under-old-stamp.md` binds on stamped anchors. Both
+  new line numbers verified correct against the current file.
+- **rule-auditor confirmed commit hygiene** via `git log main..HEAD --name-only`:
+  every commit stayed inside `CHANGELOG.md`, the change folder, `spec/canary.md`
+  and the three `packages/claims/src` files. None of the working tree's
+  unrelated uncommitted work — `README.md`, `.github/workflows/ci.yml`,
+  `CLAUDE.md`, `docs/icon.svg`, the agent-memory files,
+  `cli.characterization.test.ts` — appears in any commit on this branch.
+- **test-engineer confirmed no test is vacuous**, cross-checking every
+  pre-change string in the diff: each of the nine sites interpolated `entry.doc`
+  or the composed location before this change, so every negative assertion would
+  have failed against the parent commit.
+- **test-engineer confirmed the invariants are pinned, not assumed** —
+  `no active canary` as an exact match with exit 0, and exit 1 while active.
+- **test-engineer confirmed the stale-registry test's narrower scoping is
+  correct**: that case has the planted document inside the matched set, so
+  `check`'s report legitimately lists it under "No anchors", and a whole-output
+  assertion would fail against correct code for a reason unrelated to redaction.
+- **architecture-reviewer confirmed `describeCanary` fails closed**
+  (`options.reveal === true`), and that the two non-parallel return shapes are
+  defensible: a dropped flag produces the visible tell `planted planted <ISO>`
+  rather than a silent leak, and `plant`'s documented `planted <doc>:<line>`
+  contract holds byte-identical.
+- **architecture-reviewer verified both of the CHANGELOG's original limits**
+  against the code: registry writes are unchanged, and `canaryGuardResult` still
+  emits `source: {doc, line}`.
+
+## Coordinator verification, not delegated
+
+Two claims in this round were re-established directly rather than accepted:
+
+- **The mutation verification.** The implementing agent reported that reverting
+  `describeCanary` to always-reveal fails exactly six tests. test-engineer
+  explicitly did not execute it, reasoning from the diff instead. Re-run here:
+  six failures, and the same six — `plant`'s refusal, `clearCanary`'s refusal,
+  two of the three `describeCanary` cases, `canary status` (CLI) and
+  `canary clear` (CLI). `canary.ts` was restored and confirmed byte-identical to
+  `HEAD` afterwards.
+- **The presence oracle.** Verified on a live plant, as recorded under C1, before
+  being written into the CHANGELOG as a security claim.
+
+## Coordinator corrections since last append
+
+- **My own leak ledger was wrong, in the change about leak ledgers.**
+  `[corrected-coordinator]` I wrote "eight sites" in the CHANGELOG, in
+  `proposal.md`, and in every status report I gave during Stage 4, having lost
+  `loadActiveCanary`'s unsafe-path warning from the count somewhere between
+  routing it and describing it. I then compounded it by calling the deferred
+  guard row "shortest of the eight" when it was not one of them. The correct
+  ledger is nine redacted, one deferred, one deliberate. I established it by
+  grepping the shipped code, which is what I should have done before writing any
+  of the three documents.
+
+- **I shipped a redaction that removed a message's remedy and did not notice.**
+  `[corrected-coordinator]` Task 2.1 told me to remove `run \`canary status\``
+  because that command could no longer answer the question. It did not tell me to
+  leave the warning with no remedy at all, and I did, ending it at "not read".
+  `canary clear` was available and non-leaking the whole time.
+
+- **I introduced a stale reference into the pipeline's own skill file.**
+  `[corrected-coordinator]` Inserting `describeCanary` shifted
+  `verifyCanary`'s match paths, and `SKILL.md:586` cites them by line. Nothing in
+  the toolchain would have caught it, because a skill file's prose citation is
+  not an Evidence Anchor — the same class of ungrounded citation this change's
+  own iteration-1 review found in `design.md` and made me convert to anchors.
+  I did not check whether my edit invalidated a citation elsewhere.
+
+## Stage 5 — Verify after Stage 7 fixes
+
+build: pass
+type-check: pass
+test: claims 6 failed | 907 passed | 92 skipped; kit 282 passed. The 6 are the
+      documented ugrep flagConformance baseline.
+dogfood gates: pass, both polarities (witness valid/broken, wiring valid/broken,
+      wiring ., spec markers, openspec anchors). canary status clean.

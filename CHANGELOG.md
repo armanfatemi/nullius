@@ -6,6 +6,52 @@ a package name are that package's own release; the kit versions independently.
 
 ## Unreleased
 
+### Fixed
+
+- **The canary told reviewers where it was planted.** The probe measures whether
+  a reviewer found a false claim by *reading* a document, so any command that
+  prints the plant's location answers that question for them. Nine did, and the
+  leak was not hypothetical: across prior runs, two of five scored rounds reached
+  the plant through the registry rather than by reading, and the reviewers' own
+  reports said so. It recurred twice while this fix was under review, through
+  `canary status` and then through `check`.
+
+  Every rendering of a registered canary now goes through one accessor,
+  `describeCanary`, which omits the document and line by default. Nine sites are
+  redacted — six in the CLI (`status`, `clear`, `verify`'s CAUGHT and MISSED, and
+  `check`'s two canary warnings) and three in the library (`plant`'s
+  already-registered refusal, `clearCanary`'s refusal, and `loadActiveCanary`'s
+  unsafe-path warning). `canary plant` is the sole deliberate exception and asks
+  for the location by name, at the one moment a coordinator legitimately records
+  it; its output is unchanged. Exit codes are unchanged everywhere, as is
+  `no active canary`.
+
+  The unredacted form is a function parameter rather than a CLI flag on purpose.
+  A `--reveal` flag would be reachable from the shell by the reviewer the
+  redaction exists to stop, which makes it a documented bypass rather than a
+  control.
+
+  **Three limits, stated plainly, because a redaction that overclaims is worse
+  than none.**
+
+  First, `.git/nullius/canaries.json` remains readable, so this stops incidental
+  exposure during ordinary review work, not a determined reader.
+
+  Second, `check`'s `CANARY-PRESENT` guard row still carries the plant's line. It
+  leaks through a structured field on the published JSON schema and needs an
+  additive field rather than a message edit, so it is a follow-up; until that
+  lands, the vector is open.
+
+  Third — and this one is not closed by that follow-up either — the out-of-scope
+  warning is a presence oracle even when redacted. It fires exactly when the
+  matched set does *not* contain the plant, and `--probing` suppresses the guard
+  row and the stale-registry warning but not this one. So
+  `check --probing <one-document>` still answers "is the plant in this file"
+  one bit at a time, with no prior knowledge. Redacting the text does not remove
+  the signal carried by *which* message fires; closing that means changing when
+  the warning is emitted, which is a behaviour change this entry does not claim
+  to have made.
+
 ### Added
 
 - **`nullius oracle <range>` — conservation of the thing that grades the work.**

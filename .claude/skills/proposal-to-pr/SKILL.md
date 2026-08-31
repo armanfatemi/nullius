@@ -583,7 +583,7 @@ explicitly, cite the source agent. Write the synthesis to a file and score it.
 **The synthesis is the artefact `canary verify` scores, not a summary of it.**
 `verifyCanary` has exactly two match paths, both literal substring checks
 against the synthesis text: the plant's `doc:line`, or its claim text
-verbatim (`packages/claims/src/canary.ts:328-329`). A synthesis that
+verbatim (`packages/claims/src/canary.ts:362-363`). A synthesis that
 abbreviates the path (basename instead of the full repo-relative path) or
 paraphrases a finding instead of quoting it defeats both paths even when a
 reviewer genuinely read and flagged the planted claim — this exact failure

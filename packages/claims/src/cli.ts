@@ -35,6 +35,7 @@ import {
   plantCanary,
   verifyCanary,
   type CanaryEntry,
+  describeCanary,
 } from "./canary";
 import {
   buildAuditBrief,
@@ -188,7 +189,8 @@ const CANARY_HELP = `nullius canary <plant|verify|status|clear>
   verify <report>       exit 0 CANARY-CAUGHT, 1 CANARY-MISSED, 3 CANARY-TAINTED
                         (the report named the probe machinery, so the probe is
                         invalid rather than passed), 2 when it could not run.
-  status                show the active canary; exit 1 when one is planted
+  status                report whether a canary is active and when it was
+                        planted, never where; exit 1 when one is planted
   clear                 remove the planted claim, restoring the document
   example: nullius canary plant docs/design.md`;
 
@@ -1104,11 +1106,11 @@ function runCheck(args: CheckArgs): number {
     );
     if (!matched) {
       console.error(
-        `warning: the registered canary points at a document outside the matched set (${activeCanary.doc}) — not read; run \`canary status\``,
+        "warning: the registered canary points at a document outside the matched set — not read; run `canary clear` if it is stale",
       );
     } else if (!run.guardFired && !args.probing) {
       console.error(
-        `warning: the registered canary is no longer present in ${activeCanary.doc} — stale registry; delete .git/nullius/canaries.json after restoring the document`,
+        "warning: the registered canary is no longer present in the document it names — stale registry; delete .git/nullius/canaries.json after restoring the document",
       );
     }
   }
@@ -1261,7 +1263,7 @@ function runCanary(args: CanaryArgs): number {
     }
     try {
       const entry = plantCanary(root, operand);
-      console.log(`planted ${entry.doc}:${entry.line}`);
+      console.log(`planted ${describeCanary(entry, { reveal: true })}`);
       console.log(
         "registry: .git/nullius/canaries.json (per-clone, never committed)",
       );
@@ -1319,11 +1321,11 @@ function runCanary(args: CanaryArgs): number {
       return 3;
     }
     if (outcome === "caught") {
-      console.log(`CANARY-CAUGHT — the review flagged ${entry.doc}:${entry.line}`);
+      console.log("CANARY-CAUGHT — the review flagged the planted claim");
       return 0;
     }
     console.log(
-      `CANARY-MISSED — nothing in the review references ${entry.doc}:${entry.line} or the planted claim`,
+      "CANARY-MISSED — nothing in the review references the planted claim",
     );
     return 1;
   }
@@ -1334,7 +1336,7 @@ function runCanary(args: CanaryArgs): number {
       return 0;
     }
     console.log(
-      `active canary: ${entry.doc}:${entry.line} (planted ${entry.plantedAt})`,
+      `active canary (${describeCanary(entry)})`,
     );
     return 1;
   }
@@ -1345,7 +1347,7 @@ function runCanary(args: CanaryArgs): number {
   }
   try {
     clearCanary(root, entry);
-    console.log(`cleared ${entry.doc}:${entry.line}`);
+    console.log(`cleared (${describeCanary(entry)})`);
     return 0;
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));

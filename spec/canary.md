@@ -48,7 +48,7 @@ unknown).
 The registry is written under `.git/nullius/` — per-clone, never committed,
 invisible to any gitignore-respecting tool:
 
-**Evidence:** `packages/claims/src/canary.ts:43` — `const REGISTRY_REL = join("nullius", "canaries.json");`
+**Evidence:** `packages/claims/src/canary.ts:77` — `const REGISTRY_REL = join("nullius", "canaries.json");`
 
 No marker or annotation is added to the document; the inserted diff is the
 claim line and nothing else. Both choices serve one invariant: a reviewer
@@ -78,7 +78,7 @@ unavailable", never as a measured miss.
 Taint is tested **before** caught, and the taint tokens are the machinery's
 own names:
 
-**Evidence:** `packages/claims/src/canary.ts:49` — `const TAINT_TOKENS = ["canaries.json", ".git/nullius", "CANARY-"];`
+**Evidence:** `packages/claims/src/canary.ts:83` — `const TAINT_TOKENS = ["canaries.json", ".git/nullius", "CANARY-"];`
 
 A reviewer that saw the probe and cites the canary must not read as a healthy
 reviewer — a false `CANARY-CAUGHT` is manufactured confidence in a dead
