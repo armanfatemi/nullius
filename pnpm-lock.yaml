@@ -33,13 +33,13 @@ importers:
   packages/evidence-anchors:
     dependencies:
       '@nullius-inverba/claims':
-        specifier: ^0.8.0
+        specifier: ^0.9.0
         version: link:../claims
 
   packages/kit:
     dependencies:
       '@nullius-inverba/claims':
-        specifier: ^0.8.0
+        specifier: ^0.9.0
         version: link:../claims
     devDependencies:
       '@types/node':

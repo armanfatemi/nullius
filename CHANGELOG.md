@@ -4,7 +4,18 @@ Bare version headings are the kernel — `@nullius-inverba/claims` and its
 unscoped alias `evidence-anchors`, which ship together. Headings prefixed with
 a package name are that package's own release; the kit versions independently.
 
-## Unreleased
+## 0.9.0
+
+The `oracle` verb, a security fix for rev-stamped anchors, and the canary's
+location leak closed. `@nullius-inverba/kit` moves 0.3.0 → 0.4.0 alongside it —
+its own bullets are folded into the sections below rather than a separate
+heading, following the 0.8.0 precedent.
+
+> **0.8.0 was never published.** Its version was bumped and its notes written,
+> but the publish step did not run, so npm went 0.7.0 → 0.9.0 and
+> `@nullius-inverba/kit` went 0.2.0 → 0.4.0. The 0.8.0 and kit 0.3.0 sections
+> below describe real states of the code and are kept as written; everything in
+> them ships here for the first time.
 
 ### Fixed
 
@@ -267,6 +278,9 @@ a package name are that package's own release; the kit versions independently.
   readable at any declared version, so they are written and read today.
 
 ## 0.8.0
+
+> Never published to npm — see the note under 0.9.0. Everything here first
+> reached users in 0.9.0.
 
 Deterministic rule compliance and a journal check for it, a review-layer
 canary, wiring validation, and a round of authoring ergonomics for `check`
