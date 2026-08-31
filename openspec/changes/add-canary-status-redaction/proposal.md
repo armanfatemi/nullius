@@ -70,9 +70,17 @@ argument.
 
 ## Why now
 
-The leak is now recorded in an agent's own durable memory as a preferred
-strategy, not merely an accident — the next probed review is more likely to
-use it, not less.
+This change's own three pre-review rounds are the argument. Reviewers reached
+the plant through the CLI twice — through `canary status` in iteration 1 and
+through `check` in iteration 2 — while reviewing the proposal to stop exactly
+that. The surface is reachable during ordinary review work, not only by someone
+looking for it.
+
+(An earlier draft argued the urgency differently: that the leak had been written
+into an agent's durable memory as a preferred strategy. That was true when
+written and is no longer — the agent removed it during iteration 1 of this run,
+unprompted. The claim is retired rather than restated, because the CLI surface
+is the durable fact and the memory entry was a symptom.)
 
 ## What changes
 
