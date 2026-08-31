@@ -38,27 +38,22 @@ under their existing conditions, and SHALL NOT direct the reader to
 - **WHEN** a canary is registered against a matched document but the planted claim is no longer present, and `check` is run without `--probing`
 - **THEN** the warning states that the registry is stale and gives the remedy of deleting `.git/nullius/canaries.json`, and does not name the document
 
-### Requirement: the CANARY-PRESENT guard row does not carry the plant's line
+### Requirement: canary clear does not print the plant's location
 
-The `canary-present` result SHALL carry a source line that does not identify
-where the claim was planted. The guard remains document-level: it SHALL still
-name the document it fired on, which the reader already knows because they
-asked `check` to read it, and SHALL still give `canary clear` as the remedy —
-a remedy that needs no line number.
+`canary clear` SHALL NOT name the planted claim's document or line in its
+confirmation message, and the refusal raised when the registered line no longer
+carries the planted claim SHALL NOT name them either. Both SHALL keep saying
+what happened and what the operator should do next.
 
-This SHALL hold in every output format, including `--format json`, because the
-redaction is applied where the result is constructed rather than where it is
-rendered.
+#### Scenario: A successful clear does not name the location
 
-#### Scenario: The guard row does not point at the planted line
+- **WHEN** a canary is planted and `canary clear` is run
+- **THEN** the confirmation reports that the canary was cleared, and does not name the document or line
 
-- **WHEN** a canary is planted in a document and `check` is run over a glob that matches that document
-- **THEN** the `CANARY-PRESENT` result fires and its source line is not the line the claim was planted at
+#### Scenario: A refused clear does not name the location
 
-#### Scenario: The guard still identifies itself and its remedy
-
-- **WHEN** the `CANARY-PRESENT` result is rendered
-- **THEN** it names the document, reports when the canary was planted, and gives `canary clear` as the remedy
+- **WHEN** the registered line no longer carries the planted claim and `canary clear` is run
+- **THEN** the refusal states that the registered line no longer carries the claim and gives the operator a remedy, and does not name the document or line
 
 ### Requirement: canary verify does not print the plant's location
 
@@ -75,3 +70,23 @@ rendered.
 
 - **WHEN** `canary verify` scores a report as missed
 - **THEN** the message reports that nothing in the review referenced the planted claim, and does not name the document or line
+
+### Requirement: one accessor renders a registered canary, with plant as the sole exception
+
+Every rendering of a registered canary for human output SHALL go through a
+single accessor that omits the document and line by default. `canary plant`
+SHALL be the only caller that requests the unredacted form, and SHALL do so
+through an explicit, named option rather than by formatting the entry itself.
+
+This SHALL hold for messages raised as errors as well as messages printed to a
+console.
+
+#### Scenario: A new rendering site is redacted without being enumerated
+
+- **WHEN** a new command or message renders a registered canary through the accessor's default
+- **THEN** the document and line are omitted, without that site having to be listed anywhere
+
+#### Scenario: plant still reports the location
+
+- **WHEN** `canary plant` succeeds
+- **THEN** it prints the planted document and line, because the coordinator records them at that moment

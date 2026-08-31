@@ -1,7 +1,9 @@
 # Tasks — add-canary-status-redaction
 
-No new verdict, no new command, no exit-code change. See `design.md`
-Decision 1.
+No new verdict, no new command, no exit-code change. Five message sites
+routed through one redacting accessor; `canary plant` is the declared
+exception. The `CANARY-PRESENT` guard row is deferred to a follow-up.
+See `design.md` Decisions 4 and 5.
 
 ## Code this change reasons about
 
@@ -48,30 +50,41 @@ open, because `check` prints the document itself.
 - [ ] 2.3 Both remain `console.error` at their current severity. This change
       redacts what they say, never whether they fire.
 
-## 2b. Redact the guard row and `canary verify`
+## 2b. One redacting accessor, and the remaining message sites
 
-Added at refinement iteration 2; see `design.md` Decisions 3 and 4. These are
-the third and fourth leaking surfaces, found after Decision 2 was written.
+Rewritten at refinement iteration 3; see `design.md` Decision 5. Enumerating
+call sites was tried three times and missed two surfaces. These tasks build the
+accessor first, then route every site through it, so section 1 and section 2
+become callers rather than independent edits.
 
-- [ ] 2b.1 In `packages/claims/src/canary.ts`, change `canaryGuardResult` to
-      build its result with `source: { doc, line: 0 }` instead of
-      `line: entry.line`. `0` means document-level, no specific line.
-      **This is a new sentinel** — no `line: 0` convention exists in the
-      package today and nothing validates `line > 0` (both checked at design
-      time). Document the meaning in the function's doc comment, which already
-      describes the result as document-level.
-- [ ] 2b.2 Confirm the redaction survives `--format json`. The same `source`
-      field feeds both renderers, which is why 2b.1 edits the construction
-      rather than the formatter — but confirm it rather than assume it, because
-      "the fix was applied at the wrong layer" is the defect this task exists
-      to avoid.
-- [ ] 2b.3 In `packages/claims/src/cli.ts`, drop `${entry.doc}:${entry.line}`
-      from `canary verify`'s CAUGHT and MISSED messages. Both still say which
-      outcome was scored; neither says where. Exit codes unchanged
-      (`0` caught, `1` missed, `3` tainted, `2` unusable).
-- [ ] 2b.4 Leave `canary plant`'s output alone — it prints the location by
-      design, at the one moment the coordinator legitimately needs it, and
-      `SKILL.md` Stage 2 Step 3 instructs recording it then.
+- [ ] 2b.1 In `packages/claims/src/canary.ts`, add an accessor that renders a
+      `CanaryEntry` for human output in redacted form — presence and
+      `plantedAt`, never `doc` or `line`. Give it an explicit, named way to
+      request the unredacted form, used by `canary plant` alone. `plant` must
+      read as a declared exception, not as a site somebody forgot.
+- [ ] 2b.2 Route `canary status`'s presence branch (task 1.1) through it.
+- [ ] 2b.3 Route `check`'s two warnings (tasks 2.1, 2.2) through it.
+- [ ] 2b.4 Route `canary verify`'s CAUGHT and MISSED messages through it.
+      Exit codes unchanged (`0` caught, `1` missed, `3` tainted, `2` unusable).
+- [ ] 2b.5 Route `canary clear`'s confirmation through it
+      (`packages/claims/src/cli.ts:1348`). `clear` takes no operand, so this is
+      the shortest path of the six and the one the other messages advertise as
+      their remedy.
+- [ ] 2b.6 Route `clearCanary`'s refusal message through it
+      (`packages/claims/src/canary.ts:344`). Note this is a thrown `Error`
+      message, not a `console` call — confirm the accessor is usable there
+      before assuming it is, since it is the one site that is not a direct
+      print.
+- [ ] 2b.7 Leave `canary plant`'s own output unredacted, through the explicit
+      exception from 2b.1. It prints the location at the one moment the
+      coordinator legitimately needs it, and `SKILL.md` Stage 2 Step 3
+      instructs recording it then.
+- [ ] 2b.8 **Do not touch `canaryGuardResult`.** The `CANARY-PRESENT` guard
+      row is deferred to a follow-up change (`design.md` Decision 4). Leaving
+      it alone is also what keeps the existing assertion at
+      `packages/claims/src/canary.test.ts:296-306` valid — it pins that
+      result's source line, and an earlier draft of this plan would have broken
+      it without saying so.
 
 ## 3. Unit tests
 
@@ -116,14 +129,24 @@ there to confirm.
       strip the planted line, leaving `.git/nullius/canaries.json` in place.
       Both are constructible against the temp-repo fixture pattern already used
       in `packages/claims/src/canary.test.ts`.
-- [ ] 3.5 Add coverage for the `CANARY-PRESENT` guard row (task 2b.1): plant a
-      canary, run `check` over a glob that matches the planted document, and
-      assert the result's source line is not the planted line. Assert this for
-      **both** the human format and `--format json` — the json assertion is the
-      one that catches a fix applied at the renderer instead of at the result.
-- [ ] 3.6 Add coverage for `canary verify`'s two messages (task 2b.3): assert
+- [ ] 3.5 Add coverage for `canary verify`'s two messages (task 2b.4): assert
       neither CAUGHT nor MISSED output contains `entry.doc`, and assert both
-      still return their existing exit codes.
+      still return their existing exit codes. The MISSED case is the one a
+      reviewer would actually use as a side channel — it needs only a scratch
+      file — so construct it that way.
+- [ ] 3.6 Add coverage for `canary clear`'s confirmation (task 2b.5): assert the
+      output does not contain `entry.doc`, and that `clear` still reports
+      success and still removes the planted line.
+- [ ] 3.7 Add coverage for `clearCanary`'s refusal message (task 2b.6): register
+      a canary, hand-edit the document so the registered line no longer carries
+      the planted claim, and assert the thrown message does not contain
+      `entry.doc` while still telling the operator what to do. This is the same
+      hand-edited setup 3.4's stale-registry case needs; share it.
+- [ ] 3.8 Add a direct unit test of the accessor from task 2b.1: the redacted
+      form contains `plantedAt` and neither `doc` nor `line`, and the explicit
+      unredacted form contains all three. This is the one test that does NOT
+      need the built CLI — the accessor is exported from `canary.ts` — and it is
+      the test that pins the rule the other five rely on.
 
 ## 4. Fixtures and CI gate
 
@@ -148,15 +171,24 @@ there to confirm.
 
 ## 6. Verification
 
-- [ ] 6.1 Full test suite, type-check, both anchor gates, per `CLAUDE.md`.
-      Baseline is six `flagConformance` failures on this machine (ugrep); any
-      other count is real.
-- [ ] 6.2 **`pnpm build` before any manual CLI check below.** Tasks 1.1 and 2.x
-      edit `cli.ts`, and the CLIs run from `dist/` — without a rebuild here,
-      6.3 would exercise the pre-change binary and certify work that does not
-      exist yet (`.claude/rules/build-before-cli.md`).
-- [ ] 6.3 Manually plant a canary, run `canary status`, confirm the printed
-      line names no document and no line number. Then, with the canary still
-      planted, run `check` against a glob that does NOT include the planted
-      document and confirm the warning fires without naming it. Then
-      `canary clear`.
+- [ ] 6.1 **`pnpm build` FIRST, before the test suite.** Tasks 3.1-3.7 are
+      CLI-level tests: `packages/claims/src/cli.ts` exports nothing and ends in
+      `process.exit(main())`, so they cannot import it and must spawn the built
+      `dist/cli.js` — the pattern `packages/claims/src/cli.characterization.test.ts`
+      already uses, whose own header states it requires a build. An earlier
+      draft of this section ran the suite first and rebuilt only before the
+      manual check, which would have scored every new test against the binary
+      built at task 0.1, before any edit in this change existed. That is
+      `.claude/rules/build-before-cli.md`'s exact failure, reproduced inside
+      this plan's own verification section.
+- [ ] 6.2 Full test suite and type-check. Baseline is six `flagConformance`
+      failures on a machine where `grep` is ugrep; any other count is real, and
+      the flag table is never the thing to edit.
+- [ ] 6.3 Both anchor gates, per `CLAUDE.md`:
+      `check 'README.md' 'spec/**/*.md' --require-markers` and
+      `check 'openspec/**/*.md'`.
+- [ ] 6.4 Manually plant a canary, then run each of `canary status`, `check`
+      against a glob that excludes the planted document, and `canary clear`.
+      Confirm none of the three names a document or line. Then confirm
+      `canary plant`'s own output still DOES — the exception is the point, and
+      a redaction that swallowed it would break the coordinator's only source.

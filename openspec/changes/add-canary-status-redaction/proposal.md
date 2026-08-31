@@ -11,13 +11,25 @@ but `canary status` prints the plant's exact location to anyone who runs it:
 
 **Evidence:** `packages/claims/src/cli.ts:1032@2792fa1` — ``      `active canary: ${entry.doc}:${entry.line} (planted ${entry.plantedAt})`,``
 
-This is not a hypothetical side channel. Across two real runs, a dispatched
-reviewer's own report stated it confirmed the plant "via the local registry"
-rather than by reading the document — `review-evidence.md` records this
-directly, and a later run's `.claude/agent-memory/architecture-reviewer/`
-notes wrote the pairing down as that agent's "fastest opener" for future
-runs, together with the plant's exact path. The leak, once written into
-durable agent memory, is no longer incidental to one run.
+This is not a hypothetical side channel. It is counted, in committed evidence
+files, across prior runs:
+
+**Evidence:** `openspec/changes/archive/2026-08-30-add-probe-visibility/review-evidence.md:860@df9a0cb` — `architecture-reviewer 5/5 (2 via the registry side channel, 3 by reading),`
+
+**Evidence:** `openspec/changes/archive/2026-08-30-add-authoring-ergonomics/review-evidence.md:133@df9a0cb` — `- FP1 `openspec/changes/add-authoring-ergonomics/proposal.md:6` — the `retry` / "must stay in sync" sentence naming `spec/fixtures/rules-valid/src/example.ts` (defines only `widgetCount`). Flagged by both reviewers (2 of 2). architecture-reviewer confirmed via the local registry ("third successive plant"); rule-auditor from the grammar break and a grep.`
+
+Two of five scored rounds reached the plant through the registry rather than
+by reading, and the reviewer's own report says so. The leak had also been
+written into that agent's durable memory as a preferred opener — which the
+agent has since corrected of its own accord, so that particular instance is
+gone, but the CLI surface that made it available has not changed.
+
+**And it recurred during this change's own pre-review.** Iteration 1's
+`## Probe — stage 2` section in this folder records a reviewer obtaining the
+plant's location together with its `plantedAt` timestamp — a value printed by
+nothing but the presence branch of `canary status`. Iteration 2's records
+another reaching it through `check`. The command this proposal is about leaked
+to the review of the proposal about it.
 
 Nothing in this repository captures which tool calls a dispatched reviewer
 actually makes. Hook wiring covers only `ExitPlanMode`, dispatch:
@@ -73,18 +85,18 @@ use it, not less.
   and the first stops directing the reader to `canary status`, which after
   this change can no longer answer it. Both warnings keep their diagnostic
   content: something is registered, and it is in an unexpected state.
-- `check`'s `CANARY-PRESENT` guard row no longer carries the plant's line. The
-  redaction is applied where the result is constructed, so it holds for
-  `--format json` as well as for human output. The guard keeps naming the
-  document and keeps `canary clear` as its remedy — a remedy that never needed
-  a line number.
 - `canary verify`'s CAUGHT and MISSED messages no longer name the plant's
   document or line. Exit codes are unchanged.
-
-Four surfaces, found one per review round. They are fixed together, and through
-one shared redaction rather than four independent edits, because the pattern
-this change kept rediscovering is that any renderer of a registry entry is free
-to print its location.
+- `canary clear`'s confirmation no longer names them either. `clear` takes no
+  operand, which makes it the shortest path of all — and it is the remedy the
+  other messages advertise.
+- `clearCanary`'s refusal message, raised when the registered line no longer
+  carries the planted claim, no longer names them.
+- **All five go through one redacting accessor**, with `canary plant` as the
+  single explicit exception. This is the substance of the change. Enumerating
+  call sites was tried three times and shipped an incomplete set each time —
+  six surfaces surfaced at roughly two per review round, by a process with no
+  way to know when it was finished. `design.md` Decision 5 has the argument.
 - The coordinator does not lose anything it needs: `canary plant` already
   prints the location at plant time, and Stage 2 Step 3 already instructs
   recording it then — `status` was never the coordinator's source for this
@@ -113,6 +125,14 @@ to print its location.
   location) but does not redact the sections themselves. A redaction
   convention for historical probe sections is a different fix, to a
   different file, and is out of scope here.
+- **Not redacting `check`'s `CANARY-PRESENT` guard row.** It leaks the plant's
+  line through `source.line`, a structured field that reaches the published
+  JSON schema — a different kind of fix from the five message strings this
+  change covers, needing an additive field rather than a sentinel, and a
+  reviewer whose remit is the kernel's contracts. Split into a follow-up at
+  iteration 3; `design.md` Decision 4 carries the argument. It is also the
+  least informative of the six surfaces: it adds the line to a document the
+  reader already knows, because they just asked `check` to read it.
 - **Not claiming to stop a determined reviewer.** The boundary this change
   enforces is *reachability through the tool's own commands*, and what it
   removes is incidental exposure — a reviewer running documented commands as
@@ -143,7 +163,7 @@ None known.
 
 |                                 |                                    |
 | ------------------------------- | ------------------------------------ |
-| Estimated tasks                 | ~11 (was ~6 before scope grew to `check`) |
+| Estimated tasks                 | ~28 (was ~6; grew across three review rounds) |
 | Packages or surfaces touched    | 1 (`packages/claims`)                 |
 | Risk                            | LOW                                   |
 | Expected sessions to implement  | 1                                     |
