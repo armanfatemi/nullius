@@ -21,7 +21,7 @@ jobs:
           # clone does not have it, and the gate would quietly fail open.
           fetch-depth: 0
 
-      - uses: pnpm/action-setup@v4 # reads packageManager from package.json
+      - uses: pnpm/action-setup@v6 # reads packageManager from package.json
 
       - uses: actions/setup-node@v4
         with:
