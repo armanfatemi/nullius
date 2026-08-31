@@ -4,7 +4,12 @@ Bare version headings are the kernel — `@nullius-inverba/claims` and its
 unscoped alias `evidence-anchors`, which ship together. Headings prefixed with
 a package name are that package's own release; the kit versions independently.
 
-## Unreleased
+## 0.9.1
+
+Two security fixes in the rev-stamped lane, both reported 2026-08-19 and both
+shipped in 0.9.0. `@nullius-inverba/kit` is unchanged at 0.4.0: its source did
+not move, it does not reach the corrected code, and its `^0.9.0` range already
+resolves to this release.
 
 ### Fixed
 
