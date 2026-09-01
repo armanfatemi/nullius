@@ -64,27 +64,44 @@ machine.
 
 ## What changes
 
-- **`nullius-kit witness bundle <base>..<head>`** selects the session journals
-  whose records overlap the range — by time window and by mutation paths
+- **`nullius-kit witness bundle <base>..<head>`** classifies the session
+  journals against the range — by time window and by mutation paths
   intersecting the range's changed files, never by the header's `branch`,
   which names where a session *started* — strips them to a redacted subset,
-  and writes one committed envelope per branch. The selection rule and the
-  sessions it chose are written into the envelope and printed, with
-  `--include` / `--exclude` overrides.
+  and writes one committed envelope per branch. Classification is three-way:
+  **included**, **excluded**, and **inconclusive** for a session that overlaps
+  the range in time but mutated nothing in it, which is what a review-only
+  session looks like and is exactly the session this report exists to show.
+  Inconclusive candidates are carried by id and surfaced in the report's *not
+  recorded* list rather than dropped. **The envelope carries every source
+  line and redaction rewrites a line's fields rather than dropping the line**,
+  so the reconstructed journal yields the same verdicts as the source —
+  including for lines the validator rejects, which never become records at all
+  and whose verdicts a record-level rule would have silently lost. Range
+  scoping is the report's job, not the bundle's. The rule,
+  the slack, every candidate's classification and the range's changed-file set
+  are written into the envelope and printed, with `--include` / `--exclude`
+  overrides.
 - **`nullius witness report <base>..<head> | <sha> [--bundle <path>] [--format md|json]`**
   (kernel) renders the report. A bare `<sha>` is that commit against its
   parent, the reading `parseRange` already gives. Markdown output is what the
   Action posts; JSON is the same data for other consumers, carrying a
   `version`.
-- **Three tiers, in a fixed order, never in one table.** *Code-verified* —
+- **Four tiers, in a fixed order, never in one table.** *Code-verified* —
   re-run in CI, contributor-independent: `check` over the PR body and touched
   documents, `oracle` over the range, `witness validate` over every bundled
   journal. *Hook-attested* — from the bundle after it re-validates: dispatches
   by agent, parallel rounds, `found / empty / never reported`, mutations and
   test-file edits, extracted findings, prompts, model and token usage.
-  *Self-reported* — coordinator-authored ledger records from the bundle:
-  stages, resolutions, decisions, checks. Every section renders data or an
-  explicit *not recorded* with the reason; absence is never rendered as zero.
+  *Self-reported* — coordinator-authored records from the bundle: stages,
+  resolutions, decisions, checks. *Unattributed* — the validator's third
+  partition. **The report takes these counts from the journal report's
+  `provenance` and computes no tier of its own.** Below journal version `0.6`
+  the validator computes no partition at all, so all three bundle tiers render
+  *not recorded*, naming the version — which is what they will do on every
+  journal this repository has today, including the one that recorded this
+  proposal's own run. Every section renders data or an explicit *not recorded*
+  with the reason; absence is never rendered as zero.
 - **A flowchart** (mermaid, which GitHub renders in comments) of rounds,
   edit bursts, commits and prompts in time order, with every label passed
   through the renderer's escaper.
@@ -98,9 +115,16 @@ machine.
 - **`proposal-to-pr` Stage 8** runs `witness bundle`, commits and pushes the
   envelope before `gh pr create`, so this repository dogfoods from the next
   pull request.
-- **Escaping lives in the kernel renderer**, unit-tested, which also answers
-  `add-maintainer-card`'s open question about where security-relevant string
-  handling belongs.
+- **Escaping lives in the kernel renderer** — `packages/claims/src/witnessReport.ts`,
+  new in this change — unit-tested, which also answers `add-maintainer-card`'s
+  open question about where security-relevant string handling belongs. The
+  renderer composes `packages/claims/src/oracleGit.ts`,
+  `packages/claims/src/oracle.ts`, `packages/claims/src/witness.ts` and
+  `packages/claims/src/canary.ts`, all of which stay package-internal.
+- **`witness report` renders and does not gate.** It exits 0 whenever it
+  produced a report, and 2 only on a usage error or unreadable input. A verb
+  wrapping three checks that already gate in CI must not become a fourth place
+  for pass and fail to disagree.
 
 ## Non-goals
 
@@ -184,14 +208,34 @@ nobody posts is still a CLI. Stage 2 review may cut along either seam.
    renderer truncates the markdown form at a stated budget with a visible
    truncation line and points at the JSON artefact; the exact budget is
    Stage 3's.
-3. **Which prompts travel?** `add-run-ledger-producer` records prompt text
-   locally. The bundler includes it by default, capped, and offers
-   `--no-prompts`; whether the default should be the other way round is the
-   contributor's consent call and is asked here rather than assumed.
-4. **What does the report say when `oracles` is not configured?** `oracle`
-   refuses without the key. The proposal renders *oracle: not configured* in
-   the code-verified tier with the config snippet, rather than omitting the
-   row — a missing grader check is a fact the maintainer should see.
+3. **Which prompts travel? — ANSWERED (Stage 3, by the human).**
+   `add-run-ledger-producer` records prompt text locally. The bundler includes
+   it by default, capped, and offers `--no-prompts`. The coordinator
+   recommended inverting this to an opt-in, on the grounds that the steering
+   text is the one thing in the journal the human authored personally and the
+   envelope is committed to a public pull request; the human chose the opt-out
+   default as drafted. Recorded as a `decision` in the run journal, with the
+   departure noted.
+4. **What does the report say when `oracles` is not configured? — ANSWERED
+   (Stage 3, on a corrected premise).** An earlier draft of this question said
+   "`oracle` refuses without the key". The function the report calls does not
+   refuse: it returns early, having done no git work, and says so in a field —
+
+   **Evidence:** `packages/claims/src/oracle.ts:248@04cd9ac` — `      unconfigured: true,`
+
+   and the comment two lines above states why an unconfigured project is not
+   rendered as a clean zero:
+
+   **Evidence:** `packages/claims/src/oracle.ts:243@04cd9ac` — `    // are different facts, and only one of them is evidence. Never a clean zero.`
+
+   The refusal belongs to the CLI, not the checker:
+
+   **Evidence:** `packages/claims/src/cli.ts:904@04cd9ac` — `  if (report.unconfigured) {`
+
+   which branches on that same field to exit 2. So the *oracle: not configured* row
+   renders exactly as proposed, provided the report calls the pure function
+   and does not inherit the CLI's exit code, which Decision 13 now requires
+   independently.
 5. **Round detection window.** Dispatches starting within a fixed window are
    one round; the window is printed. Ten minutes is the starting value from
    this repository's own journals; it may need to be a config knob.
