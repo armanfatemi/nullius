@@ -1,6 +1,6 @@
 # The Witness Journal
 
-**Version 0.5 — draft.** The record a multi-agent run leaves behind, and the
+**Version 0.6 — draft.** The record a multi-agent run leaves behind, and the
 three invariants [`nullius witness validate`](../packages/claims/) enforces on
 it. Companion to [Evidence Anchors](./evidence-anchors.md), which does the same
 job for documents.
@@ -137,14 +137,132 @@ Three fields carry closed vocabularies, and one deliberately does not:
 `change` binds to `stage` rather than to the header, because one session
 touches several changes and one change spans several sessions.
 
+### The operator's turn — `prompt`, v0.6
+
+Schema `0.6` adds the first new kind since `0.3`, and it is the one record in
+the journal no agent caused:
+
+| Kind | Purpose | Required fields |
+| --- | --- | --- |
+| `prompt` | What the operator asked for | `text`, **or** both `chars` and `hash` |
+
+The kind is defined in the kernel's vocabulary, not in a producer's
+convention:
+
+**Evidence:** `packages/claims/src/witness.ts:247` — `const KINDS_V06 = [...KINDS_V03, "prompt"] as const;`
+
+```jsonl
+{"kind":"prompt","id":"p:4f1c9a2b7d03","text":"take add-run-ledger-producer to a merge-ready PR","chars":47,"at":"2026-08-31T09:14:02Z"}
+{"kind":"prompt","id":"p:7d03f1c9a2b4","chars":47,"hash":"9c1f…","at":"2026-08-31T09:14:02Z"}
+```
+
+**One of the two shapes, never neither.** A `prompt` carrying non-empty `text`
+is the default. `NULLIUS_WITNESS_PROMPTS=0` switches the producer to the hashed
+form — `chars` and a non-empty `hash`, and no text — which proves a prompt
+happened and says nothing a reviewer can act on. A record with neither is
+`MALFORMED`: it would assert that the human spoke while recording nothing they
+said, which reads in a report as an exchange that occurred and cannot be
+inspected. `chars` must be a non-negative integer when present; zero is a
+length, so zero is allowed.
+
+**Evidence:** `packages/claims/src/witness.ts:1428` — `        if (record.raw.chars === undefined || !nonEmptyString(record.raw.hash)) {`
+
+`truncated` is optional and says the text was cut at the producer's excerpt
+cap. No verdict reads it — a silent cap is the thing being avoided, and the
+flag is how the cap stops being silent.
+
+**Why the human's steering is in the record, and the assistant's replies are
+not.** Everything else in this journal is the account of work agents did; the
+prompt is the reason they did it, and a run's record that cannot say what was
+asked for can only be read against a goal the reader supplies. The steering is
+also the one input the agent had no opportunity to author, which is exactly the
+hooks tier's criterion.
+
+The reply is deliberately absent, and its absence is a boundary rather than an
+omission. An assistant's final message is the agent's self-account of its own
+work — the tier this journal exists to distrust — and the work that message
+describes is already recorded, as dispatches, mutations and reports written by
+the harness. Recording the reply would add a claim beside the evidence and
+invite the two to be read as one thing.
+
+### Provenance is per record — `origin` on the four coordinator kinds (v0.6)
+
+At `0.6` a `stage`, `resolution`, `decision` or `check` **must** carry
+`origin: "self-reported"`. Absent is `MALFORMED`, and so is any other value —
+including `"hooks"`, which the header may say and a record may not:
+
+**Evidence:** `packages/claims/src/witness.ts:350` — `const RECORD_ORIGIN = "self-reported";`
+
+**Evidence:** `packages/claims/src/witness.ts:854` — `    if (versionAtLeast(scan.version, "0.6") && SELF_REPORTED_KINDS.has(record.kind)) {`
+
+The reason is that those four kinds are written by a coordinator about its own
+run, while the same journal carries records the harness emitted. The header's
+`hooks` means *the agent had no opportunity to decline to write them*, and a
+journal whose header says `hooks` must not present a coordinator's account as
+the harness's. The per-record check deliberately does not reuse the header's
+two-member `ORIGINS` list: that list contains `hooks`, and reusing it would
+accept a `resolution` claiming the harness attested a judgement the coordinator
+made about itself.
+
+`finding` carries no per-record origin. The recorder extracts findings from the
+harness payload at the dispatch's terminal event, so the header's `hooks` is
+true of them.
+
+**So the header's `origin` now describes the records that carry no origin of
+their own**, rather than every record in the file. That is a change to what the
+field means, and the kernel resolves a record's tier in exactly that order — a
+record's own origin first, and the header only for a record that has none:
+
+**Evidence:** `packages/claims/src/witness.ts:1591` — `      const own = record.raw.origin;`
+
+**Evidence:** `packages/claims/src/witness.ts:1597` — `      else if (scan.header?.origin === "hooks") hookTier += 1;`
+
+A third header value such as `mixed` was rejected: it says the journal is
+impure without saying which records are, which is the ambiguity the field
+exists to remove.
+
+The summary says the same thing rather than contradicting it. At `0.6` and
+above, `witness validate` scopes its header sentence and prints a three-way
+partition — hook-tier, self-reported, and **unattributed**, the last being
+records with no origin of their own under a header whose origin is null or
+absent. Counting those as hook-tier would be the flattering default the field
+exists to remove. Below `0.6` the summary is unchanged, because those journals
+have no per-record origin to partition by.
+
+### `expects` — what a dispatch declared it wanted back (v0.6)
+
+A `dispatch` may carry `expects`, a **closed vocabulary with one member**:
+
+**Evidence:** `packages/claims/src/witness.ts:375` — `const EXPECTATIONS = ["findings"] as const;`
+
+A present value outside it is `MALFORMED` at `0.6`. A one-member closed
+vocabulary rather than a free string, because `SILENT-REVIEWER` reads this
+field: `expects: "reviews"` skipped silently would shrink the verdict's
+denominator with nothing anywhere saying so, and one producer typo would disarm
+the verdict repo-wide. Every other closed vocabulary in this schema reports
+rather than skips, and a field a verdict reads has the least claim to an
+exception.
+
+The field is set by the recorder, from the dispatched agent's own definition
+file — an agent whose `## Output format` declares the `[blocker]` tag contract
+is a dispatch that expects findings. That is a filesystem read, not a
+judgement, and the agent being dispatched is the party that declared it.
+Absence means the recorder found no such declaration, which is the honest
+reading for an implementing or exploring agent.
+
 ## The header — which schema, and whose account
 
 The first record may be a `journal` header. It carries `version` (the schema
-the records below are written to; this build reads `0.1`, `0.2`, `0.3`, and
-`0.4`), `origin`, and optionally `session` and `source` (`startup` / `resume` /
-`clear` / `compact`) plus the three identity fields below. A resumed session
+the records below are written to; this build reads `0.1`, `0.2`, `0.3`, `0.4`,
+`0.5`, and `0.6`), `origin`, and optionally `session` and `source` (`startup` /
+`resume` / `clear` / `compact`) plus the three identity fields and the `user`
+below. A resumed session
 gets a new id and therefore a new journal file, so recording `source` makes a
-fork in journal identity visible rather than mysterious.
+fork in journal identity visible rather than mysterious. The readable set is a
+single ordered list, and every version floor in the validator is an index into
+it:
+
+**Evidence:** `packages/claims/src/witness.ts:262` — `export const VERSIONS = ["0.1", "0.2", "0.3", "0.4", "0.5", "0.6"] as const;`
 
 Header keys the validator does not recognise are **ignored, not reported**, so
 a journal from a newer producer stays readable by an older build. That rule is
@@ -207,6 +325,45 @@ every other blank one and would group unrelated runs together. The rule follows
 the use, not the type. Nothing here proposes tightening `session` or `source`;
 doing so would be its own tightening and would take its own version bump.
 
+### Who was steering — `user` (v0.6)
+
+One more optional header field, recorded at **every** version and rejected only
+at `0.6` and later:
+
+| Field | Means |
+| --- | --- |
+| `user` | An object carrying `name` — the tree's operator, from `git config user.name` |
+
+```jsonl
+{"kind":"journal","version":"0.6","origin":"hooks","session":"3c7d1e0a","user":{"name":"Arman Fatemi"}}
+```
+
+Omitting the key is the supported way to say git could not answer — no
+repository, no git binary, no configured name. But a `user` that is **present**
+and is not an object carrying a non-empty `name` is `MALFORMED` on a journal
+declaring `0.6` or later, and the finding names the field. That covers
+`{"name": ""}` and it also covers the unrecognised shapes, `"Arman"` and `{}`:
+
+**Evidence:** `packages/claims/src/witness.ts:663` — `      const name = isObject(declaredUser) ? declaredUser["name"] : undefined;`
+
+**Evidence:** `packages/claims/src/witness.ts:666` — `      } else if (versionAtLeast(version, "0.6")) {`
+
+A blank name is the same defect `branch: ""` is — a producer asserting it knows
+the operator and naming none, and a value that compares equal to every other
+blank. The unrecognised shape fails closed for the reason `expects` does: a
+producer writing the wrong shape holds a wrong model of the field, and dropping
+the value silently is how that model survives.
+
+`user` is deliberately **not** one of the three identity fields above. Those are
+a flat list of top-level strings checked in one loop whose rejection is gated at
+`0.4`; adding a nested `user` to that list would have tightened `0.4` and `0.5`
+retroactively, which is the one thing a schema floor exists to prevent.
+
+**`email` is not recorded.** Not omitted by accident and not deferred to a
+producer's discretion: an address is the field most likely to be republished
+somewhere it was not collected for, and this schema has no redactor. Adding it
+later is purely additive and takes no bump.
+
 ### `origin` — the harness attests, or the agent says so
 
 | Origin | Means | Worth |
@@ -221,6 +378,14 @@ passes has demonstrated that its own account holds together — which is what
 
 A journal that omits `origin` is `MALFORMED`. A field that may be left out gets
 left out, and its absence would be read as the better of the two tiers.
+
+**From `0.6` this field describes the records that carry no origin of their
+own.** Up to `0.5` it was a statement about the whole file, because every record
+in a file came from one writer. `0.6` mixes the tiers inside one journal — see
+[per-record `origin`](#provenance-is-per-record--origin-on-the-four-coordinator-kinds-v06)
+— so the header's value stops being a claim about a record that has said
+otherwise for itself. The two-member vocabulary here is unchanged; what changed
+is its scope.
 
 Unknown kinds, duplicate ids, and unparseable lines are **reported, not
 skipped**. A validator that quietly ignores half a journal is worse than no
@@ -347,7 +512,7 @@ made invalid, and the only way to say nothing is to say it.
 | `MALFORMED` | Not JSON, unknown kind, or a required field missing | ❌ |
 | `UNSUPPORTED-VERSION` | The header declares a schema this build cannot read | ❌ |
 | `SUPPRESSED-FINDING` | A `blocker` no resolution answers (v0.3) | ❌ |
-| `SILENT-REVIEWER` | A dispatch that reported `found` and filed no finding (v0.3) | ❌ |
+| `SILENT-REVIEWER` | A dispatch that reported `found` and filed no finding (v0.3; scoped to `expects: "findings"` at v0.6) | ❌ |
 
 The last two apply to journals declaring `0.3` **or later**. Gating them on the
 version is what keeps every earlier journal's output identical: none of them
@@ -372,26 +537,109 @@ a finding may be answered in a commit or a PR thread. It justifies the
 verdict's existence; it does not predict its rate under a producer that knows
 the rule.
 
+### `SILENT-REVIEWER` is scoped at v0.6 — and that is a loosening
+
+On a journal declaring `0.6` or later, the verdict considers **only** dispatches
+carrying `expects: "findings"`. Every other dispatch is skipped:
+
+**Evidence:** `packages/claims/src/witness.ts:1572@19f7bd4` — `        !EXPECTATIONS.some((expectation) => expectation === record.raw.expects)`
+
+Below `0.6` the loop is unchanged. Those journals have no `expects` to read, and
+scoping them would retire the verdict for every journal already written.
+
+**Why it needed scoping.** The verdict's own rationale presumes the dispatch was
+a reviewer — an explicit nothing-found is how a *reviewer* proves it was not
+silent. That presumption was safe while the only journals carrying findings were
+hand-written. Under a producer that records **every** dispatch, it is not: an
+`Explore` agent handed a search task returns prose, terminates `found`, files no
+`finding`, and earns a hard verdict for behaving exactly as designed. A verdict
+that fires on three dispatches in five is one people learn to scroll past, which
+is the same calibration argument that gated `SUPPRESSED-FINDING` to blockers.
+
+So the scoping does not weaken the contract; it names who is under it. The
+recorder marks the denominator from the dispatched agent's own definition file,
+so membership is a fact about a declared file rather than a judgement about a
+task.
+
+**A clean review still has to say so.** A reviewer with nothing to raise
+discharges the verdict with an explicit `[looks-good]` line, which becomes a
+`looks-good` finding — which is what that severity was always for, and this spec
+already said so. An untagged return from an agent that declared the tag contract
+is still `SILENT-REVIEWER`, and correctly: it is a reviewer that did not use the
+grammar it published.
+
+**This is a loosening, and it is the first one this schema has made.** A journal
+that failed at `0.5` can pass at `0.6` on the same bytes — see the inverted
+fixture pair below — and that is why the bump rule needed a fifth clause.
+
+### Additive metadata no verdict reads (v0.6)
+
+`0.6` also lands six fields the validator stores and never consults:
+
+| Field | On | What it says |
+| --- | --- | --- |
+| `model` | `report` | The model the harness resolved for the dispatched agent |
+| `usage` | `report` | Token counts: `input`, `output`, `cache_read`, `cache_creation`, `total` |
+| `usage_source` | `report` | `payload` or `transcript` — where the counts came from |
+| `agent_definition` | `dispatch` | `read` / `missing` / `unreadable` / `unsafe-name`, how the `expects` lookup went |
+| `prompt` | `dispatch`, `mutation` | The `prompt` record this work belongs to, keyed by the harness's own `prompt_id` |
+| `tag` | `finding` | `false-premise`, kept beside the `blocker` severity it maps to |
+
+**No verdict reads any of them**, and the kernel never names them:
+
+**Evidence:** `grep -rnE 'usage_source|agent_definition|raw\.(model|usage|tag|prompt)' packages/claims/src/witness.ts` → 0 results
+
+The consequence worth stating plainly, because it is the kind of thing a reader
+discovers as a bug: **a `prompt` key naming no record validates clean.** There
+is no `DANGLING-REFERENCE` for it. That is a deliberate omission. Every join the
+validator makes today — `finding.dispatch`, `resolution.finding`,
+`finding.stage` — is between records one writer produced in one file, and a
+missing referent there is a producer contradicting itself. The `prompt` key is
+different: it is the harness's own `prompt_id`, stamped onto later records by a
+recorder that may have started mid-session, after the prompt that caused the
+work had already gone by unrecorded. A verdict there would fire on a correct
+recorder attached to a session already in progress.
+
+`agent_definition` is the same shape of choice from the other side. It exists so
+that a dispatch with no `expects` because the agent file could not be read is
+distinguishable *in the file* from a dispatch whose agent is not a reviewer —
+which is a question about the repository's reading lists, and belongs to
+`wiring` rather than to a per-journal verdict.
+
+Being unread is exactly why none of these six fields, on its own, would have
+earned a bump. The bump they ride on is owed elsewhere.
+
 ## When the schema version bumps
 
-This is the canonical statement of the rule. It lives here rather than in a
-change proposal because proposals are archived and a citation into one rots.
+This is the canonical statement of the rule, and it is the **only** one. It
+lives here rather than in a change proposal because proposals are archived and a
+citation into one rots. `openspec/specs/witness/spec.md` restates it and does
+not own it: where the two disagree, this file is the rule and the restatement is
+the defect.
 
 The version bumps when **the set of valid records changes**:
 
 1. a new kind;
 2. a new member of a closed vocabulary;
 3. a **tightening** that makes invalid a record a previous version accepted;
-4. a new verdict that can fail a record.
+4. a new verdict that can fail a record;
+5. a **loosening** that makes valid a record a previous version rejected.
 
 It does **not** bump for additive optional metadata that no verdict reads.
 
-All four triggers travel together, and a restatement that carries three of them
+All five triggers travel together, and a restatement that carries four of them
 is how this rule decays — it has already happened twice, once by dropping the
 tightening clause and once by dropping the new-verdict clause. Any restatement
-elsewhere carries all four or points here.
+elsewhere carries all five or points here.
 
-Two clarifications the rule cost something to learn:
+**Clause 5 was appended, not inserted, and that is deliberate.** It is the
+newest trigger and it sits last even though it is clause 3's mirror and reads
+naturally beside it. Renumbering would have been a one-line edit that silently
+falsified every existing citation of "clause 4" — in this file, in the
+changelog, and in archived proposals whose arguments turn on which clause they
+name. A rule whose clause numbers move is a rule nothing can cite.
+
+Clarifications the rule cost something to learn:
 
 - **A field being optional does not exempt a change.** Optionality is a
   property of a field; validity is a property of a record. `verification.rev`
@@ -403,7 +651,8 @@ Two clarifications the rule cost something to learn:
   `nullius oracle`, which introduces `MALFORMED-JUSTIFICATION` — a verdict that
   reads `decision.justifies` and fails the record carrying it. `witness
   validate` never reads the field, and every `0.4` journal stays valid, so
-  clauses 1 to 3 are all untouched. Three drafts of that change argued their way
+  clauses 1 to 3 are untouched, and so is clause 5 — nothing previously
+  rejected became valid. Three drafts of that change argued their way
   to no bump: that it tightens nothing (true, and irrelevant); that clause 4
   means a verdict *this validator* emits (a qualifier the clause does not carry);
   and that nothing previously valid becoming invalid is what every clause
@@ -415,6 +664,19 @@ Two clarifications the rule cost something to learn:
   inherits every verdict its predecessor earned. A verdict silently ungated by
   a bump is indistinguishable from a verdict that was never reached, which is
   the failure mode this whole tool exists to refuse.
+- **A loosening is a change to the set of valid records too, and clause 3 names
+  only one direction.** `0.6` scopes `SILENT-REVIEWER` to dispatches carrying
+  `expects: "findings"`, so a journal that failed at `0.5` passes at `0.6` on
+  identical bytes. Take that scoping on its own, with the rest of `0.6` set
+  aside: nothing becomes invalid, no kind is added, no vocabulary grows, no
+  verdict is born — clauses 1 to 4 are all silent — and yet the same records
+  now validate differently, which is precisely what a declared version is for.
+  Clause 5 exists because the rule's own criterion is
+  *the set of valid records changes*, and a set can grow. `0.6` did not need
+  it: the bump was already owed by clause 1 (the `prompt` kind) and clause 3
+  (per-record `origin` required on four kinds, and a blank `user.name`
+  rejected). The loosening rode along, and the clause was written down so that
+  the next one cannot argue it is free.
 
 Bumping is not free, which is why the criterion is the set of valid records
 rather than the presence of new fields: an older validator reading a newer
@@ -423,7 +685,9 @@ that buys no diagnostic power costs real coverage.
 
 ## Fixtures
 
-Ten journals live next to this spec:
+Fifteen journals next to this spec exercise the schema (the two
+`rule-coverage-*` files beside them are `nullius rules` fixtures that happen to
+be journals, and are gated by that command instead):
 
 | Fixture | What it is for |
 | --- | --- |
@@ -439,6 +703,9 @@ Ten journals live next to this spec:
 | [`v0.3-compat-run.jsonl`](./fixtures/v0.3-compat-run.jsonl) | The same bytes as `v0.4-broken-run.jsonl` apart from the declared version — and it must exit 0, because a record valid under `0.3` stays valid |
 | [`v0.5-run.jsonl`](./fixtures/v0.5-run.jsonl) | A v0.5 run carrying two `decision` records with well-formed `justifies` — accepted and uninterpreted, because the field belongs to `oracle` and the journal only stores it |
 | [`v0.5-broken-run.jsonl`](./fixtures/v0.5-broken-run.jsonl) | Trips v0.4's three rejections at v0.5, since a later version inherits every verdict its predecessor earned |
+| [`v0.6-run.jsonl`](./fixtures/v0.6-run.jsonl) | A v0.6 run with a `prompt`, a `user.name` header, per-record `origin` on all four coordinator kinds, an `expects: "findings"` dispatch a finding answers — and a dispatch **without** `expects` whose terminal is `found` and which no finding names, which is the loosening and must not fire |
+| [`v0.6-broken-run.jsonl`](./fixtures/v0.6-broken-run.jsonl) | Trips each of v0.6's seven new rejections once: a blank `user.name`, a `prompt` with neither `text` nor `chars`+`hash`, a non-integer `chars`, a `stage` with no `origin`, a `check` with `origin: "hooks"`, `expects: "reviews"`, and an `expects: "findings"` dispatch left silent |
+| [`v0.5-compat-run.jsonl`](./fixtures/v0.5-compat-run.jsonl) | The same bytes as `v0.6-run.jsonl` apart from the declared version — and it must exit **1**, which is the opposite of what `v0.3-compat-run.jsonl` proves. See below |
 
 ```sh
 nullius witness validate spec/fixtures/valid-run.jsonl   # exit 0
@@ -453,11 +720,41 @@ nullius witness validate spec/fixtures/v0.4-broken-run.jsonl  # exit 1, three fi
 nullius witness validate spec/fixtures/v0.3-compat-run.jsonl  # exit 0, the same three records
 nullius witness validate spec/fixtures/v0.5-run.jsonl     # exit 0, justifies stored and not read
 nullius witness validate spec/fixtures/v0.5-broken-run.jsonl  # exit 1, v0.4's rejections inherited
+nullius witness validate spec/fixtures/v0.6-run.jsonl      # exit 0, prompt + per-record origin + the scoped verdict silent
+nullius witness validate spec/fixtures/v0.6-broken-run.jsonl   # exit 1, seven findings
+nullius witness validate spec/fixtures/v0.5-compat-run.jsonl   # exit 1, two findings — the INVERTED twin
 ```
 
-The last two are a pair, and only the pair proves anything: identical records
-at two declared versions, one failing three ways and one clean. Either alone
-passes with the version predicate written backwards.
+`v0.4-broken-run.jsonl` and `v0.3-compat-run.jsonl` are a pair, and only the
+pair proves anything: identical records at two declared versions, one failing
+three ways and one clean. Either alone passes with the version predicate written
+backwards.
+
+### The v0.6 pair is inverted, and that is the point
+
+`v0.3-compat-run.jsonl` exits **0** and `v0.5-compat-run.jsonl` exits **1**,
+from the same construction. The difference is the direction of the bump.
+
+`0.4` **tightened**: it refused things `0.3` had accepted. So the compatibility
+twin runs the newer version's rejected bytes at the older version and must
+*pass* — same records, older version, still valid, which is what "a record that
+validated clean under `0.3` does not become invalid" means as a check rather
+than a promise.
+
+`0.6` **loosens**: `SILENT-REVIEWER` now fires only on a dispatch that declared
+`expects: "findings"`. So the twin runs the newer version's *accepted* bytes at
+the older version and must *fail* — same records, newer version passes, older
+fails. A pair whose halves both pass, or both fail, proves nothing about which
+way the floor points, and a floor written backwards is exactly what such a pair
+would look like.
+
+**What the exit code cannot isolate.** `v0.5-compat-run.jsonl` fails at `0.5`
+for two independent reasons: the unscoped `SILENT-REVIEWER` fires on the
+dispatch without `expects`, **and** `prompt` is an unknown kind before `0.6`. A
+`1` cannot say which fired. The fixture pins that the twin does not silently
+start passing; the unit test asserting the verdict fires unscoped at `0.5` is
+what pins the predicate's direction. This is the same reason a new verdict needs
+a fixture *and* a named test rather than only a negated exit code.
 
 `hooks-run.jsonl` is the only one nobody typed, and it is worth being exact
 about what that buys. It is evidence about the **recorder**: that a producer
@@ -470,12 +767,24 @@ It is not evidence that the invariants bite. Its outcomes are `2 found, 0
 empty, 0 no-report`, so invariant 1's three-way distinction is degenerate
 there; it carries no `verification`, `reliance`, or `append`, so invariants 2
 and 3 are untouched, and its single `mutation` advances a hash map nothing
-reads. That is a property of the tier, not of the fixture: hooks emit
-`dispatch`, `report`, and `mutation` and can emit nothing else, because no tool
-call states that something was *checked*, *relied upon*, or *corrected*. Those
-records need an author with intent — the self-reported tier — and the
-hand-written fixtures above are what exercise them until a producer for that
-tier exists.
+reads. That is a property of the tier, not of the fixture.
+
+**What the hooks tier can emit widened at `0.6`, and it is worth being exact
+about how far.** It was `dispatch`, `report`, and `mutation`. It is now those
+three plus `finding` — pulled out of a subagent's return by a line grammar over
+the tags the reviewers themselves publish — and `prompt`, the operator's turn:
+
+**Evidence:** `packages/kit/src/record.ts:749` — `export function extractFindings(`
+
+**Evidence:** `packages/kit/src/record.ts:889` — `        kind: "prompt",`
+
+What hooks still cannot emit is `verification`, `reliance`, `append`, `stage`,
+`resolution`, `check`, and `decision`, because no tool call states that
+something was *checked*, *relied upon*, *corrected*, or *chosen*. Those need an
+author with intent — the self-reported tier, which is why `0.6` makes those four
+coordinator kinds carry `origin: "self-reported"` on the record rather than
+inheriting the header's. The hand-written fixtures above are what exercise them
+until a coordinator-side producer for that tier exists.
 
 Worth wiring into CI alongside the document check — a validator that stops
 catching these is one nobody would notice going quiet.

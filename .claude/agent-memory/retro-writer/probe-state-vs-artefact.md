@@ -38,3 +38,16 @@ recorded TAINTED in both the artefact and state, because the plant had been
 disclosed in a committed file. Record that as `tool_score_overridden: true` — a
 tool score and a recorded verdict can now legitimately differ, and the artefact
 is still the one to trust.
+
+**`add-canary-status-redaction` (PR #58, 2026-08-31) — agrees again.** State
+carried `probe_iter_1..5` matching `review-evidence.md` round for round
+(caught, tainted x4). Two runs in a row where agreement is the expected case, so
+keep treating a *disagreement* as the finding.
+
+Also settled by reading the code that round: `harvestFalseClaim` sorts its
+candidate glob and takes the first match, with no seed and no override
+(`packages/claims/src/canary.ts:220-227`). The planted sentence is therefore a
+pure function of repository content and CANNOT differ between rounds of one run.
+When a probe section claims the plant was rotated, it means the host document
+only. Do not record `probe_plant_varied: true` on the strength of a document
+rotation.

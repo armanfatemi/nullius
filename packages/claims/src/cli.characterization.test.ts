@@ -411,6 +411,89 @@ suite("CLI characterization — witness", () => {
 });
 
 /**
+ * add-run-ledger-producer §1 — the summary changes shape exactly ONCE, at the
+ * schema floor where the header's `origin` stops speaking for every record in
+ * the file. Both halves are pinned here because only the pair says anything:
+ * a rendering that always printed the counts would pass the 0.6 assertion and
+ * quietly rewrite every 0.5 journal's summary, and a rendering that never
+ * printed them would pass the 0.5 assertion while the provenance sentence
+ * stayed false of the records below it.
+ *
+ * `cli.ts` decides which shape to print by asking whether the kernel handed it
+ * the blocks — they are null below the floor — and never by comparing a
+ * version. That is why these are CLI tests rather than kernel ones: the kernel
+ * unit tests assert the blocks' VALUES, and these assert that the summary
+ * spends them.
+ */
+suite("CLI characterization — witness validate, the 0.6 summary", () => {
+  const lines = (result: Run): string[] => result.stdout.split("\n");
+
+  it("leaves a 0.5 journal's summary exactly as it is today", () => {
+    const result = run("witness", "validate", "spec/fixtures/v0.5-run.jsonl");
+
+    expect(result.code).toBe(0);
+    expect(lines(result)).toContain(
+      "Schema 0.5, origin: hooks — records emitted by the harness runtime, which the agent had no opportunity to decline.",
+    );
+    // Not "0 stages, 0 findings…". A 0.3-0.5 journal may carry ledger kinds —
+    // this one carries four — and counting them under a header whose origin
+    // still speaks for the whole file would be the second summary change the
+    // floor exists to prevent.
+    expect(result.stdout).not.toContain("Ledger:");
+    expect(result.stdout).not.toContain("Provenance:");
+  });
+
+  it("scopes the header sentence and prints both count blocks at 0.6", () => {
+    const result = run("witness", "validate", "spec/fixtures/v0.6-run.jsonl");
+
+    expect(result.code).toBe(0);
+    // "records carrying no origin of their own" — the clause the four
+    // coordinator kinds in this same journal make necessary. Without it the
+    // sentence attests five self-reported records as harness-emitted.
+    expect(lines(result)).toContain(
+      "Schema 0.6, origin: hooks — records carrying no origin of their own were emitted by the harness runtime, which the agent had no opportunity to decline.",
+    );
+    expect(lines(result)).toContain(
+      "Ledger: 2 stage(s), 1 finding record(s), 1 resolution(s), 1 check(s), 1 decision(s), 1 prompt(s).",
+    );
+    // A partition: 8 + 5 + 0 is every record the validator read below the
+    // header, so a tier cannot go missing between the three numbers.
+    expect(lines(result)).toContain("Provenance: 8 hook-tier, 5 self-reported, 0 unattributed.");
+  });
+
+  it("gives the survey's blocks their own denominator, not the surveyed total", () => {
+    const result = run(
+      "witness",
+      "survey",
+      "spec/fixtures/v0.6-run.jsonl",
+      "spec/fixtures/v0.5-run.jsonl",
+    );
+
+    expect(result.code).toBe(0);
+    // "1 of 2", never "2": these sums are over the journals that carry the
+    // blocks, and printing them against the surveyed count would attribute
+    // them to a journal nobody counted.
+    expect(lines(result)).toContain(
+      "Ledger over the 1 of 2 surveyed journal(s) that carry one: 2 stage(s), 1 finding record(s), 1 resolution(s), 1 check(s), 1 decision(s), 1 prompt(s).",
+    );
+    expect(lines(result)).toContain(
+      "Provenance over those same 1 journal(s): 8 hook-tier, 5 self-reported, 0 unattributed.",
+    );
+  });
+
+  it("prints no blocks at all when no surveyed journal reached the floor", () => {
+    const result = run("witness", "survey", "spec/fixtures/v0.5-run.jsonl");
+
+    expect(result.code).toBe(0);
+    // A sum is not an absence. Summing over zero qualifying journals yields
+    // zeros, and "0 stages, 0 findings…" would be a claim about journals that
+    // were never in the denominator.
+    expect(result.stdout).not.toContain("Ledger over");
+    expect(result.stdout).not.toContain("Provenance over");
+  });
+});
+
+/**
  * `witness survey` — add-journal-identity tasks 2.1-2.6. Through the built
  * binary like the rest of this suite: `runWitnessSurvey` is not exported.
  */

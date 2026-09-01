@@ -50,3 +50,16 @@ and iteration 3 explicitly declines to count test-engineer's non-flag as a miss.
 The coordinator also wrote the agent-file distinction into its own corrections
 block at iteration 1. So `brief_defects: []` was the honest entry for once.
 Keep running the grep — one clean run is not a repaired habit.
+
+**Second clean run — `add-canary-status-redaction` (PR #58, 2026-08-31).**
+`grep -ric 'false.premise' .claude/agents/*.md` gives architecture-reviewer 10,
+rule-auditor 7, checker-engineer 0, test-engineer 0 — exactly what all five probe
+sections claim, and each one explicitly declines to score test-engineer on the
+plant. Two clean runs now; keep running the grep.
+
+New adjacent check worth making every time: **which agents were NOT dispatched,
+and was the omission justified?** That run never dispatched checker-engineer at
+all (0 mentions across six rounds) on a change to `canary.ts` and `cli.ts`, with
+no pre-flight justification — while the coordinator did correct itself for
+dropping rule-auditor from a single dispatch. Absence gets less scrutiny than
+omission, and `grep -c '<agent>' review-evidence.md` finds it in one command.

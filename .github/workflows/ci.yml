@@ -111,6 +111,29 @@ jobs:
           ! node packages/claims/dist/cli.js witness validate spec/fixtures/v0.4-broken-run.jsonl
           node packages/claims/dist/cli.js witness validate spec/fixtures/v0.5-run.jsonl
           ! node packages/claims/dist/cli.js witness validate spec/fixtures/v0.5-broken-run.jsonl
+          # v0.6, the run-ledger producer. The valid one carries a `prompt`, a
+          # `user.name` header, per-record `origin` on all four coordinator
+          # kinds, an `expects: "findings"` dispatch a finding answers, and a
+          # dispatch WITHOUT `expects` whose terminal is `found` and which no
+          # finding names — the loosening, which must not trip SILENT-REVIEWER
+          # here. The broken one trips all seven new rejections, one each.
+          node packages/claims/dist/cli.js witness validate spec/fixtures/v0.6-run.jsonl
+          ! node packages/claims/dist/cli.js witness validate spec/fixtures/v0.6-broken-run.jsonl
+          # The compatibility twin, and note the `!`: this pair is INVERTED
+          # relative to the v0.3-compat one above. That bump TIGHTENED, so its
+          # twin passes at the older version — same bytes, older version, still
+          # valid. 0.6 LOOSENS SILENT-REVIEWER, so the direction flips: the same
+          # records must pass at 0.6 and FAIL at 0.5. A pair where both halves
+          # pass, or both fail, proves nothing about which way the floor points.
+          #
+          # And the exit code alone does not isolate the loosening: this journal
+          # fails at 0.5 for two independent reasons — the unscoped
+          # SILENT-REVIEWER on the dispatch without `expects`, and `prompt`
+          # being an unknown kind before 0.6 — and a `1` cannot say which fired.
+          # The "fires unscoped at 0.5" unit test in witness.test.ts is what
+          # pins the predicate's direction; this line only pins that the twin
+          # does not silently start passing.
+          ! node packages/claims/dist/cli.js witness validate spec/fixtures/v0.5-compat-run.jsonl
           # A 0.4 journal carrying all three identity fields and a rev-stamped
           # verification. Exit 0 is also what an empty file scores, so the unit
           # test asserting the fields reach JournalReport.header is what gives
@@ -162,6 +185,72 @@ jobs:
           fi
           while read -r line; do node -e 'JSON.parse(process.argv[1])' "$line"; done < "$journal"
           node packages/claims/dist/cli.js witness validate "$journal"
+
+      # The producer's other half, and the two tiers meeting in one file. The
+      # step above proves the harness-attested records survive contention; this
+      # one proves the coordinator's records join to them and that the verdict
+      # which compares the tiers still fires.
+      #
+      # A SIBLING STEP rather than more lines in the one above, because that
+      # step asserts an exact journal line count (25) as its correlation check.
+      # Appending ledger records to the same journal would move that number and
+      # make the count assertion a thing maintained rather than a thing
+      # believed. This journal is its own, in its own temp root.
+      #
+      # BOTH POLARITIES, and the negative one is the point. The happy path here
+      # is "a coordinator answered a blocker and the journal validates" — which
+      # is also what a retired SUPPRESSED-FINDING produces. So the journal is
+      # validated FIRST with the blocker unanswered and must fail, by exit code
+      # and by name. Without that arm the whole step would stay green on a
+      # verdict that had gone quiet, which is the defect
+      # .claude/rules/verdict-needs-fixture-and-test.md is about.
+      - name: nullius witness ledger (round trip, both polarities)
+        run: |
+          set -euo pipefail
+          work=$(mktemp -d)
+          kit="node packages/kit/dist/cli.js"
+          claims="node packages/claims/dist/cli.js"
+          journal="$work/.nullius/runs/ledger.jsonl"
+
+          # A dispatch, then a synchronous terminal whose return text carries
+          # the tag grammar. The `finding` records are EXTRACTED by the
+          # recorder from what the agent returned — nothing below writes one,
+          # and `witness ledger` refuses the kind — so the blocker the
+          # resolution answers belongs to the harness tier.
+          printf '{"session_id":"ledger","hook_event_name":"PreToolUse","tool_name":"Task","tool_use_id":"t1","tool_input":{"subagent_type":"rule-auditor","description":"audit the diff"}}' \
+            | $kit witness record --root "$work"
+          printf '{"session_id":"ledger","hook_event_name":"PostToolUse","tool_name":"Task","tool_use_id":"t1","tool_input":{"subagent_type":"rule-auditor"},"tool_response":{"content":[{"type":"text","text":"- [blocker] the anchor is unstamped\\n- [looks-good] the rest holds"}]}}' \
+            | $kit witness record --root "$work"
+
+          # No resolution yet: the blocker is unanswered and the journal must
+          # not validate. Exit code and output are SEPARATE statements — an
+          # unreadable journal also exits non-zero, so a bare `!` would be
+          # satisfied identically by "the verdict fired" and by "the file was
+          # not there". The output arm is a redirect rather than a pipe:
+          # `! cmd | grep -q X` negates the pipeline instead of the command.
+          ! $claims witness validate "$journal"
+          $claims witness validate "$journal" > "$work/unanswered.log" 2>&1 || true
+          grep -q 'SUPPRESSED-FINDING' "$work/unanswered.log"
+
+          # The id comes from the journal, never from the coordinator's memory
+          # of what it dispatched — that is the whole reason the subcommand
+          # exists. An empty result would silently make the resolution below
+          # name nothing, so it is asserted rather than assumed.
+          finding=$($kit witness ledger findings --open --session ledger --root "$work" | cut -f1)
+          test -n "$finding"
+
+          $kit witness ledger stage --phase verify --iteration 1 --change ci-round-trip --session ledger --root "$work"
+          $kit witness ledger check --command 'pnpm test' --outcome pass --text 'every suite green' --counts 'failures=0' --session ledger --root "$work"
+          $kit witness ledger resolution --finding "$finding" --outcome fixed --text 'the anchor was stamped and re-read' --session ledger --root "$work"
+
+          $claims witness validate "$journal" > "$work/answered.log" 2>&1
+          cat "$work/answered.log"
+          # And the three records land in the SELF-REPORTED tier. Exit 0 alone
+          # would be satisfied by a build that wrote them with the header's
+          # `hooks` origin — a coordinator's account of its own run laundered
+          # as harness attestation, which is the one claim it is least entitled
+          # to make. The provenance line is where that is visible.
+          grep -q '3 self-reported' "$work/answered.log"
 
       # Dogfood: the specs carry live Evidence Anchors into this repo's own
       # source. If the code drifts out from under their claims, this step says

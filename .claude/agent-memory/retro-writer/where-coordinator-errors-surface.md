@@ -40,3 +40,35 @@ exist. The map is `VOCABULARY`" — the invented symbol was replaced everywhere,
 including inside its own correction, so the wrong name is unrecoverable. When a
 corrections block records an invented identifier, check whether the wrong name
 is still legible; if it is not, that is its own finding.
+
+**`add-canary-status-redaction` (PR #58, 2026-08-31) — six blocks, ~18 entries,
+and the coordinator named its own cross-cutting pattern and did not stop.**
+Iteration 3: "in each case I wrote an argument from the part of the code I had
+already read, instead of opening the part the argument was actually about." By
+iteration 5: "This is the fifth instance in this run of the same failure, and it
+happened inside a paragraph whose subject is another party's citation being
+wrong." Naming a pattern four rounds running did not prevent the fifth instance —
+every catch still came from a reviewer opening the file.
+
+New check that paid off: **a correction that sweeps several documents usually
+misses one, and the coordinator's own recorded failure mode is the tell.** That
+run corrected an "eight sites" ledger in CHANGELOG.md, proposal.md and design.md
+and left `progress.md` saying eight — one commit after recording about itself
+"the correction was performed where I happened to be editing rather than
+everywhere the claim lived." After reading a corrections block that names a
+document-wide sweep, grep the change folder for the old value.
+
+**`add-run-ledger-producer` (PR #74, 2026-08-31) — nine blocks, 28 entries, 16
+tagged. The densest disclosure yet, and it exposed the next failure mode: the
+corrections are append-only, so the false version stays unmarked where a reader
+meets it.** Stage 8 recorded that a claim stated four times was false and had
+overridden a reviewer who was right — but `review-evidence.md:451` still reads as
+fact, 440 lines before its correction, and one round later the coordinator's false
+version appears *attributed to that reviewer* as its own concern. Two checks that
+paid off: (1) grep the change folder for the corrected claim's key token (here a
+commit hash) and note every site still carrying the old version; (2) when a
+correction names the round a reviewer was right, check that the reviewer's entry
+is actually in that round — the Stage 8 note said "iteration 4" and the entry sat
+in iteration 3. Also: a `## Reviewer error, noted` section is a claim about an
+agent, not a fact — re-verify it. This run's was the coordinator's error, filed
+under the reviewer's name.

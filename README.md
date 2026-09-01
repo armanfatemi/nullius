@@ -401,18 +401,28 @@ you want your own sessions recorded by the code you are editing — set
 > nothing can tell apart from the first — including `doctor`.
 
 <details>
-<summary>⚙️ <strong>Flags, and the tier that does not ship yet</strong></summary>
+<summary>⚙️ <strong>Flags, and the two tiers in one journal</strong></summary>
 
 `--expect-rules <rule-id...>` (validate only) fails the run if any named rule
 id never reached a delivered verdict in this journal — `SILENT-RULE`
 otherwise. The ids are what [`rules select`](#rules) named for that run.
 
 Recording is the **hooks tier**: what the harness attests, and the agent had no
-opportunity to decline. The **self-reported tier** — where an agent states what
-it raised and whether anyone answered — is [schema v0.3](spec/witness-journal.md)
-and has no producer yet. Journals not emitted by the harness must say so:
-`--origin self-reported` certifies internal consistency and nothing about what
-happened.
+opportunity to decline. The **self-reported tier** — what an agent raised and
+whether anyone answered — now has a producer too, as of
+[schema 0.6](spec/witness-journal.md). The two are kept apart *inside* one
+journal rather than by keeping them in separate files: `finding` records are
+extracted by the recorder from what a reviewer returned, and the coordinator's
+own `stage` / `resolution` / `decision` / `check` records each carry
+`origin: "self-reported"` in the record itself, so a header saying `hooks` can
+never speak for them. `validate` prints the two counts separately.
+
+That split is what makes the cross-tier verdict mean anything:
+`SUPPRESSED-FINDING` is a blocker the *harness* saw an agent raise and the
+*coordinator* never answered — neither party could have reported it alone.
+
+Journals not emitted by the harness at all must still say so: `--origin
+self-reported` certifies internal consistency and nothing about what happened.
 
 </details>
 
@@ -780,8 +790,11 @@ format is shaped this way; the linter is what you install.
   PR-evidence harvester plus the "bad witness" retro-agent conventions. The
   journal validator ships now; the harvester is held back until its conventions
   have more real-world mileage.
-- **Self-reported witness tier** — [schema v0.3](spec/witness-journal.md) is
-  written; no producer yet.
+- **Retros rendered from the journal** — the self-reported tier now has a
+  producer ([schema 0.6](spec/witness-journal.md): findings extracted from what
+  reviewers returned, plus `witness ledger` for the coordinator's own records).
+  What is missing is the renderer that turns a session's journal into a
+  retrospective, so today the evidence exists and is read by hand.
 - **Open threads:** [`init`](https://github.com/armanfatemi/nullius/issues/1) ·
   [embedded `--eager`](https://github.com/armanfatemi/nullius/issues/6).
 

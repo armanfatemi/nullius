@@ -27,7 +27,7 @@ its own the moment somebody builds the thing._
 | False mechanisms (binding moments) | ✅ shipped |
 | Coverage (anchor density, `[false-premise]` reviewer) | ✅ shipped |
 | Bad witness — a run's record judged, not its summary | ✅ shipped (`witness validate`) |
-| Retros rendered from evidence rather than self-report | 🟡 `witness harvest` unbuilt |
+| Retros rendered from evidence rather than self-report | 🟡 the evidence now has a producer (schema 0.6); the renderer is unbuilt |
 | Silence made loud ("dispatches: 5, delivered: 0"; "None. is valid; nothing is not") | ✅ shipped |
 | Is the objection machinery alive? (no-op vs. real-audit probe) | ❌ |
 | Starved devil's advocate (the critic must know *less*) | 🟡 shipped for claims; no `/advocate` for ideas |
@@ -54,15 +54,36 @@ devil's advocate for a *claim*:
 
 **Evidence:** `packages/claims/src/audit.ts:127@80e16ae` — `export function buildAuditBrief(`
 
+The run-ledger producer landed with schema `0.6`, which is what moved the retro
+row above off "no producer". The recorder now pulls `finding` records out of a
+subagent's return by the tag grammar the reviewers publish, and records the
+operator's own prompts as a record kind:
+
+**Evidence:** `packages/kit/src/record.ts:749` — `export function extractFindings(`
+
+**Evidence:** `packages/kit/src/record.ts:889` — `        kind: "prompt",`
+
+**Evidence:** `packages/claims/src/witness.ts:262` — `export const VERSIONS = ["0.1", "0.2", "0.3", "0.4", "0.5", "0.6"] as const;`
+
+The row stays 🟡 rather than ✅ because the renderer is the other half and is
+still unbuilt: `witness harvest` was always two jobs — a source of mechanical
+records, and a projection of them into a document nobody hand-edits. Only the
+first has shipped.
+
 What has not shipped, stated so the checker says when that stops being true:
 
-**Evidence:** `grep -rn 'harvest' packages/claims/src/ packages/kit/src/` → 0 results
+Three of these rows went loud and had gone unread, which is the correction this
+table exists to force and had failed to make on its own — again. `canary` and
+`rules select` **shipped**, so their absence anchors were asserting the
+opposite of the truth and are retired here. The `harvest` anchor was matching
+`harvestFalseClaim` in `canary.ts` — an unrelated function — so the claim
+(`witness harvest` is unbuilt) was true while its evidence was not; the search
+is narrowed to the thing it is actually about. Note that `IDEAS.md` is in no CI
+glob, which is why all three could sit wrong for so long.
 
-**Evidence:** `grep -rn 'canary' packages/claims/src/ packages/kit/src/` → 0 results
+**Evidence:** `grep -rn 'witness harvest' packages/claims/src/ packages/kit/src/` → 0 results
 
 **Evidence:** `grep -rn 'advocate' plugin/commands/ plugin/skills/` → 0 results
-
-**Evidence:** `grep -rni 'rules select' packages/claims/src/` → 0 results
 
 **Evidence:** `grep -rn 'REVENANT' packages/claims/src/` → 0 results
 
@@ -87,6 +108,12 @@ not have: a *declared* list of expected dispatches to count against. `witness`
 can only see dispatches that were recorded, so it catches one that never
 returned and is blind to one that was never made. Track 3's P7 finally proposes
 a source for that denominator.
+
+Schema `0.6` narrowed the gap without closing it. `dispatch.expects` now
+declares whether a dispatched agent was under the review contract at all, which
+gives `SILENT-REVIEWER` a denominator it can *scope* to — but it is still a
+denominator of dispatches that happened. `MISSING-ATTESTATION` needs a list of
+dispatches that were **intended**, and no recorded dispatch can supply that.
 
 ## P2 — Canary: mutation testing for review machinery
 
@@ -203,7 +230,12 @@ a 91-file corpus of hand-written evidence files rather than reasoning about it
   findings (60.8%) are never mentioned again — so an ungated verdict fires on
   three findings in five and gets learned as noise. It is gated to `blocker`.
 
-Still open: the producer that emits these records, below.
+**No longer open: the producer that emits these records shipped with schema
+`0.6`.** See below — and note that the two authors it introduced are why `0.6`
+also makes `resolution` carry its own `origin: "self-reported"`. A coordinator's
+account of a finding's fate must not inherit a header that says `hooks`, or the
+cross-tier comparison this entry is about would be the coordinator checking
+itself.
 
 ## 2. Provenance and tense — claims know where they came from and when they were true
 
@@ -252,6 +284,35 @@ Directly targets the dead-auditor failure class (instructions chasing files
 that a refactor renamed) — the cheapest, highest-value item in this file.
 A liveness pre-flight for the objection machinery's reading lists.
 
+**Follow-up owed by schema `0.6`: check the tag contract, both directions.**
+`SILENT-REVIEWER` is now scoped to dispatches carrying `expects: "findings"`,
+and the recorder sets that key by reading whether the dispatched agent's
+definition declares the `[blocker]` tag contract under an `## Output format`
+heading. That makes the verdict's denominator **editable in-session**, in both
+directions: deleting `[blocker]` from an agent's output section disarms the
+verdict for every later dispatch, and renaming a non-reviewer's
+`## Output back to the dispatcher` heading to `## Output format` arms it against
+an agent that was never a reviewer — all five agent files contain `[blocker]`,
+and only the heading spelling separates them. Either edit is recorded in the
+journal as an ordinary `mutation` and nothing else.
+
+The mitigation is a repository question, not a per-run one, which is why it
+belongs here: **every agent named in a skill's `dispatches:` declares the tag
+contract, and no agent that is not so named declares it.** `wiring` already
+reads `dispatches:` and resolves each entry to an agent file, so the list and
+the files are both in hand; what it does not do is look inside them.
+
+**Evidence:** `packages/claims/src/wiringScan.ts:181@19f7bd4` — `    dispatches: declaredList(front, "dispatches"),`
+
+**Evidence:** `grep -rn 'blocker' packages/claims/src/wiring.ts packages/claims/src/wiringScan.ts` → 0 results
+
+The same check covers the one direction the recorder fails open: a reviewer
+whose definition file the recorder could not read gets no `expects`, so
+`SILENT-REVIEWER` cannot fire on it where at `0.5` it would have. The dispatch
+records `agent_definition: "missing" | "unreadable" | "unsafe-name"` so the miss
+is visible in the file — but a broken reading list is a fact about the
+repository, and this is where it should be caught.
+
 ### The Geiger-counter alarm
 A run producing *zero* objections across all gates is not evidence of clean
 work — it is evidence the detector may be broken. Track objections-per-gate
@@ -279,20 +340,32 @@ deliberately kill a subagent, withhold a report, corrupt a delivery, and
 verify recovery matches the declared protocol. Recovery paths are code that
 never runs until the worst day; drills make them run on a cheap day.
 
-## The run ledger's second half — deferred, and why
+## The run ledger's second half — the producer shipped; the renderer did not
 
 Schema v0.3 (`add-run-ledger`) shipped the **kinds and the verdicts** and
 deliberately stopped there. Two named pieces were split out rather than
-dropped:
+dropped, and `add-run-ledger-producer` (schema `0.6`) closed the first of them:
 
-- **The self-reported producer** — a skill instructing pipeline agents to emit
-  `stage` / `finding` / `resolution` / `check` / `decision`, plus a
-  `witness record` mode accepting a structured record rather than a hook
-  payload. Hooks cannot do this: no tool call states that something was
-  *checked*, *relied upon*, or *corrected*.
-- **`witness harvest`** — renders `review-evidence.md` and
+- ~~**The self-reported producer**~~ — **shipped.** It arrived as two authors
+  rather than one, which is the part this entry did not anticipate. `finding`
+  records are extracted by the *recorder* from what an agent actually returned,
+  at the hooks tier; `stage`, `resolution`, `decision` and `check` are written
+  by the coordinator through `witness ledger`, and each carries
+  `origin: "self-reported"` on the record so a hook-tier header cannot launder
+  them. That split is what makes the ledger verdicts a cross-check instead of
+  the coordinator's account compared with itself: a coordinator that drops a
+  blocker in prose cannot also drop the `finding` record, because it did not
+  write it.
+
+  **Evidence:** `packages/kit/src/record.ts:749` — `export function extractFindings(`
+
+  **Evidence:** `packages/kit/src/cli.ts:762@19f7bd4` — `const LEDGER_KINDS = ["stage", "resolution", "decision", "check"] as const;`
+
+- **`witness harvest`** — still unbuilt. Renders `review-evidence.md` and
   `implementation-log.md` into the change folder deterministically, no model in
   the path. Success is when those files are generated output nobody hand-edits.
+
+  **Evidence:** `grep -rn 'harvest' packages/kit/src/cli.ts` → 0 results
 
 The split was decided *by* the corpus, not before it. The schema turned out to
 be the tractable half: five kinds, three severities, one derived enum. The
@@ -300,25 +373,34 @@ projections are the hard half — 91 files produced roughly 40 heading variants
 for the same handful of concepts, only 19% carry identified findings, and only
 11% have a decision section. There is no house style to render back to, so
 "reads no worse than a hand-written one" has no fixed target yet. Rendering is
-far easier to design against real v0.3 records than against 91 files that
-disagree with each other.
+far easier to design against real records than against 91 files that disagree
+with each other — and now there are real records to design against, which is
+the argument this entry made for doing the producer first.
 
-**The standing risk of stopping here:** v0.2 added `verification` and
-`reliance` and they still have no producer. A schema nobody emits is a schema
-nobody has stress-tested, and v0.3 is now the second unproduced tier. The
-producer is what turns that from a pattern into a plan.
+**What the standing risk turned into.** The worry was that v0.2 added
+`verification` and `reliance` with no producer, and v0.3 was becoming the second
+unproduced tier. Half of it is answered: the v0.3 kinds are now emitted, and
+`0.6` bought two new kinds (`prompt`) and fields (`expects`, per-record
+`origin`) that only a real producer would have surfaced as necessary.
+`verification` and `reliance` are still unproduced, and are now the *only*
+unproduced tier rather than one of two.
 
-Also deferred with it: whether `check` subsumes `verification` and `finding`
-subsumes `reliance`. Neither pair can be compared until one of them has a
-producer.
+Also still open: whether `check` subsumes `verification` and `finding` subsumes
+`reliance`. The comparison is finally possible on one side — `check`, `finding`
+and `resolution` have a producer and `verification` and `reliance` do not — so
+the question is now answerable from records rather than from reasoning.
 
 ## Priority picks (after the silence release)
 
-1. **The run-ledger producer** — v0.3's kinds exist and nothing emits them.
-   Highest-value next step, and the only way the two tiers become the
-   cross-check they were designed to be.
+1. ~~**The run-ledger producer**~~ — **shipped** as schema `0.6`
+   (`add-run-ledger-producer`). The two tiers are now the cross-check they were
+   designed to be: hook-extracted `finding` records against
+   coordinator-authored `resolution` records, told apart by a per-record
+   `origin` rather than by trust.
 2. **Wiring check** — smallest effort, prevents the most embarrassing
-   failure class, pure filesystem determinism.
+   failure class, pure filesystem determinism. Promoted by item 1 landing: the
+   scoped `SILENT-REVIEWER`'s denominator is an editable file, and the tag-contract
+   check above is what closes that.
 3. **Open-question conservation** — extends the existing spec family most
    naturally: anchors keep claims *true*, conservation keeps them *alive*.
 
@@ -510,6 +592,16 @@ counts.
 `add-journal-identity` lands — "navigate past runs" is a query over the ref that
 change creates.
 
+**The gate is close to met, and the paragraph above is the part that dated.**
+`add-journal-identity` landed, and schema `0.6` added two producers rather than
+one: the recorder now emits `finding` and `prompt` records as well as
+`dispatch` / `report` / `mutation`, and `witness ledger` emits the four
+coordinator kinds. What a view over that would show is no longer a bar chart of
+dispatch counts — it is what was asked for, what was raised, and what answered
+it. `verification` and `reliance` remain unproduced, and workflow dispatches
+still do not reach the recorder, so the view would have two known holes rather
+than being mostly hole.
+
 **The trap, named first.** A dashboard *is* a summary, and this project's thesis
 is that a summary and a record are different objects. A wall of green that
 people trust instead of the verdicts would be the tool manufacturing the
@@ -551,15 +643,16 @@ CLI answers badly and `project.md` already says the projections are for.
 | — | ~~P8 replay marker~~ | dropped | not a hazard; see P8 |
 | 1 | **A workflow producer** (P7's other half) | medium | — |
 | 2 | `add-journal-identity` | scoped | — |
-| 3 | The v0.3 self-reported producer (Track 2) | large | — |
+| — | ~~The v0.3 self-reported producer (Track 2)~~ | done | shipped as schema 0.6 |
 | 4 | P10 port invariants | docs only | — |
 | 4= | P14 oracle conservation | scoped | — |
 | 5 | Wiring check (Track 2) | small | — |
 | 6 | `add-rules-compliance` | in flight | recording |
-| 7 | P7 declared denominator (`MISSING-ATTESTATION`) | medium | a producer |
+| 7 | P7 declared denominator (`MISSING-ATTESTATION`) | medium | item 1 — a producer now exists, an *intended-dispatch list* does not |
 | 8 | P12 `audit --diff` | medium | — |
 | 9 | P13 correspondence anchors | medium | — |
 | 10 | P15 the local report | large | two producers + the ref |
 
-Items 3 and 5 are already Track 2's own priority picks. This track does not
-reorder them; it adds evidence that they are the right two.
+The retired row and item 5 were Track 2's own priority picks. This track did not
+reorder them; it added evidence that they were the right two, and the first of
+them has since shipped as schema `0.6`.

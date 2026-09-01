@@ -84,6 +84,12 @@ That is the whole file, not the post-frontmatter slice `looseCandidates(body, bo
 
 ## Output format
 
+**A review with nothing to raise returns at least one `[looks-good]` line.** An
+untagged "nothing to report" is recorded as silence, not as a clean bill: the
+recorder extracts findings from these tag lines, and a return that carries none
+is indistinguishable from a reviewer that never looked. Saying the nothing
+explicitly is what discharges `SILENT-REVIEWER`.
+
 ```
 ## Kernel review — <subject (branch / proposal / planned paths)>
 

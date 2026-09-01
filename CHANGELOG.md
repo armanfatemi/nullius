@@ -166,6 +166,104 @@ heading, following the 0.8.0 precedent.
 
 ### Added
 
+- **Journal schema `0.6` — the second tier gets a producer, and the two now
+  share one file.** A `prompt` kind for the operator's turn. A per-record
+  `origin`, **required** on `stage`, `resolution`, `decision` and `check`, where
+  absent or any other value is `MALFORMED`. A closed `expects` vocabulary on
+  `dispatch` with one member, `findings`. A header `user: { name }`. And two new
+  blocks on `JournalReport` — `ledger` (per-kind counts) and `provenance`
+  (hook-tier, self-reported, unattributed).
+
+  **The header's `origin` now means something narrower, and the summary says so.**
+  It was the origin of every record in the file; it is now the origin of records
+  that carry none of their own. That sentence is false about a journal holding
+  ledger records, so at `0.6` the validate summary is rescoped and followed by
+  the three provenance counts. `unattributed` is the branch the old sentence
+  never had to name: records with no origin of their own, under a header whose
+  origin is absent, belong to nobody, and counting them as hook-tier would be
+  the flattering read the field exists to remove.
+
+  Both counter blocks are **`null` below `0.6`**, not zero, and the floor is
+  decided once in the kernel rather than in the renderer — a sum is not an
+  absence, and "this journal carries no ledger records" is a different claim
+  from "this build did not look". A survey of only sub-`0.6` journals reports
+  `null` for the same reason.
+
+  **Three of the five bump triggers fire**, and it is worth naming which:
+  clause 1 (`prompt` is a new kind), clause 2 (`expects` is a new closed
+  vocabulary), and clause 3 (per-record `origin` required on four kinds, and a
+  blank `user.name` rejected — both make previously-valid records invalid).
+  `user` gets its own branch in the header scan rather than joining the flat
+  `IDENTITY_FIELDS` list, whose loop would have tightened `0.4` and `0.5`
+  retroactively. An unrecognised `user` shape (`user: "Arman"`, `user: {}`)
+  fails closed rather than being dropped, on the same ground as `expects`.
+
+- **kit: the run-ledger producer.** The recorder no longer stops at "an agent
+  came back". At a subagent's terminal it scans the **untruncated** return text
+  for lines in the reviewer tag grammar — `- [blocker] …`, `[concern]`,
+  `[looks-good]`, `[false-premise]` — and writes one `finding` record per match,
+  joined to the dispatch it came out of. That is a line grammar and not a
+  classifier: nothing reads the return for meaning, so a return with no tag
+  lines produces no findings, which is the honest reading of a return that used
+  no contract.
+
+  Whether a dispatch expected findings at all is decided from a file rather than
+  an opinion. At `PreToolUse` the recorder reads
+  `.claude/agents/<subagent_type>.md` and sets `expects: "findings"` when its
+  `## Output format` section mentions `[blocker]`. `subagent_type` is
+  payload-supplied, so it is validated against a conservative name shape before
+  any path is built; the dispatch also records how the read went —
+  `read` / `missing` / `unreadable` / `unsafe-name`, metadata no verdict reads —
+  so a dispatch missing `expects` because nothing could be read is
+  distinguishable in the file from one whose agent is not a reviewer.
+
+  **`nullius-kit witness ledger stage|resolution|decision|check`** writes the
+  coordinator's own half into the same journal, and **`witness ledger findings
+  [--open]`** lists what the reviewers actually raised — read out of the file,
+  so a coordinator that forgot a blocker still sees it. Every record it writes
+  carries `origin: "self-reported"`; the header's `hooks` is never inherited.
+  Three refusals happen before any write: no session is guessed (`--session`,
+  else `CLAUDE_CODE_SESSION_ID`, else exit 2 naming both — never the newest file
+  by mtime), a value outside a closed vocabulary is refused rather than left for
+  the validator, and **`finding` is not an offered kind** — a hand-written one
+  would be byte-identical to an extracted one, and the ledger verdicts exist
+  precisely because those are different tiers. That last one is a command-surface
+  convention, not a property of the file, and is listed under known limitations
+  below rather than implied to be a mechanism.
+
+  `report` also gains optional `model`, `usage` and `usage_source`. Synchronous
+  returns take them from the payload; asynchronous ones sum `message.usage` over
+  the transcript's assistant turns, read **before** the lock under a byte cap
+  and a wall-clock budget strictly below the lock wait, and omitted with a
+  stderr note when either is exceeded. Both budgets are parameters of the
+  reader, so the under-cap-but-slow branch is testable rather than argued about.
+  Additive optional metadata no verdict reads — it earns no bump on its own.
+
+  The header gains `user: { name }` from `git config`, resolved inside the same
+  per-call and total budgets the other identity fields use. The governing
+  constraint is not git failing but git succeeding slowly: identity is resolved
+  before the journal's advisory lock is taken, so no git slowness can cost a
+  hook its records.
+
+- **plugin: prompts are recorded.** `hooks.json` gains a `UserPromptSubmit`
+  entry routed to the same `witness-record.sh`. The recorder writes one `prompt`
+  record and stamps the harness's `prompt_id` onto each later `dispatch` and
+  `mutation` that carries it, so what was asked and what it caused are joined by
+  the harness's own key rather than by timestamps. The agent's reply is
+  deliberately not recorded: `last_assistant_message` is the agent's
+  self-account, which is the tier this journal exists to distrust.
+  `NULLIUS_WITNESS_PROMPTS=0` records a length and a hash instead of the text.
+
+  Two properties of the shim, both load-bearing. Its stdout is redirected to
+  stderr **for every event, not just the new one** — `UserPromptSubmit` is the
+  one event whose hook stdout the harness returns to the model, the default
+  runner is `npx`, and `npx` prints to stdout on a cold cache, which would
+  arrive as instruction-shaped text nobody wrote. And the runner is bounded by a
+  `timeout` wrapper **inside the script** rather than by a `timeout` key in
+  `hooks.json`: a harness-killed process never reaches the script's own
+  `exit 0`, and that last line is where the never-blocks guarantee actually
+  lives. A delegated bound is a convention; an in-script one is a mechanism.
+
 - **`nullius oracle <range>` — conservation of the thing that grades the work.**
   The artifact that decides whether work is done is writable by the thing being
   measured, and when a change makes a test fail there are two ways back to green
@@ -301,6 +399,67 @@ heading, following the 0.8.0 precedent.
 
 ### Changed
 
+- **`SILENT-REVIEWER` is scoped, and this is a loosening — the first one this
+  schema has shipped.** At `0.6` the verdict considers only dispatches carrying
+  `expects: "findings"`. Below `0.6` it is unchanged and unscoped. Same bytes,
+  newer version, *more* records valid.
+
+  The measurement is why. Under a producer that records every dispatch, an
+  unscoped `SILENT-REVIEWER` fires on every `found` return from an `Explore` or
+  implementing agent, none of which use the tag contract: on this repository's
+  own corpus, 0 findings at `0.2` and 255 at `0.3` from a producer whose
+  behaviour had not changed. A verdict that fires on three dispatches in five
+  gets learned as noise, and a verdict read as noise is a gate that has stopped
+  working while still appearing to run. The verdict's own rationale already
+  presumed the dispatch was a reviewer; that presumption is now declared in the
+  record, from a file, by the only party that can read one.
+
+  **One fail-open direction, stated here rather than discovered later.** A
+  reviewer whose definition file the recorder cannot read gets no `expects`, and
+  is therefore a dispatch the verdict cannot fire on where at `0.5` it would
+  have. The dispatch says so — `agent_definition: "unreadable"` or `"missing"` —
+  but nothing fails on it. The denominator is also editable in-session: deleting
+  `[blocker]` from an agent's output section disarms the verdict for every later
+  dispatch, and either edit appears in the journal only as an ordinary
+  `mutation`. The remedy belongs to `nullius wiring`, is not built, and is
+  recorded as a follow-up rather than implied to be covered.
+
+  **The fixture pair is inverted, and had to be.** `v0.3-compat-run.jsonl`
+  proved a *tightening* by passing at the older version on identical bytes.
+  `v0.5-compat-run.jsonl` is the same bytes as `v0.6-run.jsonl` and must **fail**
+  at `0.5`. A pair where both halves pass, or both fail, proves nothing about
+  which way the floor points. What the twin cannot do is isolate the loosening:
+  it fails at `0.5` for two independent reasons — the unscoped verdict and the
+  unknown `prompt` kind — and an exit code cannot say which fired. The
+  "fires unscoped at 0.5" unit test is what pins the predicate's direction, and
+  the CI comment beside the twin says so.
+
+- **The version-bump rule gains a fifth trigger: a loosening.** The rule's
+  criterion has always been *the set of valid records changes*, and clause 3
+  named only one direction. Take `0.6`'s scoping on its own, with the rest set
+  aside: nothing becomes invalid, no kind is added, no vocabulary grows, no
+  verdict is born — clauses 1 to 4 are all silent — and yet the same records now
+  validate differently, which is precisely what a declared version is for.
+
+  `0.6` did not need clause 5; the bump was already owed by clauses 1, 2 and 3.
+  The loosening rode along, and the clause was written down so the next one
+  cannot argue it is free.
+
+  **It was appended, never inserted**, even though it is clause 3's mirror and
+  reads naturally beside it. Renumbering would have been a one-line edit that
+  silently falsified every existing citation of "clause 4" — in the schema doc,
+  in this changelog, and in archived proposals whose arguments turn on which
+  clause they name. A rule whose clause numbers move is a rule nothing can cite.
+  Every restatement was swept in the same commit, so none is four-of-five at any
+  point.
+
+- **`spec/witness-journal.md` is the canonical statement of the bump rule, and
+  is now the only one.** Two documents claimed it. `openspec/specs/witness/spec.md`
+  now says it restates the rule and does not own it: where the two disagree, the
+  spec doc is the rule and the restatement is the defect. The published spec wins
+  because it is the one the README sends readers to, and it carries the fixture
+  table and the version history.
+
 - **Public surface.** `JournalHeader` gains three fields, and `surveyJournals`
   / `JournalSurvey` / `SurveyedJournal` are newly exported. Reading is
   unaffected: code that consumes a `JournalReport` and ignores the new fields
@@ -322,17 +481,47 @@ heading, following the 0.8.0 precedent.
 
 ### Known limitation
 
-- **The hook recorder still declares `0.2`.** Bumping the producer was scoped
-  into this work and then measured and scoped back out. The kit cannot emit a
-  `finding` record at all, so under any schema at `0.3` or later every `found`
-  report earns `SILENT-REVIEWER`: on this repository's own corpus, 0 findings
-  at `0.2` and 255 at `0.3`, from a producer whose behaviour had not changed.
-  The cause is one level below the gate — for a hook journal `outcome: "found"`
+- **The `UserPromptSubmit` payload shape is an assumption, not a recording.**
+  Every other shape the recorder reads is pinned to a captured payload under
+  `spec/fixtures/probes/claude-code/`. That event has no probe in the committed
+  corpus, and capturing one is still open. The parser therefore looks for the
+  prompt text under several plausible keys — `prompt`, `prompt_text`,
+  `user_prompt`, `text` — and, finding none, records **nothing** and says so on
+  stderr rather than writing a `prompt` record that asserts the operator spoke
+  while saying nothing about what they said.
+
+  So: an absent `prompt` record means "not recorded", never "no prompt", and it
+  is as consistent with the harness having moved a key as with a quiet session.
+  This is documented rather than shipped quietly because the fallback list is
+  the tell — when a probe lands it collapses to the observed key and the
+  fallbacks go.
+
+- **The plugin must be reinstalled before the new hook fires at all.**
+  `hooks.json` gained the `UserPromptSubmit` entry, and a plugin installed
+  before that ships the old file. Nothing degrades visibly: every other event
+  keeps recording exactly as it did, the journal keeps validating, and prompts
+  are simply never recorded, with nothing in the output to say why. Reinstall
+  via `/plugin`, then confirm with `nullius-kit doctor` — its managed-hooks
+  check knows the new event, and it reports `prompts: recorded / hashed only`
+  as a fact read from the environment it can actually see.
+
+- **A hand-appended `finding` is byte-identical to a hook-extracted one.**
+  `witness ledger` refuses the kind, which is a command-surface convention and
+  not a property of the file: the journal is local, this change ships one
+  writer, and nothing stops an editor. A file-level mechanism belongs to journal
+  sealing and is not in this change. The cross-tier comparison
+  `SUPPRESSED-FINDING` makes is therefore as strong as the assumption that the
+  journal was written by these two producers.
+
+- ~~**The hook recorder still declares `0.2`.**~~ **Closed by the above.** The
+  producer now writes `0.6` and emits `finding` records, and the calibration
+  problem that had blocked the bump — 0 findings at `0.2` and 255 at `0.3` on
+  this repository's own corpus, from a producer whose behaviour had not
+  changed — is what the `SILENT-REVIEWER` scoping under `### Changed` answers.
+  The cause was one level below the gate: for a hook journal `outcome: "found"`
   means only that the subagent's final message was non-empty, so a reviewer
-  semantic is being read into a harness-derived field. That is a question about
-  the outcome vocabulary rather than about identity, and it is deferred with
-  its measurements recorded rather than patched over. The identity fields are
-  readable at any declared version, so they are written and read today.
+  semantic was being read into a harness-derived field. `expects` is where that
+  semantic now lives, declared per dispatch and read from a file.
 
 ## 0.8.0
 

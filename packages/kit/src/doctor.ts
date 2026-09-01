@@ -25,6 +25,7 @@ import { isAbsolute, join } from "node:path";
 
 import { isJournalFailure, parseConfig, validateJournal } from "@nullius-inverba/claims";
 
+import { SCHEMA_VERSION } from "./journalFile";
 import { planRecords, type RecordContext } from "./record";
 
 export type Status =
@@ -70,6 +71,36 @@ interface HookEntry {
   command: string;
 }
 
+/**
+ * The harness events this build turns into records.
+ *
+ * Kept here so a managed hook entry can be reported against what the recorder
+ * actually does with the event, rather than only against whether its command
+ * resolves. A hook wired to an event this build ignores runs perfectly and
+ * records nothing, and the only symptom is an absence — which is precisely the
+ * failure `doctor` exists to make loud.
+ *
+ * `UserPromptSubmit` is the newest member and the reason this list exists:
+ * without it, a correctly installed prompt hook would have been reported the
+ * same way as one pointed at an event nothing reads.
+ *
+ * `Stop` is deliberately absent from this set and present in `CHECKING_EVENTS`
+ * instead. It is wired to `witness-check.sh`, which validates rather than
+ * records, so an entry for it is correct and must not be reported as an event
+ * nothing reads — the two sets together are what `unrecordedEventNote` asks.
+ */
+const RECORDED_EVENTS: ReadonlySet<string> = new Set([
+  "SessionStart",
+  "SessionEnd",
+  "PreToolUse",
+  "PostToolUse",
+  "SubagentStop",
+  "UserPromptSubmit",
+]);
+
+/** Events whose hook validates the journal rather than appending to it. */
+const CHECKING_EVENTS: ReadonlySet<string> = new Set(["Stop"]);
+
 function readManagedHooks(root: string): { entries: HookEntry[]; unreadable: boolean } {
   const settingsPath = join(root, ".claude", "settings.json");
   if (!existsSync(settingsPath)) return { entries: [], unreadable: false };
@@ -94,8 +125,36 @@ function readManagedHooks(root: string): { entries: HookEntry[]; unreadable: boo
   }
 }
 
+/**
+ * What to add to a hook entry's detail when its event is not one this build
+ * records.
+ *
+ * An observation appended to the existing detail rather than a status of its
+ * own, and deliberately not a failure: the entry may be wired to an event a
+ * NEWER kit records, or to one this tool knows nothing about, and calling
+ * either a fault would be a claim about a build `doctor` is not running.
+ */
+function unrecordedEventNote(event: string): string {
+  if (RECORDED_EVENTS.has(event) || CHECKING_EVENTS.has(event)) return "";
+  return ` — note: this build's recorder does not read ${event}, so the hook will run and write nothing`;
+}
+
 /** The variable the recorder tests, and the only one this check reads. */
 const CAPTURE_VAR = "NULLIUS_WITNESS_PROBE";
+
+/** The variable that decides whether prompt TEXT reaches the journal. */
+const PROMPT_VAR = "NULLIUS_WITNESS_PROMPTS";
+
+/** The name the prompt-recording check reports under. */
+const PROMPT_CHECK = "prompt recording";
+
+/**
+ * What an unread source could still do to this setting — and it is the
+ * opposite of what one could do to capture. An unread export turns capture ON
+ * and turns prompt text OFF, so the two checks cannot share a residue clause
+ * without one of them describing the wrong direction.
+ */
+const PROMPT_RESIDUE = "prompt text may still be withheld by sources this check does not read";
 
 /** The name the capture-state check reports under. */
 const CAPTURE_CHECK = "payload capture";
@@ -182,9 +241,17 @@ function stateOf(read: SettingsRead): string {
  * without the other reads as a completeness claim, which is the one thing this
  * check is not entitled to make.
  */
-function checkedAndResidue(reads: SettingsRead[]): string {
+function checkedAndResidue(
+  reads: SettingsRead[],
+  residue = "capture may still be enabled by sources this check does not read",
+): string {
   const checked = reads.map((read) => `${read.label} (${stateOf(read)})`).join(", ");
-  return `checked ${checked}; capture may still be enabled by sources this check does not read, among them the environment of the process that launched the harness`;
+  // The residue clause is a parameter because the sentence names what could
+  // still be true, and that differs per variable: an unread source flips
+  // capture ON and flips prompt text OFF. A shared "capture may still be
+  // enabled" on the prompt check would describe the wrong direction of the
+  // wrong setting, in a report whose whole job is to be quotable.
+  return `checked ${checked}; ${residue}, among them the environment of the process that launched the harness`;
 }
 
 /** What `.nullius/probes/` holds, said without a verdict about why. */
@@ -298,6 +365,75 @@ export function captureChecks(
         ].join("");
 
   return [{ name: CAPTURE_CHECK, status: "fact", detail: `${said}. ${describeLiveCaptures(root)}` }];
+}
+
+/**
+ * Whether prompt text reaches the journal — a fact, never a verdict.
+ *
+ * `UserPromptSubmit` writes one `prompt` record per operator turn. With
+ * `NULLIUS_WITNESS_PROMPTS=0` that record carries a length and a hash instead
+ * of the text: proof a prompt happened, and nothing a reader can act on. Which
+ * of the two is in force is a privacy decision belonging to the operator, so
+ * there is no correct value here and this check invents no pass or fail for it.
+ *
+ * Read from the same settings files `captureChecks` reads, and for the same two
+ * reasons stated there: `doctor`'s own `process.env` governs `doctor`, not the
+ * hook subprocess, and nothing in this repository establishes the harness's
+ * precedence between settings files — so every setter is reported with the
+ * value it carries and none is named the winner.
+ *
+ * The residue is that a shell export into the harness is invisible from here.
+ * That is why the default branch says what no settings file sets rather than
+ * "prompts: recorded": the second would be a claim about the running harness,
+ * made from three file reads.
+ */
+export function promptChecks(
+  root: string,
+  userSettingsPath?: string,
+  userSettingsLabel?: string,
+): Check[] {
+  const reads = [
+    readSettingsEnv(
+      join(root, ".claude", "settings.local.json"),
+      ".claude/settings.local.json",
+      PROMPT_VAR,
+    ),
+    readSettingsEnv(join(root, ".claude", "settings.json"), ".claude/settings.json", PROMPT_VAR),
+    userSettingsPath === undefined
+      ? { label: "the user settings file", value: null, unreadable: false, absent: false, notSupplied: true }
+      : readSettingsEnv(userSettingsPath, userSettingsLabel ?? userSettingsPath, PROMPT_VAR),
+  ];
+
+  const setters = reads.filter((read) => read.value !== null);
+  const unreadable = reads.filter((read) => read.unreadable);
+
+  if (setters.length === 0 && unreadable.length > 0) {
+    return [
+      {
+        name: PROMPT_CHECK,
+        status: "unknown",
+        detail: `could not parse ${unreadable.map((read) => read.label).join(", ")} — ${PROMPT_VAR} not determined there, and no settings file this check could parse sets it; ${checkedAndResidue(reads, PROMPT_RESIDUE)}`,
+      },
+    ];
+  }
+
+  const said =
+    setters.length === 0
+      ? `no settings file this check could parse sets ${PROMPT_VAR}, so prompts: recorded (text) unless the harness's environment says otherwise — ${checkedAndResidue(reads, PROMPT_RESIDUE)}`
+      : [
+          setters
+            .map(
+              (read) =>
+                `${read.label} says prompts: ${read.value === "0" ? "hashed only" : "recorded"} (${PROMPT_VAR}=${read.value})`,
+            )
+            .join("; "),
+          setters.length > 1 ? "; this check does not adjudicate precedence between settings files" : "",
+          unreadable.length > 0
+            ? `; could not parse ${unreadable.map((read) => read.label).join(", ")}`
+            : "",
+        ].join("");
+
+  return [{ name: PROMPT_CHECK, status: "fact", detail: said }];
 }
 
 /** Shell operators that are not the command, and whose operands are not either. */
@@ -630,6 +766,15 @@ export function probeChecks(probeDir: string): Check[] {
     // keeps the probe about payload SHAPE rather than about journal history.
     resolveAgent: () => "d:probe",
     hasTerminal: () => false,
+    // The three injected readers are required by `RecordContext`, and every
+    // one of them touches the filesystem in `cli.ts`. This check replays a
+    // committed recording to see which KINDS a payload shape yields, so all
+    // three answer the emptiest true answer instead: nothing here reads an
+    // agent definition, a transcript, or the operator's prompt settings, and
+    // `doctor` is not the place to start.
+    readAgentDefinition: () => null,
+    readTranscriptUsage: () => null,
+    recordPromptText: () => true,
   };
 
   return expectations.map(({ file, wants, describe }) => {
@@ -675,6 +820,13 @@ export function liveProof(): Check[] {
     openDispatches: () => [{ id: "d:proof", task: "the live proof" }],
     resolveAgent: () => "d:proof",
     hasTerminal: () => false,
+    // As above: the proof is that the installed recorder and the installed
+    // validator agree about a synthetic payload, so it reads nothing off disk.
+    // Its dispatch names no `subagent_type`, so the definition reader is never
+    // called at all; it is supplied because the type requires an answer.
+    readAgentDefinition: () => null,
+    readTranscriptUsage: () => null,
+    recordPromptText: () => true,
   };
 
   const dispatch = planRecords(
@@ -708,7 +860,17 @@ export function liveProof(): Check[] {
     ];
   }
 
-  const header = { kind: "journal", version: "0.2", origin: "hooks", session: "doctor-live-proof" };
+  // The version this build actually writes, imported rather than restated. A
+  // hardcoded copy is how the live proof came to certify `0.2` journals long
+  // after the producer had moved: the round trip would keep passing against a
+  // floor nothing in the tree writes any more, which is a green check for a
+  // check that is no longer the one being made.
+  const header = {
+    kind: "journal",
+    version: SCHEMA_VERSION,
+    origin: "hooks",
+    session: "doctor-live-proof",
+  };
   const journal = [header, ...records].map((record) => JSON.stringify(record)).join("\n");
   const report = validateJournal(journal);
   const failures = report.findings.filter((finding) => isJournalFailure(finding.verdict));
@@ -773,7 +935,11 @@ export function runChecks(options: DoctorOptions): DoctorReport {
   } else {
     for (const entry of entries) {
       const result = resolveHookCommand(root, entry.command);
-      checks.push({ ...result, name: `${entry.event} ${result.name}` });
+      checks.push({
+        ...result,
+        name: `${entry.event} ${result.name}`,
+        detail: `${result.detail}${unrecordedEventNote(entry.event)}`,
+      });
     }
   }
 
@@ -781,6 +947,7 @@ export function runChecks(options: DoctorOptions): DoctorReport {
   // Before the live proof, not after: live proof is the report's closing
   // statement and a test holds it there.
   checks.push(...captureChecks(root, userSettingsPath, userSettingsLabel));
+  checks.push(...promptChecks(root, userSettingsPath, userSettingsLabel));
   checks.push(...liveProof());
 
   return { checks, failed: checks.some((check) => check.status === "fail") };

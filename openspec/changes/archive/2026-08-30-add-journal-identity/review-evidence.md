@@ -525,9 +525,21 @@ information. The pipeline pauses rather than looping a fourth time.
 **[blocker] The producer bump (tasks 3.8–3.10) cannot land as specified, and
 this is now measured rather than argued.**
 
-The kit emits exactly four record kinds and `finding` is not among them:
+The kit emits exactly four record kinds and `finding` is not among them. (That
+was established at the time by a search for `"finding"` across
+`packages/kit/src/`'s non-test TypeScript, which returned no results. It is
+quoted as prose rather than left as a live absence anchor because it is **no
+longer true** — see the note below. The finding, and the decision it drove,
+stand as the record of what was known then.)
 
-**Evidence:** `grep -rn '"finding"' packages/kit/src/ --include='*.ts' --exclude='*.test.ts'` → 0 results
+**Superseded 2026-08-31 by `add-run-ledger-producer`**, the follow-up this
+blocker asked for: the recorder now extracts findings from a reviewer's
+return and emits the kind, which is what makes the producer bump landable.
+(Deliberately not in a blockquote — the checker does not parse `**Evidence:**`
+inside one, so a quoted anchor is a citation that looks like grounding and is
+gated by nothing.)
+
+**Evidence:** `packages/kit/src/record.ts:766@19f7bd4` — `      kind: "finding",`
 
 So under any schema at `0.3` or later, the two verdicts behind the ledger gate
 behave structurally, not statistically: `SUPPRESSED-FINDING` is unreachable

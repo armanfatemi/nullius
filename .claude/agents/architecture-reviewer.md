@@ -104,6 +104,12 @@ That incident is why Evidence Anchors and `**Binds at:**` exist at all. `nullius
 
 ## Output format
 
+**A review with nothing to raise returns at least one `[looks-good]` line.** An
+untagged "nothing to report" is recorded as silence, not as a clean bill: the
+recorder extracts findings from these tag lines, and a return that carries none
+is indistinguishable from a reviewer that never looked. Saying the nothing
+explicitly is what discharges `SILENT-REVIEWER`.
+
 You MUST return your findings in this exact shape. `proposal-to-pr` now exists and consumes it (`.claude/skills/proposal-to-pr/SKILL.md`): its Stage 2 and Stage 6 decisions turn on the `[blocker]` and `[false-premise]` markers, the synthesis of your report is appended to the change's committed `review-evidence.md`, that file seeds the PR body, and `retro-writer` reads it to count what each reviewer actually caught. That is review-spine's own sequence completed — the roster landed first, and the machine that dispatches it got its own plan after. A human still reads your report as well, so the shape has two audiences now rather than one; keep to it exactly.
 
 ```

@@ -31,7 +31,9 @@
  * to and — the part that matters — who wrote it: `origin: "hooks"` means the
  * harness runtime emitted these records and the agent could not decline to;
  * `origin: "self-reported"` means an agent wrote them about itself, which
- * certifies internal consistency and nothing else. And a `mutation` kind
+ * certifies internal consistency and nothing else. From 0.6 the header's
+ * `origin` covers **the records that carry no origin of their own**, because
+ * the tiers now mix inside one file. And a `mutation` kind
  * records a file change, which advances the per-path hash map for invariant 2
  * without pretending anything was checked: an edit verifies nothing, so
  * nothing may rest on one.
@@ -51,6 +53,15 @@
  * record that was valid became invalid, which is what bumps a schema; the
  * fields being optional does not rescue it, because optionality is a property
  * of a field and validity is a property of a record.
+ *
+ * **Schema 0.6** adds the run-ledger producer's half of the bargain: a
+ * `prompt` kind for the operator's turn (trigger 1), a **required** per-record
+ * `origin: "self-reported"` on `stage`, `resolution`, `decision` and `check`
+ * (trigger 3), a `user` on the header that must name someone when present, and
+ * a closed `expects` on `dispatch` that scopes SILENT-REVIEWER to the
+ * dispatches which declared a review contract. That last one is a loosening,
+ * which is also a change to the set of records a verdict fires on — it rides
+ * on a bump the other two owed anyway.
  *
  * See spec/witness-journal.md.
  */
@@ -95,7 +106,13 @@ export type JournalOrigin = "hooks" | "self-reported";
 /** The v0.2 header record: which schema, and whose account. */
 export interface JournalHeader {
   version: string;
-  /** null when the header omits `origin` or names one this schema does not know. */
+  /**
+   * The origin of every record **that carries no origin of its own** — from
+   * 0.6 the four coordinator kinds carry theirs, so this is no longer a
+   * statement about the whole file. null when the header omits `origin` or
+   * names one this schema does not know; records left to a null header origin
+   * are `unattributed`, never hook-tier.
+   */
   origin: JournalOrigin | null;
   /** The harness session this journal belongs to, when the producer knows it. */
   session: string | null;
@@ -115,6 +132,59 @@ export interface JournalHeader {
   head: string | null;
   /** A stable identifier for the worktree, never a filesystem path. */
   worktree: string | null;
+  /**
+   * v0.6. Who was steering — the tree's operator, from `git config user.name`.
+   * Absent when the producer did not record one; a present-but-unusable shape
+   * is MALFORMED at 0.6 rather than quietly dropped, so it never appears here
+   * as an absence it is not.
+   */
+  user?: { name: string };
+}
+
+/**
+ * v0.6. How many of each ledger kind the journal carries. Namespaced because
+ * `JournalReport.findings` is already the array of validator findings and is
+ * consumed as one in three CLIs — a counter of that name beside it would be a
+ * redefinition wearing an addition's clothes.
+ */
+export interface LedgerCounts {
+  stages: number;
+  /** `finding` RECORDS. Not `JournalReport.findings`, which are verdicts. */
+  findings: number;
+  resolutions: number;
+  checks: number;
+  decisions: number;
+  prompts: number;
+}
+
+/**
+ * v0.6. Which tier each record belongs to, once per-record `origin` exists and
+ * the header's value covers only the records that do not carry their own.
+ *
+ * A partition, not three samples: every record the validator could read lands
+ * in exactly one of the three, so a tier cannot go missing between them.
+ *
+ * The `journal` header is **not** among them, and the sum is therefore
+ * `JournalReport.records` minus one on any journal that has a header — which,
+ * at 0.6, is every journal, since the version is only known from a header.
+ * Saying "the sum is the record count" would be wrong by exactly one, always,
+ * and wrong in the flattering direction: it would imply a tier accounted for
+ * the header rather than that the header belongs to no tier. The header
+ * declares whose the *other* records are; it is the frame, not a record in
+ * the picture.
+ */
+export interface ProvenanceCounts {
+  /** No origin of their own, under a header that says `hooks`. */
+  hooks: number;
+  /** Their own `origin: "self-reported"`, or none under a self-reported header. */
+  selfReported: number;
+  /**
+   * Records that belong to nobody: no origin of their own under a header whose
+   * origin is null or absent, plus any record whose own origin this schema
+   * cannot read. Counting these as hook-tier would be exactly the flattering
+   * default the field exists to remove.
+   */
+  unattributed: number;
 }
 
 export interface JournalFinding {
@@ -141,6 +211,15 @@ export interface JournalReport {
   version: string;
   /** The header record, or null when the journal carries none. */
   header: JournalHeader | null;
+  /**
+   * v0.6 ledger counts, or **null below 0.6** — the floor is decided here, by
+   * the private `versionAtLeast`, and never by a caller. 0.3–0.5 journals may
+   * carry ledger kinds; their summaries stay exactly as they are today, so the
+   * summary changes shape once, at the floor where the provenance line does.
+   */
+  ledger: LedgerCounts | null;
+  /** v0.6 provenance counts, on the same rule and the same floor. */
+  provenance: ProvenanceCounts | null;
 }
 
 const PASSING: ReadonlySet<JournalVerdict> = new Set<JournalVerdict>(["ok"]);
@@ -167,7 +246,14 @@ const KINDS_V02 = [...KINDS_V01, "mutation"] as const;
  * invented; see openspec/changes/add-run-ledger/corpus-derivation.md.
  */
 const KINDS_V03 = [...KINDS_V02, "stage", "finding", "resolution", "check", "decision"] as const;
-type Kind = (typeof KINDS_V03)[number];
+/**
+ * v0.6 — the human's turn. A `prompt` is the one record in the journal the
+ * agent did not cause: it is what the operator asked for, joined to the work
+ * it caused by the harness's own `prompt_id`. A new kind is trigger 1 of the
+ * versioning rule, which is one of the three reasons 0.6 exists.
+ */
+const KINDS_V06 = [...KINDS_V03, "prompt"] as const;
+type Kind = (typeof KINDS_V06)[number];
 
 /**
  * Schemas this build can read, **in ascending order**. Anything else is
@@ -181,7 +267,7 @@ type Kind = (typeof KINDS_V03)[number];
  * Exported for that test. Deliberately absent from `index.ts`: the public
  * barrel re-exports by explicit name list, and this is an internal constant.
  */
-export const VERSIONS = ["0.1", "0.2", "0.3", "0.4", "0.5"] as const;
+export const VERSIONS = ["0.1", "0.2", "0.3", "0.4", "0.5", "0.6"] as const;
 
 /**
  * Version floors, compared by **index into `VERSIONS`** and never by string.
@@ -190,10 +276,17 @@ export const VERSIONS = ["0.1", "0.2", "0.3", "0.4", "0.5"] as const;
  * defect an equality gate causes at the next bump, merely deferred to a
  * version nobody is looking at yet.
  *
- * One predicate for every version-gated behaviour in this file, four call
- * sites: the identity-field rejection, the `verification.rev` rejection, the
- * `mutation.rev` rejection, and the ledger verdicts. Four separate comparisons
- * would be four chances to write one of them as an equality.
+ * One predicate for every version-gated behaviour in this file, nine call
+ * sites: the identity-field rejection, the header `user` rejection, the
+ * `verification.rev` rejection, the `mutation.rev` rejection, the
+ * `dispatch.expects` rejection, the per-record `origin` requirement, the
+ * ledger verdicts, SILENT-REVIEWER's 0.6 scoping, and the `ledger` /
+ * `provenance` counter blocks. Nine separate comparisons would be nine
+ * chances to write one of them as an equality.
+ *
+ * It stays private on purpose. `cli.ts` renders the counter blocks on
+ * presence — they are `null` below their floor — so the floor is decided once,
+ * here, and no caller gets a second copy of the comparison to drift from.
  */
 function versionAtLeast(version: string, floor: (typeof VERSIONS)[number]): boolean {
   const declared = VERSIONS.findIndex((known) => known === version);
@@ -228,6 +321,13 @@ const VOCABULARY: ReadonlyMap<string, readonly Kind[]> = new Map([
   // finding; the version moves so a reader knows a clean validate no longer
   // means what it used to.
   ["0.5", KINDS_V03 as readonly Kind[]],
+  // 0.6 adds `prompt` and must therefore be LAST. Insertion order into this
+  // map is what `KIND_INTRODUCED` below derives its "arrived in schema X"
+  // message from — exactly as `VERSIONS` order drives the version floors — so
+  // an entry inserted above an earlier version would attribute every kind they
+  // share to the wrong schema, and the record from the future would be told to
+  // declare a header that does not accept it.
+  ["0.6", KINDS_V06 as readonly Kind[]],
 ]);
 
 /**
@@ -247,6 +347,41 @@ const KIND_INTRODUCED: ReadonlyMap<string, string> = (() => {
 })();
 const ORIGINS = ["hooks", "self-reported"] as const;
 
+/**
+ * The only value a per-record `origin` may take, and deliberately NOT
+ * `ORIGINS`. That list is the header's, and it contains `"hooks"` — which on a
+ * `resolution` would be a coordinator claiming the harness attested a judgement
+ * the coordinator made about its own run. The whole point of the per-record
+ * field is that the tiers mix inside one journal, so the tier a record may
+ * claim for itself is the weaker one, and only that one.
+ */
+const RECORD_ORIGIN = "self-reported";
+
+/**
+ * Kinds a coordinator writes about its own run. At 0.6 each one carries
+ * `origin: "self-reported"` — required, because the header's origin is the
+ * origin of every record that does NOT carry its own, and a hook-tier header
+ * would otherwise launder these into the tier they are least entitled to.
+ * `finding` is absent by design: the recorder extracts findings from the
+ * harness payload, so the header's `hooks` is true of them.
+ */
+const SELF_REPORTED_KINDS: ReadonlySet<Kind> = new Set<Kind>([
+  "stage",
+  "resolution",
+  "decision",
+  "check",
+]);
+
+/**
+ * What a dispatch may say it expects back. A closed vocabulary with one member
+ * rather than a free string: SILENT-REVIEWER reads this field at 0.6, so a
+ * producer typo would silently shrink the verdict's denominator to nothing and
+ * no finding anywhere would say so. Every other closed vocabulary in this file
+ * reports rather than skips, and a field a verdict reads has the least claim to
+ * an exception.
+ */
+const EXPECTATIONS = ["findings"] as const;
+
 /** The version applied to a journal that carries no header. */
 const IMPLIED_VERSION = "0.1";
 
@@ -255,15 +390,27 @@ const IMPLIED_VERSION = "0.1";
  * load-bearing one: an explicit nothing-found is how a reviewer proves it was
  * not silent, so a schema that only accepted problems would make
  * SILENT-REVIEWER unanswerable.
+ *
+ * Exported, and named in `index.ts`. Unlike `VERSIONS` — which is exported for
+ * a unit test and kept out of the barrel because a caller comparing versions
+ * itself is the second copy of a floor this file decides once — a closed
+ * vocabulary has no second-copy hazard: it is the *definition* the validator
+ * enforces, and a producer that wants to refuse a bad value before it writes
+ * has to be able to ask for it. The alternative is what this repository had
+ * for one chunk — the list restated in `packages/kit/src/cli.ts` behind a
+ * warning, with a test holding the copy honest in one direction only, because
+ * a member the kernel ADDS is invisible to a producer that never sees it.
  */
-const SEVERITIES = ["blocker", "concern", "looks-good"] as const;
+export const SEVERITIES = ["blocker", "concern", "looks-good"] as const;
 type Severity = (typeof SEVERITIES)[number];
 
 /**
  * A finding's fate. Derived from the corpus, where the five most common
  * outcomes were ones a guessed vocabulary had missed.
+ *
+ * Exported for the producer, for the reason given on `SEVERITIES` above.
  */
-const RESOLUTION_OUTCOMES = [
+export const RESOLUTION_OUTCOMES = [
   "resolved",
   "fixed",
   "dropped",
@@ -287,8 +434,8 @@ const MERGE_OUTCOMES: ReadonlySet<ResolutionOutcome> = new Set<ResolutionOutcome
   "folded-in",
 ]);
 
-/** A command either passed or it did not. */
-const CHECK_OUTCOMES = ["pass", "fail"] as const;
+/** A command either passed or it did not. Exported with the two above. */
+export const CHECK_OUTCOMES = ["pass", "fail"] as const;
 
 interface JournalRecord {
   line: number;
@@ -324,6 +471,21 @@ interface JournalRecord {
     rationale: unknown;
     departed_from: unknown;
     resolves: unknown;
+    // v0.6 — the run-ledger producer
+    /** On `dispatch`: what the dispatched agent is expected to return. */
+    expects: unknown;
+    /** On the four coordinator kinds: the tier the record claims for itself. */
+    origin: unknown;
+    /** On `prompt`: the hashed mode's two halves. `text` is listed above. */
+    chars: unknown;
+    hash: unknown;
+    /** On `prompt`: metadata, read by nothing — listed so the index is whole. */
+    truncated: unknown;
+    /**
+     * Header-only, and read off the parsed header rather than through this
+     * type. Listed so this stays a complete index of the keys this file names.
+     */
+    user: unknown;
   }>>;
 }
 
@@ -362,6 +524,14 @@ function asResolutionOutcome(value: unknown): ResolutionOutcome | null {
 /** A positive integer, or null. Iteration 0 is not an iteration. */
 function asIteration(value: unknown): number | null {
   return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : null;
+}
+
+/**
+ * A non-negative integer. Zero is allowed here and not in `asIteration`: an
+ * empty prompt is a length, whereas iteration 0 is not an iteration.
+ */
+function isNonNegativeInteger(value: unknown): boolean {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
 }
 
 /** An array of non-empty strings, or null when present and malformed. */
@@ -496,6 +666,33 @@ function scanHeader(lines: string[]): HeaderScan {
       });
     }
 
+    // v0.6. The operator, in the same class as `branch` and `worktree` — and
+    // deliberately NOT in IDENTITY_FIELDS above. That list is flat and
+    // string-typed, and its loop rejects a blank at 0.4; adding a nested
+    // `user` to it would tighten 0.4 and 0.5 retroactively, which is the one
+    // thing a schema floor exists to prevent.
+    //
+    // The name is recorded at every declared version, like the other three.
+    // What is gated is the rejection — and it fails CLOSED on an unrecognised
+    // shape (`user: "Arman"`, `user: {}`) for the reason `expects` does: a
+    // producer writing the wrong shape holds a wrong model of the field, and
+    // dropping the value silently is how that model survives.
+    let user: { name: string } | null = null;
+    const declaredUser = parsed["user"];
+    if (declaredUser !== undefined) {
+      const name = isObject(declaredUser) ? declaredUser["name"] : undefined;
+      if (nonEmptyString(name)) {
+        user = { name: name as string };
+      } else if (versionAtLeast(version, "0.6")) {
+        findings.push({
+          line,
+          verdict: "malformed",
+          subject: "journal",
+          detail: `"user" is ${JSON.stringify(declaredUser)} — it must be an object carrying a non-empty "name"; omitting the key is the supported way to say git could not answer, and any other shape asserts an operator it does not name`,
+        });
+      }
+    }
+
     return {
       header: {
         version,
@@ -503,6 +700,7 @@ function scanHeader(lines: string[]): HeaderScan {
         session: optionalString(parsed["session"]),
         source: optionalString(parsed["source"]),
         ...identity,
+        ...(user === null ? {} : { user }),
       },
       line,
       findings,
@@ -546,6 +744,11 @@ export function validateJournal(content: string): JournalReport {
       mutations: 0,
       version: scan.version,
       header: null,
+      // Null, not zeroed. Nothing below the header was read, and a block of
+      // zeros here would say "this journal carries no ledger records" about a
+      // file nobody looked at.
+      ledger: null,
+      provenance: null,
     };
   }
   const findings: JournalFinding[] = [...scan.findings];
@@ -662,9 +865,47 @@ export function validateJournal(content: string): JournalReport {
   const spokenFor = new Set<string>();
 
   for (const record of records) {
+    // v0.6. Provenance is per record where the tiers mix. Checked before the
+    // switch and skipping the rest of the record, which is the break-on-first
+    // discipline every case below already keeps: a record whose tier cannot be
+    // read is not a record whose content should be believed, and the existing
+    // "a resolution that failed to parse does not discharge a blocker" rule
+    // says so for the same reason.
+    if (versionAtLeast(scan.version, "0.6") && SELF_REPORTED_KINDS.has(record.kind)) {
+      if (record.raw.origin !== RECORD_ORIGIN) {
+        findings.push({
+          line: record.line,
+          verdict: "malformed",
+          subject: record.id,
+          detail:
+            record.raw.origin === undefined
+              ? `a ${record.kind} needs "origin": "${RECORD_ORIGIN}" — the coordinator wrote it about its own run, and a header saying "hooks" would otherwise attest it as harness-emitted`
+              : `"origin" is ${JSON.stringify(record.raw.origin)} on a ${record.kind} — the only value a record may claim for itself is "${RECORD_ORIGIN}"; a record cannot promote itself to the tier that means the agent could not decline to write it`,
+        });
+        continue;
+      }
+    }
+
     switch (record.kind) {
       case "dispatch":
         dispatches += 1;
+        // v0.6. A closed vocabulary with one member. Reported rather than
+        // skipped: SILENT-REVIEWER reads this field at 0.6, so `expects:
+        // "reviews"` slipping through silently would disarm the verdict for
+        // every dispatch a producer typo touched, with nothing anywhere
+        // saying so.
+        if (
+          versionAtLeast(scan.version, "0.6") &&
+          record.raw.expects !== undefined &&
+          !EXPECTATIONS.some((known) => known === record.raw.expects)
+        ) {
+          findings.push({
+            line: record.line,
+            verdict: "malformed",
+            subject: record.id,
+            detail: `"expects" is ${JSON.stringify(record.raw.expects)} — it must be one of ${EXPECTATIONS.join(", ")} when present; SILENT-REVIEWER reads this field, so an unrecognised value would quietly shrink the set of dispatches it can fire on`,
+          });
+        }
         break;
 
       // The only terminal kind today — see the exported TERMINAL_RECORD_KINDS
@@ -1185,6 +1426,37 @@ export function validateJournal(content: string): JournalReport {
         break;
       }
 
+      case "prompt": {
+        // v0.6. The operator's turn, in one of two shapes: the text itself, or
+        // — under NULLIUS_WITNESS_PROMPTS=0 — a length and a hash, which prove
+        // a prompt happened and say nothing about what it asked. One of the
+        // two is required. Neither is a prompt record at all: it would assert
+        // that the human spoke while recording nothing they said, which reads
+        // in a report as an exchange that occurred and cannot be inspected.
+        //
+        // `truncated`, `at` and `session` are metadata no verdict reads.
+        if (record.raw.chars !== undefined && !isNonNegativeInteger(record.raw.chars)) {
+          findings.push({
+            line: record.line,
+            verdict: "malformed",
+            subject: record.id,
+            detail: `"chars" is ${JSON.stringify(record.raw.chars)} — a prompt's length must be a non-negative integer when present`,
+          });
+          break;
+        }
+        if (nonEmptyString(record.raw.text)) break;
+        if (record.raw.chars === undefined || !nonEmptyString(record.raw.hash)) {
+          findings.push({
+            line: record.line,
+            verdict: "malformed",
+            subject: record.id,
+            detail:
+              'a prompt needs non-empty "text", or both "chars" and a non-empty "hash" — the hashed mode is how a run records that the operator spoke without recording what they said, and half of it records neither',
+          });
+        }
+        break;
+      }
+
       case "append": {
         // Invariant 3. Absence is not "nothing to report" — it is nothing
         // reported, and the two are told apart by requiring the field.
@@ -1281,6 +1553,26 @@ export function validateJournal(content: string): JournalReport {
     // that went nowhere. `empty` and `no-report` are invariant 1's business.
     for (const record of records) {
       if (record.kind !== "dispatch") continue;
+      // v0.6 scopes the verdict to dispatches that declared a review contract.
+      // The verdict's own rationale presumes the dispatch WAS a reviewer — "an
+      // explicit nothing-found is how a reviewer proves it was not silent" —
+      // and under a producer that records every dispatch, an Explore agent
+      // returning prose with no tags would earn it too. A verdict that fires
+      // on three dispatches in five is one people learn to scroll past.
+      //
+      // Below 0.6 the loop is unchanged: those journals have no `expects` to
+      // read, and scoping them would retire the verdict for every journal
+      // already written.
+      // Read the vocabulary rather than a second copy of its one member: a
+      // member added to EXPECTATIONS would otherwise validate at the MALFORMED
+      // check and still be silently excluded here, which is the drift the
+      // barrel's own comment argues against.
+      if (
+        versionAtLeast(scan.version, "0.6") &&
+        !EXPECTATIONS.some((expectation) => expectation === record.raw.expects)
+      ) {
+        continue;
+      }
       if (spokenFor.has(record.id)) continue;
       if (collapsed.has(record.id)) continue; // already COLLAPSED-STATE, whose remedy contradicts this one
       const terminal = terminals.get(record.id);
@@ -1300,6 +1592,52 @@ export function validateJournal(content: string): JournalReport {
 
   findings.sort((left, right) => left.line - right.line);
 
+  // --- v0.6 counters. Both blocks are null below the floor and populated at
+  // or above it, decided here by the same private predicate every other gate
+  // in this file uses. `cli.ts` renders each block on presence and compares no
+  // versions, so there is exactly one copy of the floor.
+  const atLedgerFloor = versionAtLeast(scan.version, "0.6");
+  const counted = (kind: Kind): number => records.filter((record) => record.kind === kind).length;
+  const ledgerCounts: LedgerCounts | null = atLedgerFloor
+    ? {
+        stages: counted("stage"),
+        findings: counted("finding"),
+        resolutions: counted("resolution"),
+        checks: counted("check"),
+        decisions: counted("decision"),
+        prompts: counted("prompt"),
+      }
+    : null;
+
+  let hookTier = 0;
+  let selfReportedTier = 0;
+  let unattributedTier = 0;
+  if (atLedgerFloor) {
+    // A partition over the records the validator could read. The header is not
+    // among them: it is the thing doing the attributing, not a record with a
+    // tier of its own.
+    for (const record of records) {
+      const own = record.raw.origin;
+      if (own === RECORD_ORIGIN) selfReportedTier += 1;
+      // An own origin this schema cannot read attributes the record to nobody.
+      // It is already MALFORMED on the four kinds that may carry one; counting
+      // it as hook-tier would let the unreadable value buy the better tier.
+      else if (own !== undefined) unattributedTier += 1;
+      // And so does an ABSENT one on a kind that is required to carry it. That
+      // record is MALFORMED for exactly the same reason as the unreadable case,
+      // so it must not fall through to the header's tier and buy `hooks` — the
+      // asymmetry would be invisible in `validate`, where the journal fails
+      // anyway, and visible in `survey`, which aggregates failing journals.
+      else if (SELF_REPORTED_KINDS.has(record.kind)) unattributedTier += 1;
+      else if (scan.header?.origin === "hooks") hookTier += 1;
+      else if (scan.header?.origin === RECORD_ORIGIN) selfReportedTier += 1;
+      else unattributedTier += 1;
+    }
+  }
+  const provenanceCounts: ProvenanceCounts | null = atLedgerFloor
+    ? { hooks: hookTier, selfReported: selfReportedTier, unattributed: unattributedTier }
+    : null;
+
   return {
     findings,
     // Records the validator could READ: the header plus everything that got
@@ -1314,6 +1652,8 @@ export function validateJournal(content: string): JournalReport {
     mutations,
     version: scan.version,
     header: scan.header,
+    ledger: ledgerCounts,
+    provenance: provenanceCounts,
   };
 }
 
@@ -1364,6 +1704,16 @@ export interface JournalSurvey {
   outcomes: { found: number; empty: number; noReport: number };
   verifications: number;
   mutations: number;
+  /**
+   * v0.6 ledger counts summed over the surveyed journals that reached the
+   * floor, and **null when none did**. A sum is not an absence: summing over
+   * zero qualifying journals yields zeros, and an all-0.5 survey printing
+   * "0 stages, 0 findings…" is precisely the summary change the floor exists
+   * to prevent — it would report a claim about journals nobody counted.
+   */
+  ledger: LedgerCounts | null;
+  /** v0.6 provenance counts, on the same rule. */
+  provenance: ProvenanceCounts | null;
   /** Paths of journals that were read and reached no terminal record at all. */
   silent: string[];
   /** Paths of journals whose schema this build cannot read. Nothing of theirs is in the totals. */
@@ -1408,6 +1758,12 @@ export function surveyJournals(
   let failed = 0;
   const silent: string[] = [];
   const unreadable: string[] = [];
+  // Accumulated only for the journals whose own block is non-null, and left
+  // null when no journal contributed. `null` and a zeroed block are different
+  // claims: the first says nothing reached the floor, the second says
+  // everything did and had nothing.
+  let ledger: LedgerCounts | null = null;
+  let provenance: ProvenanceCounts | null = null;
 
   for (const input of inputs) {
     // One journal, one validation, one report. Nothing from a previous
@@ -1452,6 +1808,31 @@ export function surveyJournals(
     outcomes.found += report.outcomes.found;
     outcomes.empty += report.outcomes.empty;
     outcomes.noReport += report.outcomes.noReport;
+
+    if (report.ledger !== null) {
+      const into: LedgerCounts = ledger ?? {
+        stages: 0,
+        findings: 0,
+        resolutions: 0,
+        checks: 0,
+        decisions: 0,
+        prompts: 0,
+      };
+      into.stages += report.ledger.stages;
+      into.findings += report.ledger.findings;
+      into.resolutions += report.ledger.resolutions;
+      into.checks += report.ledger.checks;
+      into.decisions += report.ledger.decisions;
+      into.prompts += report.ledger.prompts;
+      ledger = into;
+    }
+    if (report.provenance !== null) {
+      const into: ProvenanceCounts = provenance ?? { hooks: 0, selfReported: 0, unattributed: 0 };
+      into.hooks += report.provenance.hooks;
+      into.selfReported += report.provenance.selfReported;
+      into.unattributed += report.provenance.unattributed;
+      provenance = into;
+    }
   }
 
   return {
@@ -1463,6 +1844,8 @@ export function surveyJournals(
     outcomes,
     verifications,
     mutations,
+    ledger,
+    provenance,
     silent,
     unreadable,
   };

@@ -67,3 +67,35 @@ CAUGHT is inflated corpus-wide, not just per run.
 Contrast worth keeping: checker-engineer caught the plant on the merits 3 of 3
 rounds and its new memory file contains no probe machinery at all — and it
 declares no false-premise pass. The declared pass is not what produces catches.
+
+**Fifth occurrence, and the leaker changed — `add-canary-status-redaction`
+(PR #58, 2026-08-31).** rule-auditor is now the one taking the shortcut:
+iteration 1 it reported the plant with its `plantedAt` timestamp (printed only
+by `canary status`'s presence branch), iteration 2 it reported running `check`
+and seeing CANARY-PRESENT. architecture-reviewer read the prose all five rounds.
+
+Genuinely good news, with a caveat: architecture-reviewer DELETED the
+`canary status` + `check` shortcut from its own durable memory mid-run,
+unprompted, and replaced it with a prohibition plus a note that a prior revision
+of that file had promoted it. First time an agent closed this channel itself.
+The caveat: those memory edits were UNCOMMITTED at end of run (`M`/`??`, absent
+from the branch), so verify the file before assuming the channel is closed.
+
+**How to apply, updated:** the taint instrument is wrong in BOTH directions and
+one run showed both. Over-reports: any change whose subject is the canary
+machinery taints every round, because an accurate synthesis must name it — "the
+canary cannot score a review of the canary" (4 of 5 rounds void). Under-reports:
+that same run's iteration 1 scored CAUGHT while its synthesis discussed the probe
+machinery by name, having dodged all three literals. So CAUGHT vs TAINTED tracks
+vocabulary, not contamination. Never read either verdict as a fact about reviewers
+without reading the section's narrative.
+
+**New channel, `add-run-ledger-producer` (PR #74, 2026-08-31): `review-evidence.md`
+itself.** Between iteration 2's failed dispatch and its re-dispatch, the coordinator
+appended a note recording the lost round that named the live plant's existence and
+host document. rule-auditor reads the change folder, cited that note, and its catch
+had to be excluded from the verdict basis — while the tool still scored the round
+CAUGHT. So the taint detector did not fire on a round the coordinator knew was
+compromised, and only its own disclosure records it. When a run has a re-dispatched
+round, read whatever was appended between the two dispatches before crediting the
+second round's catches.
