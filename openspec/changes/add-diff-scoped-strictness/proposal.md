@@ -29,7 +29,14 @@ needs to read.
 There is no third position today. No flag by any of the obvious names exists
 anywhere in the checker package:
 
-**Evidence:** `grep -rnE -- '--diff|--changed|--since|--base|--scope|changedFiles' packages/claims/src/` → 0 results
+**Evidence:** `grep -rnE -- '--diff|--changed|--since|--base|--scope' packages/claims/src/` → 0 results
+
+The pattern above once also included `changedFiles`, and `add-pr-process-report`
+made that term non-zero — its renderer scopes a run report by the range's
+changed-file set. **No flag by any of these names exists, which is what this
+paragraph claims**, so the pattern is narrowed to the flags rather than the
+claim being weakened: an internal identifier in another verb's renderer was
+never evidence about `check`'s argument surface.
 
 Range handling does exist in the package, but under the `oracle` verb and
 unreachable from `check`, whose argument surface has no field for it:

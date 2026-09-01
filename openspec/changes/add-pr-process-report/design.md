@@ -45,14 +45,27 @@ which the bundle and the report both keep:
 
 **Evidence:** `action/action.yml:47@04cd9ac` — `    default: '0.9.1'`
 
-Nothing in the repository escapes markdown or workflow commands, renders
-mermaid, or exercises the Action in CI:
+Nothing in the repository escaped markdown or workflow commands, rendered
+mermaid, or exercised the Action in CI when this design was written. Two of the
+three are still true; the mermaid count is non-zero **because this change made
+it so**, which is the one anchor here that had to move:
 
 **Evidence:** `grep -rn '%0A' action/ packages/claims/src packages/kit/src` → 0 results
 
-**Evidence:** `grep -rn 'mermaid' action/ packages/ docs/ README.md .github/` → 0 results
+**Evidence:** `grep -rn 'mermaid' action/ packages/ docs/ README.md .github/` → 26 results
 
 **Evidence:** `grep -rn 'uses: ./action' .github/workflows/ci.yml` → 0 results
+
+The middle one is worth pausing on, because it exposes a gap in the anchor
+grammar rather than a defect in this document. `rev-stamp-change-anchors`
+exists because a change proposal cites code it is about to modify, and a stamp
+splits that citation into an immutable half and an advisory half. **A search
+anchor has no stamp available** — `grep … → N results` is a claim about the
+working tree and nothing else — so an "absence of X" search anchor in a
+proposal that adds X is *designed* to rot with no advisory fallback, and turns
+into a hard `COUNT-MISMATCH` the moment the change lands. The repair is the one
+taken here: restate the count and say what moved it. Worth a rule of its own,
+and recorded in `IDEAS.md` rather than fixed inside this change.
 
 **`init` and `doctor`** dispatch on the workflow's path and test its content by
 substring:

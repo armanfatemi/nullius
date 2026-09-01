@@ -677,3 +677,48 @@ extractor so a harness payload-shape change fails a check instead of quietly
 producing empty journals. A shape absent from the corpus is a shape nothing
 regression-tests, and the failure it guards against is invisible by
 construction.
+
+
+## A search anchor in a change proposal has no stamp, and is designed to rot
+
+Found while landing `add-pr-process-report` (2026-09-01).
+
+`rev-stamp-change-anchors` exists because a change proposal is the one document
+class that cites code it is *about to modify*. The stamp splits such a citation
+onto two axes: "this text was in this file at this commit" stays a hard gate
+forever, and "it is on line N" degrades only to the advisory `STALE`.
+
+**Search anchors get none of that.** `grep … → N results` is a claim about the
+working tree with nowhere to put a commit, so an *absence* claim — the most
+natural thing for a proposal to assert, since a proposal exists to add the
+missing thing — becomes a hard `COUNT-MISMATCH` the instant the change lands.
+Three fired at once when this change's Stage B merged:
+
+- its own `grep -rn 'mermaid' …` → 0, made 26 by the renderer it proposed;
+- its own `grep -rn '"report"' packages/claims/src/cli.ts` → 0, made 1 by the
+  verb it proposed;
+- **another change's** anchor, in `add-diff-scoped-strictness`, whose pattern
+  included `changedFiles` and which this change falsified from outside.
+
+That third one is the sharp end. A landing change can turn an unrelated,
+unmerged proposal red, and the author of that proposal did nothing wrong. The
+repair each time was manual: restate the count and say what moved it, or narrow
+the pattern to the claim the prose actually makes.
+
+Options worth weighing, none obviously right:
+
+1. **A stamped search anchor** — `grep … @a1b2c3d → 0 results`, re-run against
+   `git show`'s tree at that commit. Faithful to the existing split, and costs
+   a checkout-shaped read per anchor.
+2. **An `expected-to-change` marker** a proposal can put on an anchor it knows
+   its own implementation will falsify, downgrading `COUNT-MISMATCH` to
+   advisory *for that anchor only*. Cheap, and available to anyone who wants
+   the gate quiet — the same objection `never-repoint-under-old-stamp` raises
+   against unverifiable escape hatches.
+3. **Leave it, and treat the breakage as the signal.** The rot is real
+   information: it says the change did what it said. The cost is that it lands
+   as a red gate on documents whose authors cannot act until someone else's
+   work merges.
+
+Related: `.claude/rules/rev-stamp-change-anchors.md`,
+`.claude/rules/never-repoint-under-old-stamp.md`.

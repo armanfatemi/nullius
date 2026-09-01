@@ -35,11 +35,12 @@ and has no second comment or second report:
 
 **Evidence:** `action/action.yml:142@c8305b1` — `        marker='<!-- nullius-claims -->'`
 
-The kernel has no verb that renders a run, and its two range-aware pieces —
-`oracle`'s classifier and its git binding — are package-internal, with no
-machine-readable output for `oracle` at all:
+The kernel had no verb that rendered a run when this proposal was written, and
+its two range-aware pieces — `oracle`'s classifier and its git binding — are
+package-internal, with no machine-readable output for `oracle` at all. The
+first count is now **1**, and the one result is the verb this change added:
 
-**Evidence:** `grep -rn '"report"' packages/claims/src/cli.ts` → 0 results
+**Evidence:** `grep -rn '"report"' packages/claims/src/cli.ts` → 1 result
 
 **Evidence:** `grep -rn 'oracle' packages/claims/src/index.ts` → 0 results
 

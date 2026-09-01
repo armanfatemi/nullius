@@ -200,9 +200,53 @@ describe("parseCli — witness", () => {
     });
   });
 
-  it("rejects a flag that is not --expect-rules", () => {
-    expect(() => parse("witness", "validate", "run.jsonl", "--config", "x")).toThrow(
+  it("rejects a flag that belongs to no command at all", () => {
+    expect(() => parse("witness", "validate", "run.jsonl", "--nope", "x")).toThrow(
       /unknown option for `witness`/,
+    );
+  });
+
+  it("rejects a `witness report` flag on `witness validate`, naming the subcommand that owns it", () => {
+    // `--config`, `--bundle`, `--format` and `--pr-body` arrived with
+    // `witness report`. They are real options of `witness`, so "unknown option"
+    // would understate it — the option is known, just not on this subcommand.
+    // `--format` gets a valid value on purpose: its value check fires inside
+    // the parse loop, before the subcommand is known, so an invalid one would
+    // pass this test for the wrong reason.
+    for (const [flag, value] of [
+      ["--config", "x"],
+      ["--bundle", "x"],
+      ["--pr-body", "x"],
+      ["--format", "md"],
+    ] as const) {
+      expect(() => parse("witness", "validate", "run.jsonl", flag, value)).toThrow(
+        new RegExp(`\\${flag} is an option of \`witness report\`, not \`witness validate\``),
+      );
+    }
+  });
+
+  it("rejects --expect-rules on `witness report`, which has no verdict to require", () => {
+    expect(() => parse("witness", "report", "a..b", "--expect-rules", "build-before-cli")).toThrow(
+      /--expect-rules is an option of `witness validate`/,
+    );
+  });
+
+  it("parses the report flags", () => {
+    expect(
+      parse("witness", "report", "a..b", "--bundle", "n.json", "--format", "json", "--config", "c.json", "--pr-body", "body.md"),
+    ).toMatchObject({
+      kind: "witness",
+      operands: ["report", "a..b"],
+      bundle: "n.json",
+      format: "json",
+      config: "c.json",
+      prBody: "body.md",
+    });
+  });
+
+  it("rejects a --format value `witness report` does not have", () => {
+    expect(() => parse("witness", "report", "a..b", "--format", "human")).toThrow(
+      /--format must be one of md\|json/,
     );
   });
 

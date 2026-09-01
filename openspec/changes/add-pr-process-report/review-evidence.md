@@ -1326,3 +1326,94 @@ report:
 - spec/fixtures/report/rejected-lines.jsonl trips MALFORMED x2 and DUPLICATE-ID
 - spec/fixtures/report/pr58-session.jsonl is version 0.2, branch main,
   11 distinct mutation paths, 4 of them .claude/agent-memory/**
+
+## Stage 5 — Verify chunk 2 (Stage B, the report)
+
+build: pass
+type-check: pass
+test: pass (kit 406; claims 1033 passed, +72 from chunk 1; 6 known ugrep failures, all in flagConformance.test.ts)
+dogfood gates: pass, both polarities, including the canary round trip run with the plant CI does first
+
+Verified independently rather than taken from the implementer's report — the CI
+step's own assertions, run locally:
+- all four tier headings render, plus the mermaid block
+- the v0.2 bundled journal renders "tier breakdown not recorded" AND prints no
+  count for it: `! grep -qE '^### Records attributed to the harness — [0-9]'`
+- no bundle -> code-verified still renders and the absence names the path
+- JSON: kind=run-report, version=1, embedded check.version=1 with no check.kind,
+  so the two documents are told apart by the discriminator and the key rather
+  than by their matching version
+- tampered bundle -> validator finding rendered and NO dispatch count printed
+- determinism: two renders one second apart are byte-identical
+- dependency direction: no kit import in witnessReport.ts, kit is not a claims
+  dependency; the only "kit" mention is a doc comment
+
+## Two defects the coordinator found in the implementer's output
+
+1. **Hard rule 12 violation in the new CI step.** It stored the command as
+   `claims="node packages/claims/dist/cli.js"` and invoked `$claims …` at seven
+   call sites — verbatim the second example the rule names. It happens to work
+   in bash, which is what CI runs, and that is exactly why the rule is written
+   about the pattern rather than about an observed failure. Inlined at all seven
+   sites. The step's assertions themselves are excellent and were kept
+   unchanged: every one is a `grep`, not an exit code, on the correct reasoning
+   that Decision 13 makes the verb's exit code carry one bit.
+
+2. **Three `COUNT-MISMATCH` failures caused by this change landing** — see the
+   coordinator corrections below.
+
+## Coordinator corrections — during Stage 5 chunk 2
+
+Appended at the moment of correction rather than at the stage boundary, per the
+evidence contract: Stage 5's mechanical verify blocks are exempt from the
+corrections section, but a correction *discovered during* verify gets its own
+append and this is it.
+
+## This change falsified three search anchors by landing, one of them somebody else's
+
+`check 'openspec/**/*.md'` went from passing to failing the moment Stage B's
+code existed. Three `COUNT-MISMATCH`, all genuine:
+
+1. **`add-pr-process-report/design.md`** — `grep -rn 'mermaid' …` claimed 0.
+   Now 26, because the renderer this design proposed renders mermaid.
+2. **`add-pr-process-report/proposal.md`** — `grep -rn '"report"' packages/claims/src/cli.ts`
+   claimed 0. Now 1, and the one result is the verb this proposal asked for.
+3. **`add-diff-scoped-strictness/proposal.md`** — not this change's document at
+   all. Its pattern included `changedFiles`, and Stage B's renderer scopes by a
+   range's changed-file set, so a landing change turned an unrelated unmerged
+   proposal red from outside. Its author did nothing wrong.
+
+**What I did, and why it is not weakening a claim.** For 1 and 2 I restated the
+count and said what moved it — the prose is now past-tense about the state the
+design was written against. For 3 I narrowed the grep to the flags, because the
+paragraph's actual claim is *"No flag by any of the obvious names exists"* and
+`changedFiles` is an internal identifier in a different verb's renderer, which
+was never evidence about `check`'s argument surface. The pattern was broader
+than the sentence it supported; the sentence is unchanged and still true.
+
+**The general finding is recorded in `IDEAS.md`, not fixed here.** A search
+anchor has nowhere to put a commit stamp, so an "absence of X" claim in a
+proposal that adds X is designed to rot with no advisory fallback — it goes
+straight to a hard `COUNT-MISMATCH`. That is the exact failure
+`rev-stamp-change-anchors` was written to prevent for presence anchors, and the
+grammar has no answer for it. Three options are written up there; none is
+obviously right, and picking one inside this change would be scope creep.
+
+## I let a hard-rule violation through in a dispatched agent's output
+
+The new CI step stored the checker command in a shell variable and invoked
+`$claims` at seven call sites. That is hard rule 12's second named example
+verbatim. It works under bash, which is what CI runs — which is precisely why
+the rule is written about the pattern and not about an observed failure, and
+precisely why I should have caught it by reading the diff rather than by
+running it. Inlined at all seven sites.
+
+I had pinned the integration points in that brief carefully and did not think to
+state the shell rules. A brief that pins APIs and omits the repository's own
+prohibitions gets code that satisfies the APIs.
+
+## What I got right that I nearly got wrong last chunk
+
+I ran the canary round trip *with the plant CI performs first*, rather than
+bare. Last chunk I ran it bare, read exit 0, and briefly concluded a live gate
+had gone quiet. The gate was fine and my invocation was not.

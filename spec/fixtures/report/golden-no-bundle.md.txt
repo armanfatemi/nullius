@@ -1,0 +1,215 @@
+# Run report — 8211685..f431193
+
+13 commit(s), 13 file(s) changed. This report renders what happened; it does not gate. Every section shows its data or says why it has none.
+
+## Code-verified
+
+_Re-computed by this command from the repository and its history. Nothing here came from the bundle, so nothing here depends on the contributor._
+
+### Commits in range — 13
+
+Read from `git log` over the range.
+
+| commit | authored |
+| --- | --- |
+| 43651d6 | 2026-08-30T14:23:33-06:00 |
+| 50f6c14 | 2026-08-30T18:10:08-06:00 |
+| df9a0cb | 2026-08-30T18:15:29-06:00 |
+| d4a4527 | 2026-08-30T18:38:25-06:00 |
+| 3b547b4 | 2026-08-30T18:38:45-06:00 |
+| 3db711a | 2026-08-30T18:45:08-06:00 |
+| abef156 | 2026-08-30T18:51:18-06:00 |
+| 6586401 | 2026-08-30T19:15:23-06:00 |
+| 2bb5b55 | 2026-08-30T19:23:02-06:00 |
+| 7b1527b | 2026-08-30T19:23:44-06:00 |
+| bbaa23a | 2026-08-30T19:30:06-06:00 |
+| c8305b1 | 2026-08-30T20:09:02-06:00 |
+| f431193 | 2026-08-30T22:17:39-06:00 |
+
+### Files changed — 13
+
+Read from `git diff --name-status` over the range. This is the set the mutation-derived tables below are scoped by.
+
+### Evidence Anchors re-checked — 39
+
+Every anchor in the range's touched documents, re-verified by re-reading the cited file. A failure here is rendered, not gated: the gate is `nullius check`, which runs on its own.
+
+| verdict | count |
+| --- | --- |
+| ok | 17 |
+| stale | 22 |
+
+0 failing, over 10 document(s).
+
+### Oracle conservation
+
+Whether anything that grades this project was deleted, skipped or weakened in the range, and whether a decision accounted for it.
+
+**Not recorded:** not configured — this project declares no "oracles" key in nullius.config.json, so this run checked nothing. An unconfigured project and a project whose oracle held still are different facts; declare the glob that grades this project to tell them apart.
+
+### Bundled journals re-validated
+
+`witness validate` re-run over every journal reconstructed from the bundle, before any count was taken from it. This checks a bundle's internal consistency and never its completeness: a bundle with whole journals removed validates cleanly.
+
+**Not recorded:** no journal to validate — no bundle at nullius.runs/feat-add-canary-status-redaction.json
+
+### Review probe
+
+Whether a canary claim is planted in a document under review. The location is never printed — printing it answers the question the probe asks.
+
+No canary is registered for this repository.
+
+## Hook-attested
+
+_Emitted by the harness's own runtime hooks — the agent had no opportunity to decline to write them. Read from the bundle, after every bundled journal re-validated._
+
+### Records attributed to the harness
+
+How many records the validator's provenance partition put in this tier. Journal-wide: `provenance` has no path predicate, so scoping it by the range would mean re-partitioning records here, which is the one thing this renderer does not do.
+
+**Not recorded:** no bundle at nullius.runs/feat-add-canary-status-redaction.json
+
+### Dispatches
+
+Read from the bundled journals.
+
+**Not recorded:** no bundle at nullius.runs/feat-add-canary-status-redaction.json
+
+### Dispatch outcomes
+
+Read from the bundled journals.
+
+**Not recorded:** no bundle at nullius.runs/feat-add-canary-status-redaction.json
+
+### Review rounds
+
+Read from the bundled journals.
+
+**Not recorded:** no bundle at nullius.runs/feat-add-canary-status-redaction.json
+
+### Files mutated in the range
+
+Read from the bundled journals.
+
+**Not recorded:** no bundle at nullius.runs/feat-add-canary-status-redaction.json
+
+### Edit bursts
+
+Read from the bundled journals.
+
+**Not recorded:** no bundle at nullius.runs/feat-add-canary-status-redaction.json
+
+### Findings raised
+
+Read from the bundled journals.
+
+**Not recorded:** no bundle at nullius.runs/feat-add-canary-status-redaction.json
+
+### Operator turns
+
+Read from the bundled journals.
+
+**Not recorded:** no bundle at nullius.runs/feat-add-canary-status-redaction.json
+
+### Model and tokens
+
+Read from the bundled journals.
+
+**Not recorded:** no bundle at nullius.runs/feat-add-canary-status-redaction.json
+
+## Self-reported
+
+_Written by a coordinator about its own run. Internally consistent; not evidence the run went this way._
+
+### Records the coordinator claimed
+
+How many records carried `origin: "self-reported"` of their own, or none under a self-reported header. Journal-wide.
+
+**Not recorded:** no bundle at nullius.runs/feat-add-canary-status-redaction.json
+
+### Stages
+
+`stage` records — the pipeline phases the run went through.
+
+**Not recorded:** no bundle at nullius.runs/feat-add-canary-status-redaction.json
+
+### Resolutions
+
+`resolution` records — what happened to each finding.
+
+**Not recorded:** no bundle at nullius.runs/feat-add-canary-status-redaction.json
+
+### Decisions
+
+`decision` records — an approach chosen, and why.
+
+**Not recorded:** no bundle at nullius.runs/feat-add-canary-status-redaction.json
+
+### Checks
+
+`check` records — a command ran, and what it showed.
+
+**Not recorded:** no bundle at nullius.runs/feat-add-canary-status-redaction.json
+
+## Unattributed
+
+_Records that belong to nobody: no origin of their own, under a header that claims none. Counting these as hook-attested would be the flattering default the field exists to remove._
+
+### Records that belong to nobody
+
+The validator's third partition: records with no origin of their own under a header whose origin is null or absent, plus any record whose origin this schema cannot read. Journal-wide.
+
+**Not recorded:** no bundle at nullius.runs/feat-add-canary-status-redaction.json
+
+## Timeline
+
+```mermaid
+flowchart LR
+  n0["commit 43651d6"]
+  n1["commit 50f6c14"]
+  n2["commit df9a0cb"]
+  n3["commit d4a4527"]
+  n4["commit 3b547b4"]
+  n5["commit 3db711a"]
+  n6["commit abef156"]
+  n7["commit 6586401"]
+  n8["commit 2bb5b55"]
+  n9["commit 7b1527b"]
+  n10["commit bbaa23a"]
+  n11["commit c8305b1"]
+  n12["commit f431193"]
+  n0 --> n1
+  n1 --> n2
+  n2 --> n3
+  n3 --> n4
+  n4 --> n5
+  n5 --> n6
+  n6 --> n7
+  n7 --> n8
+  n8 --> n9
+  n9 --> n10
+  n10 --> n11
+  n11 --> n12
+```
+
+Rounds group dispatches starting within 120000 ms of the first.
+
+## Not recorded
+
+- **code-verified / Oracle conservation** — not configured — this project declares no "oracles" key in nullius.config.json, so this run checked nothing. An unconfigured project and a project whose oracle held still are different facts; declare the glob that grades this project to tell them apart.
+- **code-verified / Bundled journals re-validated** — no journal to validate — no bundle at nullius.runs/feat-add-canary-status-redaction.json
+- **hook-attested / Records attributed to the harness** — no bundle at nullius.runs/feat-add-canary-status-redaction.json
+- **hook-attested / Dispatches** — no bundle at nullius.runs/feat-add-canary-status-redaction.json
+- **hook-attested / Dispatch outcomes** — no bundle at nullius.runs/feat-add-canary-status-redaction.json
+- **hook-attested / Review rounds** — no bundle at nullius.runs/feat-add-canary-status-redaction.json
+- **hook-attested / Files mutated in the range** — no bundle at nullius.runs/feat-add-canary-status-redaction.json
+- **hook-attested / Edit bursts** — no bundle at nullius.runs/feat-add-canary-status-redaction.json
+- **hook-attested / Findings raised** — no bundle at nullius.runs/feat-add-canary-status-redaction.json
+- **hook-attested / Operator turns** — no bundle at nullius.runs/feat-add-canary-status-redaction.json
+- **hook-attested / Model and tokens** — no bundle at nullius.runs/feat-add-canary-status-redaction.json
+- **self-reported / Records the coordinator claimed** — no bundle at nullius.runs/feat-add-canary-status-redaction.json
+- **self-reported / Stages** — no bundle at nullius.runs/feat-add-canary-status-redaction.json
+- **self-reported / Resolutions** — no bundle at nullius.runs/feat-add-canary-status-redaction.json
+- **self-reported / Decisions** — no bundle at nullius.runs/feat-add-canary-status-redaction.json
+- **self-reported / Checks** — no bundle at nullius.runs/feat-add-canary-status-redaction.json
+- **unattributed / Records that belong to nobody** — no bundle at nullius.runs/feat-add-canary-status-redaction.json

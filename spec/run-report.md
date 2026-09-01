@@ -1,0 +1,219 @@
+# The Run Report
+
+`nullius witness report <base>..<head> | <sha>` renders how a range was
+produced. It is the one artefact in this repository that composes the
+checkers rather than being one: it re-runs three of them, reads a fourth's
+record, and puts the results under four headings that say what each number is
+evidence of.
+
+It **renders and does not gate**. A reader who wants a verdict reads the gate.
+
+## The problem this solves
+
+A maintainer reviewing an agent-written pull request sees the diff and nothing
+about the process that produced it: how many agents ran, how many review rounds
+happened, what was caught, whether the thing that grades the project was
+weakened on the way. All of it is recorded or re-derivable, and none of it
+reaches the pull request.
+
+The obvious rendering of that data is also the wrong one. A single table of
+counts puts a number CI computed beside a number the contributor supplied, and
+a reader cannot tell them apart. So the report's first commitment is that it
+never does that.
+
+## Four tiers, in a fixed order, never in one table
+
+| Tier | What a number in it is evidence of | Source |
+| --- | --- | --- |
+| **Code-verified** | The repository itself, re-read now | `check`, `checkOracles`, `validateJournal`, `git` |
+| **Hook-attested** | The harness emitted these; the agent had no opportunity to decline | the bundle, after re-validation |
+| **Self-reported** | A coordinator's account of its own run | the bundle, after re-validation |
+| **Unattributed** | Records that belong to nobody | the bundle, after re-validation |
+
+The order is by independence from the contributor, descending. The
+code-verified tier survives an absent bundle, a curated bundle and a hostile
+one, so it is rendered first and rendered always.
+
+The provenance line for each tier is a constant in the renderer, not a value
+computed per run:
+
+**Evidence:** `packages/claims/src/witnessReport.ts:625` — `const TIER_PROVENANCE: Record<TierId, string> = {`
+
+## The report takes its tiers; it does not compute them
+
+The three bundle tiers are counted from `JournalReport.provenance`, which the
+validator computes and which is `null` below journal version `0.6`. The
+renderer has no tiering rule of its own — no `tierOf`, no list of kinds mapped
+to tiers, no reading of the header's `origin`. Below the floor it says so:
+
+**Evidence:** `packages/claims/src/witnessReport.ts:1010` — `    (entry) => entry.report.provenance === null,`
+
+That is this feature's own absence rule turned on its headline section. Every
+journal in this repository today is version `0.2`, including the one that
+recorded the run which built this report — so on this repository, right now,
+the tier breakdown renders as an absence. That is the correct output. A tier
+breakdown is a claim about attribution; the data carries no attribution; the
+alternative to saying so is inventing one.
+
+## Absence is rendered as *not recorded*, never as zero
+
+Every section renders its data or one line naming why it has none. The
+distinction is carried in the structure and not only in the prose: a section
+with no data has no `count` key at all.
+
+**Evidence:** `packages/claims/src/witnessReport.ts:509` — `  return { id, title, statement, status: "not-recorded", reason, notes: [] };`
+
+A zero would be a claim that the thing was counted and came to nothing. "No
+oracles are configured" and "no oracle changed" are different facts and only
+one of them is evidence.
+
+## Selection is three-way, and inconclusive is not a synonym for excluded
+
+`nullius-kit witness bundle` classifies each session journal against the range
+by **time window** and by **mutation paths intersecting the range's changed
+files** — never by the header's `branch`, which names where a session
+*started*, so a session that produced a feature branch routinely says `main`.
+
+- **included** — overlaps in time *and* mutates a file in the range.
+- **inconclusive** — overlaps in time, mutates nothing in the range. This is
+  what a review-only session looks like, and it is exactly the session this
+  report exists to show. It is carried by session id into the report's *not
+  recorded* list with the `--include` remedy, never silently dropped.
+- **excluded** — no record falls in the window.
+
+## Redaction is line-level; scoping is the report's job
+
+The envelope carries **every source line** of a carried journal. Redaction
+rewrites a line's fields and never drops a line, so a line the validator
+rejects survives — and its `malformed` or `duplicate-id` verdict survives with
+it. A record-level rule would have lost exactly those.
+
+Range scoping therefore belongs to the renderer, and it reaches the
+**mutation-derived tables and the flowchart only**:
+
+**Evidence:** `packages/claims/src/witnessReport.ts:693` — `  const inRangeMutations = allMutations.filter(`
+
+It never reaches the tier counts. `provenance` is a whole-journal partition
+with no path predicate, so scoping it would mean the renderer re-partitioning
+records itself — the one thing the tier rule above forbids. Records of kinds
+that carry no path (`dispatch`, `report`, `finding`, `prompt`, and the ledger
+kinds) are counted in full, and the report says so in each section rather than
+implying they were scoped.
+
+## The record → section map
+
+| Record kind | Section | Scoped by the range? |
+| --- | --- | --- |
+| `dispatch` | Dispatches, Review rounds | no — carries no path |
+| `report` | Dispatch outcomes, Model and tokens | no — carries no path |
+| `mutation` | Files mutated in the range, Edit bursts | **yes** |
+| `verification`, `append` | counted by the validator only | no |
+| `finding` | Findings raised (hook-attested: a finding carries no per-record origin) | no |
+| `prompt` | Operator turns | no |
+| `stage`, `resolution`, `decision`, `check` | Stages, Resolutions, Decisions, Checks (self-reported) | no |
+| — | Commits, Files changed, Evidence Anchors, Oracle conservation | from `git` and the checkers |
+
+## Bundled journals are re-validated before any count is rendered
+
+Every journal is rejoined from its lines and re-run through `validateJournal`
+before a number is taken from it. If any journal fails, the three bundle tiers
+render the validator's finding in place of their counts, and **no count is
+printed** — the absence of the number is the point, not the presence of the
+finding.
+
+**What a green row does and does not certify.** `validateJournal` settles a
+bundle's *internal consistency* and says nothing about its *completeness*. A
+bundle with whole journals removed validates cleanly, and the report says so in
+the section itself rather than in a footnote:
+
+**Evidence:** `packages/claims/src/witnessReport.ts:791` — `const JOURNAL_VALIDATION_STATEMENT =`
+
+## The exit-code contract
+
+| Situation | Exit |
+| --- | --- |
+| A report was produced | `0` |
+| A rendered tier contains a failure | `0` |
+| Usage error, or input this verb was handed and could not read | `2` |
+
+A verb that re-runs `check`, `checkOracles` and `validateJournal` and then
+minted its own verdict would be a **fourth** place for pass and fail to
+disagree — and all three of the checks it wraps already gate in CI on their
+own. So it does not:
+
+**Evidence:** `packages/claims/src/cli.ts:999` — `  // Decision 13: a report was produced, so the verb exits 0. It renders three`
+
+The distinction inside exit `2` is between *absent* and *unreadable*. A bundle
+that is not at the given or default path is an absence the report renders. A
+bundle that is there and is not an envelope is input this command was handed
+and could not use, and it exits `2` naming the path.
+
+## Escaping
+
+Every bundle- or document-derived string passes through a **markdown-cell**
+escaper; every flowchart label passes through a **mermaid-label** escaper. The
+mermaid grammar is an allow-list, not a deny-list:
+
+**Evidence:** `packages/claims/src/witnessReport.ts:352` — `const MERMAID_ALLOWED = /[^A-Za-z0-9 ._:/x()-]/g;`
+
+The `x` is ASCII, not `×` (U+00D7), which the label grammar has no need of.
+Everything outside the list becomes `·`. Quoting is the second half of the
+grammar and answers a different question: `:` is *inside* the allow-list, so
+`a::b` survives replacement untouched and is made inert by the quotes alone.
+Node ids are generated (`n0`, `n1`, …) and never derived from content — an id
+is the one position in the grammar quoting cannot protect.
+
+## Canary locations are never rendered
+
+A `canary-present` result is counted as a failure and rendered with neither its
+document nor its line. The renderer reaches canary state only through
+`describeCanary`, called with `reveal` unset. The accessor is a chokepoint, not
+a guarantee: it returns exactly `doc:line` on request, so the constraint is on
+the call site, and a unit test asserts the rendered report contains neither.
+The out-of-scope canary warning is never rendered at all.
+
+## Determinism
+
+No wall clock is read inside `buildRunReport` or either renderer. Every
+timestamp comes from a record or a commit, which is what makes the committed
+goldens under `spec/fixtures/report/` goldens rather than snapshots of the
+moment they were taken.
+
+## The two documents on one CLI
+
+The JSON form carries a discriminator and its own version:
+
+**Evidence:** `packages/claims/src/witnessReport.ts:36` — `export const RUN_REPORT_VERSION = 1;`
+
+It embeds the `check --format json` document under its own key, **carrying that
+document's own `version`**, rather than restating it. Two documents numbered
+`version: 1` on one CLI, distinguishable only by which subcommand produced
+them, is a consumer bug waiting for the first tool that reads a file it did not
+invoke.
+
+## Fixtures
+
+Under `spec/fixtures/report/`:
+
+| File | What it is for |
+| --- | --- |
+| `pr58-session.jsonl` | This repository's own producing session for PR #58, redacted. Version `0.2`, header `branch: main`, 11 mutation paths of which 4 are in no pull request — the range-scoping case |
+| `review-only.jsonl` | Version `0.6`. Overlaps in time, mutates nothing in range — the `inconclusive` case |
+| `other-worktree.jsonl` | Every record outside the window — the `excluded` case |
+| `rejected-lines.jsonl` | One unparseable line and one duplicate id — verdicts that must survive bundling |
+| `stale-verification.jsonl` | A journal that genuinely reports `stale-verification` |
+| `pr58-bundle.json` | The real envelope `witness bundle` wrote for `8211685..f431193` |
+| `review-only-bundle.json` | The same range with `--include review-only` — a `0.6` journal, so the tier counts are real |
+| `tampered-bundle.json` | An envelope hand-edited to drop a terminal record. `witness bundle` cannot produce it, which is what makes it a tamper |
+| `pr58-check.json` | A real `check --format json` document over that range's documents |
+| `pr58-oracle.txt` | The real `nullius oracle` output for that range — the unconfigured refusal |
+| `golden-*.md.txt`, `golden-*.json` | The rendered forms, regenerated with `NULLIUS_UPDATE_GOLDENS=1`. The markdown goldens end in `.txt` so that `check 'spec/**/*.md' --require-markers` does not fail a rendered artefact for carrying no anchors of its own |
+
+## Scope
+
+The report claims nothing about *why* anything happened. Every sentence in it
+is a template over counts and records; no model is anywhere in its path. It
+does not parse coordinator prose, and it does not treat a bundle as evidence
+about a contributor — the bundle is contributor-supplied by construction. What
+it offers is the tier labels, so a reader knows which numbers survive a
+contributor who wanted a different answer.

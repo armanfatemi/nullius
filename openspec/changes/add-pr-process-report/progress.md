@@ -7,51 +7,53 @@ _Started 2026-08-31; last updated 2026-08-31_
 - [x] Stage 1: Load
 - [x] Stage 2: Pre-review iterations 1–5 — probe CAUGHT all five rounds
 - [x] Stage 3: Refine iterations 1–5; Decisions 2–4 rewritten clean after round 5
-- [x] Design committed: `674a225` on `feat/add-pr-process-report`
+- [x] Stage 4 chunk 1: **Stage A — the bundle**, committed `5d43133`, Stage 5 green
+
+## Commits on this branch
+
+- `674a225` docs — five pre-review rounds of design refinement
+- `5d43133` feat(kit) — `witness bundle`, Stage A
+- `2255fc8` chore(openspec) — archive four landed changes, apply their spec deltas
+- `742bf64` docs(agent-memory) — reviewer learnings from this run
 
 ## Current phase
 
-**Stage 4 (Implement)**, chunk 1 of 3: **Stage A — the bundle** (`packages/kit`),
-tasks §0–§3. Dispatched to an implementer with the integration points pinned.
+**Stage 4 (Implement)**, chunk 2 of 3: **Stage B — the kernel report**
+(`packages/claims`), tasks §4–§6 plus §0's deferred capture bullet.
 
 ## Next 3 actions
 
-1. Receive Stage A, run Stage 5 verification myself (build, type-check, test, both dogfood polarities), commit the chunk
-2. Chunk 2: Stage B — the kernel report (`packages/claims`), tasks §4–§6
-3. Chunk 3: Stage C — Action, init, doctor, dogfood, tasks §7–§9
+1. Receive Stage B, run Stage 5 myself (build, type-check, test, both dogfood polarities incl. the canary round trip), commit
+2. Chunk 3: Stage C — Action, init, doctor, dogfood, tasks §7–§9
+3. Stage 6 post-review routed on `git diff main...HEAD`, then Stage 8 PR
 
 ## Integration points the next session needs to read on resume
 
-- packages/kit/src/cli.ts:205,211 — where `witness bundle` dispatches beside `ledger`
-- packages/kit/src/record.ts:894-900,1055 — the producer's two prompt shapes and the private `hashText`
-- packages/kit/src/identity.ts:286 — `runGit`, the bounded-git discipline to model
-- packages/claims/src/witness.ts:726 — `validateJournal(content: string): JournalReport`
-- packages/claims/src/witness.ts:1615-1639 — `atLedgerFloor` and `provenance`, which Stage B reads and must not recompute
+- packages/kit/src/bundle.ts:624 — `BundleEnvelope` `{ session, lines }`; the kernel must NOT import from kit
+- packages/claims/src/witness.ts:176,222 — `ProvenanceCounts` (`hooks`/`selfReported`/`unattributed`) and `provenance: ProvenanceCounts | null`
+- packages/claims/src/witness.ts:1599,1615,1637 — `atLedgerFloor`; provenance is null below journal v0.6
+- packages/claims/src/oracle.ts:231,248 — `checkOracles` returns `unconfigured: true` early and does no git work
+- packages/claims/src/canary.ts:68 — `describeCanary`; call with `reveal` unset
 
-## The three rules Stage A is judged on
+## The five rules Stage B is judged on
 
-1. `redactLines` returns the same line count in the same order, always; a line
-   is rewritten only if it parses AND has a valid `id`.
-2. Redaction rewrites fields, never drops a line. No keep-list, no closure, no
-   range filter in the bundler.
-3. `--no-prompts` refuses on an unparseable line rather than half-redacting.
+1. Tier counts come off `JournalReport.provenance`; the renderer computes no tier.
+2. `provenance === null` → three tiers render *not recorded*, naming the version; no `count` key.
+3. Range scoping touches only path-bearing kinds and only the mutation-derived tables and flowchart — never the tier counts.
+4. Exit 0 whenever a report was produced; 2 only for usage or unreadable input.
+5. No wall-clock in the pure core or either renderer; double render is byte-equal.
 
-## Decisions taken (all recorded in the run journal)
+## Gate-list discrepancies found in Stage 5 chunk 1 (carry forward)
 
-- Ship whole, not cut — the human's call against a reviewer recommendation.
-- Prompts travel by default; `--no-prompts` withholds — the human's call.
-- Below journal v0.6 the tier breakdown renders *not recorded* — the human's call.
-- `report.statement` capped under a bundle-set flag of its own — the human's call.
-- Decisions 2–4 rewritten clean before implementation — the human's call.
-- Redaction is line-level, never record-level — the coordinator's redesign,
-  reached after three reviewer blockers proved record removal unsafe.
-
-## Numbering note
-
-Decision 3 is now **redaction**; Decision 4 is **selection**. They swapped in the
-rewrite. Every "Decision 3"/"Decision 4" in the iteration 1–5 review-evidence
-appends uses the old numbering and was deliberately not rewritten.
+- The skill documents `check 'README.md' 'spec/**/*.md' --require-markers`; that
+  FAILS because README.md carries no markers. **CI runs `spec/**/*.md` alone**
+  and passes. Verify against CI's commands, not the skill's list.
+- `check '.canary-probe.md'` only fails when a canary is planted first — CI
+  creates the file and plants before those two lines. Running it bare and
+  reading exit 0 as a quiet verdict is a coordinator error, not a defect.
 
 ## Pending user decisions
 
-- None open.
+- None open. The user confirmed the concurrent working-tree changes were
+  intentional and asked for them to be committed; done as `2255fc8` and
+  `742bf64`, kept separate from the feature work.

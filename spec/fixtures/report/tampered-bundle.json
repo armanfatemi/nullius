@@ -1,0 +1,146 @@
+{
+  "version": 1,
+  "range": {
+    "spec": "8211685..f431193",
+    "base": "8211685",
+    "head": "f431193",
+    "sep": "..",
+    "resolved_base": "8211685",
+    "commits": [
+      {
+        "sha": "43651d61113fc7445a701971a7ae23b902b59c30",
+        "at": "2026-08-30T14:23:33-06:00"
+      },
+      {
+        "sha": "50f6c148371c69cd916255592799bce0da84c6bf",
+        "at": "2026-08-30T18:10:08-06:00"
+      },
+      {
+        "sha": "df9a0cb3fee6740434ca16fe9d75dd5a469fa5a7",
+        "at": "2026-08-30T18:15:29-06:00"
+      },
+      {
+        "sha": "d4a4527eb55ba651bd2e616aab6d98f220361538",
+        "at": "2026-08-30T18:38:25-06:00"
+      },
+      {
+        "sha": "3b547b416255556b4d029ab583fe466d70e25d66",
+        "at": "2026-08-30T18:38:45-06:00"
+      },
+      {
+        "sha": "3db711a01d6a440cfef6e07369d6d81edae00046",
+        "at": "2026-08-30T18:45:08-06:00"
+      },
+      {
+        "sha": "abef1565700f1c4a96c2b035d07af0bc19a54b09",
+        "at": "2026-08-30T18:51:18-06:00"
+      },
+      {
+        "sha": "6586401cbc08820ab264670858ec4035b418d400",
+        "at": "2026-08-30T19:15:23-06:00"
+      },
+      {
+        "sha": "2bb5b5562b3094eaa947ab263daf0d06d4458ad5",
+        "at": "2026-08-30T19:23:02-06:00"
+      },
+      {
+        "sha": "7b1527bb3ad6429c4498504c8364719e37e882b5",
+        "at": "2026-08-30T19:23:44-06:00"
+      },
+      {
+        "sha": "bbaa23a6121ac36b5c9eb1a16ffc53d428a4d492",
+        "at": "2026-08-30T19:30:06-06:00"
+      },
+      {
+        "sha": "c8305b138b94c22bca9890755ce3f5ede20611d4",
+        "at": "2026-08-30T20:09:02-06:00"
+      },
+      {
+        "sha": "f431193baa35a68bf8118a8ac8648d3c0df05bec",
+        "at": "2026-08-30T22:17:39-06:00"
+      }
+    ]
+  },
+  "selection": {
+    "rule": "A journal is INCLUDED when at least one of its record timestamps falls within [first commit author time − slack, last commit author time + slack] AND at least one mutation.target.path is in the range's changed files. It is INCONCLUSIVE when it overlaps in time but touches no changed file. It is EXCLUDED when no record timestamp falls in the window. The header's `branch` is never consulted: it names where the session started, and a session that produced a feature branch routinely started on main.",
+    "slack_minutes": 30,
+    "prompts": "text",
+    "caps": {
+      "excerpt": 800,
+      "statement": 800,
+      "statement_flag": "bundle_statement_capped"
+    },
+    "changed_files": [
+      ".claude/retrospectives/2026-08-31-proposal-to-pr-add-canary-status-redaction.md",
+      ".claude/skills/proposal-to-pr/SKILL.md",
+      "CHANGELOG.md",
+      "openspec/changes/add-canary-status-redaction/design.md",
+      "openspec/changes/add-canary-status-redaction/progress.md",
+      "openspec/changes/add-canary-status-redaction/proposal.md",
+      "openspec/changes/add-canary-status-redaction/review-evidence.md",
+      "openspec/changes/add-canary-status-redaction/specs/canary/spec.md",
+      "openspec/changes/add-canary-status-redaction/tasks.md",
+      "packages/claims/src/canary.test.ts",
+      "packages/claims/src/canary.ts",
+      "packages/claims/src/cli.ts",
+      "spec/canary.md"
+    ],
+    "candidates": [
+      {
+        "session": "other-worktree",
+        "classification": "excluded",
+        "reason": "every record falls outside [2026-08-30T19:53:33.000Z, 2026-08-31T04:47:39.000Z]",
+        "overlap": false,
+        "touches": true,
+        "matched_paths": [
+          "packages/claims/src/canary.test.ts",
+          "packages/claims/src/canary.ts"
+        ]
+      },
+      {
+        "session": "pr58-session",
+        "classification": "excluded",
+        "reason": "excluded by --exclude pr58-session; the rule said included — overlaps the range in time and mutates 7 file(s) in it: .claude/retrospectives/2026-08-31-proposal-to-pr-add-canary-status-redaction.md, openspec/changes/add-canary-status-redaction/design.md, openspec/changes/add-canary-status-redaction/proposal.md, …",
+        "overlap": true,
+        "touches": true,
+        "matched_paths": [
+          ".claude/retrospectives/2026-08-31-proposal-to-pr-add-canary-status-redaction.md",
+          "openspec/changes/add-canary-status-redaction/design.md",
+          "openspec/changes/add-canary-status-redaction/proposal.md",
+          "openspec/changes/add-canary-status-redaction/specs/canary/spec.md",
+          "openspec/changes/add-canary-status-redaction/tasks.md",
+          "packages/claims/src/canary.test.ts",
+          "packages/claims/src/canary.ts"
+        ],
+        "override": "exclude"
+      },
+      {
+        "session": "review-only",
+        "classification": "included",
+        "reason": "included by --include review-only; the rule said inconclusive — overlaps the range in time but mutates no file in it — a review-only session has this shape; include it with --include <session> if it belongs",
+        "overlap": true,
+        "touches": false,
+        "matched_paths": [],
+        "override": "include"
+      }
+    ]
+  },
+  "journals": [
+    {
+      "session": "review-only",
+      "lines": [
+        "{\"kind\":\"journal\",\"version\":\"0.6\",\"origin\":\"hooks\",\"session\":\"review-only-6c1d0a92\",\"source\":\"startup\",\"branch\":\"main\",\"head\":\"1c0ffee\",\"worktree\":\"aa11bb22cc33dd44\",\"user\":{\"name\":\"Arman Fatemi\"}}",
+        "{\"kind\":\"prompt\",\"id\":\"p:review01\",\"text\":\"review the canary redaction proposal before I open the PR\",\"chars\":56,\"at\":\"2026-08-30T21:04:11.000Z\"}",
+        "{\"kind\":\"stage\",\"id\":\"s1\",\"origin\":\"self-reported\",\"phase\":\"pre-review\",\"iteration\":1,\"change\":\"add-canary-status-redaction\",\"at\":\"2026-08-30T21:04:20.000Z\"}",
+        "{\"kind\":\"dispatch\",\"id\":\"d:rev1\",\"expects\":\"findings\",\"prompt\":\"p:review01\",\"agent\":\"architecture-reviewer\",\"task\":\"Pre-review: architecture\",\"at\":\"2026-08-30T21:04:31.000Z\"}",
+        "{\"kind\":\"dispatch\",\"id\":\"d:rev2\",\"expects\":\"findings\",\"prompt\":\"p:review01\",\"agent\":\"rule-auditor\",\"task\":\"Pre-review: rule audit\",\"at\":\"2026-08-30T21:04:44.000Z\"}",
+        "{\"kind\":\"report\",\"id\":\"r:rev2\",\"dispatch\":\"d:rev2\",\"agent\":\"rule-auditor\",\"outcome\":\"empty\",\"statement\":\"No rule in .claude/rules/ is engaged by this proposal.\",\"at\":\"2026-08-30T21:21:37.000Z\"}",
+        "{\"kind\":\"finding\",\"id\":\"f:rev1\",\"stage\":\"s1\",\"dispatch\":\"d:rev1\",\"ref\":\"B1\",\"severity\":\"blocker\",\"author\":\"architecture-reviewer\",\"text\":\"Selection by the header's branch reads where the session started, not what it produced.\",\"at\":\"2026-08-30T21:22:10.000Z\"}",
+        "{\"kind\":\"resolution\",\"id\":\"res:rev1\",\"origin\":\"self-reported\",\"finding\":\"f:rev1\",\"outcome\":\"fixed\",\"text\":\"Selection now reads mutation paths; the header is never consulted.\",\"at\":\"2026-08-30T21:40:55.000Z\"}",
+        "{\"kind\":\"mutation\",\"id\":\"m:rev1\",\"target\":{\"path\":\".claude/agent-memory/rule-auditor/MEMORY.md\",\"hash\":\"77aa11bb22cc33dd\"},\"tool\":\"Edit\",\"at\":\"2026-08-30T21:44:09.000Z\"}",
+        "{\"kind\":\"append\",\"id\":\"a:rev1\",\"corrections_since_last_append\":\"None.\",\"at\":\"2026-08-30T21:50:00.000Z\"}",
+        ""
+      ]
+    }
+  ]
+}
