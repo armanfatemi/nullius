@@ -656,3 +656,24 @@ CLI answers badly and `project.md` already says the projections are for.
 The retired row and item 5 were Track 2's own priority picks. This track did not
 reorder them; it added evidence that they were the right two, and the first of
 them has since shipped as schema `0.6`.
+
+
+## Carried over from `add-run-ledger-producer` (archived 2026-09-01)
+
+Two tasks landed unchecked when PR #74 merged. Neither is code, both are
+probe-corpus capture, and they are recorded here so they do not disappear into
+`openspec/changes/archive/2026-09-01-add-run-ledger-producer/tasks.md`:
+
+- Capture a real **synchronous** and a real **asynchronous** `PostToolUse:Agent`
+  payload, plus a `SubagentStop`, from a live `.nullius/probes/`; redact paths
+  and commit into `spec/fixtures/probes/claude-code/` if the committed corpus
+  still lacks the synchronous shape.
+- Temporarily subscribe `UserPromptSubmit` locally under
+  `NULLIUS_WITNESS_PROBE=1`, capture one payload, redact, and commit it to the
+  probe corpus with a README row.
+
+Why it still matters: `doctor` replays the committed corpus through the real
+extractor so a harness payload-shape change fails a check instead of quietly
+producing empty journals. A shape absent from the corpus is a shape nothing
+regression-tests, and the failure it guards against is invisible by
+construction.

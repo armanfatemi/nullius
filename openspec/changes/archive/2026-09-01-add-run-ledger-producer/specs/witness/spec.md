@@ -138,38 +138,6 @@ none did.
 - **WHEN** `witness survey` reads only `0.2` and `0.5` journals
 - **THEN** `survey.ledger` and `survey.provenance` are `null`, and the summary prints no counts rather than printing zeros
 
-## MODIFIED Requirements
-
-### Requirement: Schema version bumps track the set of valid records
-
-The schema version SHALL be bumped when the set of valid records changes: (1) a
-new kind, (2) a new member of a closed vocabulary, (3) a tightening that makes
-a record invalid which a previous version accepted, (4) a new verdict that can
-fail a record, or (5) a loosening that makes a record valid which a previous
-version rejected. It SHALL NOT be bumped for additive optional metadata that no
-verdict reads.
-
-The clause numbers are load-bearing and are cited by other documents, so the
-fifth trigger is appended rather than inserted: clauses 1 to 4 keep the
-positions every existing citation names. `spec/witness-journal.md` holds the
-canonical statement; this requirement restates it and SHALL carry all five
-triggers, as SHALL any other restatement. The rule has already been misapplied
-by omission, and a restatement that drops a clause is how that recurs.
-
-A field being optional SHALL NOT by itself exempt a change from the bump.
-Optionality is a property of a field; validity is a property of a record, and
-rejecting a key that was previously ignored changes the latter.
-
-#### Scenario: a loosening
-
-- **WHEN** a change narrows the condition under which an existing verdict fires, so a record that failed at the previous version passes
-- **THEN** the version is bumped and the narrowing is gated at the new floor, so earlier journals keep the verdict they had
-
-#### Scenario: a restatement
-
-- **WHEN** a document restates the bump rule
-- **THEN** it carries all five triggers, in the numbering `spec/witness-journal.md` uses, or points at it
-
 ### Requirement: The header records the git user name when git can answer
 
 The recorder SHALL record `user: { name }` in the journal header from
@@ -256,3 +224,35 @@ the unscoped behaviour for journals declaring an earlier version.
 
 - **WHEN** identical records declare version `0.5`
 - **THEN** `SILENT-REVIEWER` is reported for both dispatches, as before
+
+## MODIFIED Requirements
+
+### Requirement: Schema version bumps track the set of valid records
+
+The schema version SHALL be bumped when the set of valid records changes: (1) a
+new kind, (2) a new member of a closed vocabulary, (3) a tightening that makes
+a record invalid which a previous version accepted, (4) a new verdict that can
+fail a record, or (5) a loosening that makes a record valid which a previous
+version rejected. It SHALL NOT be bumped for additive optional metadata that no
+verdict reads.
+
+The clause numbers are load-bearing and are cited by other documents, so the
+fifth trigger is appended rather than inserted: clauses 1 to 4 keep the
+positions every existing citation names. `spec/witness-journal.md` holds the
+canonical statement; this requirement restates it and SHALL carry all five
+triggers, as SHALL any other restatement. The rule has already been misapplied
+by omission, and a restatement that drops a clause is how that recurs.
+
+A field being optional SHALL NOT by itself exempt a change from the bump.
+Optionality is a property of a field; validity is a property of a record, and
+rejecting a key that was previously ignored changes the latter.
+
+#### Scenario: a loosening
+
+- **WHEN** a change narrows the condition under which an existing verdict fires, so a record that failed at the previous version passes
+- **THEN** the version is bumped and the narrowing is gated at the new floor, so earlier journals keep the verdict they had
+
+#### Scenario: a restatement
+
+- **WHEN** a document restates the bump rule
+- **THEN** it carries all five triggers, in the numbering `spec/witness-journal.md` uses, or points at it
