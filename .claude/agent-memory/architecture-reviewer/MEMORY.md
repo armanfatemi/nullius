@@ -12,3 +12,5 @@
 - [Clean review vs the `found` outcome](feedback_clean-review-vs-found-outcome.md) — the recorder calls any non-empty return `found`; verdicts keyed on a missing finding misfire on honest clean reviews
 - [Denominator predicates cut both ways](feedback_denominator-predicates-cut-both-ways.md) — a verdict gated on a prose-file match: check false-arming, not just the disarming limit the design records
 - [Blockquoted anchors are ungated](feedback_blockquoted-anchors-are-ungated.md) — `check` skips Evidence lines inside `>` quotes; compare its anchor count to `grep -c`
+- [Verbatim carry defeats field redaction](feedback_verbatim-carry-defeats-field-redaction.md) — a line kept verbatim skips every parse-dependent redaction promise
+- [Schema decisions lag noun changes](feedback_schema-decisions-lag-noun-changes.md) — after a records→lines rewrite, the decision declaring the literal shape is the stale one

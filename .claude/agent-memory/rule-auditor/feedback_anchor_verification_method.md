@@ -76,3 +76,21 @@ fixture fix (e.g. via `node -e` + `JSON.parse` per line) rather than trusting
 the narrative in `review-evidence.md`/commit messages — cheap to do, and is
 exactly the `model-proposes-code-verifies.md` discipline applied to my own
 audit process, not just to the code I'm auditing.
+
+**A quote can be at the exact right line, correctly stamped, and still not
+support the sentence above it — if a scope/version qualifier a few lines away
+governs it.** On `add-pr-process-report` iteration 2 I marked
+`spec/witness-journal.md:225` and `:228` `[looks-good]` for supporting a claim
+about `0.2`-version journals; the paragraph they sit in opens "At `0.6` and
+above" and closes two lines later (line 230) with "Below `0.6` ... unchanged,
+because those journals have no per-record origin to partition by" — i.e. the
+quoted lines describe the `>=0.6` case, the exact opposite of what they were
+cited for. `architecture-reviewer` caught it; I had opened the cited lines but
+not the paragraph's own boundary sentence a few lines outside my selection.
+**How to apply:** before endorsing any anchor as `[looks-good]`, read outward
+from the cited line — the whole paragraph or comment block, specifically
+scanning for "at/above/below version X" or similar scoping language — not just
+the line(s) named in the citation. This is a distinct failure mode from the
+STALE/repoint one above: the checker's `OK` verdict only confirms the quote is
+at that line at that commit, never that the quote's own paragraph supports the
+claim it's placed under.
