@@ -1051,8 +1051,15 @@ function digest(text: string): string {
  * The whole digest, not the short one. A prompt's `hash` is the only thing the
  * hashed mode records about what was said, so it is not shortened to the width
  * a join key can afford to collide at.
+ *
+ * Exported for `bundle.ts`, which converts an already-recorded prompt to this
+ * same hashed shape under `--no-prompts`. A second `createHash("sha256")` there
+ * would be a copy of the one thing that has to agree byte for byte: two hashes
+ * of the same prompt differing would read to anybody comparing them as
+ * tampering rather than as drift. It is NOT re-exported from `index.ts` — the
+ * published surface is unchanged.
  */
-function hashText(text: string): string {
+export function hashText(text: string): string {
   return createHash("sha256").update(text).digest("hex");
 }
 

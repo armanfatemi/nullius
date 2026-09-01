@@ -1297,3 +1297,32 @@ preserve.
   purpose.** I am recording that as a known cost rather than a defect, because
   the alternative — silently renumbering a historical record so it agrees with
   the present — is the failure this whole change is about.
+
+## Stage 5 — Verify chunk 1 (Stage A, the bundle)
+
+build: pass
+type-check: pass
+test: pass (kit 406 passed; claims 961 passed, 6 known ugrep failures — all six in flagConformance.test.ts, the baseline, untouched)
+dogfood gates: pass, both polarities
+
+Gate-list discrepancy worth recording: the skill documents
+`check 'README.md' 'spec/**/*.md' --require-markers`, which FAILS here because
+README.md carries no grounding markers. CI runs `check 'spec/**/*.md'
+--require-markers` — no README.md — and that passes. CI is what gates the PR,
+so CI's command is the one this run treats as the gate. The skill's list is
+wrong about this and it is not a defect in the change.
+
+Second correction to my own gate run: `check '.canary-probe.md'` returned 0
+where the skill's list implies a failure. That was my setup error, not a quiet
+verdict — CI creates the file and PLANTS a canary before those two lines. Run
+with the plant, all four canary gates behave: guard fires on the planted
+document (exit 1), --probing is the only thing that lets it through (exit 0),
+and a silent report scores MISSED (exit 1). I nearly reported a live gate as
+broken; the fixture was fine and the invocation was not.
+
+Fixture claims verified independently rather than taken from the implementer's
+report:
+- spec/fixtures/report/stale-verification.jsonl trips STALE-VERIFICATION
+- spec/fixtures/report/rejected-lines.jsonl trips MALFORMED x2 and DUPLICATE-ID
+- spec/fixtures/report/pr58-session.jsonl is version 0.2, branch main,
+  11 distinct mutation paths, 4 of them .claude/agent-memory/**

@@ -79,6 +79,7 @@ import {
   type Usage,
 } from "./record";
 import { runPipeline } from "./pipeline";
+import { runBundle } from "./bundle";
 
 /** How many findings the advisory check prints before it says "and N more". */
 const ADVISORY_LIMIT = 10;
@@ -137,6 +138,9 @@ usage:
   nullius-kit witness record [--origin hooks|self-reported] [--root <dir>]
   nullius-kit witness check  [--root <dir>]
   nullius-kit witness ledger <kind> [flags] [--session <id>] [--root <dir>]
+  nullius-kit witness bundle <base>..<head> [--out <path>] [--include <session>]
+                             [--exclude <session>] [--no-prompts]
+                             [--slack <minutes>] [--root <dir>]
 
 record and check read one harness hook payload as JSON on stdin and write to
 .nullius/runs/<session_id>.jsonl under an advisory lock. ledger takes flags.
@@ -146,6 +150,9 @@ record and check read one harness hook payload as JSON on stdin and write to
   check    validate the session's journal and print what does not hold up;
            always exits 0, so it can never block the run it is watching
   ledger   append a record the coordinator is writing about its own run
+  bundle   write a committed envelope of the source lines of every journal
+           that produced a commit range, so CI can rejoin them and re-validate
+           what it counts; 'witness bundle --help' for its flags
 
   --origin  who is writing these records (default: hooks). Journals not
             emitted by the harness must say so: self-reported records certify
@@ -203,6 +210,10 @@ function main(): number {
   // `ledger` owns its own flags too — a whole record's worth of them — so it
   // is routed before the witness options parser, which would reject every one.
   if (argv[0] === "witness" && argv[1] === "ledger") return runLedger(argv.slice(2));
+
+  // `bundle` likewise: it takes a range and half a dozen flags of its own, none
+  // of which the witness options parser knows.
+  if (argv[0] === "witness" && argv[1] === "bundle") return runBundle(argv.slice(2));
 
   const options = parseOptions(argv);
   if (options === null) return 2;

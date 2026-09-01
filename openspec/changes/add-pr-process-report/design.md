@@ -312,6 +312,33 @@ result. With `--no-prompts` and any unparseable line in a selected journal,
 nothing, offering `--exclude <session>`. A redaction flag may refuse; it may
 not appear to work.
 
+**The concrete values, so they are not invented twice.** The design owes these
+to the implementer rather than the other way round:
+
+- **Cap budget: 800 characters** for `finding.text`, `prompt.text`,
+  `report.statement` and each `report.findings` entry. The producer's own
+  `EXCERPT_LIMIT` is 2000 (`packages/kit/src/record.ts:220`); the bundle caps
+  harder because this file is public and committed and the report needs a
+  label, not a transcript.
+- **The statement-cap flag is `bundle_statement_capped`** — deliberately long,
+  so a reader of a committed envelope cannot mistake it for something the
+  producer wrote.
+- **A prompt carrying `text` but no `chars`**: `--no-prompts` derives `chars`
+  from the stored excerpt, because dropping `text` without `chars` would
+  manufacture `malformed`. A prompt whose `text` is present but blank is left
+  verbatim — converting it would *repair* an existing `malformed`, which is a
+  verdict change in the flattering direction and is exactly what this decision
+  forbids.
+- **Exit codes**: the `--no-prompts` refusal exits **2**, matching `ledger`'s
+  refusal to write a record it cannot stand behind; zero included journals
+  exits **1**.
+- **`selection` records** `prompts: "text" | "hashed"`, and in the hashed case a
+  `prompt_hash_note` carrying the caveat below.
+- **"Fails to parse" means "not readable as a JSON object"**, which also
+  catches a line that is valid JSON but a scalar or an array. The conservative
+  reading, consistent with a redaction flag that may refuse but may not appear
+  to work.
+
 **One caveat the envelope states.** The bundler holds only the clipped text the
 producer stored, while the producer's own hashed branch hashes the untruncated
 original and `chars` is the untruncated length. The validator checks no
