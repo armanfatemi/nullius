@@ -1,5 +1,3 @@
 {
-  "docs": [
-    "openspec/**/*.md"
-  ]
+  "docs": ["spec/**/*.md"]
 }
