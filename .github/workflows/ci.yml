@@ -290,9 +290,25 @@ jobs:
           set -euo pipefail
           fixtures=spec/fixtures/report
           range='8211685..f431193'
+          # --config is passed EXPLICITLY on every invocation below, pointing at
+          # a committed fixture, so this step does not inherit whatever
+          # `nullius.config.json` happens to sit in the repository root.
+          #
+          # Without it the step's result depended on repository state it does
+          # not control. Running `nullius-kit init` here — the product's own
+          # onboarding command — writes a root config narrowing `docs` to
+          # `openspec/**/*.md`; every openspec document in this historical range
+          # has since been ARCHIVED, so `reportDocuments` correctly drops them as
+          # non-existent, the check tier correctly renders `not recorded`, and
+          # `.check` is correctly null. The product was right and the assertion
+          # below was wrong to assume otherwise.
+          #
+          # A CI step whose subject is a fixed historical range must pin every
+          # input that decides its output. The range is pinned; so is the bundle;
+          # the config was not.
           work=$(mktemp -d)
 
-          node packages/claims/dist/cli.js witness report "$range" --bundle "$fixtures/pr58-bundle.json" --format md > "$work/with.md"
+          node packages/claims/dist/cli.js witness report "$range" --config "$fixtures/report.config.json" --bundle "$fixtures/pr58-bundle.json" --format md > "$work/with.md"
           grep -q '^## Code-verified' "$work/with.md"
           grep -q '^## Hook-attested' "$work/with.md"
           grep -q '^## Self-reported' "$work/with.md"
@@ -314,14 +330,14 @@ jobs:
           # No bundle. The contributor-independent tier is unaffected — which is
           # why it is rendered first — and the three bundle tiers name the path
           # that held nothing rather than reporting zero.
-          node packages/claims/dist/cli.js witness report "$range" --bundle "$fixtures/absent.json" --format md > "$work/without.md"
+          node packages/claims/dist/cli.js witness report "$range" --config "$fixtures/report.config.json" --bundle "$fixtures/absent.json" --format md > "$work/without.md"
           grep -q '^## Code-verified' "$work/without.md"
           grep -q "no bundle at $fixtures/absent.json" "$work/without.md"
 
           # The JSON form. This arm depends on the exit-code contract: under any
           # other contract it would fail exactly when the report had something
           # to report.
-          node packages/claims/dist/cli.js witness report "$range" --bundle "$fixtures/pr58-bundle.json" --format json > "$work/report.json"
+          node packages/claims/dist/cli.js witness report "$range" --config "$fixtures/report.config.json" --bundle "$fixtures/pr58-bundle.json" --format json > "$work/report.json"
           test "$(jq -r .kind "$work/report.json")" = 'run-report'
           test "$(jq -r .version "$work/report.json")" = '1'
           # The embedded check document carries ITS OWN version and has no
@@ -335,7 +351,7 @@ jobs:
           # by the validator's finding and NO dispatch count is printed. The
           # absence of the number is the assertion: `grep -q NO-TERMINAL` alone
           # would stay green on a build that printed the finding and the count.
-          node packages/claims/dist/cli.js witness report "$range" --bundle "$fixtures/tampered-bundle.json" --format md > "$work/tampered.md"
+          node packages/claims/dist/cli.js witness report "$range" --config "$fixtures/report.config.json" --bundle "$fixtures/tampered-bundle.json" --format md > "$work/tampered.md"
           grep -q 'NO-TERMINAL' "$work/tampered.md"
           # Same pairing. The heading must be present in the with-bundle render —
           # which is where a count legitimately appears — so a rename breaks a
