@@ -698,10 +698,18 @@ Three fired at once when this change's Stage B merged:
 - its own `grep -rn '"report"' packages/claims/src/cli.ts` → 0, made 1 by the
   verb it proposed;
 - **another change's** anchor, in `add-diff-scoped-strictness`, whose pattern
-  included `changedFiles` and which this change falsified from outside.
+  included `changedFiles` and which this change falsified from outside;
+- and **a second unrelated proposal**, `add-maintainer-card`, whose
+  `grep -rn 'format json' action/ → 0` went to 1 when Stage C added a
+  `witness report --format json` step. Its actual claim — that nothing in the
+  action reads `check --format json` — was still true. The count moved because
+  a different verb's JSON consumer landed beside it.
 
-That third one is the sharp end. A landing change can turn an unrelated,
-unmerged proposal red, and the author of that proposal did nothing wrong. The
+Those last two are the sharp end. **A landing change can turn unrelated,
+unmerged proposals red, and their authors did nothing wrong** — twice in one
+change, from two different stages, which is a rate rather than an accident. In
+both cases the prose claim survived intact and only the grep count moved, which
+is the tell: the pattern was broader than the sentence it was placed under. The
 repair each time was manual: restate the count and say what moved it, or narrow
 the pattern to the claim the prose actually makes.
 

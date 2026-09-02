@@ -6,8 +6,9 @@ _Started 2026-08-31; last updated 2026-08-31_
 
 - [x] Stage 1: Load
 - [x] Stage 2: Pre-review iterations 1–5 — probe CAUGHT all five rounds
-- [x] Stage 3: Refine iterations 1–5; Decisions 2–4 rewritten clean after round 5
-- [x] Stage 4 chunk 1: **Stage A — the bundle**, committed `5d43133`, Stage 5 green
+- [x] Stage 3: Refine iterations 1–5; Decisions 2–4 rewritten clean
+- [x] Stage 4 chunk 1: Stage A — the bundle, `5d43133`, Stage 5 green
+- [x] Stage 4 chunk 2: Stage B — the report, `62083ec`, Stage 5 green
 
 ## Commits on this branch
 
@@ -15,45 +16,44 @@ _Started 2026-08-31; last updated 2026-08-31_
 - `5d43133` feat(kit) — `witness bundle`, Stage A
 - `2255fc8` chore(openspec) — archive four landed changes, apply their spec deltas
 - `742bf64` docs(agent-memory) — reviewer learnings from this run
+- `62083ec` feat(claims) — `witness report`, Stage B
 
 ## Current phase
 
-**Stage 4 (Implement)**, chunk 2 of 3: **Stage B — the kernel report**
-(`packages/claims`), tasks §4–§6 plus §0's deferred capture bullet.
+**Stage 4 (Implement)**, chunk 3 of 3: **Stage C** — Action input, `init`/`doctor`,
+the skill's Stage 8 edit, docs and CHANGELOGs. Tasks §7–§10. 41/54 done.
 
 ## Next 3 actions
 
-1. Receive Stage B, run Stage 5 myself (build, type-check, test, both dogfood polarities incl. the canary round trip), commit
-2. Chunk 3: Stage C — Action, init, doctor, dogfood, tasks §7–§9
-3. Stage 6 post-review routed on `git diff main...HEAD`, then Stage 8 PR
+1. Receive Stage C, run Stage 5 myself, commit
+2. Stage 6 post-review routed on `git diff main...HEAD | pipeline route-paths`
+3. Stage 7 if blockers, else Stage 8 PR
 
 ## Integration points the next session needs to read on resume
 
-- packages/kit/src/bundle.ts:624 — `BundleEnvelope` `{ session, lines }`; the kernel must NOT import from kit
-- packages/claims/src/witness.ts:176,222 — `ProvenanceCounts` (`hooks`/`selfReported`/`unattributed`) and `provenance: ProvenanceCounts | null`
-- packages/claims/src/witness.ts:1599,1615,1637 — `atLedgerFloor`; provenance is null below journal v0.6
-- packages/claims/src/oracle.ts:231,248 — `checkOracles` returns `unconfigured: true` early and does no git work
-- packages/claims/src/canary.ts:68 — `describeCanary`; call with `reveal` unset
+- action/action.yml:142 — `marker='<!-- nullius-claims -->'`, matched by startswith; the new marker must not prefix it in either direction
+- action/action.yml:157 — the existing post swallows failure with `|| true`; the new step must surface it
+- packages/kit/src/cli.ts:527 — `readKitProfile`, three-way shape, currently parses only `profile`
+- packages/kit/src/render.ts:158-161 — the workflow `with:` template literal
+- packages/kit/src/doctor.ts:699 — `checkWorkflow`; `Check.status` includes `fact`
 
-## The five rules Stage B is judged on
+## Lessons carried into the Stage C brief
 
-1. Tier counts come off `JournalReport.provenance`; the renderer computes no tier.
-2. `provenance === null` → three tiers render *not recorded*, naming the version; no `count` key.
-3. Range scoping touches only path-bearing kinds and only the mutation-derived tables and flowchart — never the tier counts.
-4. Exit 0 whenever a report was produced; 2 only for usage or unreadable input.
-5. No wall-clock in the pure core or either renderer; double render is byte-equal.
+- **State the repository's prohibitions, not only the APIs.** Chunk 2's brief
+  pinned every signature and omitted hard rule 12; the returned CI step stored
+  the checker command in a shell variable and called `$claims` at seven sites.
+  Correct under bash, which is why the rule targets the pattern. Stage C's brief
+  lists the prohibitions explicitly.
+- Verify the implementer's central claims directly; both chunks' reports were
+  accurate, and checking cost minutes.
+- Run the canary round trip **with the plant CI performs first**, never bare.
 
-## Gate-list discrepancies found in Stage 5 chunk 1 (carry forward)
+## Known gate-list discrepancies (verify against CI, not the skill)
 
-- The skill documents `check 'README.md' 'spec/**/*.md' --require-markers`; that
-  FAILS because README.md carries no markers. **CI runs `spec/**/*.md` alone**
-  and passes. Verify against CI's commands, not the skill's list.
-- `check '.canary-probe.md'` only fails when a canary is planted first — CI
-  creates the file and plants before those two lines. Running it bare and
-  reading exit 0 as a quiet verdict is a coordinator error, not a defect.
+- The skill lists `check 'README.md' 'spec/**/*.md' --require-markers`; that
+  fails because README.md has no markers. CI runs `spec/**/*.md` alone.
+- `check '.canary-probe.md'` only fails when a canary is planted first.
 
 ## Pending user decisions
 
-- None open. The user confirmed the concurrent working-tree changes were
-  intentional and asked for them to be committed; done as `2255fc8` and
-  `742bf64`, kept separate from the feature work.
+- None open.

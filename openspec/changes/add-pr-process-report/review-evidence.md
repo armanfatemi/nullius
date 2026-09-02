@@ -1417,3 +1417,40 @@ prohibitions gets code that satisfies the APIs.
 I ran the canary round trip *with the plant CI performs first*, rather than
 bare. Last chunk I ran it bare, read exit 0, and briefly concluded a live gate
 had gone quiet. The gate was fine and my invocation was not.
+
+## Stage 5 — Verify chunk 3 (Stage C, Action/init/doctor/skill/docs)
+
+build: pass
+type-check: pass
+test: pass (kit 415 passed — +9 for init/doctor; claims 1033 passed; 6 known ugrep failures, all in flagConformance.test.ts)
+dogfood gates: pass, both polarities, including the canary round trip run with the plant CI performs first
+
+Verified end-to-end through the built CLI in a scratch repository rather than
+by unit test alone — the whole Decision 10 cycle:
+- `init --profile specs --run-report` writes `runReport: true` into
+  nullius.kit.json AND `run-report: true` into the workflow
+- `doctor` reports the `run report` check as ok
+- deleting the input by hand -> `doctor` FAILS with "every pull request will
+  silently go without one"
+- `doctor --fix` re-renders the input and the check returns to ok
+
+Marker safety checked in both directions programmatically:
+`<!-- nullius-run-report -->` does not start with `<!-- nullius-claims -->`
+and vice versa, which matters because the upsert matches by `startswith`.
+
+## §9's CI bullet was resolved the second way the task allows, and it is a departure
+
+`tasks.md` §9 asked for `./action` to run on this repository's pull requests
+with `run-report: true`. **It cannot work yet, and adding it would have been a
+step that must fail.** The Action `npx`-installs the version in
+`claims-version`, whose default is `0.9.1` — and the working tree *is* `0.9.1`,
+so `witness report` exists only here and not in the published tarball. A CI job
+exercising the composite action today would fail on a missing verb, for a
+reason unrelated to the code under test.
+
+The task itself offers the alternative — "a job that runs the verb and posts
+through the same script" — and Stage B already added exactly that, asserting
+with `grep` on both bundle polarities plus a tampered envelope. Exercising the
+composite action becomes worthwhile the release after this one.
+`action/README.md` now states the dependency under "It needs a published
+checker" so an adopter enabling the input is not left guessing.

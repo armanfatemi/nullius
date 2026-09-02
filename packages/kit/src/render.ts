@@ -112,20 +112,34 @@ export function renderConfig(profile: Profile, existing?: string): string {
   return `${JSON.stringify(config, null, 2)}\n`;
 }
 
-export function renderKitConfig(profile: Profile, kitVersion: string): string {
+export function renderKitConfig(
+  profile: Profile,
+  kitVersion: string,
+  runReport = false,
+): string {
   // Kit settings live here rather than in nullius.config.json, whose unknown
   // keys are a hard error: a kit key there breaks every older pinned kernel.
+  //
+  // `runReport` is written only when asked for. An absent key and `false` mean
+  // the same thing to every reader, and a config that lists every default is a
+  // config where a deliberate choice is indistinguishable from a rendered one.
   const config = {
     kitVersion,
     profile: profile.name,
     requireMarkers: profile.requireMarkers,
+    ...(runReport ? { runReport: true } : {}),
   };
   return `${JSON.stringify(config, null, 2)}\n`;
 }
 
-export function renderWorkflow(profile: Profile, actionRef: string): string {
+export function renderWorkflow(profile: Profile, actionRef: string, runReport = false): string {
   const globs = profile.docs.map((glob) => `"${glob}"`).join(" ");
   const requireMarkers = profile.requireMarkers ? "\n          require-markers: true" : "";
+  // Emitted only when the config asks. `doctor` compares the two: a config that
+  // asks and a workflow that does not carry the input is the one combination
+  // that is a `fail` rather than a fact, because the repository believes it is
+  // getting a report it will never receive.
+  const runReportInput = runReport ? "\n          run-report: true" : "";
   // The Action defaults `strict: false`, which makes an unverified claim a PR
   // comment and a GREEN job. For a profile whose summary promises a gate, that
   // is a gate that cannot fail. Profiles say which they want, and the
@@ -157,7 +171,7 @@ jobs:
       - uses: ${actionRef}
         with:
           github-token: \${{ secrets.GITHUB_TOKEN }}
-          globs: ${globs}${requireMarkers}${strict}
+          globs: ${globs}${requireMarkers}${strict}${runReportInput}
 `;
 }
 
@@ -289,11 +303,19 @@ export interface PlanOptions {
    * silently reinstated on every repair otherwise.
    */
   touchUserFiles?: boolean;
+  /**
+   * `init --run-report`, or `runReport: true` already in `nullius.kit.json`
+   * when `doctor --fix` re-renders. Absent means the feature is off, which is
+   * what every repository that does not commit a `nullius.runs/` envelope
+   * wants: a report with no bundle renders one tier and three absences.
+   */
+  runReport?: boolean;
 }
 
 export function buildPlan(options: PlanOptions): Plan {
   const { root, profile, kitVersion, actionRef, hookPolicy } = options;
   const touchUserFiles = options.touchUserFiles ?? true;
+  const runReport = options.runReport ?? false;
   const files: PlannedFile[] = [];
   const notes: string[] = [];
 
@@ -314,11 +336,11 @@ export function buildPlan(options: PlanOptions): Plan {
       );
     } else if (artifact.path === "nullius.kit.json") {
       files.push(
-        planFile(root, artifact.path, renderKitConfig(profile, kitVersion), artifact.reason),
+        planFile(root, artifact.path, renderKitConfig(profile, kitVersion, runReport), artifact.reason),
       );
     } else if (artifact.path === ".github/workflows/claims.yml") {
       files.push(
-        planFile(root, artifact.path, renderWorkflow(profile, actionRef), artifact.reason),
+        planFile(root, artifact.path, renderWorkflow(profile, actionRef, runReport), artifact.reason),
       );
     } else if (artifact.path === "nullius.authoring.md") {
       files.push(planFile(root, artifact.path, renderAuthoring(profile), artifact.reason));

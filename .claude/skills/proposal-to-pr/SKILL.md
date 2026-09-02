@@ -131,6 +131,16 @@ witness ledger findings    [--open]   list this session's findings; --open
                            shows only the blockers no resolution answers
 ```
 
+And `witness bundle`, which is neither `pipeline` nor `ledger` — it reads the
+run journals and writes the committed envelope CI renders the process report
+from:
+
+```
+witness bundle <base>..<head> [--out <path>] [--include <session>]…
+                             [--exclude <session>]… [--no-prompts]
+                             [--slack <minutes>]
+```
+
 Every one of them also takes `--session <id>` and `--root <dir>`. **There is no
 `finding` kind, deliberately.** Findings are extracted by the recorder from
 what an agent actually returned; a coordinator-authored one would claim the
@@ -1265,6 +1275,32 @@ confirmed carry this block verbatim under `## Summary`:
 > Verify after merge: gh api repos/armanfatemi/nullius/compare/main...<sha> --jq .status
 > (behind/identical = landed; ahead/diverged = orphaned)
 ```
+
+### Step 2b — bundle the run, and commit it before the PR exists
+
+The envelope has to be on the branch before `gh pr create`, because the Action
+reads it from the checkout of the head commit. A bundle pushed afterwards is a
+bundle the first CI run did not see, and the first CI run is the one a
+maintainer reads.
+
+```bash
+node packages/kit/dist/cli.js witness bundle "<base>..HEAD"
+git add nullius.runs/
+git commit -m "chore(<change>): bundle this run's journals"
+git push
+```
+
+**Stage the path, never `git add -A`.** Hard rule 11 applies here as everywhere:
+the working tree can hold another change's work, and this commit is the one most
+likely to be made in a hurry at the end of a long run.
+
+**Exit 1 with no journals selected is a fact, not a failure to fix.** It means
+no session on this machine both overlapped the range and touched a file in it —
+which is the honest answer for a change implemented in a different worktree, or
+on a machine where recording is off. Note it in the PR body under
+`## Verification` and continue; do not reach for `--include` to manufacture a
+selection. A bundle nobody can justify is worse than no bundle, because the
+report labels the tiers it fills from one as attested.
 
 ### Step 3 — body, then open
 

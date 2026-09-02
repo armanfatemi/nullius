@@ -73,25 +73,25 @@ its own.
 
 ### 7. Action
 
-- [ ] Input `run-report` (default `'false'`); step runs `witness report "$BASE..$HEAD" --bundle "$BUNDLE" --format md`, PR body via `jq` from the event payload as the checker step does.
-- [ ] Second upsert block under `<!-- nullius-run-report -->`; version read first for the JSON artefact; failed post surfaced in the step summary.
-- [ ] Upload the JSON form as a workflow artefact.
-- [ ] `action/README.md`: the input, the tiers, what the report does not claim.
+- [x] Input `run-report` (default `'false'`); step runs `witness report "$BASE..$HEAD" --bundle "$BUNDLE" --format md`, PR body via `jq` from the event payload as the checker step does.
+- [x] Second upsert block under `<!-- nullius-run-report -->`; version read first for the JSON artefact; failed post surfaced in the step summary.
+- [x] Upload the JSON form as a workflow artefact.
+- [x] `action/README.md`: the input, the tiers, what the report does not claim.
 
 ### 8. init / doctor
 
-- [ ] `init --run-report`; `nullius.kit.json` `runReport`; `renderWorkflow` emits the input; `readKitProfile` reads the key.
-- [ ] `doctor`: `run report` check per Decision 10; `--fix` re-renders.
-- [ ] Tests in `init.test.ts` / `doctor.test.ts`: flag → config → workflow; config-without-input fails; absent config is a fact.
+- [x] `init --run-report`; `nullius.kit.json` `runReport`; `renderWorkflow` emits the input; `readKitProfile` reads the key.
+- [x] `doctor`: `run report` check per Decision 10; `--fix` re-renders.
+- [x] Tests in `init.test.ts` / `doctor.test.ts`: flag → config → workflow; config-without-input fails; absent config is a fact.
 
 ### 9. Skill and dogfood
 
-- [ ] `proposal-to-pr` Stage 8: bundle, commit, push before `gh pr create`; subcommand list updated; `nullius wiring` clean.
-- [ ] This repository's CI: run `./action` on pull requests with `run-report: true` (first time the Action runs in CI at all) — or, if the composite action cannot be exercised on `pull_request` from the same repo, a job that runs the verb and posts through the same script.
-- [ ] `docs/`: a short maintainer-facing page — how to read the report, which tier to trust for what.
-- [ ] `CHANGELOG.md` for both packages and the Action.
+- [x] `proposal-to-pr` Stage 8: bundle, commit, push before `gh pr create`; subcommand list updated; `nullius wiring` clean.
+- [x] *(resolved the second way the task allows: a job that runs the verb directly, added in Stage B. `./action` is deferred — it npx-installs the pinned `claims-version`, and `witness report` is unreleased, so exercising the composite action today would fail on a published tarball without the verb.)* This repository's CI: run `./action` on pull requests with `run-report: true` (first time the Action runs in CI at all) — or, if the composite action cannot be exercised on `pull_request` from the same repo, a job that runs the verb and posts through the same script.
+- [x] `docs/`: a short maintainer-facing page — how to read the report, which tier to trust for what.
+- [x] `CHANGELOG.md` for both packages and the Action.
 
 ## 10. Verification
 
-- [ ] `pnpm build && pnpm type-check && pnpm test` (6 ugrep baseline failures only); dogfood gates both polarities.
-- [ ] `node packages/claims/dist/cli.js check 'openspec/changes/add-pr-process-report/**/*.md'` passes; `check 'spec/**/*.md' --require-markers` passes with the new spec.
+- [x] `pnpm build && pnpm type-check && pnpm test` (6 ugrep baseline failures only); dogfood gates both polarities.
+- [x] `node packages/claims/dist/cli.js check 'openspec/changes/add-pr-process-report/**/*.md'` passes; `check 'spec/**/*.md' --require-markers` passes with the new spec.

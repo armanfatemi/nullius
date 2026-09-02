@@ -4,6 +4,68 @@ Bare version headings are the kernel — `@nullius-inverba/claims` and its
 unscoped alias `evidence-anchors`, which ship together. Headings prefixed with
 a package name are that package's own release; the kit versions independently.
 
+## Unreleased
+
+### Added
+
+- **`nullius witness report <base>..<head> | <sha>`** (kernel) renders how a
+  pull request was produced, as markdown or JSON, in four provenance tiers:
+  *code-verified* (re-run in CI, independent of the contributor),
+  *hook-attested*, *self-reported*, and *unattributed*. The code-verified tier
+  needs no bundle and is rendered first, because it is the only one a hostile
+  contributor cannot shape.
+
+  The verb **renders and does not gate**: exit 0 whenever it produced a report,
+  exit 2 only for a usage error or unreadable input. The three checks it wraps
+  — `check`, `checkOracles`, `validateJournal` — already gate in CI on their
+  own, and a fourth place for pass and fail to disagree is what the kernel
+  refused to give `survey`.
+
+  Tier counts are read from `JournalReport.provenance` and never recomputed.
+  Below journal version `0.6` the validator computes no partition at all, so
+  the three bundle tiers render *not recorded*, naming the version — an
+  absence, never a zero.
+
+  JSON output carries `{ "kind": "run-report", "version": 1 }` and embeds the
+  check document under its own key with that document's own version. Two
+  version-1 documents on one CLI are told apart by the discriminator, not by
+  context.
+
+- **`nullius-kit witness bundle <base>..<head>`** selects the session journals
+  overlapping a commit range and writes a committed envelope
+  (`nullius.runs/<branch-slug>.json`) that CI can read. Journals are classified
+  three ways — `included`, `inconclusive`, `excluded` — because a session that
+  overlapped the range in time and mutated nothing in it is exactly the
+  review-only session the report exists to show, and dropping it would render
+  its work as a smaller count rather than as an absence.
+
+  **Redaction rewrites fields on a line and never drops a line.** The envelope
+  carries every source line, including ones the validator rejects, so their
+  `malformed` and `duplicate-id` verdicts survive the round trip. A bundled
+  journal reconstructs to the same verdict set as its source.
+
+  `--no-prompts` converts each prompt to the producer's hashed shape rather
+  than emptying its text, and **refuses outright** when a line cannot be parsed
+  — a redaction flag may refuse, but it may not appear to work.
+
+- **`init --run-report`**, `runReport` in `nullius.kit.json`, and a `run report`
+  check in `doctor` that fails when the config asks for the report and the
+  workflow lacks the input — the case where a repository believes it is getting
+  a report on every pull request and is not.
+
+- **The Action gains `run-report`** (default `false`) and `run-report-bundle`.
+  It posts a second comment under `<!-- nullius-run-report -->`, a marker which
+  is not a prefix of `<!-- nullius-claims -->` and which that marker does not
+  prefix, since the upsert matches by `startswith`. The JSON `version` is read
+  first: an unrecognised one posts nothing and says which version it could not
+  render. A failed post is surfaced in the step summary rather than swallowed.
+
+### Known limitation
+
+`run-report` cannot work until a release carrying `witness report` is
+published. The Action pins `claims-version` and `npx`-installs that version, so
+the verb has to exist in the published tarball, not merely in this repository.
+
 ## 0.9.1
 
 Two security fixes in the rev-stamped lane, both reported 2026-08-19 and both
