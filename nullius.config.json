@@ -1,0 +1,6 @@
+{
+  "docs": [
+    "openspec/**/*.md",
+    "spec/**/*.md"
+  ]
+}
