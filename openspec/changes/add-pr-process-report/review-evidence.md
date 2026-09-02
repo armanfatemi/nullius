@@ -1610,3 +1610,81 @@ the check document without shadowing it.
   and `[concern]` findings are not fixed automatically — so this is a
   coordinator decision someone could disagree with, recorded rather than
   quietly taken.
+
+## Stage 9 — Retro, and the blocking finding it produced
+
+Retro: `.claude/retrospectives/2026-09-02-proposal-to-pr-add-pr-process-report.md`
+Severity: **blocking**. PR: #75.
+
+The retro is the most valuable artefact this run produced, and it caught a
+defect that six review rounds and every gate missed.
+
+## The finding
+
+The envelope committed as this change's own dogfood published into a public
+repository: eleven absolute paths under the operator's home directory, the taint
+token `CANARY-PRESENT`, and the live review probe's planted sentence verbatim
+with its host document and line number.
+
+**Why the review missed it, stated precisely by the retro:** `rule-auditor`
+routed an unbounded contributor-controlled string in a public committed file to
+a human, and the human capped `report.statement`. Nobody asked the same question
+of `report.findings` — the larger field beside it, carried verbatim from
+subagent output, capped by length alone. Every leaked string sat inside an entry
+that was within the cap. Capping is the wrong tool for a field whose problem is
+what it says.
+
+And the change exists to make committing that bundle routine, for this
+repository via `init --run-report` and for every adopter via the Action. The
+retro's sentence for it: *an accident becomes a pipeline.*
+
+## What was done
+
+Fixed in the mechanism rather than the artefact. `report.findings` entries are
+replaced by a length placeholder; the path scrub is universal over every string
+on every record. The first version of the fix closed `report.findings` and
+still leaked from an `append` record — a kind the redaction list did not name —
+which is the same error one level up and is now recorded in the design as the
+reason the scrub is not keyed to a kind list. Stage 8 of the skill gains a
+pre-commit grep. Verified by re-bundling this run: all four leak classes zero,
+verdict-set identity preserved on both journals.
+
+The data remains in the pushed history of PR #75. Removing it is a force-push,
+which this repository forbids and which is the maintainer's decision; it is
+stated in a PR comment rather than quietly left.
+
+## The retro's other two findings, carried
+
+- **The 5/5 probe streak is the least informative number in this run.** The
+  scored population was two agents in rounds 1-3 and ONE in rounds 4-5. The sole
+  catcher in those rounds carries a committed memory file naming the plant's
+  exact signature and instructing shape-matching. The planted sentence is quoted
+  verbatim five times in `review-evidence.md`, which reviewers are briefed to
+  read. The review layer was demonstrably alive — the evidence is the 24
+  blockers, not the probe.
+- **The routing table gap is a defect, not a habit.** `checker-engineer` was
+  omitted by the router twice and added by hand twice, and raised both Stage 6
+  blockers.
+
+## Coordinator corrections since last append
+
+- **[corrected-coordinator] I wrote an unfalsifiable claim into the evidence
+  file and the retro caught it.** The iteration-2 probe section says the
+  catchers found the plant "by opening `spec/fixtures/rules-valid/src/example.ts`
+  and finding no such symbol, rather than recognising the sentence from
+  iteration 1." That is a claim about an agent's internal process, which is the
+  one class of claim this repository accepts from nobody — and I made it about
+  the instrument whose whole purpose is to not be taken on trust. The artefacts
+  cannot distinguish the two readings and neither could I.
+- **[corrected-coordinator] I reported the 5/5 probe result to the user as
+  evidence the review layer was healthy.** It is not that. It is five catches of
+  one unvaried sentence, scored against a single agent in two of the five
+  rounds, by an agent carrying its signature in durable memory.
+- **The leak is mine twice over.** I designed the field-level capping that
+  leaked, and I ran the Stage 8 bundle step that published it — a step I had
+  added to the skill myself that same session, without a pre-commit check that
+  would have caught it in one grep.
+- **The first fix was incomplete and I found that only by re-testing on real
+  data rather than on the fixture I had just written.** Closing
+  `report.findings` still left a path in an `append` record. Had I trusted the
+  new unit tests, the second leak would have shipped behind a green suite.

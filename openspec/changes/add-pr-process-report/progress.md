@@ -1,59 +1,44 @@
 # Progress — proposal-to-pr: add-pr-process-report
 
-_Started 2026-08-31; last updated 2026-08-31_
+_Started 2026-08-31; last updated 2026-09-01_
 
 ## Phases completed
 
 - [x] Stage 1: Load
 - [x] Stage 2: Pre-review iterations 1–5 — probe CAUGHT all five rounds
-- [x] Stage 3: Refine iterations 1–5; Decisions 2–4 rewritten clean
-- [x] Stage 4 chunk 1: Stage A — the bundle, `5d43133`, Stage 5 green
-- [x] Stage 4 chunk 2: Stage B — the report, `62083ec`, Stage 5 green
-
-## Commits on this branch
-
-- `674a225` docs — five pre-review rounds of design refinement
-- `5d43133` feat(kit) — `witness bundle`, Stage A
-- `2255fc8` chore(openspec) — archive four landed changes, apply their spec deltas
-- `742bf64` docs(agent-memory) — reviewer learnings from this run
-- `62083ec` feat(claims) — `witness report`, Stage B
+- [x] Stage 3: Refine iterations 1–5; Decisions 2–4 rewritten clean after round 5
+- [x] Stage 4: Implement — all 54 tasks, three chunks, Stage 5 green after each
+- [x] Stage 6: Post-review on the diff — 2 blockers, 6 concerns
+- [x] Stage 7: Address must-fixes — both blockers fixed, 4 concerns fixed, 2 carried
+- [x] Stage 8: **PR open — https://github.com/armanfatemi/nullius/pull/75**
 
 ## Current phase
 
-**Stage 4 (Implement)**, chunk 3 of 3: **Stage C** — Action input, `init`/`doctor`,
-the skill's Stage 8 edit, docs and CHANGELOGs. Tasks §7–§10. 41/54 done.
+**Stage 9 (Retro).** The pipeline's terminal state is *PR open and retro
+written*, never *merged*.
 
-## Next 3 actions
+## What shipped
 
-1. Receive Stage C, run Stage 5 myself, commit
-2. Stage 6 post-review routed on `git diff main...HEAD | pipeline route-paths`
-3. Stage 7 if blockers, else Stage 8 PR
+- `nullius witness report <range|sha>` — four provenance tiers, md + JSON
+- `nullius-kit witness bundle <base>..<head>` — committed envelope, line-level redaction
+- Action `run-report` input, second comment marker, `init --run-report`, `doctor` pairing
+- `spec/run-report.md`, `docs/reading-a-run-report.md`
 
-## Integration points the next session needs to read on resume
+## Carried, deliberately not fixed here
 
-- action/action.yml:142 — `marker='<!-- nullius-claims -->'`, matched by startswith; the new marker must not prefix it in either direction
-- action/action.yml:157 — the existing post swallows failure with `|| true`; the new step must surface it
-- packages/kit/src/cli.ts:527 — `readKitProfile`, three-way shape, currently parses only `profile`
-- packages/kit/src/render.ts:158-161 — the workflow `with:` template literal
-- packages/kit/src/doctor.ts:699 — `checkWorkflow`; `Check.status` includes `fact`
-
-## Lessons carried into the Stage C brief
-
-- **State the repository's prohibitions, not only the APIs.** Chunk 2's brief
-  pinned every signature and omitted hard rule 12; the returned CI step stored
-  the checker command in a shell variable and called `$claims` at seven sites.
-  Correct under bash, which is why the rule targets the pattern. Stage C's brief
-  lists the prohibitions explicitly.
-- Verify the implementer's central claims directly; both chunks' reports were
-  accurate, and checking cost minutes.
-- Run the canary round trip **with the plant CI performs first**, never bare.
-
-## Known gate-list discrepancies (verify against CI, not the skill)
-
-- The skill lists `check 'README.md' 'spec/**/*.md' --require-markers`; that
-  fails because README.md has no markers. CI runs `spec/**/*.md` alone.
-- `check '.canary-probe.md'` only fails when a canary is planted first.
+- The routing table keys `checker-engineer` on five filenames, so a NEW kernel
+  module earns no kernel reviewer. Both post-review blockers were found only
+  because the coordinator overrode the router.
+- A search anchor has nowhere to put a commit stamp, so an "absence of X" claim
+  in a proposal that adds X rots straight to a hard COUNT-MISMATCH. Two
+  unrelated proposals were turned red by this change. Written up in IDEAS.md.
+- This repo's own ledger records are MALFORMED in its own journals: the header
+  is written by the published kit at schema 0.2, the ledger verbs write 0.3+
+  kinds. SUPPRESSED-FINDING can never fire here. Written up in IDEAS.md.
+- `./action` in this repo's CI waits on a release carrying `witness report`.
+- Commit `2255fc8` (archiving four landed changes) belongs on main.
 
 ## Pending user decisions
 
-- None open.
+- None. Merge is the human's, and the PR asks for a merge commit rather than a
+  squash — a squash orphans every anchor stamp this change introduced.
