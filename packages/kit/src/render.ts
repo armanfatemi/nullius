@@ -133,7 +133,15 @@ export function renderKitConfig(
 }
 
 export function renderWorkflow(profile: Profile, actionRef: string, runReport = false): string {
-  const globs = profile.docs.map((glob) => `"${glob}"`).join(" ");
+  // ONE YAML scalar containing a space-separated list, not a sequence of
+  // quoted scalars. `globs: "a" "b"` is not valid YAML — GitHub rejects the
+  // whole workflow and reports it by file path rather than by `name`, which is
+  // a confusing way to learn you have a syntax error.
+  //
+  // The action word-splits this input deliberately so multiple patterns work,
+  // so the list belongs INSIDE the quotes. Latent until now: every shipped
+  // profile happens to declare exactly one glob.
+  const globs = `"${profile.docs.join(" ")}"`;
   const requireMarkers = profile.requireMarkers ? "\n          require-markers: true" : "";
   // Emitted only when the config asks. `doctor` compares the two: a config that
   // asks and a workflow that does not carry the input is the one combination

@@ -35,7 +35,7 @@ jobs:
           # — an unverified claim still fails the job.
           #
           # The mismatch is a finding about the profile, not about this repo.
-          globs: "openspec/**/*.md" "spec/**/*.md"
+          globs: "openspec/**/*.md spec/**/*.md"
           require-markers: false
           strict: true
           run-report: true

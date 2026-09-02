@@ -308,6 +308,43 @@ describe("profiles", () => {
   });
 });
 
+describe("the generated workflow is valid YAML for any number of globs", () => {
+  it("emits ONE scalar for multiple globs, not a sequence of quoted scalars", () => {
+    // `globs: "a" "b"` is not valid YAML. GitHub rejects the whole workflow and
+    // reports the run by FILE PATH instead of by `name`, which is a confusing
+    // way to learn you have a syntax error — the job simply never runs.
+    //
+    // The action word-splits this input deliberately, so the list belongs
+    // inside the quotes. Latent until now only because every shipped profile
+    // declares exactly one glob.
+    const twoGlobs = {
+      ...(findProfile("specs") ?? (() => { throw new Error("no specs profile"); })()),
+      docs: ["openspec/**/*.md", "spec/**/*.md"],
+    };
+
+    const line = renderWorkflow(twoGlobs, "o/r@v1")
+      .split("\n")
+      .find((each) => each.includes("globs:"));
+
+    expect(line).toBeDefined();
+    expect(line?.trim()).toBe('globs: "openspec/**/*.md spec/**/*.md"');
+    // The failure shape, asserted directly: two quoted scalars separated by a
+    // space is what the old join produced.
+    expect(line).not.toMatch(/"\s+"/);
+  });
+
+  it("still emits a single glob unchanged", () => {
+    const profile = findProfile("specs");
+    if (profile === null) throw new Error("no specs profile");
+
+    const line = renderWorkflow(profile, "o/r@v1")
+      .split("\n")
+      .find((each) => each.includes("globs:"));
+
+    expect(line?.trim()).toBe('globs: "openspec/**/*.md"');
+  });
+});
+
 describe("--run-report threads the config and the workflow together", () => {
   const profile = findProfile("specs");
 
