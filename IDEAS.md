@@ -730,3 +730,53 @@ Options worth weighing, none obviously right:
 
 Related: `.claude/rules/rev-stamp-change-anchors.md`,
 `.claude/rules/never-repoint-under-old-stamp.md`.
+
+
+## The coordinator's ledger records are invalid in this repository's own journals
+
+Found at Stage 8 of `add-pr-process-report` (2026-09-01), by running
+`witness validate` over the run's own journal, which is the check that stage
+exists to perform.
+
+**41 of 101 records were `MALFORMED`, all for one reason:**
+
+> `kind "stage" arrived in schema 0.3, and this journal is read as 0.2 —
+> declare it with a {"kind":"journal","version":"0.3",…} first record`
+
+The header is written at session start by the **published** kit, because this
+repository deliberately does not set `NULLIUS_KIT_BIN` — its hooks take the
+`npx -y @nullius-inverba/kit` path that real users take. The `witness ledger`
+verbs the coordinator runs come from `packages/kit/dist/`, the working tree.
+The two disagree about the schema version, and every `stage`, `decision` and
+`check` record written during a run lands in a journal whose header cannot
+carry it.
+
+**The consequence is not cosmetic.** The ledger verdicts — `SUPPRESSED-FINDING`
+above all — exist to compare what a coordinator claimed against what the harness
+attested. In this repository they can never fire, because every record they
+would read is rejected one layer earlier as an unknown kind. A run can close a
+blocker in prose and never write the resolution, and validation will report 41
+malformed records rather than the one finding that matters.
+
+It also means this repository cannot dogfood the feature it just built: the
+hook-attested and self-reported tiers of a run report over its own journals are
+computed from records the validator refuses.
+
+Options, none free:
+
+1. **`witness ledger` refuses to write a kind the journal's header cannot
+   carry**, naming the mismatch. Honest and immediate, and it makes the ledger
+   silently unavailable here rather than silently invalid — arguably worse,
+   since nothing would then record the run at all.
+2. **`witness ledger` upgrades the header** on first write of a later kind.
+   Rewrites a line another process wrote, which the append-only discipline
+   exists to prevent.
+3. **Publish the kit more eagerly**, so the header the hooks write and the kinds
+   the ledger writes come from the same release. Fixes it by removing the skew
+   rather than handling it, and re-raises the question of why this repository
+   runs the published kit at all — the answer being that nothing else exercises
+   the path real users take.
+4. **Accept it and say so**, which is what this entry does.
+
+Related: `CLAUDE.md`'s note that the witness hooks run the published kit;
+`.nullius/README.md`; `spec/witness-journal.md`'s schema-version gates.
