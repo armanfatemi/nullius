@@ -303,8 +303,23 @@ Emptying `prompt.text` is unsafe: with text absent the validator *requires*
 — and the producer's text mode writes `text` and `chars` and no hash, so
 emptying manufactures `malformed`. The producer already emits the correct shape
 when text is withheld at record time (`packages/kit/src/record.ts:894-900`),
-and `--no-prompts` writes that same shape: drop `text`, add `hash`, keep
-`chars`, and drop `truncated`.
+and `--no-prompts` writes that same shape with one deliberate difference: drop
+`text`, add `hash`, keep `chars`, **and keep `truncated`.**
+
+An earlier version of this decision said to *drop* `truncated`, because the
+producer's hashed branch emits none. **Post-review proved that wrong.** The
+producer's hashed branch hashes the *untruncated* text —
+
+**Evidence:** `packages/kit/src/record.ts:899@04cd9ac` — `          : { hash: hashText(text) }),`
+
+— while storing `chars` as the full length, and the bundler only ever holds the
+already-clipped string, so its hash is of a **prefix**. Deleting `truncated`
+makes such a record byte-identical in shape to a genuine producer-written hash
+over the whole prompt and unequal to it, which a reader would have to call
+tampering because nothing distinguishes it from drift. `truncated` is metadata
+no verdict reads, so keeping it costs nothing. The reasoning that produced the
+deletion optimised for imitating a shape; the information it destroyed was the
+only per-record signal that mattered.
 
 Removal would in fact have validated clean — a `prompt` reference naming no
 record is deliberately not a dangling reference:
@@ -316,14 +331,34 @@ claims to show what the human asked for, and a converted record still says a
 prompt occurred and how long it was. A removed one is indistinguishable from a
 run where the human never spoke.
 
-**And where it cannot convert, it refuses.** Rewriting a field requires parsing
+**And where it cannot convert, it refuses — in three shapes.** Rewriting a field requires parsing
 the line, and unparseable lines are carried verbatim — so a prompt line the
 validator rejects cannot be converted, and a flag that silently shipped its
 text would be a consent control failing precisely where nobody can inspect the
-result. With `--no-prompts` and any unparseable line in a selected journal,
-`bundle` exits non-zero, names the session and the line numbers, and writes
-nothing, offering `--exclude <session>`. A redaction flag may refuse; it may
-not appear to work.
+result.
+
+**Two further shapes parse perfectly well and are just as unhonourable**, and
+post-review found both:
+
+- **A prompt whose `chars` the validator already rejects.** `malformed` is
+  raised for a non-integer or negative `chars` *before* the early return for a
+  non-empty `text` —
+
+  **Evidence:** `packages/claims/src/witness.ts:1438@04cd9ac` — `        if (record.raw.chars !== undefined && !isNonNegativeInteger(record.raw.chars)) {`
+
+  so it fires in text mode too. Overwriting that value while dropping `text`
+  would make the record validate **clean** — a verdict change in the flattering
+  direction, which is the one direction this bundler must never move. An
+  earlier implementation did exactly that, and nothing in the suite or CI
+  surfaced it because no fixture carried an invalid `chars`.
+- **A prompt with no usable `id`.** Redaction leaves such a line verbatim by
+  design, because rewriting it would move the subject of its own `malformed`
+  finding — and under `--no-prompts` that means the text ships.
+
+With `--no-prompts` and any of the three shapes in a selected journal, `bundle`
+exits non-zero, names the session and the line numbers, and writes nothing,
+offering `--exclude <session>`. A redaction flag may refuse; it may not appear
+to work.
 
 **The concrete values, so they are not invented twice.** The design owes these
 to the implementer rather than the other way round:

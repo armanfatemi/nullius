@@ -29,6 +29,8 @@ import {
   reconstructJournal,
   redactLines,
   unreadableLines,
+  unhonourablePromptLines,
+  convertiblePrompt,
   BUNDLE_VERSION,
   EXCERPT_CAP,
   STATEMENT_CAP,
@@ -409,11 +411,19 @@ describe("--no-prompts", () => {
     at: "2026-08-31T09:14:02Z",
   });
 
-  it("converts to the producer's hashed shape: hash and chars, no text", () => {
+  it("converts to the producer's hashed shape: hash and chars, no text — but KEEPS truncated", () => {
     const [redacted = ""] = redactLines([PROMPT], { prompts: false });
     const after = JSON.parse(redacted) as Record<string, unknown>;
     expect(after).not.toHaveProperty("text");
-    expect(after).not.toHaveProperty("truncated");
+    // This assertion was `not.toHaveProperty("truncated")` and was wrong.
+    // Deleting `truncated` is the closer imitation of the producer's hashed
+    // shape, which emits none — and that is exactly why it is unsafe. The
+    // producer hashes the UNTRUNCATED text while storing `chars` as the full
+    // length; the bundler only holds the clipped string. Without `truncated`,
+    // a bundled hash-of-a-prefix is byte-identical in shape to a genuine
+    // producer hash over the whole prompt and unequal to it, and a reader
+    // comparing the two has no way to tell drift from tampering.
+    expect(after["truncated"]).toBe(true);
     expect(after["chars"]).toBe(45);
     expect(after["hash"]).toBe(
       createHash("sha256").update("take add-pr-process-report to a merge-ready PR").digest("hex"),
@@ -566,5 +576,93 @@ describe("buildEnvelope", () => {
     });
     expect(envelope.selection.prompts).toBe("hashed");
     expect(envelope.selection.prompt_hash_note).toContain("excerpt");
+  });
+});
+
+describe("--no-prompts never moves a verdict, and refuses when it cannot avoid it", () => {
+  const HEADER = JSON.stringify({
+    kind: "journal",
+    version: "0.6",
+    origin: "hooks",
+    session: "s:conv",
+    source: "startup",
+    branch: "main",
+    head: "0".repeat(40),
+  });
+
+  function journal(prompt: Record<string, unknown>): string[] {
+    return [HEADER, JSON.stringify({ kind: "prompt", ...prompt })];
+  }
+
+  it("REPAIRS NOTHING: a prompt whose `chars` the validator rejects keeps its verdict", () => {
+    // The validator raises `malformed` for a bad `chars` BEFORE its early
+    // return for a non-empty `text` (witness.ts:1438), so this fires in text
+    // mode. An earlier convertPrompt overwrote exactly that value, and the
+    // source's finding vanished — a verdict change in the flattering
+    // direction, which is the one direction this bundler must never move.
+    const lines = journal({ id: "p:bad", text: "steer the run", chars: -5, at: "2026-09-01T00:00:00Z" });
+
+    const before = verdictSet(validateJournal(lines.join("\n")).findings);
+    expect(before).toContain("malformed\tp:bad");
+
+    const after = verdictSet(
+      validateJournal(reconstructJournal(redactLines(lines, { prompts: false }))).findings,
+    );
+    expect(after).toEqual(before);
+  });
+
+  it("names such a line as unhonourable, so the CLI can refuse instead of shipping it", () => {
+    const lines = journal({ id: "p:bad", text: "steer", chars: 12.5, at: "2026-09-01T00:00:00Z" });
+
+    expect(unhonourablePromptLines(lines)).toEqual([2]);
+    // It parses as JSON, so the older refusal could not see it.
+    expect(unreadableLines(lines)).toEqual([]);
+  });
+
+  it("names a prompt with no usable `id`, whose text would otherwise ship verbatim", () => {
+    // `redactLine` returns an id-less line untouched on purpose — rewriting it
+    // would move the subject of its own `malformed` finding. Under
+    // `--no-prompts` that means the text travels, so the refusal has to cover
+    // it: a consent control may refuse, but it may not appear to work.
+    const lines = journal({ text: "the thing the human actually asked for", chars: 38 });
+
+    expect(unhonourablePromptLines(lines)).toEqual([2]);
+    expect(redactLines(lines, { prompts: false })[1]).toContain("the thing the human actually asked for");
+  });
+
+  it("converts a well-formed prompt and leaves no text behind", () => {
+    const lines = journal({ id: "p:ok", text: "steer the run", chars: 13, at: "2026-09-01T00:00:00Z" });
+
+    expect(unhonourablePromptLines(lines)).toEqual([]);
+    const converted = JSON.parse(redactLines(lines, { prompts: false })[1] ?? "{}") as Record<string, unknown>;
+    expect(converted["text"]).toBeUndefined();
+    expect(converted["chars"]).toBe(13);
+    expect(converted["hash"]).toBe(createHash("sha256").update("steer the run").digest("hex"));
+  });
+
+  it("KEEPS `truncated`, because it is the only sign the hash is over a prefix", () => {
+    // The producer hashes the UNTRUNCATED text and stores `chars` as the full
+    // length. The bundler only ever holds the clipped string, so its hash is of
+    // a prefix beside a full-length `chars`. Deleting `truncated` would make
+    // that byte-identical in shape to a genuine producer-written hash over the
+    // whole prompt — a difference a reader would have to call tampering,
+    // because nothing would distinguish it from drift.
+    const stored = "x".repeat(2000);
+    const lines = journal({ id: "p:long", text: stored, chars: 5000, truncated: true, at: "2026-09-01T00:00:00Z" });
+
+    const converted = JSON.parse(redactLines(lines, { prompts: false })[1] ?? "{}") as Record<string, unknown>;
+    expect(converted["truncated"]).toBe(true);
+    expect(converted["chars"]).toBe(5000);
+    expect(converted["hash"]).toBe(createHash("sha256").update(stored).digest("hex"));
+    // And the record still validates: `truncated` is metadata no verdict reads.
+    expect(verdictSet(validateJournal(reconstructJournal(redactLines(lines, { prompts: false }))).findings)).toEqual([]);
+  });
+
+  it("`convertiblePrompt` accepts an absent `chars` and refuses every invalid one", () => {
+    expect(convertiblePrompt({ text: "a" })).toBe(true);
+    expect(convertiblePrompt({ text: "a", chars: 0 })).toBe(true);
+    for (const chars of [-1, 1.5, "45", null, {}]) {
+      expect(convertiblePrompt({ text: "a", chars })).toBe(false);
+    }
   });
 });

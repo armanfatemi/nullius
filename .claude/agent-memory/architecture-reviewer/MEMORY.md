@@ -14,3 +14,4 @@
 - [Blockquoted anchors are ungated](feedback_blockquoted-anchors-are-ungated.md) — `check` skips Evidence lines inside `>` quotes; compare its anchor count to `grep -c`
 - [Verbatim carry defeats field redaction](feedback_verbatim-carry-defeats-field-redaction.md) — a line kept verbatim skips every parse-dependent redaction promise
 - [Schema decisions lag noun changes](feedback_schema-decisions-lag-noun-changes.md) — after a records→lines rewrite, the decision declaring the literal shape is the stale one
+- [Stage A rationale, Stage B falsification](feedback_stage-a-rationale-falsified-by-stage-b.md) — a kit export justified "so the reader uses it" cannot serve a kernel reader; check comments against the final tree

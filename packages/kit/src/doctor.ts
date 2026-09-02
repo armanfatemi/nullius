@@ -797,7 +797,12 @@ function checkRunReport(root: string): Check {
     };
   }
 
-  if (!workflow.includes("run-report: true")) {
+  // Tolerant of YAML quoting: `run-report: true`, `'true'` and `"true"` all
+  // enable the input, and a hand-edited workflow is the ordinary way to arrive
+  // at any of them. Matching the bare spelling alone would report a present
+  // input as missing, and `--fix` would then rewrite a file that was already
+  // correct.
+  if (!/^\s*run-report:\s*["']?true["']?\s*$/m.test(workflow)) {
     return {
       name,
       status: "fail",

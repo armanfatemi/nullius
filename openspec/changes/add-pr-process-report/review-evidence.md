@@ -1454,3 +1454,159 @@ with `grep` on both bundle polarities plus a tampered envelope. Exercising the
 composite action becomes worthwhile the release after this one.
 `action/README.md` now states the dependency under "It needs a published
 checker" so an adopter enabling the input is not left guessing.
+
+## Stage 6 — Post-review
+
+Four reviewers, routed on the diff (`git diff --name-only main...HEAD |
+pipeline route-paths`), which returned `architecture-reviewer`, `rule-auditor`
+and `test-engineer`. `checker-engineer` was added by hand — see the routing
+finding below, which it confirmed.
+
+**Two blockers, both in `packages/kit/src/bundle.ts`'s `convertPrompt`, both
+fixed in Stage 7. Six concerns, four fixed and two carried.**
+
+## Blockers
+
+- **[B23] `convertPrompt` repaired a verdict.** The validator raises `malformed`
+  when a prompt's `chars` is present and not a non-negative integer, and that
+  branch runs *before* the early return for a non-empty `text`
+  (`packages/claims/src/witness.ts:1438`), so it fires in text mode too.
+  `convertPrompt` ended by overwriting exactly those values with `text.length`.
+
+  A source journal reporting `malformed / p:1 / "chars" is -5 …` therefore
+  validated **clean** after bundling. That is a verdict change in the flattering
+  direction — the one direction the whole line-level rule exists to prevent —
+  and the module's own doc comment already forbade it for a different shape
+  ("converting it would *repair* it"). The blank-text guard was written for one
+  repair shape and did not cover this one. **No fixture carried an invalid
+  `chars`, so nothing in the suite or CI would ever have surfaced it.**
+  (`checker-engineer`)
+
+- **[B24] The converted hash cannot match the producer's for any truncated
+  prompt.** The producer stores `clip(text, 2000)` with `truncated: true` and
+  `chars` as the *full* length, and in hashed mode hashes the **full** text
+  (`packages/kit/src/record.ts:899`). `convertPrompt` hashed the *stored*
+  clipped string and then deleted `truncated`.
+
+  The result is byte-identical in shape to a genuine producer-written hash over
+  the whole prompt, and unequal to it — with the one field that would let a
+  consumer tell them apart deleted. It falsifies the stated reason for
+  exporting `hashText` at all: sharing the function does not deliver "two
+  hashes of the same prompt agree" when the two call sites hash different
+  inputs. **No verdict moves, so nothing would ever have surfaced this either.**
+  (`checker-engineer`)
+
+## Concerns
+
+- **[C22] A prompt line with no usable `id` shipped its text under
+  `--no-prompts`.** `redactLine` returns such a line verbatim on purpose —
+  rewriting it would move the subject of its own `malformed` finding — and
+  `unreadableLines` cannot see it because it parses. A consent control shipping
+  the text it was asked to withhold. **Fixed** with the same remedy as the
+  blockers. (`checker-engineer`; raised as a concern, treated as a must-fix
+  because it is a disclosure defect rather than a correctness one.)
+- **[C23] The CI step's two load-bearing assertions were unpaired negative
+  greps.** `! grep -qE '^### Records attributed to the harness — [0-9]'` and the
+  `Dispatches` equivalent. Rename either heading and both arms pass vacuously —
+  the one-bit failure `verdict-needs-fixture-and-test` describes, in the step
+  written to avoid it. **Fixed**: each negative is now preceded by a positive
+  assertion that the heading exists, so a rename breaks the positive arm.
+  (`architecture-reviewer`)
+- **[C24] `bundle.ts`'s export comment claimed a guarantee it cannot keep** —
+  that exporting `reconstructJournal` prevents a second implementation in the
+  reader. The kernel may not import the kit, so Stage B necessarily wrote that
+  second implementation. **Fixed**: the comment now says the duplication is the
+  boundary's price and names what actually catches drift (the round-trip test).
+  (`architecture-reviewer`)
+- **[C25] `doctor` matched `run-report: true` as a bare substring**, so
+  `run-report: 'true'` — valid YAML for the same value — reported a present
+  input as missing and would have sent `--fix` to rewrite a correct file.
+  **Fixed** with a quoting-tolerant match and a test over all three spellings.
+  (`architecture-reviewer`)
+- **[C26] `witnessReport.ts:988` emits the literal `CANARY-PRESENT`**, and
+  `CANARY-` is a taint token. The suppression itself is right — location
+  withheld, failure counted — but a rendered run report handed to
+  `canary verify` would score `TAINTED` by construction. **Carried**, with a
+  line in `spec/run-report.md` naming which artefact the report is not.
+  (`checker-engineer`)
+- **[C27] `2255fc8` (archiving four unrelated changes) belonged elsewhere.**
+  `architecture-reviewer` agrees with the coordinator's own note at the time.
+  **Carried**; the commit is separable and the user was told so when it landed.
+
+## A concern that was not one
+
+`rule-auditor` raised `report.statement` being carried uncapped into a public
+committed envelope, routing it to a human as security-shaped. **It is capped** —
+`STATEMENT_CAP = 800` at `packages/kit/src/bundle.ts:63`, with the bundler's own
+`bundle_statement_capped` flag, and `design.md:268` says so. The reading came
+from Decision 3's "carries every source *line*", which is about lines not being
+dropped rather than fields not being capped. Recorded rather than dismissed,
+because the misreading is available to any reader of that decision and the
+sentence could be clearer.
+
+## The routing finding, confirmed
+
+`route-paths` did not return `checker-engineer` for this diff, and the router is
+right by its own table: the diff touches none of the five filenames its row
+keys on (`checkClaims.ts`, `witness.ts`, `wiring.ts`, `rules.ts`, `config.ts`).
+It adds a **1509-line new kernel module** instead.
+
+`checker-engineer` was asked to confirm or dispute the gap and confirmed it:
+*"Both blockers above are in code that no automatic dispatch would have shown
+me. The row should key on `packages/claims/src/**` — or at minimum route every
+new file under it — rather than on a fixed list that only describes the kernel
+as it stood when the row was written."*
+
+**Both of this round's blockers were found only because the coordinator
+overrode the router.** That is not a comfortable finding: the override was a
+judgement call of exactly the kind this pipeline exists to remove, and it
+happened to be right. The durable fix is the table, and it is not this change's
+to make — recorded for a follow-up.
+
+## Confirmed sound
+
+`test-engineer` returned **zero blockers and zero concerns**, having checked the
+things most likely to be theatre: the goldens are gated behind an explicit
+`NULLIUS_UPDATE_GOLDENS` opt-in rather than self-regenerating; absence is
+asserted structurally (`Object.hasOwn(entry, "count") === false`) rather than by
+string-scanning; the `review-only` fixture was genuinely built from the
+classification rule rather than the renderer's branches; and the round-trip test
+asserts a **named singleton** verdict set rather than merely non-empty.
+
+`rule-auditor` independently re-ran both repaired greps in the other two
+proposals and confirmed neither repair weakened its claim — the check it was
+asked to run on the coordinator specifically, since the coordinator is the party
+with the motive.
+
+`architecture-reviewer` verified all 25 new or moved stamped anchors out of
+their named commits. `checker-engineer` confirmed all five design rules held in
+the implementation, that `hashText`'s export did not widen the published
+surface, that `RangeCommit` is additive, and that the JSON discriminator embeds
+the check document without shadowing it.
+
+## Coordinator corrections since last append
+
+- **[corrected-coordinator] I wrote the `truncated` deletion into the design and
+  argued for it, and it was wrong.** Decision 3 said to drop `truncated` on
+  conversion because "the producer's hashed branch emits no `truncated`, and
+  leaving one beside an absent text is the same mismatch this decision already
+  refuses for `response_chars`." That reasoning optimised for imitating a shape
+  and destroyed the only per-record signal that a hash is over a prefix. The
+  mismatch it prevented was cosmetic; the information it destroyed was not.
+  Reversed in code, in the design, and in the test that had encoded it.
+- **[corrected-coordinator] A test asserted the defective behaviour.**
+  `bundle.test.ts`'s "converts to the producer's hashed shape" asserted
+  `not.toHaveProperty("truncated")` against a fixture that deliberately carried
+  it. The implementer wrote the test against my design, so this is my error
+  arriving one layer down — and it is the shape that worries me most, because a
+  passing test asserting a defect reads exactly like coverage.
+- **Both blockers were invisible to the entire test suite and to CI**, by
+  `checker-engineer`'s own account: one because no fixture carried an invalid
+  `chars`, the other because no verdict moves. Stage 7 added a fixture and a
+  test for each. This is the clearest instance this run of why the review layer
+  is not redundant with the gates.
+- **I treated C22 as a must-fix although it was filed as a concern.** A consent
+  control that ships the text it promised to withhold is a disclosure defect,
+  and `[concern]` findings are not fixed automatically — so this is a
+  coordinator decision someone could disagree with, recorded rather than
+  quietly taken.

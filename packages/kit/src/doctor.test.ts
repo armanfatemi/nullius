@@ -952,6 +952,23 @@ describe("the run report check pairs the config against the workflow", () => {
     expect(result?.detail).toContain("silently go without one");
   });
 
+  for (const spelling of ["run-report: true", "run-report: 'true'", 'run-report: "true"']) {
+    it(`accepts the workflow input written as ${spelling}`, () => {
+      const root = scratch();
+      writeFileSync(
+        join(root, "nullius.kit.json"),
+        JSON.stringify({ profile: "specs", runReport: true }),
+      );
+      // All three are valid YAML for the same value, and a hand-edited workflow
+      // is the ordinary way to arrive at any of them. Matching only the bare
+      // spelling would report a present input as missing and send `--fix` to
+      // rewrite a file that was already correct.
+      workflow(root, `on: pull_request\n        with:\n          fetch-depth: 0\n          ${spelling}\n`);
+
+      expect(find(check(root).checks, "run report")?.status).toBe("pass");
+    });
+  }
+
   it("refuses a non-boolean `runReport` rather than coercing it", () => {
     const root = scratch();
     writeFileSync(

@@ -303,6 +303,12 @@ jobs:
           # printed. A build that rendered `— 0` here would satisfy the first
           # arm alone, and rendering absence as zero is the whole feature.
           grep -q 'tier breakdown not recorded' "$work/with.md"
+          # BOTH arms, and the positive one first. A bare negative grep passes
+          # vacuously the day the heading is renamed — the assertion stops
+          # asserting without going red, which is the exact failure
+          # .claude/rules/verdict-needs-fixture-and-test.md describes. Assert
+          # the heading EXISTS, then that it carries no count.
+          grep -q '^### Records attributed to the harness' "$work/with.md"
           ! grep -qE '^### Records attributed to the harness — [0-9]' "$work/with.md"
 
           # No bundle. The contributor-independent tier is unaffected — which is
@@ -331,6 +337,10 @@ jobs:
           # would stay green on a build that printed the finding and the count.
           node packages/claims/dist/cli.js witness report "$range" --bundle "$fixtures/tampered-bundle.json" --format md > "$work/tampered.md"
           grep -q 'NO-TERMINAL' "$work/tampered.md"
+          # Same pairing. The heading must be present in the with-bundle render —
+          # which is where a count legitimately appears — so a rename breaks a
+          # positive assertion rather than silently satisfying a negative one.
+          grep -qE '^### Dispatches — [0-9]' "$work/with.md"
           ! grep -qE '^### Dispatches — [0-9]' "$work/tampered.md"
 
       # The canary, dogfooded through its whole lifecycle. There is no static

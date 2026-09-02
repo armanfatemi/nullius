@@ -1,16 +1,14 @@
 ---
 name: project-add-pr-process-report
-description: Pre-review audit of add-pr-process-report (Stage 2), iterations 1-5 — canary relocates each round, iteration 2 false looks-good on a scope-mismatched anchor, iteration 5 was rules-only (dropped from anchor-support duty)
+description: Pre-review audit (iterations 1-5) plus post-review (Stage 6) of add-pr-process-report — canary relocates each round, iteration 2 false looks-good on a scope-mismatched anchor, post-review clean
 metadata:
   type: project
 ---
 
-Audited 2026-09-01, proposal mode, `openspec/changes/add-pr-process-report/`.
+Audited 2026-09-01, proposal mode then diff mode, `openspec/changes/add-pr-process-report/`.
 
 **Iteration 1:** canary in `proposal.md:8`. One `[concern]` — tampered-bundle
-scenario had no named fixture/test yet (fixed by iteration 6/final: now
-`tasks.md` §6 names it against `specs/check-cli/spec.md`'s exact requirement
-title).
+scenario had no named fixture/test yet (fixed by iteration 6/final).
 
 **Iteration 2:** canary moved to `design.md:7`. **My error this round:** marked
 `spec/witness-journal.md:225`/`:228` `[looks-good]` without reading the
@@ -20,56 +18,52 @@ See [[feedback_anchor_verification_method]].
 **Iteration 3:** canary at `tasks.md:4`. Design.md self-corrected the
 iteration-2 misreading; confirmed clean.
 
-**Iteration 5 (final rules-only pass, dropped from anchor-support duty after
-two misses):** canary at `design.md:7` again (planted 2026-09-01T03:12:26Z).
-Focused only on rule-surface, not anchor-support:
+**Iteration 5 (rules-only pass):** canary at `design.md:7`. All STALE anchors
+confirmed passive drift via `git blame -L`. One genuine full re-stamp
+(`action.yml:47@c8305b1`→`@04cd9ac`) verified correct. One bare unstamped
+citation found (`proposal.md:231` → `cli.ts:904`), flagged `[concern]`.
+Security-shaped concern raised (redaction design commits `report.statement`
+uncapped into a public envelope) — routed, no rule governs it.
 
-- `rev-stamp-change-anchors`/`never-repoint-under-old-stamp`: ran the tool
-  directly (`check 'openspec/changes/add-pr-process-report/**/*.md'`, 46
-  presence + 7 search anchors, 0 FABRICATED). All STALE anchors (design.md:16,
-  23, 65, 71, 75, 77; proposal.md:24, 26) confirmed via `git blame -L` as
-  untouched since first-draft commit `e86705d4` — passive drift from later
-  commits shifting the cited files, not author repoints. `design.md:47`
-  (`action.yml:47@c8305b1`→`@04cd9ac`) is a genuine full re-stamp: verified via
-  `git show <hash>:action/action.yml | sed -n 47p` that the text actually
-  changed (`0.8.0`→`0.9.1`) at that exact line across both commits — correct
-  re-read-and-re-stamp-both-halves, not a violation.
-- **New finding:** `proposal.md:231` cites `packages/claims/src/cli.ts:904`
-  as a **bare backtick citation with no `**Evidence:**` label and no `@hash`**
-  — outside the checker's grounding-marker grammar entirely, so uncovered by
-  `check`. Verified by hand (`awk NR==904`) that the quote/paraphrase is
-  accurate (`if (report.unconfigured) {`). Flagged `[concern]` under
-  `rev-stamp-change-anchors.md` — same pattern as
-  `add-wiring-malformed-input`'s bare citations, see
-  [[feedback_anchor_verification_method]]. Distinguished from design.md's ~9
-  bare citations (`133`, `165`, `232`, `278`, `322`, `341`, `375`, `446`,
-  `553`), all of which are explicit backreferences ("above", "cited in
-  proposal.md") to an anchor stamped elsewhere in the same doc-set — those are
-  fine, not fresh unstamped claims.
-- `verdict-needs-fixture-and-test`: this change adds **no new `Verdict`
-  member** (confirmed — that's `add-rev-ancestry-check`, a separate soft dep).
-  Tasks §3's named-verdict round-trip assertions (`stale-verification`
-  survives, `malformed`/`duplicate-id` survive a round trip via bundling) are
-  extra rigor on existing verdicts, not what the rule requires — `[looks-good]`,
-  rule not actually triggered by this change's scope.
-- `model-proposes-code-verifies`: explicitly discharged — Non-goals says "no
-  summary is generated," and tasks §4's round-detection task explicitly
-  forbids using the retrospective's prose counts as the oracle ("it is prose a
-  model wrote, which is not what a deterministic test is measured against").
-  `[looks-good]`.
-- `openspec-shall-first-line`: all 8 new requirements across both spec deltas
-  open their body with SHALL on line 1. `[looks-good]`.
-- Decision 12 (Stage 8 bundle-commit-push): uses `git add nullius.runs/`
-  (specific path), not `-a`/`-am` — complies with skill rule 11. No merge
-  anywhere — complies with rule 1.
-- **Security-shaped concern raised (not a rule violation, per system-prompt
-  instruction to route rather than clear as looks-good):** the redaction
-  design (design.md ~line 322, tasks.md task 25) carries `report.statement`
-  "exactly as recorded, not capped by the bundle" into a **committed, public**
-  envelope. No `.claude/rules/*.md` file governs this, so it's `[concern]`
-  routed to a human rather than silently waved through.
+**Post-review (Stage 6, diff mode, 80 files/~11.8k insertions/6 commits,
+`git diff main...HEAD`):** Everything the coordinator flagged for scrutiny
+checked out clean:
+- Hard rule 12 (no gate via stored command string): the `claims="node ...
+  cli.js"` pattern was fully removed from the new report step in
+  `.github/workflows/ci.yml` (confirmed via diff `-` lines); all 7 call sites
+  now direct. Pre-existing `kit=`/other `claims=` vars elsewhere in ci.yml are
+  unchanged context, out of scope for this diff.
+- `action/action.yml`: new marker `<!-- nullius-run-report -->` vs existing
+  `<!-- nullius-claims -->` — checked both directions of `.startswith()` in
+  Python, neither is a prefix of the other. Both SHAs read from
+  `$GITHUB_EVENT_PATH`, no PR-controlled interpolation into shell.
+- `one-delivery-mechanism`: no `.claude/settings.json` diff at all in this PR
+  (grepped whole diff for the string — only prose mentions in docs).
+- `rev-stamp-change-anchors`/`never-repoint-under-old-stamp`: ran
+  `check 'openspec/**/*.md'` directly — 405/405 grounding markers verified,
+  exit 0, across 52 documents. Spot-checked the one differently-hashed new
+  anchor (`checkReport.ts:262@c8305b1`) — genuine fresh stamp, text matches.
+- SKILL.md Stage 8 (`witness bundle` → commit → push before `gh pr create`):
+  uses `git add nullius.runs/` (specific path, not `-A`/`-a`) — complies with
+  skill hard rule 11. No merge — complies with hard rule 1. The
+  "raw source lines committed" sensitivity flagged by the coordinator turned
+  out to be a **documented, deliberate design decision** in design.md's
+  "Redaction is line-level" sections (not an oversight) — still flagged
+  `[concern]` and routed since no `.claude/rules/*.md` governs artifact
+  sensitivity, but distinguished explicitly as "known trade, not a miss."
+- The two unrelated proposal repairs (`add-diff-scoped-strictness`'s narrowed
+  grep pattern, `add-maintainer-card`'s corrected count) were **independently
+  re-run by hand** rather than trusted from the diff's own framing — both
+  came back exactly as the repair described, and in both cases the narrowing
+  supported rather than weakened the original claim (an internal identifier
+  in another verb's renderer becoming non-zero isn't evidence about a
+  different verb's argument surface). `[looks-good]`, and worth remembering
+  as a template: when an author repairs their own falsified anchors,
+  re-derive the check yourself rather than accepting "I checked, it's fine."
+- No new `Verdict` member added this PR — confirmed by grep — so
+  `verdict-needs-fixture-and-test.md` correctly not triggered.
 
 **Recurring lesson for this change specifically:** the canary relocates every
-round without being told to stop; five rounds in it's still present and still
-worth checking for (`CANARY-PRESENT` verdict from the tool, not manual
-scanning — cheap and exact).
+round without being told to stop; across six rounds (five pre-review + this
+post-review) it never leaked into a real finding, but the tool check (not
+manual scanning) is what to run for it every time.

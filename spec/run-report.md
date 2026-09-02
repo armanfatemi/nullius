@@ -148,6 +148,26 @@ that is not at the given or default path is an absence the report renders. A
 bundle that is there and is not an envelope is input this command was handed
 and could not use, and it exits `2` naming the path.
 
+## A rendered report is not a review report
+
+The canary suppression renders the *fact* of a `canary-present` failure and
+never its location, per the redaction rule above. Doing so means the rendered
+markdown contains the literal verdict name — and `CANARY-` is one of the three
+taint tokens `canary verify` scans for:
+
+**Evidence:** `packages/claims/src/canary.ts:83@04cd9ac` — `const TAINT_TOKENS = ["canaries.json", ".git/nullius", "CANARY-"];`
+
+So **a run report handed to `canary verify` scores `TAINTED` by construction**,
+whatever the review layer did. That is correct behaviour from both sides and
+worth stating once: the taint check exists to void a probe whose reviewer saw
+the machinery, and a document that renders checker verdict names has seen it.
+
+The two artefacts are not interchangeable. `canary verify` scores a *review
+synthesis* — what reviewers said about a change. This renders *what a run did*.
+Passing one where the other is expected is a category error, and this paragraph
+is here so it is a documented one rather than a confusing `TAINTED` an hour
+into a debugging session.
+
 ## Escaping
 
 Every bundle- or document-derived string passes through a **markdown-cell**

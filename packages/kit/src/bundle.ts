@@ -571,14 +571,78 @@ function redactLine(line: string, options: RedactOptions): string {
 function convertPrompt(record: Record<string, unknown>): boolean {
   const text = record["text"];
   if (typeof text !== "string" || text.length === 0) return false;
-  const chars = record["chars"];
+  if (!convertiblePrompt(record)) return false;
+
+  const truncated = record["truncated"];
   delete record["text"];
-  delete record["truncated"];
   record["hash"] = hashText(text);
-  if (typeof chars !== "number" || !Number.isInteger(chars) || chars < 0) {
-    record["chars"] = text.length;
-  }
+  if (record["chars"] === undefined) record["chars"] = text.length;
+  // `truncated` is KEPT when the source carried it, and an earlier version of
+  // this function deleted it. Deleting it is the more faithful imitation of the
+  // producer's hashed shape — that branch emits no `truncated` — and it destroys
+  // the only per-record signal that this hash is over a PREFIX.
+  //
+  // The producer's hashed mode hashes the untruncated text
+  // (`record.ts:899`) while storing `chars` as the full length. The bundler
+  // only ever holds the already-clipped string, so its hash is of a prefix
+  // beside a full-length `chars`. Without `truncated` that record is
+  // byte-identical in shape to a genuine producer-written hash over the whole
+  // prompt, and not equal to it — a difference a reader would have to call
+  // tampering because nothing distinguishes it from drift. `truncated` is
+  // metadata no verdict reads (`witness.ts:1437`), so keeping it costs nothing
+  // and is the difference between a hash a consumer can interpret and one it
+  // cannot.
+  if (truncated !== undefined) record["truncated"] = truncated;
   return true;
+}
+
+/**
+ * Whether `--no-prompts` can convert this prompt without moving a verdict.
+ *
+ * A prompt whose `chars` is present and not a non-negative integer is
+ * `malformed` in the source, and the validator raises it BEFORE the early
+ * return for a non-empty `text` — so it fires in text mode too:
+ *
+ *   packages/claims/src/witness.ts:1438
+ *
+ * Overwriting that value while dropping `text` would make the record validate
+ * clean, which is a verdict change in the flattering direction and the one
+ * direction this bundler must never move. Such a line is not converted and not
+ * shipped either: the CLI refuses the whole run, on the same rule as an
+ * unreadable line — a redaction flag may refuse, but it may not appear to work.
+ */
+export function convertiblePrompt(record: Record<string, unknown>): boolean {
+  const chars = record["chars"];
+  if (chars === undefined) return true;
+  return typeof chars === "number" && Number.isInteger(chars) && chars >= 0;
+}
+
+/**
+ * Prompt lines `--no-prompts` cannot honour, by 1-based line number.
+ *
+ * Two shapes, and neither can be fixed by rewriting the line:
+ *
+ * - **no usable `id`** — `redactLine` returns such a line verbatim, because
+ *   rewriting it would move the subject of its own `malformed` finding. Under
+ *   `--no-prompts` that means the prompt text ships.
+ * - **an unconvertible `chars`** — see `convertiblePrompt`.
+ *
+ * `unreadableLines` does not see either: both parse as JSON objects.
+ */
+export function unhonourablePromptLines(lines: readonly string[]): number[] {
+  const out: number[] = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const record = readObject(lines[index] ?? "");
+    if (record === null) continue;
+    if (record["kind"] !== "prompt") continue;
+    const text = record["text"];
+    if (typeof text !== "string" || text.length === 0) continue;
+    const id = record["id"];
+    if (typeof id !== "string" || id.length === 0 || !convertiblePrompt(record)) {
+      out.push(index + 1);
+    }
+  }
+  return out;
 }
 
 /**
@@ -680,8 +744,18 @@ export function buildEnvelope(input: EnvelopeInput): BundleEnvelope {
 /**
  * Reconstruct a bundled journal. The inverse of nothing clever: a join.
  *
- * Exported because it is the operation CI performs, and a second
- * implementation of it in the reader would be the place the two halves drift.
+ * **There is a second implementation of this, in the kernel, and there has to
+ * be.** `packages/claims` may not import `packages/kit` — the dependency runs
+ * kit → kernel and never back — so the reader carries its own copy. An earlier
+ * version of this comment claimed the export existed to prevent exactly that
+ * duplication, which was unachievable by construction and read as a guarantee
+ * nobody could keep.
+ *
+ * The duplication is the boundary's price, and it is a cheap one: the operation
+ * is `lines.join("\n")`, its inverse is the validator's own `split`, and the
+ * round-trip test asserts the reconstructed journal's verdict set equals the
+ * source's. A drift here fails that test rather than escaping into a bundle.
+ *
  * There is no stored header to re-emit at the top — the header sits at its
  * original position in `lines`, because re-emitting a stored one would hand a
  * headerless or misplaced-header journal a valid header it never had.
@@ -850,12 +924,19 @@ export function runBundle(argv: readonly string[]): number {
       const candidate = candidates.find((each) => each.session === entry.session);
       if (candidate === undefined) continue;
       const bad = unreadableLines(candidate.lines);
-      if (bad.length > 0) blocked.push(`  ${entry.session} — line(s) ${bad.join(", ")}`);
+      // A second shape the refusal has to cover: lines that parse fine but
+      // cannot be converted without either shipping the text or repairing a
+      // verdict. `unreadableLines` cannot see them — they are valid JSON.
+      const unhonourable = unhonourablePromptLines(candidate.lines);
+      const all = [...new Set([...bad, ...unhonourable])].sort((a, b) => a - b);
+      if (all.length > 0) blocked.push(`  ${entry.session} — line(s) ${all.join(", ")}`);
     }
     if (blocked.length > 0) {
       console.error(
-        "--no-prompts cannot be honoured: these journals carry line(s) this bundler cannot read as JSON, " +
-          "and an unreadable prompt line cannot be converted to its hashed form.\n" +
+        "--no-prompts cannot be honoured: these journals carry prompt line(s) this bundler cannot " +
+          "convert — unreadable as JSON, carrying no usable `id`, or carrying a `chars` the validator " +
+          "already calls malformed. Converting any of them would either ship the text or repair a " +
+          "verdict the source journal has.\n" +
           blocked.join("\n") +
           "\n\nNothing was written. Re-run without --no-prompts, or drop the journal with --exclude <session>.",
       );
