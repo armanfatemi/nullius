@@ -307,3 +307,49 @@ describe("profiles", () => {
     expect(paths).not.toContain(".github/workflows/claims.yml");
   });
 });
+
+describe("--run-report threads the config and the workflow together", () => {
+  const profile = findProfile("specs");
+
+  it("writes no `runReport` key when the flag is absent", () => {
+    if (profile === null) throw new Error("no specs profile");
+
+    const keys = Object.keys(
+      JSON.parse(renderKitConfig(profile, "0.0.0-test")) as Record<string, unknown>,
+    );
+    // Absent rather than `false`. A config listing every default is one where a
+    // deliberate choice cannot be told from a rendered one.
+    expect(keys).not.toContain("runReport");
+  });
+
+  it("writes `runReport: true` only when asked", () => {
+    if (profile === null) throw new Error("no specs profile");
+
+    const parsed = JSON.parse(renderKitConfig(profile, "0.0.0-test", true)) as {
+      runReport?: unknown;
+    };
+    expect(parsed.runReport).toBe(true);
+  });
+
+  it("emits the workflow input only when asked", () => {
+    if (profile === null) throw new Error("no specs profile");
+
+    expect(renderWorkflow(profile, "x@v1")).not.toContain("run-report:");
+    expect(renderWorkflow(profile, "x@v1", true)).toMatch(/^\s+run-report: true$/m);
+  });
+
+  it("keeps the config and the workflow answering the same way", () => {
+    if (profile === null) throw new Error("no specs profile");
+
+    // The pairing is the thing `doctor` checks, so it is asserted here at the
+    // point both are produced: one call site decides both, and a change that
+    // moved only one of them would pass every test above and fail this one.
+    for (const runReport of [false, true]) {
+      const config = JSON.parse(renderKitConfig(profile, "0.0.0-test", runReport)) as {
+        runReport?: unknown;
+      };
+      const workflow = renderWorkflow(profile, "x@v1", runReport);
+      expect(config.runReport === true).toBe(workflow.includes("run-report: true"));
+    }
+  });
+});

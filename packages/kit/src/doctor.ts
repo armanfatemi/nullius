@@ -726,6 +726,95 @@ function checkWorkflow(root: string): Check {
 }
 
 /**
+ * Decision 10 of `add-pr-process-report`: the config and the workflow have to
+ * agree, and the interesting case is the disagreement.
+ *
+ * Three outcomes, and only one of them is a failure:
+ *
+ * - the config does not ask -> `fact`. Most repositories do not commit a
+ *   `nullius.runs/` envelope, and telling them about a feature they have not
+ *   asked for is noise that trains a reader to skim the report.
+ * - config asks, workflow carries the input -> `pass`.
+ * - config asks, workflow does not -> `fail`. This is the whole reason the
+ *   check exists: the repository believes it is getting a run report on every
+ *   pull request and is not, and nothing else in the system would ever say so.
+ *   A hand-edited workflow is the ordinary way to arrive here.
+ *
+ * The reverse — a workflow carrying the input with no config asking — is a
+ * `fact` rather than a failure. The input is harmless without a bundle, and
+ * `doctor --fix` re-renders from the config, so calling it a failure would
+ * report a problem whose repair would silently delete a line somebody wrote on
+ * purpose.
+ */
+function checkRunReport(root: string): Check {
+  const name = "run report";
+  const configPath = join(root, "nullius.kit.json");
+  if (!existsSync(configPath)) {
+    return { name, status: "fact", detail: "no nullius.kit.json — not enabled" };
+  }
+
+  let asks: boolean;
+  try {
+    const parsed = JSON.parse(readFileSync(configPath, "utf8")) as { runReport?: unknown };
+    if (parsed.runReport !== undefined && typeof parsed.runReport !== "boolean") {
+      return {
+        name,
+        status: "fail",
+        detail: `nullius.kit.json has \`runReport\`: ${JSON.stringify(parsed.runReport)} — it must be a boolean or absent`,
+      };
+    }
+    asks = parsed.runReport === true;
+  } catch (error) {
+    return {
+      name,
+      status: "fail",
+      detail: `nullius.kit.json is unreadable — ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+
+  if (!asks) {
+    return { name, status: "fact", detail: "not enabled in nullius.kit.json" };
+  }
+
+  const workflowPath = join(root, ".github", "workflows", "claims.yml");
+  if (!existsSync(workflowPath)) {
+    return {
+      name,
+      status: "fail",
+      detail:
+        "nullius.kit.json asks for the run report, but there is no .github/workflows/claims.yml to carry it",
+    };
+  }
+
+  let workflow: string;
+  try {
+    workflow = readFileSync(workflowPath, "utf8");
+  } catch (error) {
+    return {
+      name,
+      status: "fail",
+      detail: `workflow unreadable — ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+
+  // Tolerant of YAML quoting: `run-report: true`, `'true'` and `"true"` all
+  // enable the input, and a hand-edited workflow is the ordinary way to arrive
+  // at any of them. Matching the bare spelling alone would report a present
+  // input as missing, and `--fix` would then rewrite a file that was already
+  // correct.
+  if (!/^\s*run-report:\s*["']?true["']?\s*$/m.test(workflow)) {
+    return {
+      name,
+      status: "fail",
+      detail:
+        "nullius.kit.json asks for the run report and the workflow has no `run-report: true` input — every pull request will silently go without one. `doctor --fix` re-renders",
+    };
+  }
+
+  return { name, status: "pass", detail: "enabled in nullius.kit.json and carried by the workflow" };
+}
+
+/**
  * The harness payload shape probe.
  *
  * Every field the recorder reads out of a hook payload is an assumption about
@@ -917,6 +1006,7 @@ export function runChecks(options: DoctorOptions): DoctorReport {
   checks.push(...checkConfigs(root));
   checks.push(...checkJournalDir(root));
   checks.push(checkWorkflow(root));
+  checks.push(checkRunReport(root));
 
   const { entries, unreadable } = readManagedHooks(root);
   if (unreadable) {

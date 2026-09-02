@@ -79,6 +79,7 @@ import {
   type Usage,
 } from "./record";
 import { runPipeline } from "./pipeline";
+import { runBundle } from "./bundle";
 
 /** How many findings the advisory check prints before it says "and N more". */
 const ADVISORY_LIMIT = 10;
@@ -131,12 +132,15 @@ const LEDGER_HELP_RESOLUTION = RESOLUTION_OUTCOMES.join(", ");
 const USAGE = `nullius-kit — witness recording for agent runs
 
 usage:
-  nullius-kit init   [--profile <name>] [--dry-run] [--yes] [--root <dir>]
+  nullius-kit init   [--profile <name>] [--run-report] [--dry-run] [--yes] [--root <dir>]
   nullius-kit doctor [--fix] [--root <dir>]
   nullius-kit pipeline <command> [<change>] [--root <dir>]
   nullius-kit witness record [--origin hooks|self-reported] [--root <dir>]
   nullius-kit witness check  [--root <dir>]
   nullius-kit witness ledger <kind> [flags] [--session <id>] [--root <dir>]
+  nullius-kit witness bundle <base>..<head> [--out <path>] [--include <session>]
+                             [--exclude <session>] [--no-prompts]
+                             [--slack <minutes>] [--root <dir>]
 
 record and check read one harness hook payload as JSON on stdin and write to
 .nullius/runs/<session_id>.jsonl under an advisory lock. ledger takes flags.
@@ -146,6 +150,9 @@ record and check read one harness hook payload as JSON on stdin and write to
   check    validate the session's journal and print what does not hold up;
            always exits 0, so it can never block the run it is watching
   ledger   append a record the coordinator is writing about its own run
+  bundle   write a committed envelope of the source lines of every journal
+           that produced a commit range, so CI can rejoin them and re-validate
+           what it counts; 'witness bundle --help' for its flags
 
   --origin  who is writing these records (default: hooks). Journals not
             emitted by the harness must say so: self-reported records certify
@@ -204,6 +211,10 @@ function main(): number {
   // is routed before the witness options parser, which would reject every one.
   if (argv[0] === "witness" && argv[1] === "ledger") return runLedger(argv.slice(2));
 
+  // `bundle` likewise: it takes a range and half a dozen flags of its own, none
+  // of which the witness options parser knows.
+  if (argv[0] === "witness" && argv[1] === "bundle") return runBundle(argv.slice(2));
+
   const options = parseOptions(argv);
   if (options === null) return 2;
 
@@ -260,15 +271,23 @@ interface InitOptions {
   profile: string | null;
   dryRun: boolean;
   root: string;
+  runReport: boolean;
 }
 
 function parseInit(argv: readonly string[]): InitOptions | null {
-  const options: InitOptions = { profile: null, dryRun: false, root: process.cwd() };
+  const options: InitOptions = {
+    profile: null,
+    dryRun: false,
+    root: process.cwd(),
+    runReport: false,
+  };
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "--dry-run") {
       options.dryRun = true;
+    } else if (arg === "--run-report") {
+      options.runReport = true;
     } else if (arg === "--yes" || arg === "-y") {
       // Accepted and inert: init never prompts, so there is nothing to confirm.
       // Refusing the flag would break the copy-pasteable line in the README
@@ -342,6 +361,7 @@ function runInit(argv: readonly string[]): number {
     kitVersion: packageVersion(),
     actionRef: ACTION_REF,
     hookPolicy: mayWriteHooks(detection.harness),
+    runReport: options.runReport,
   });
 
   console.log(formatPlan(plan, options.dryRun));
@@ -468,6 +488,10 @@ function runDoctor(argv: readonly string[]): number {
       hookPolicy: mayWriteHooks(detection.harness),
       // User-owned files come out byte-identical from a repair.
       touchUserFiles: false,
+      // The config's own answer, never a default. A repair that silently
+      // dropped `runReport` would "fix" the doctor check by removing the thing
+      // it was checking for, and report success for having done so.
+      runReport: kit.kind === "found" ? kit.runReport : false,
     });
     const applied = applyPlan(plan);
     console.log(
@@ -509,7 +533,7 @@ function runDoctor(argv: readonly string[]): number {
  * state after an interrupted write, and it is the one that must refuse.
  */
 type KitProfile =
-  | { kind: "found"; profile: string }
+  | { kind: "found"; profile: string; runReport: boolean }
   | { kind: "absent" }
   | { kind: "unreadable"; reason: string };
 
@@ -535,9 +559,26 @@ function readKitProfile(root: string): KitProfile {
     return { kind: "unreadable", reason: error instanceof Error ? error.message : String(error) };
   }
   try {
-    const parsed = JSON.parse(raw) as { profile?: unknown };
-    if (typeof parsed.profile === "string") return { kind: "found", profile: parsed.profile };
-    return { kind: "unreadable", reason: "no `profile` string in nullius.kit.json" };
+    const parsed = JSON.parse(raw) as { profile?: unknown; runReport?: unknown };
+    if (typeof parsed.profile !== "string") {
+      return { kind: "unreadable", reason: "no `profile` string in nullius.kit.json" };
+    }
+    // A present-but-wrong `runReport` is refused rather than coerced. The key
+    // decides whether a workflow input is rendered, so reading `"true"` or `1`
+    // as true would let a config mean something its author did not write — and
+    // `doctor` would then report agreement between a workflow and a config it
+    // had guessed at.
+    if (parsed.runReport !== undefined && typeof parsed.runReport !== "boolean") {
+      return {
+        kind: "unreadable",
+        reason: `\`runReport\` in nullius.kit.json is ${JSON.stringify(parsed.runReport)} — it must be a boolean or absent`,
+      };
+    }
+    return {
+      kind: "found",
+      profile: parsed.profile,
+      runReport: parsed.runReport === true,
+    };
   } catch (error) {
     return { kind: "unreadable", reason: error instanceof Error ? error.message : String(error) };
   }

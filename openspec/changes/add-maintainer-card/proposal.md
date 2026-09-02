@@ -24,7 +24,14 @@ source document:
 
 **Evidence:** `packages/claims/src/checkReport.ts:216@5f88e21` — `  verdicts: Partial<Record<Verdict, number>>;`
 
-**Evidence:** `grep -rn 'format json' action/` → 0 results
+**Evidence:** `grep -rn 'format json' action/` → 1 result
+
+That one result is `add-pr-process-report`'s run-report step, which landed
+after this proposal was written and asks the checker for JSON on a **different**
+verb. **The claim this paragraph rests on is unchanged**: nothing in the action
+reads `check --format json`, which is the machine-readable rendering this
+proposal is about. The count moved because another change added a JSON consumer
+beside it, not because the gap closed.
 
 The second half of the problem is that the fenced dump is, in one specific
 respect, the *safe* rendering — and any replacement inherits a hazard the

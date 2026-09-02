@@ -51,3 +51,12 @@ pure function of repository content and CANNOT differ between rounds of one run.
 When a probe section claims the plant was rotated, it means the host document
 only. Do not record `probe_plant_varied: true` on the strength of a document
 rotation.
+
+**Third agreeing run — `add-pr-process-report` (PR #75, 2026-09-02).** State
+carried `probe_iter_1..5`, all `caught`, matching five `## Probe — stage 2`
+sections round for round. Agreement is now firmly the expected case; a
+*disagreement* is the finding. But the field is still lossy in the way that
+matters: `probe: caught` in state loses that the scored population was one agent
+in two of the five rounds, and that the sole catcher carries the plant's
+signature in committed durable memory. Score from the artefact and read the
+narrative — see [[probe-leak-side-channels]].

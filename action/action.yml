@@ -38,13 +38,29 @@ inputs:
   github-token:
     description: Token for the PR comment (needs pull-requests write permission).
     default: ''
+  run-report:
+    description: >-
+      Post a second comment describing how the pull request was produced —
+      agent dispatches, review rounds, mutations and the coordinator's own
+      ledger records — read from a committed `nullius.runs/` envelope written
+      by `nullius-kit witness bundle`. Off by default: it renders nothing
+      useful without that envelope, and a repository that does not record its
+      runs should not be told about a file it will never have.
+    default: 'false'
+  run-report-bundle:
+    description: >-
+      Path to the envelope. Empty means the conventional
+      `nullius.runs/<branch-slug>.json`. A path that holds nothing is an
+      absence the report renders, never an error — the code-verified tier does
+      not depend on the bundle and is what a maintainer reads first.
+    default: ''
   claims-version:
     description: >-
       Version of @nullius-inverba/claims to run. Pinned by default, because
       pinning this action without pinning its checker is not a pin: every run
       would fetch npm's `latest`, and a breaking CLI change would reach every
       caller the day it published. Set to `latest` to opt into that instead.
-    default: '0.9.1'
+    default: '0.10.0'
 
 runs:
   using: composite
@@ -155,6 +171,137 @@ runs:
           gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$existing" -f body="$body" >/dev/null || true
         else
           gh api -X POST "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" -f body="$body" >/dev/null || true
+        fi
+
+    - name: Run report
+      id: run-report
+      if: inputs.run-report == 'true' && github.event_name == 'pull_request'
+      shell: bash
+      env:
+        CLAIMS_VERSION: ${{ inputs.claims-version }}
+        BUNDLE_INPUT: ${{ inputs.run-report-bundle }}
+      run: |
+        set -uo pipefail
+
+        # Both SHAs come from the event file rather than expression
+        # interpolation. They are GitHub-supplied rather than PR-controlled, so
+        # this is consistency with the checker step above rather than a
+        # boundary of its own — one rule about where event data is read from is
+        # easier to keep than two.
+        base=$(jq -r '.pull_request.base.sha // ""' "$GITHUB_EVENT_PATH")
+        head=$(jq -r '.pull_request.head.sha // ""' "$GITHUB_EVENT_PATH")
+        if [ -z "$base" ] || [ -z "$head" ]; then
+          echo 'run report: no base/head in the event payload — skipping' >> "$GITHUB_STEP_SUMMARY"
+          echo 'rendered=false' >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        bundle="$BUNDLE_INPUT"
+        if [ -z "$bundle" ]; then
+          slug=$(jq -r '.pull_request.head.ref // ""' "$GITHUB_EVENT_PATH" | tr '/' '-')
+          bundle="nullius.runs/${slug}.json"
+        fi
+
+        # The JSON form first, because its `version` decides whether the
+        # markdown is safe to post at all. A newer kernel than this Action
+        # understands must produce NO comment and say which version it was —
+        # a partial render of a document whose shape moved is worse than
+        # silence, and silence with a reason is not silence.
+        json_status=0
+        npx -y "@nullius-inverba/claims@${CLAIMS_VERSION}" witness report "${base}..${head}" \
+          --bundle "$bundle" --format json > nullius-run-report.json 2> nullius-run-report.err || json_status=$?
+
+        if [ "$json_status" -ne 0 ]; then
+          {
+            echo '## nullius run report'
+            echo
+            echo 'Not rendered. The verb exited non-zero, which under its own contract means a'
+            echo 'usage error or unreadable input rather than a finding — the report exits 0'
+            echo 'whenever it produced anything at all.'
+            echo '```'
+            cat nullius-run-report.err
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo 'rendered=false' >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        version=$(jq -r '.version // "absent"' nullius-run-report.json)
+        kind=$(jq -r '.kind // "absent"' nullius-run-report.json)
+        if [ "$kind" != 'run-report' ] || [ "$version" != '1' ]; then
+          {
+            echo '## nullius run report'
+            echo
+            echo "Not posted: this action understands \`run-report\` version 1, and the checker"
+            echo "produced kind \`${kind}\` version \`${version}\`. Pin \`claims-version\` to a"
+            echo 'release this action knows, or upgrade the action.'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo 'rendered=false' >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        npx -y "@nullius-inverba/claims@${CLAIMS_VERSION}" witness report "${base}..${head}" \
+          --bundle "$bundle" --format md > nullius-run-report.md 2>/dev/null || true
+
+        {
+          echo '## nullius run report'
+          echo
+          cat nullius-run-report.md
+        } >> "$GITHUB_STEP_SUMMARY"
+
+        echo 'rendered=true' >> "$GITHUB_OUTPUT"
+
+    - name: Upload run report
+      if: steps.run-report.outputs.rendered == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: nullius-run-report
+        path: |
+          nullius-run-report.json
+          nullius-run-report.md
+        if-no-files-found: warn
+
+    - name: Upsert run report comment
+      if: >-
+        steps.run-report.outputs.rendered == 'true' && inputs.comment == 'true' &&
+        inputs.github-token != '' && github.event_name == 'pull_request'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+      run: |
+        set -uo pipefail
+
+        # NOT a prefix of `<!-- nullius-claims -->`, and that marker is not a
+        # prefix of this one. The upsert below matches by `startswith`, so a
+        # marker that prefixed the other would let one comment overwrite the
+        # other and the grounding result and the process result would share a
+        # slot.
+        marker='<!-- nullius-run-report -->'
+        body=$(printf '%s\n%s\n' "$marker" "$(cat nullius-run-report.md)")
+
+        existing=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" --paginate \
+          | jq -r --arg m "$marker" '[.[] | select(.body | startswith($m)) | .id][0] // empty') || existing=''
+
+        post_status=0
+        if [ -n "$existing" ]; then
+          gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$existing" -f body="$body" >/dev/null || post_status=$?
+        else
+          gh api -X POST "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" -f body="$body" >/dev/null || post_status=$?
+        fi
+
+        # The grounding comment above swallows a failed post with `|| true`.
+        # This one does not: a report that silently failed to post is
+        # indistinguishable from a run that had nothing to report, which is the
+        # confusion the whole feature exists to remove. The job still succeeds —
+        # a comment is not a gate — but the summary says what happened.
+        if [ "$post_status" -ne 0 ]; then
+          {
+            echo '## nullius run report'
+            echo
+            echo "The report rendered but the comment could not be posted (exit ${post_status})."
+            echo 'The rendered markdown is in this step summary and in the `nullius-run-report` artifact.'
+          } >> "$GITHUB_STEP_SUMMARY"
         fi
 
     - name: Enforce strict mode

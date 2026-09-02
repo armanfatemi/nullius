@@ -1,0 +1,276 @@
+# Run report — 8211685..f431193
+
+13 commit(s), 13 file(s) changed. This report renders what happened; it does not gate. Every section shows its data or says why it has none.
+
+## Code-verified
+
+_Re-computed by this command from the repository and its history. Nothing here came from the bundle, so nothing here depends on the contributor._
+
+### Commits in range — 13
+
+Read from `git log` over the range.
+
+| commit | authored |
+| --- | --- |
+| 43651d6 | 2026-08-30T14:23:33-06:00 |
+| 50f6c14 | 2026-08-30T18:10:08-06:00 |
+| df9a0cb | 2026-08-30T18:15:29-06:00 |
+| d4a4527 | 2026-08-30T18:38:25-06:00 |
+| 3b547b4 | 2026-08-30T18:38:45-06:00 |
+| 3db711a | 2026-08-30T18:45:08-06:00 |
+| abef156 | 2026-08-30T18:51:18-06:00 |
+| 6586401 | 2026-08-30T19:15:23-06:00 |
+| 2bb5b55 | 2026-08-30T19:23:02-06:00 |
+| 7b1527b | 2026-08-30T19:23:44-06:00 |
+| bbaa23a | 2026-08-30T19:30:06-06:00 |
+| c8305b1 | 2026-08-30T20:09:02-06:00 |
+| f431193 | 2026-08-30T22:17:39-06:00 |
+
+### Files changed — 13
+
+Read from `git diff --name-status` over the range. This is the set the mutation-derived tables below are scoped by.
+
+### Evidence Anchors re-checked — 39
+
+Every anchor in the range's touched documents, re-verified by re-reading the cited file. A failure here is rendered, not gated: the gate is `nullius check`, which runs on its own.
+
+| verdict | count |
+| --- | --- |
+| ok | 17 |
+| stale | 22 |
+
+0 failing, over 10 document(s).
+
+### Oracle conservation
+
+Whether anything that grades this project was deleted, skipped or weakened in the range, and whether a decision accounted for it.
+
+**Not recorded:** not configured — this project declares no "oracles" key in nullius.config.json, so this run checked nothing. An unconfigured project and a project whose oracle held still are different facts; declare the glob that grades this project to tell them apart.
+
+### Bundled journals re-validated — 1
+
+`witness validate` re-run over every journal reconstructed from the bundle, before any count was taken from it. This checks a bundle's internal consistency and never its completeness: a bundle with whole journals removed validates cleanly.
+
+| session | schema | records | verdict |
+| --- | --- | --- | --- |
+| pr58-session | 0.2 | 78 | valid |
+
+### Review probe
+
+Whether a canary claim is planted in a document under review. The location is never printed — printing it answers the question the probe asks.
+
+No canary is registered for this repository.
+
+## Hook-attested
+
+_Emitted by the harness's own runtime hooks — the agent had no opportunity to decline to write them. Read from the bundle, after every bundled journal re-validated._
+
+### Records attributed to the harness
+
+How many records the validator's provenance partition put in this tier. Journal-wide: `provenance` has no path predicate, so scoping it by the range would mean re-partitioning records here, which is the one thing this renderer does not do.
+
+**Not recorded:** tier breakdown not recorded — 'pr58-session' is version 0.2, and per-record attribution arrived at 0.6
+
+### Dispatches — 20
+
+One row per agent. Journal-wide, not scoped by the range: a `dispatch` record carries no path to scope by.
+
+| agent | dispatches |
+| --- | --- |
+| architecture-reviewer | 6 |
+| rule-auditor | 6 |
+| test-engineer | 6 |
+| general-purpose | 1 |
+| retro-writer | 1 |
+
+### Dispatch outcomes — 20
+
+The validator's three terminal states, counted apart. `never reported` is the one a summary cannot surface on its own, because the missing record is missing.
+
+| outcome | count |
+| --- | --- |
+| found | 20 |
+| explicitly empty | 0 |
+| never reported | 0 |
+
+### Review rounds — 6
+
+A round is a maximal set of dispatches starting within 120000 ms of the first, with at least two members. A lone dispatch is not a round.
+
+| round | started | dispatches | agents |
+| --- | --- | --- | --- |
+| 1 | 2026-08-30T20:12:18.695Z | 3 | architecture-reviewer, rule-auditor, test-engineer |
+| 2 | 2026-08-30T20:24:04.770Z | 3 | architecture-reviewer, rule-auditor, test-engineer |
+| 3 | 2026-08-31T00:10:32.331Z | 3 | architecture-reviewer, rule-auditor, test-engineer |
+| 4 | 2026-08-31T00:39:02.214Z | 3 | architecture-reviewer, rule-auditor, test-engineer |
+| 5 | 2026-08-31T00:45:38.123Z | 3 | architecture-reviewer, rule-auditor, test-engineer |
+| 6 | 2026-08-31T01:24:08.320Z | 3 | architecture-reviewer, rule-auditor, test-engineer |
+
+### Files mutated in the range — 33
+
+Scoped by the range: this is a mutation-derived table, and mutation-derived tables and the flowchart are the only places scoping applies. The tier counts above are journal-wide.
+
+| path | mutations |
+| --- | --- |
+| openspec/changes/add-canary-status-redaction/design.md | 10 |
+| openspec/changes/add-canary-status-redaction/proposal.md | 10 |
+| openspec/changes/add-canary-status-redaction/tasks.md | 5 |
+| packages/claims/src/canary.test.ts | 5 |
+| .claude/retrospectives/2026-08-31-proposal-to-pr-add-canary-status-redaction.md | 1 |
+| openspec/changes/add-canary-status-redaction/specs/canary/spec.md | 1 |
+| packages/claims/src/canary.ts | 1 |
+
+4 mutation record(s) are present in the bundle and excluded here: their path is outside the range's changed files.
+
+### Edit bursts — 8
+
+The in-range mutations between consecutive rounds or commits, grouped by path.
+
+| burst | started | mutations | paths |
+| --- | --- | --- | --- |
+| 1 | 2026-08-30T20:21:15.079Z | 11 | openspec/changes/add-canary-status-redaction/design.md (4), openspec/changes/add-canary-status-redaction/proposal.md (4), openspec/changes/add-canary-status-redaction/tasks.md (2), openspec/changes/add-canary-status-redaction/specs/canary/spec.md (1) |
+| 2 | 2026-08-31T00:08:39.633Z | 7 | openspec/changes/add-canary-status-redaction/tasks.md (3), openspec/changes/add-canary-status-redaction/design.md (2), openspec/changes/add-canary-status-redaction/proposal.md (2) |
+| 3 | 2026-08-31T00:35:58.600Z | 5 | openspec/changes/add-canary-status-redaction/proposal.md (3), openspec/changes/add-canary-status-redaction/design.md (2) |
+| 4 | 2026-08-31T00:38:37.509Z | 1 | openspec/changes/add-canary-status-redaction/proposal.md (1) |
+| 5 | 2026-08-31T00:43:30.758Z | 2 | openspec/changes/add-canary-status-redaction/design.md (2) |
+| 6 | 2026-08-31T01:12:23.951Z | 1 | packages/claims/src/canary.ts (1) |
+| 7 | 2026-08-31T01:18:20.690Z | 5 | packages/claims/src/canary.test.ts (5) |
+| 8 | 2026-08-31T02:07:42.943Z | 1 | .claude/retrospectives/2026-08-31-proposal-to-pr-add-canary-status-redaction.md (1) |
+
+### Findings raised
+
+`finding` records, counted by the validator. A finding carries no per-record origin: the recorder extracts it from the harness payload at the dispatch's terminal event, so the header's `hooks` is true of it.
+
+**Not recorded:** ledger counts not recorded — 'pr58-session' is version 0.2, and the run ledger's counters arrived at 0.6
+
+### Operator turns
+
+`prompt` records — what the operator asked for. The one record in the journal the agent did not cause.
+
+**Not recorded:** ledger counts not recorded — 'pr58-session' is version 0.2, and the run ledger's counters arrived at 0.6
+
+### Model and tokens
+
+Token usage the harness resolved for each dispatched agent, summed. Additive metadata no verdict reads.
+
+**Not recorded:** no report record in the bundled journal(s) carries usage — the recorder writes token counts at journal version 0.6
+
+## Self-reported
+
+_Written by a coordinator about its own run. Internally consistent; not evidence the run went this way._
+
+### Records the coordinator claimed
+
+How many records carried `origin: "self-reported"` of their own, or none under a self-reported header. Journal-wide.
+
+**Not recorded:** tier breakdown not recorded — 'pr58-session' is version 0.2, and per-record attribution arrived at 0.6
+
+### Stages
+
+`stage` records — the pipeline phases the run went through.
+
+**Not recorded:** ledger counts not recorded — 'pr58-session' is version 0.2, and the run ledger's counters arrived at 0.6
+
+### Resolutions
+
+`resolution` records — what happened to each finding.
+
+**Not recorded:** ledger counts not recorded — 'pr58-session' is version 0.2, and the run ledger's counters arrived at 0.6
+
+### Decisions
+
+`decision` records — an approach chosen, and why.
+
+**Not recorded:** ledger counts not recorded — 'pr58-session' is version 0.2, and the run ledger's counters arrived at 0.6
+
+### Checks
+
+`check` records — a command ran, and what it showed.
+
+**Not recorded:** ledger counts not recorded — 'pr58-session' is version 0.2, and the run ledger's counters arrived at 0.6
+
+## Unattributed
+
+_Records that belong to nobody: no origin of their own, under a header that claims none. Counting these as hook-attested would be the flattering default the field exists to remove._
+
+### Records that belong to nobody
+
+The validator's third partition: records with no origin of their own under a header whose origin is null or absent, plus any record whose origin this schema cannot read. Journal-wide.
+
+**Not recorded:** tier breakdown not recorded — 'pr58-session' is version 0.2, and per-record attribution arrived at 0.6
+
+## Timeline
+
+```mermaid
+flowchart LR
+  n0["Round 1 (3 dispatches)"]
+  n1["11 edits / 4 file(s)"]
+  n2["commit 43651d6"]
+  n3["Round 2 (3 dispatches)"]
+  n4["7 edits / 3 file(s)"]
+  n5["commit 50f6c14"]
+  n6["Round 3 (3 dispatches)"]
+  n7["commit df9a0cb"]
+  n8["5 edits / 2 file(s)"]
+  n9["commit d4a4527"]
+  n10["1 edits / 1 file(s)"]
+  n11["commit 3b547b4"]
+  n12["Round 4 (3 dispatches)"]
+  n13["2 edits / 1 file(s)"]
+  n14["commit 3db711a"]
+  n15["Round 5 (3 dispatches)"]
+  n16["commit abef156"]
+  n17["1 edits / 1 file(s)"]
+  n18["commit 6586401"]
+  n19["5 edits / 1 file(s)"]
+  n20["commit 2bb5b55"]
+  n21["commit 7b1527b"]
+  n22["Round 6 (3 dispatches)"]
+  n23["commit bbaa23a"]
+  n24["1 edits / 1 file(s)"]
+  n25["commit c8305b1"]
+  n26["commit f431193"]
+  n0 --> n1
+  n1 --> n2
+  n2 --> n3
+  n3 --> n4
+  n4 --> n5
+  n5 --> n6
+  n6 --> n7
+  n7 --> n8
+  n8 --> n9
+  n9 --> n10
+  n10 --> n11
+  n11 --> n12
+  n12 --> n13
+  n13 --> n14
+  n14 --> n15
+  n15 --> n16
+  n16 --> n17
+  n17 --> n18
+  n18 --> n19
+  n19 --> n20
+  n20 --> n21
+  n21 --> n22
+  n22 --> n23
+  n23 --> n24
+  n24 --> n25
+  n25 --> n26
+```
+
+Rounds group dispatches starting within 120000 ms of the first.
+
+## Not recorded
+
+- **code-verified / Oracle conservation** — not configured — this project declares no "oracles" key in nullius.config.json, so this run checked nothing. An unconfigured project and a project whose oracle held still are different facts; declare the glob that grades this project to tell them apart.
+- **hook-attested / Records attributed to the harness** — tier breakdown not recorded — 'pr58-session' is version 0.2, and per-record attribution arrived at 0.6
+- **hook-attested / Findings raised** — ledger counts not recorded — 'pr58-session' is version 0.2, and the run ledger's counters arrived at 0.6
+- **hook-attested / Operator turns** — ledger counts not recorded — 'pr58-session' is version 0.2, and the run ledger's counters arrived at 0.6
+- **hook-attested / Model and tokens** — no report record in the bundled journal(s) carries usage — the recorder writes token counts at journal version 0.6
+- **self-reported / Records the coordinator claimed** — tier breakdown not recorded — 'pr58-session' is version 0.2, and per-record attribution arrived at 0.6
+- **self-reported / Stages** — ledger counts not recorded — 'pr58-session' is version 0.2, and the run ledger's counters arrived at 0.6
+- **self-reported / Resolutions** — ledger counts not recorded — 'pr58-session' is version 0.2, and the run ledger's counters arrived at 0.6
+- **self-reported / Decisions** — ledger counts not recorded — 'pr58-session' is version 0.2, and the run ledger's counters arrived at 0.6
+- **self-reported / Checks** — ledger counts not recorded — 'pr58-session' is version 0.2, and the run ledger's counters arrived at 0.6
+- **unattributed / Records that belong to nobody** — tier breakdown not recorded — 'pr58-session' is version 0.2, and per-record attribution arrived at 0.6
+- **session review-only** — overlaps the range in time but mutates no file in it — a review-only session has this shape; include it with --include &lt;session&gt; if it belongs — carry it with: witness bundle --include review-only

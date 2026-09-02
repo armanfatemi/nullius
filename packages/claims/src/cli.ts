@@ -22,9 +22,11 @@ import {
   describe,
   exitCode,
   label,
+  buildReport,
   renderJson,
   summarize,
   type CheckedDocument,
+  type CheckReport,
   type CheckRun,
 } from "./checkReport";
 import {
@@ -56,8 +58,8 @@ import {
   type OracleArgs,
 } from "./cliArgs";
 import { parseConfig, type ClaimsConfig } from "./config";
-import { checkOracles, isOracleFailure } from "./oracle";
-import { gitOracleDeps, parseRange } from "./oracleGit";
+import { checkOracles, globMatches, isOracleFailure } from "./oracle";
+import { gitOracleDeps, parseRange, readRangeCommits } from "./oracleGit";
 import { DEMO_DOC_PATH, demoResults, writeDemoFixture } from "./demo";
 import { buildEagerPrompt } from "./eagerPrompt";
 import { parseClaims, parsePresenceMarker } from "./parseClaims";
@@ -82,6 +84,17 @@ import {
   type LedgerCounts,
   type ProvenanceCounts,
 } from "./witness";
+import {
+  buildRunReport,
+  parseBundle,
+  reconstructJournal,
+  renderMarkdown,
+  // `witnessReport` names its JSON renderer `renderJson` too, and both are
+  // imported here. The alias is at the import rather than at the definition:
+  // each module's own name for its own renderer stays the obvious one.
+  renderJson as renderRunReportJson,
+  type RunBundle,
+} from "./witnessReport";
 
 const SPEC_URL =
   "https://github.com/armanfatemi/nullius/blob/main/spec/evidence-anchors.md";
@@ -142,7 +155,7 @@ const AUDIT_HELP = `nullius audit <doc>
                         support finds support, so prefer the default
   example: nullius audit docs/design.md --emit-brief c1`;
 
-const WITNESS_HELP = `nullius witness <validate|survey>
+const WITNESS_HELP = `nullius witness <validate|survey|report>
   validate <journal.jsonl>
                         verify that a run's own record holds up — every
                         dispatch terminated, no verification cited after the
@@ -155,7 +168,24 @@ const WITNESS_HELP = `nullius witness <validate|survey>
                         not stale a verification in the other. Quote the glob
                         to let the checker expand it. Exits non-zero if any
                         surveyed journal fails.
+  report <base>..<head> | <sha>
+                        render how a range was produced, in four provenance
+                        tiers: code-verified (re-run here), then hook-attested,
+                        self-reported and unattributed (read from a bundle
+                        \`nullius-kit witness bundle\` wrote). A bare <sha> is
+                        that commit against its parent. It RENDERS and does not
+                        gate: exit 0 whenever a report was produced, 2 only on a
+                        usage error or unreadable input. Every section shows its
+                        data or says why it has none; a missing source is never
+                        a zero.
   options:
+    --bundle <path>     (report only) the envelope to read (default: the one
+                        JSON file in nullius.runs/)
+    --format <md|json>  (report only) md is what a PR comment carries; json is
+                        the same data, tagged \`"kind": "run-report"\`
+    --config <path>     (report only) config file (default: ${DEFAULT_CONFIG_PATH})
+    --pr-body <path>    (report only) a file whose anchors are checked alongside
+                        the range's touched documents
     --expect-rules <rule-id...>
                         (validate only) fail the run if any named rule id never
                         reached a delivered verdict in this journal
@@ -437,11 +467,13 @@ function runAudit(args: AuditArgs): number {
 
 const WITNESS_USAGE =
   "usage: nullius witness validate <journal.jsonl> [--expect-rules <rule-id...>]\n" +
-  "       nullius witness survey <glob...>";
+  "       nullius witness survey <glob...>\n" +
+  "       nullius witness report <base>..<head> | <sha> [--bundle <path>] [--format md|json]";
 
 function runWitness(args: WitnessArgs): number {
   const [sub, journal] = args.operands;
   if (sub === "survey") return runWitnessSurvey(args);
+  if (sub === "report") return runWitnessReport(args);
   // `validate` still takes EXACTLY one journal path, and `survey` above is the
   // reason it can keep doing so. Teaching `validate` to accept globs was
   // rejected in design.md Decision 1: it is a CI gate people have already
@@ -771,6 +803,203 @@ function ledgerCounts(counts: LedgerCounts): string {
  */
 function provenanceCounts(counts: ProvenanceCounts): string {
   return `${counts.hooks} hook-tier, ${counts.selfReported} self-reported, ${counts.unattributed} unattributed`;
+}
+
+/* -------------------------------------------------------------------------
+ * `witness report`
+ * ---------------------------------------------------------------------- */
+
+const REPORT_USAGE =
+  "usage: nullius witness report <base>..<head> | <sha> [--bundle <path>] [--format md|json] [--config <path>] [--pr-body <path>]";
+
+/** Where an envelope lives when `--bundle` was not given. */
+const BUNDLE_DIR = "nullius.runs";
+
+/**
+ * The default bundle path.
+ *
+ * Discovery rather than naming. `witness bundle`'s default file name is
+ * `<branch-slug>.json`, and re-deriving that here would put a second copy of
+ * the kit's slug rule in the kernel — a rule that can drift, on the wrong side
+ * of a dependency that runs kit → kernel and never back. So the verb looks in
+ * the directory instead: one envelope there is unambiguous, several is a
+ * question only the caller can answer, and none is an absence the report
+ * renders rather than an error.
+ */
+function defaultBundlePath(): { path: string; ambiguous: string[] } {
+  let entries: string[];
+  try {
+    entries = globSync(join(BUNDLE_DIR, "*.json")).sort();
+  } catch {
+    entries = [];
+  }
+  if (entries.length === 1) return { path: entries[0] as string, ambiguous: [] };
+  return { path: `${BUNDLE_DIR}/`, ambiguous: entries };
+}
+
+/**
+ * The documents the code-verified tier re-checks: the range's changed files
+ * that this project calls documents, plus the PR body when one was handed in.
+ *
+ * `config.docs` is the project's own answer to "what is a document here", so
+ * it is used when it exists. Without it the fallback is markdown, which is
+ * what every anchored document in this repository and in the spec is.
+ */
+function reportDocuments(
+  changed: readonly string[],
+  config: ClaimsConfig,
+  prBody: string | undefined,
+): string[] {
+  const globs = config.docs ?? [];
+  const excluded = config.exclude ?? [];
+  const docs = changed.filter((path) => {
+    if (excluded.some((pattern) => globMatches(pattern, path))) return false;
+    if (globs.length > 0) return globs.some((pattern) => globMatches(pattern, path));
+    return path.endsWith(".md");
+  });
+  if (prBody !== undefined) docs.push(prBody);
+  // Deleted paths are in the diff and not on disk. A checker cannot re-read a
+  // file that is not there, and reporting it as unreadable would be a finding
+  // about the range rather than about a document.
+  return [...new Set(docs)].filter((path) => existsSync(path)).sort();
+}
+
+function runWitnessReport(args: WitnessArgs): number {
+  const spec = args.operands[1];
+  if (spec === undefined || args.operands.length > 2) {
+    console.error(REPORT_USAGE);
+    return 2;
+  }
+
+  const parsed = parseRange(spec);
+  if ("error" in parsed) {
+    console.error(`${parsed.error}\n\n${REPORT_USAGE}`);
+    return 2;
+  }
+
+  let config: ClaimsConfig;
+  try {
+    config = loadConfig(args.config);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    return 2;
+  }
+
+  if (args.prBody !== undefined && !existsSync(args.prBody)) {
+    console.error(`no such PR body file: ${args.prBody}`);
+    return 2;
+  }
+
+  // --- The envelope. Missing is an absence the report renders; present and
+  //     unreadable is exit 2, because a bundle nobody can parse is input this
+  //     command was handed and could not use.
+  const discovered = args.bundle === undefined ? defaultBundlePath() : null;
+  const bundlePath = args.bundle ?? (discovered as { path: string }).path;
+  let bundle: RunBundle | null = null;
+  if (existsSync(bundlePath) && !bundlePath.endsWith("/")) {
+    let text: string;
+    try {
+      text = readFileSync(bundlePath, "utf8");
+    } catch (error) {
+      console.error(`could not read the bundle at ${bundlePath}: ${(error as Error).message}`);
+      return 2;
+    }
+    const read = parseBundle(text);
+    if ("error" in read) {
+      console.error(`the bundle at ${bundlePath} is not a witness bundle: ${read.error}`);
+      return 2;
+    }
+    bundle = read;
+  }
+  if (discovered !== null && discovered.ambiguous.length > 1) {
+    console.error(
+      `note: ${String(discovered.ambiguous.length)} envelopes in ${BUNDLE_DIR}/ — name one with --bundle <path>`,
+    );
+  }
+
+  // --- Every bundled journal is re-validated BEFORE any count is taken from
+  //     it. `buildRunReport` reads these reports and never the raw journal for
+  //     a count, which is what makes that ordering a property rather than a
+  //     habit.
+  const journalReports = (bundle?.journals ?? []).map((journal) => ({
+    session: journal.session,
+    report: validateJournal(reconstructJournal(journal.lines)),
+  }));
+
+  // --- git
+  const root = process.cwd();
+  const commits = readRangeCommits(parsed, root);
+  const deps = gitOracleDeps(parsed, root, null);
+  const diff = deps.diff();
+  const changedFiles = diff === null ? [] : [...new Set(diff.map((entry) => entry.path))].sort();
+
+  // --- The code-verified tier's anchor check. Collected here, exactly as
+  //     `check` collects it, and rendered rather than gated: `exitCode` is
+  //     never consulted.
+  const docs = reportDocuments(changedFiles, config, args.prBody);
+  const { entry: activeCanary } = loadActiveCanary(root);
+  let checkRun: CheckReport | null = null;
+  let checkUnavailable: string | undefined;
+  if (docs.length === 0) {
+    checkUnavailable =
+      diff === null
+        ? "git could not be read for this range, so no document was checked"
+        : "no document in this range matched the project's `docs` globs";
+  } else {
+    const checkArgs: CheckArgs = {
+      kind: "check",
+      globs: [],
+      configPath: args.config,
+      requireMarkers: false,
+      format: "json",
+      probing: false,
+      fix: false,
+      stamp: false,
+    };
+    const options: CheckOptions = {};
+    if (config.moments !== undefined) options.moments = config.moments;
+    if (config.ciCaughtMoments !== undefined) options.ciCaughtMoments = config.ciCaughtMoments;
+    if (config.driftWindow !== undefined) options.driftWindow = config.driftWindow;
+    if (config.minAnchorChars !== undefined) options.minAnchorChars = config.minAnchorChars;
+    if (config.relaxedControl !== undefined) options.relaxedControl = config.relaxedControl;
+    const checkDeps: CheckDeps = {
+      readFileLines: fileLinesReader(),
+      readFileAtRev: revFileReader(),
+      isShallowRepository: onceShallow(),
+      runSearch: searchRunner(undefined, config.searchTimeoutMs),
+    };
+    checkRun = buildReport(
+      collectCheck(docs, checkArgs, checkDeps, options, activeCanary, null),
+    );
+  }
+
+  // --- `checkOracles` directly, never through `runOracle`, which exits 2 on an
+  //     unconfigured project. An unconfigured project is a row that reads *not
+  //     configured*, which is a thing to render rather than a reason to stop.
+  const oracleReport = checkOracles(config.oracles, deps, { journalProvided: false });
+
+  const report = buildRunReport({
+    range: { spec, base: parsed.base, head: parsed.head },
+    bundle,
+    bundlePath,
+    commits: "error" in commits ? [] : commits,
+    ...("error" in commits ? { commitsUnreadable: commits.error } : {}),
+    changedFiles,
+    checkRun,
+    ...(checkUnavailable === undefined ? {} : { checkUnavailable }),
+    oracleReport,
+    journalReports,
+    canary: activeCanary,
+  });
+
+  process.stdout.write(
+    args.format === "json" ? renderRunReportJson(report) : `${renderMarkdown(report)}\n`,
+  );
+
+  // Decision 13: a report was produced, so the verb exits 0. It renders three
+  // checks that each already gate in CI on their own; minting a fourth verdict
+  // here would be a fourth place for pass and fail to disagree.
+  return 0;
 }
 
 function runWiring(args: WiringArgs): number {

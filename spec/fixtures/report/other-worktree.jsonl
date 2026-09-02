@@ -1,0 +1,5 @@
+{"kind":"journal","version":"0.2","origin":"hooks","session":"other-worktree-b7e42f10","source":"startup","branch":"feat/unrelated","head":"deadbeef","worktree":"ffee0011ffee0011"}
+{"kind":"dispatch","id":"d:oth1","task":"unrelated work in a second worktree","agent":"general-purpose","at":"2026-07-02T09:00:00.000Z"}
+{"kind":"report","id":"r:oth1","dispatch":"d:oth1","agent":"general-purpose","outcome":"found","findings":["packages/claims/src/canary.ts exports describeCanary"],"at":"2026-07-02T09:12:00.000Z"}
+{"kind":"mutation","id":"m:oth1","target":{"path":"packages/claims/src/canary.ts","hash":"0011223344556677"},"tool":"Edit","at":"2026-07-02T09:20:00.000Z"}
+{"kind":"mutation","id":"m:oth2","target":{"path":"packages/claims/src/canary.test.ts","hash":"8899aabbccddeeff"},"tool":"Edit","at":"2026-07-02T09:31:00.000Z"}

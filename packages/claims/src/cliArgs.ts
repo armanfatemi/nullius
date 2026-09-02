@@ -64,11 +64,31 @@ export interface AuditArgs {
   viaAlias: boolean;
 }
 
+export type ReportFormat = "md" | "json";
+
+const REPORT_FORMATS: ReadonlySet<string> = new Set<ReportFormat>(["md", "json"]);
+
 export interface WitnessArgs {
   kind: "witness";
   operands: string[];
   /** Rule ids `witness validate` must confirm reached a delivered verdict. */
   expectRules: string[] | undefined;
+  /**
+   * `report` only. The envelope `witness bundle` wrote. Absent means the
+   * default path, and a default path that holds nothing is an absence the
+   * report renders rather than an error.
+   */
+  bundle: string | undefined;
+  /**
+   * `report` only. `md` is what the Action posts; `json` is the same data for
+   * other consumers. Deliberately NOT `check`'s `human|json`: this document has
+   * a different vocabulary and sharing the flag's values would imply otherwise.
+   */
+  format: ReportFormat | undefined;
+  /** `report` only. Path to nullius.config.json, so CI can point at a fixture. */
+  config: string | undefined;
+  /** `report` only. A file whose text is checked alongside the touched documents. */
+  prBody: string | undefined;
 }
 
 export interface CanaryArgs {
@@ -136,6 +156,13 @@ const FLAG_OWNERS: ReadonlyMap<string, string> = new Map([
   ["--propose", "audit"],
   ["--paths", "rules"],
   ["--expect-rules", "witness"],
+  ["--bundle", "witness"],
+  ["--pr-body", "witness"],
+  // `--format` stays owned by `check` here even though `witness report` also
+  // takes one. The map's job is to name a home for a flag offered to a command
+  // that has no use for it at all, and `check` is the older home; `witness`
+  // handles its own `--format` before this map is consulted, so the only
+  // messages this entry produces are for third commands.
 ]);
 
 const COMMANDS: ReadonlySet<string> = new Set([
@@ -352,15 +379,51 @@ function parseAudit(rawArgv: readonly string[], viaAlias: boolean): AuditArgs {
  * swallows them as rule ids instead — a known, tested constraint, not a
  * silent footgun (see cliArgs.test.ts).
  */
+/**
+ * Flags `witness report` owns, and the other subcommands do not.
+ *
+ * Checked after the loop rather than inside it, because which subcommand is
+ * being run is only known once the operands have been separated from the flag
+ * values. The rejection is still a parse error rather than a runner error: a
+ * flag accepted here and quietly ignored there is the exact defect this module
+ * was written to remove.
+ */
+const REPORT_ONLY_FLAGS: readonly string[] = ["--bundle", "--format", "--config", "--pr-body"];
+
 function parseWitness(rawArgv: readonly string[]): WitnessArgs {
   const { flags: argv, literal } = splitOperands(rawArgv);
   const operands: string[] = [...literal];
   let expectRules: string[] | undefined;
+  let bundle: string | undefined;
+  let format: ReportFormat | undefined;
+  let config: string | undefined;
+  let prBody: string | undefined;
+  const used = new Set<string>();
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === undefined) continue;
-    if (arg === "--expect-rules") {
+    if (arg === "--bundle") {
+      used.add(arg);
+      index += 1;
+      bundle = requireValue(argv, index, "--bundle", "a path argument");
+    } else if (arg === "--config") {
+      used.add(arg);
+      index += 1;
+      config = requireValue(argv, index, "--config", "a path argument");
+    } else if (arg === "--pr-body") {
+      used.add(arg);
+      index += 1;
+      prBody = requireValue(argv, index, "--pr-body", "a path argument");
+    } else if (arg === "--format") {
+      used.add(arg);
+      index += 1;
+      const value = requireValue(argv, index, "--format", "a value: md or json");
+      if (!REPORT_FORMATS.has(value)) {
+        throw new CliError(`--format must be one of md|json, got: ${value}`);
+      }
+      format = value as ReportFormat;
+    } else if (arg === "--expect-rules") {
       const first = argv[index + 1];
       if (first === undefined || first.startsWith("-")) {
         throw new CliError("--expect-rules requires at least one rule id argument");
@@ -382,7 +445,22 @@ function parseWitness(rawArgv: readonly string[]): WitnessArgs {
     }
   }
 
-  return { kind: "witness", operands, expectRules };
+  const sub = operands[0];
+  if (sub !== "report") {
+    for (const flag of REPORT_ONLY_FLAGS) {
+      if (used.has(flag)) {
+        throw new CliError(
+          `${flag} is an option of \`witness report\`, not \`witness ${sub ?? "<subcommand>"}\``,
+        );
+      }
+    }
+  } else if (expectRules !== undefined) {
+    throw new CliError(
+      "--expect-rules is an option of `witness validate`, not `witness report` — the report renders verdicts, it does not require them",
+    );
+  }
+
+  return { kind: "witness", operands, expectRules, bundle, format, config, prBody };
 }
 
 /**

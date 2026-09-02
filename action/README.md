@@ -45,7 +45,9 @@ jobs:
 | `require-markers` | `false` | Fail when the docs check finds no grounding markers at all                                                    |
 | `comment`         | `true`  | Upsert a single PR comment (updated in place on every run)                                                    |
 | `github-token`    | `''`    | Token for the comment; omit to skip commenting                                                                |
-| `claims-version`  | `0.9.1` | Checker version to run. Pinned, so `@v1` means one thing; set `latest` to float                              |
+| `claims-version`  | `0.10.0` | Checker version to run. Pinned, so `@v1` means one thing; set `latest` to float                              |
+| `run-report`      | `false` | Post a **second** comment describing how the PR was produced (see below)                                     |
+| `run-report-bundle` | `''`  | Path to the committed envelope; empty means `nullius.runs/<branch-slug>.json`                                |
 
 Pinning this action without pinning its checker would not be a pin: every run
 would fetch npm's `latest`, and a breaking CLI change would reach every caller
@@ -61,6 +63,57 @@ PR-controlled content.
 
 The comment is upserted by a hidden marker, so re-runs edit one comment
 instead of stacking new ones.
+
+## The run report
+
+With `run-report: true` the action posts a **second** comment, under its own
+marker, describing how the pull request was produced: agent dispatches, review
+rounds, file mutations, and the coordinator's own ledger records. It reads a
+committed envelope written by `nullius-kit witness bundle`, which the
+contributor commits to the branch.
+
+Two comments, never one table. The grounding result and the process result
+answer different questions and carry different weight, and a single table would
+let a contributor-supplied count sit beside a CI-computed one as an equal.
+
+### What each tier is worth
+
+The report renders four tiers, in a fixed order, and the order is the point:
+
+1. **Code-verified** — re-run in CI from the checkout. `check` over the PR body
+   and touched documents, `oracle` over the range, `witness validate` over
+   every bundled journal. **This tier needs no bundle and is rendered first**,
+   because it is the only one a contributor cannot shape.
+2. **Hook-attested** — from the bundle, after every journal in it re-validates.
+   Written by the harness, which the agent had no opportunity to decline.
+3. **Self-reported** — also from the bundle: records the coordinator wrote
+   about its own run. A claim, made by the party with the motive, sitting next
+   to evidence it did not write.
+4. **Unattributed** — records belonging to neither, which the validator counts
+   separately rather than folding into the flattering option.
+
+### What it does not claim
+
+- **A bundle is contributor-supplied by construction.** The report re-validates
+  it and labels it, and `validateJournal` checks a journal's internal
+  consistency — never its completeness. **A bundle with whole journals removed
+  validates cleanly.** Nothing here is enforcement, and the tier that needs no
+  bundle is first for that reason.
+- **A missing bundle is not evidence of anything.** The three bundle tiers
+  render *not recorded*, naming the path that held nothing. Absence is never
+  rendered as zero.
+- **Below journal version `0.6` there is no tier breakdown**, because the
+  validator computes none — the report says so and names the version rather
+  than inventing an attribution.
+- **No model writes any of it.** Every sentence is a template over counts and
+  records.
+
+### It needs a published checker
+
+The action `npx`-installs the version in `claims-version`, so `witness report`
+has to exist in **that published release**, not merely in your checkout. Until
+one ships carrying the verb, enabling `run-report` renders nothing and says so
+in the step summary.
 
 ## Notes
 

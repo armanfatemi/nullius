@@ -1,0 +1,6 @@
+{"kind":"journal","version":"0.2","origin":"hooks","session":"stale-verification-9d2e5a08","source":"startup","branch":"main","head":"beadfed","worktree":"99aabbccddeeff00"}
+{"kind":"dispatch","id":"d:stale1","task":"verify the retry helper is safe to rely on","agent":"general-purpose","at":"2026-08-30T23:00:00.000Z"}
+{"kind":"verification","id":"v:stale1","target":{"path":"packages/claims/src/canary.ts","hash":"1111222233334444"},"verdict":"safe","at":"2026-08-30T23:05:00.000Z"}
+{"kind":"report","id":"r:stale1","dispatch":"d:stale1","agent":"general-purpose","outcome":"found","findings":["describeCanary suppresses doc and line unless reveal is set"],"at":"2026-08-30T23:07:00.000Z"}
+{"kind":"mutation","id":"m:stale1","target":{"path":"packages/claims/src/canary.ts","hash":"5555666677778888"},"tool":"Edit","at":"2026-08-30T23:20:00.000Z"}
+{"kind":"reliance","id":"x:stale1","relies_on":"v:stale1","at":"2026-08-30T23:41:00.000Z"}

@@ -896,3 +896,92 @@ describe("doctor — the live proof runs the version the producer writes", () =>
     expect(SCHEMA_VERSION).toBe("0.6");
   });
 });
+
+describe("the run report check pairs the config against the workflow", () => {
+  function workflow(root: string, body: string): void {
+    mkdirSync(join(root, ".github", "workflows"), { recursive: true });
+    writeFileSync(join(root, ".github", "workflows", "claims.yml"), body);
+  }
+
+  const WITH_INPUT = "on: pull_request\n      - uses: a/b@v1\n        with:\n          fetch-depth: 0\n          run-report: true\n";
+  const WITHOUT_INPUT = "on: pull_request\n      - uses: a/b@v1\n        with:\n          fetch-depth: 0\n";
+
+  it("is a fact, not a failure, when there is no kit config at all", () => {
+    const root = scratch();
+
+    const result = find(check(root).checks, "run report");
+
+    // Most repositories never commit an envelope. Reporting a problem here
+    // would train a reader to skim the section that matters.
+    expect(result?.status).toBe("fact");
+    expect(result?.detail).toContain("no nullius.kit.json");
+  });
+
+  it("is a fact when the config exists and does not ask", () => {
+    const root = scratch();
+    writeFileSync(join(root, "nullius.kit.json"), JSON.stringify({ profile: "specs" }));
+    workflow(root, WITHOUT_INPUT);
+
+    expect(find(check(root).checks, "run report")?.status).toBe("fact");
+  });
+
+  it("passes when the config asks and the workflow carries the input", () => {
+    const root = scratch();
+    writeFileSync(
+      join(root, "nullius.kit.json"),
+      JSON.stringify({ profile: "specs", runReport: true }),
+    );
+    workflow(root, WITH_INPUT);
+
+    expect(find(check(root).checks, "run report")?.status).toBe("pass");
+  });
+
+  it("FAILS when the config asks and a hand-edited workflow dropped the input", () => {
+    const root = scratch();
+    writeFileSync(
+      join(root, "nullius.kit.json"),
+      JSON.stringify({ profile: "specs", runReport: true }),
+    );
+    workflow(root, WITHOUT_INPUT);
+
+    const result = find(check(root).checks, "run report");
+
+    // The whole reason the check exists: the repository believes it gets a run
+    // report on every pull request and does not, and nothing else would say so.
+    expect(result?.status).toBe("fail");
+    expect(result?.detail).toContain("silently go without one");
+  });
+
+  for (const spelling of ["run-report: true", "run-report: 'true'", 'run-report: "true"']) {
+    it(`accepts the workflow input written as ${spelling}`, () => {
+      const root = scratch();
+      writeFileSync(
+        join(root, "nullius.kit.json"),
+        JSON.stringify({ profile: "specs", runReport: true }),
+      );
+      // All three are valid YAML for the same value, and a hand-edited workflow
+      // is the ordinary way to arrive at any of them. Matching only the bare
+      // spelling would report a present input as missing and send `--fix` to
+      // rewrite a file that was already correct.
+      workflow(root, `on: pull_request\n        with:\n          fetch-depth: 0\n          ${spelling}\n`);
+
+      expect(find(check(root).checks, "run report")?.status).toBe("pass");
+    });
+  }
+
+  it("refuses a non-boolean `runReport` rather than coercing it", () => {
+    const root = scratch();
+    writeFileSync(
+      join(root, "nullius.kit.json"),
+      JSON.stringify({ profile: "specs", runReport: "true" }),
+    );
+    workflow(root, WITH_INPUT);
+
+    const result = find(check(root).checks, "run report");
+
+    // `"true"` read as true would let the config mean something its author did
+    // not write, and the check would then report agreement it had guessed at.
+    expect(result?.status).toBe("fail");
+    expect(result?.detail).toContain("must be a boolean or absent");
+  });
+});

@@ -1,0 +1,1315 @@
+{
+  "kind": "run-report",
+  "version": 1,
+  "range": {
+    "spec": "8211685..f431193",
+    "base": "8211685",
+    "head": "f431193",
+    "commits": 13,
+    "changedFiles": 13
+  },
+  "tiers": [
+    {
+      "id": "code-verified",
+      "title": "Code-verified",
+      "provenance": "Re-computed by this command from the repository and its history. Nothing here came from the bundle, so nothing here depends on the contributor.",
+      "sections": [
+        {
+          "id": "commits",
+          "title": "Commits in range",
+          "statement": "Read from `git log` over the range.",
+          "status": "data",
+          "notes": [],
+          "count": 13,
+          "table": {
+            "columns": [
+              "commit",
+              "authored"
+            ],
+            "rows": [
+              [
+                "43651d6",
+                "2026-08-30T14:23:33-06:00"
+              ],
+              [
+                "50f6c14",
+                "2026-08-30T18:10:08-06:00"
+              ],
+              [
+                "df9a0cb",
+                "2026-08-30T18:15:29-06:00"
+              ],
+              [
+                "d4a4527",
+                "2026-08-30T18:38:25-06:00"
+              ],
+              [
+                "3b547b4",
+                "2026-08-30T18:38:45-06:00"
+              ],
+              [
+                "3db711a",
+                "2026-08-30T18:45:08-06:00"
+              ],
+              [
+                "abef156",
+                "2026-08-30T18:51:18-06:00"
+              ],
+              [
+                "6586401",
+                "2026-08-30T19:15:23-06:00"
+              ],
+              [
+                "2bb5b55",
+                "2026-08-30T19:23:02-06:00"
+              ],
+              [
+                "7b1527b",
+                "2026-08-30T19:23:44-06:00"
+              ],
+              [
+                "bbaa23a",
+                "2026-08-30T19:30:06-06:00"
+              ],
+              [
+                "c8305b1",
+                "2026-08-30T20:09:02-06:00"
+              ],
+              [
+                "f431193",
+                "2026-08-30T22:17:39-06:00"
+              ]
+            ]
+          }
+        },
+        {
+          "id": "changed-files",
+          "title": "Files changed",
+          "statement": "Read from `git diff --name-status` over the range. This is the set the mutation-derived tables below are scoped by.",
+          "status": "data",
+          "notes": [],
+          "count": 13
+        },
+        {
+          "id": "anchors",
+          "title": "Evidence Anchors re-checked",
+          "statement": "Every anchor in the range's touched documents, re-verified by re-reading the cited file. A failure here is rendered, not gated: the gate is `nullius check`, which runs on its own.",
+          "status": "data",
+          "notes": [
+            "0 failing, over 10 document(s)."
+          ],
+          "count": 39,
+          "table": {
+            "columns": [
+              "verdict",
+              "count"
+            ],
+            "rows": [
+              [
+                "ok",
+                "17"
+              ],
+              [
+                "stale",
+                "22"
+              ]
+            ]
+          }
+        },
+        {
+          "id": "oracle",
+          "title": "Oracle conservation",
+          "statement": "Whether anything that grades this project was deleted, skipped or weakened in the range, and whether a decision accounted for it.",
+          "status": "not-recorded",
+          "reason": "not configured — this project declares no \"oracles\" key in nullius.config.json, so this run checked nothing. An unconfigured project and a project whose oracle held still are different facts; declare the glob that grades this project to tell them apart.",
+          "notes": []
+        },
+        {
+          "id": "journal-validation",
+          "title": "Bundled journals re-validated",
+          "statement": "`witness validate` re-run over every journal reconstructed from the bundle, before any count was taken from it. This checks a bundle's internal consistency and never its completeness: a bundle with whole journals removed validates cleanly.",
+          "status": "data",
+          "notes": [],
+          "count": 1,
+          "table": {
+            "columns": [
+              "session",
+              "schema",
+              "records",
+              "verdict"
+            ],
+            "rows": [
+              [
+                "pr58-session",
+                "0.2",
+                "78",
+                "valid"
+              ]
+            ]
+          }
+        },
+        {
+          "id": "canary",
+          "title": "Review probe",
+          "statement": "Whether a canary claim is planted in a document under review. The location is never printed — printing it answers the question the probe asks.",
+          "status": "data",
+          "notes": [
+            "No canary is registered for this repository."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "hook-attested",
+      "title": "Hook-attested",
+      "provenance": "Emitted by the harness's own runtime hooks — the agent had no opportunity to decline to write them. Read from the bundle, after every bundled journal re-validated.",
+      "sections": [
+        {
+          "id": "hook-attribution",
+          "title": "Records attributed to the harness",
+          "statement": "How many records the validator's provenance partition put in this tier. Journal-wide: `provenance` has no path predicate, so scoping it by the range would mean re-partitioning records here, which is the one thing this renderer does not do.",
+          "status": "not-recorded",
+          "reason": "tier breakdown not recorded — 'pr58-session' is version 0.2, and per-record attribution arrived at 0.6",
+          "notes": []
+        },
+        {
+          "id": "dispatches",
+          "title": "Dispatches",
+          "statement": "One row per agent. Journal-wide, not scoped by the range: a `dispatch` record carries no path to scope by.",
+          "status": "data",
+          "notes": [],
+          "count": 20,
+          "table": {
+            "columns": [
+              "agent",
+              "dispatches"
+            ],
+            "rows": [
+              [
+                "architecture-reviewer",
+                "6"
+              ],
+              [
+                "rule-auditor",
+                "6"
+              ],
+              [
+                "test-engineer",
+                "6"
+              ],
+              [
+                "general-purpose",
+                "1"
+              ],
+              [
+                "retro-writer",
+                "1"
+              ]
+            ]
+          }
+        },
+        {
+          "id": "outcomes",
+          "title": "Dispatch outcomes",
+          "statement": "The validator's three terminal states, counted apart. `never reported` is the one a summary cannot surface on its own, because the missing record is missing.",
+          "status": "data",
+          "notes": [],
+          "count": 20,
+          "table": {
+            "columns": [
+              "outcome",
+              "count"
+            ],
+            "rows": [
+              [
+                "found",
+                "20"
+              ],
+              [
+                "explicitly empty",
+                "0"
+              ],
+              [
+                "never reported",
+                "0"
+              ]
+            ]
+          }
+        },
+        {
+          "id": "rounds",
+          "title": "Review rounds",
+          "statement": "A round is a maximal set of dispatches starting within 120000 ms of the first, with at least two members. A lone dispatch is not a round.",
+          "status": "data",
+          "notes": [],
+          "count": 6,
+          "table": {
+            "columns": [
+              "round",
+              "started",
+              "dispatches",
+              "agents"
+            ],
+            "rows": [
+              [
+                "1",
+                "2026-08-30T20:12:18.695Z",
+                "3",
+                "architecture-reviewer, rule-auditor, test-engineer"
+              ],
+              [
+                "2",
+                "2026-08-30T20:24:04.770Z",
+                "3",
+                "architecture-reviewer, rule-auditor, test-engineer"
+              ],
+              [
+                "3",
+                "2026-08-31T00:10:32.331Z",
+                "3",
+                "architecture-reviewer, rule-auditor, test-engineer"
+              ],
+              [
+                "4",
+                "2026-08-31T00:39:02.214Z",
+                "3",
+                "architecture-reviewer, rule-auditor, test-engineer"
+              ],
+              [
+                "5",
+                "2026-08-31T00:45:38.123Z",
+                "3",
+                "architecture-reviewer, rule-auditor, test-engineer"
+              ],
+              [
+                "6",
+                "2026-08-31T01:24:08.320Z",
+                "3",
+                "architecture-reviewer, rule-auditor, test-engineer"
+              ]
+            ]
+          }
+        },
+        {
+          "id": "mutations",
+          "title": "Files mutated in the range",
+          "statement": "Scoped by the range: this is a mutation-derived table, and mutation-derived tables and the flowchart are the only places scoping applies. The tier counts above are journal-wide.",
+          "status": "data",
+          "notes": [
+            "4 mutation record(s) are present in the bundle and excluded here: their path is outside the range's changed files."
+          ],
+          "count": 33,
+          "table": {
+            "columns": [
+              "path",
+              "mutations"
+            ],
+            "rows": [
+              [
+                "openspec/changes/add-canary-status-redaction/design.md",
+                "10"
+              ],
+              [
+                "openspec/changes/add-canary-status-redaction/proposal.md",
+                "10"
+              ],
+              [
+                "openspec/changes/add-canary-status-redaction/tasks.md",
+                "5"
+              ],
+              [
+                "packages/claims/src/canary.test.ts",
+                "5"
+              ],
+              [
+                ".claude/retrospectives/2026-08-31-proposal-to-pr-add-canary-status-redaction.md",
+                "1"
+              ],
+              [
+                "openspec/changes/add-canary-status-redaction/specs/canary/spec.md",
+                "1"
+              ],
+              [
+                "packages/claims/src/canary.ts",
+                "1"
+              ]
+            ]
+          }
+        },
+        {
+          "id": "edit-bursts",
+          "title": "Edit bursts",
+          "statement": "The in-range mutations between consecutive rounds or commits, grouped by path.",
+          "status": "data",
+          "notes": [],
+          "count": 8,
+          "table": {
+            "columns": [
+              "burst",
+              "started",
+              "mutations",
+              "paths"
+            ],
+            "rows": [
+              [
+                "1",
+                "2026-08-30T20:21:15.079Z",
+                "11",
+                "openspec/changes/add-canary-status-redaction/design.md (4), openspec/changes/add-canary-status-redaction/proposal.md (4), openspec/changes/add-canary-status-redaction/tasks.md (2), openspec/changes/add-canary-status-redaction/specs/canary/spec.md (1)"
+              ],
+              [
+                "2",
+                "2026-08-31T00:08:39.633Z",
+                "7",
+                "openspec/changes/add-canary-status-redaction/tasks.md (3), openspec/changes/add-canary-status-redaction/design.md (2), openspec/changes/add-canary-status-redaction/proposal.md (2)"
+              ],
+              [
+                "3",
+                "2026-08-31T00:35:58.600Z",
+                "5",
+                "openspec/changes/add-canary-status-redaction/proposal.md (3), openspec/changes/add-canary-status-redaction/design.md (2)"
+              ],
+              [
+                "4",
+                "2026-08-31T00:38:37.509Z",
+                "1",
+                "openspec/changes/add-canary-status-redaction/proposal.md (1)"
+              ],
+              [
+                "5",
+                "2026-08-31T00:43:30.758Z",
+                "2",
+                "openspec/changes/add-canary-status-redaction/design.md (2)"
+              ],
+              [
+                "6",
+                "2026-08-31T01:12:23.951Z",
+                "1",
+                "packages/claims/src/canary.ts (1)"
+              ],
+              [
+                "7",
+                "2026-08-31T01:18:20.690Z",
+                "5",
+                "packages/claims/src/canary.test.ts (5)"
+              ],
+              [
+                "8",
+                "2026-08-31T02:07:42.943Z",
+                "1",
+                ".claude/retrospectives/2026-08-31-proposal-to-pr-add-canary-status-redaction.md (1)"
+              ]
+            ]
+          }
+        },
+        {
+          "id": "findings",
+          "title": "Findings raised",
+          "statement": "`finding` records, counted by the validator. A finding carries no per-record origin: the recorder extracts it from the harness payload at the dispatch's terminal event, so the header's `hooks` is true of it.",
+          "status": "not-recorded",
+          "reason": "ledger counts not recorded — 'pr58-session' is version 0.2, and the run ledger's counters arrived at 0.6",
+          "notes": []
+        },
+        {
+          "id": "prompts",
+          "title": "Operator turns",
+          "statement": "`prompt` records — what the operator asked for. The one record in the journal the agent did not cause.",
+          "status": "not-recorded",
+          "reason": "ledger counts not recorded — 'pr58-session' is version 0.2, and the run ledger's counters arrived at 0.6",
+          "notes": []
+        },
+        {
+          "id": "usage",
+          "title": "Model and tokens",
+          "statement": "Token usage the harness resolved for each dispatched agent, summed. Additive metadata no verdict reads.",
+          "status": "not-recorded",
+          "reason": "no report record in the bundled journal(s) carries usage — the recorder writes token counts at journal version 0.6",
+          "notes": []
+        }
+      ]
+    },
+    {
+      "id": "self-reported",
+      "title": "Self-reported",
+      "provenance": "Written by a coordinator about its own run. Internally consistent; not evidence the run went this way.",
+      "sections": [
+        {
+          "id": "self-attribution",
+          "title": "Records the coordinator claimed",
+          "statement": "How many records carried `origin: \"self-reported\"` of their own, or none under a self-reported header. Journal-wide.",
+          "status": "not-recorded",
+          "reason": "tier breakdown not recorded — 'pr58-session' is version 0.2, and per-record attribution arrived at 0.6",
+          "notes": []
+        },
+        {
+          "id": "stages",
+          "title": "Stages",
+          "statement": "`stage` records — the pipeline phases the run went through.",
+          "status": "not-recorded",
+          "reason": "ledger counts not recorded — 'pr58-session' is version 0.2, and the run ledger's counters arrived at 0.6",
+          "notes": []
+        },
+        {
+          "id": "resolutions",
+          "title": "Resolutions",
+          "statement": "`resolution` records — what happened to each finding.",
+          "status": "not-recorded",
+          "reason": "ledger counts not recorded — 'pr58-session' is version 0.2, and the run ledger's counters arrived at 0.6",
+          "notes": []
+        },
+        {
+          "id": "decisions",
+          "title": "Decisions",
+          "statement": "`decision` records — an approach chosen, and why.",
+          "status": "not-recorded",
+          "reason": "ledger counts not recorded — 'pr58-session' is version 0.2, and the run ledger's counters arrived at 0.6",
+          "notes": []
+        },
+        {
+          "id": "checks",
+          "title": "Checks",
+          "statement": "`check` records — a command ran, and what it showed.",
+          "status": "not-recorded",
+          "reason": "ledger counts not recorded — 'pr58-session' is version 0.2, and the run ledger's counters arrived at 0.6",
+          "notes": []
+        }
+      ]
+    },
+    {
+      "id": "unattributed",
+      "title": "Unattributed",
+      "provenance": "Records that belong to nobody: no origin of their own, under a header that claims none. Counting these as hook-attested would be the flattering default the field exists to remove.",
+      "sections": [
+        {
+          "id": "unattributed",
+          "title": "Records that belong to nobody",
+          "statement": "The validator's third partition: records with no origin of their own under a header whose origin is null or absent, plus any record whose origin this schema cannot read. Journal-wide.",
+          "status": "not-recorded",
+          "reason": "tier breakdown not recorded — 'pr58-session' is version 0.2, and per-record attribution arrived at 0.6",
+          "notes": []
+        }
+      ]
+    }
+  ],
+  "flowchart": {
+    "mermaid": "flowchart LR\n  n0[\"Round 1 (3 dispatches)\"]\n  n1[\"11 edits / 4 file(s)\"]\n  n2[\"commit 43651d6\"]\n  n3[\"Round 2 (3 dispatches)\"]\n  n4[\"7 edits / 3 file(s)\"]\n  n5[\"commit 50f6c14\"]\n  n6[\"Round 3 (3 dispatches)\"]\n  n7[\"commit df9a0cb\"]\n  n8[\"5 edits / 2 file(s)\"]\n  n9[\"commit d4a4527\"]\n  n10[\"1 edits / 1 file(s)\"]\n  n11[\"commit 3b547b4\"]\n  n12[\"Round 4 (3 dispatches)\"]\n  n13[\"2 edits / 1 file(s)\"]\n  n14[\"commit 3db711a\"]\n  n15[\"Round 5 (3 dispatches)\"]\n  n16[\"commit abef156\"]\n  n17[\"1 edits / 1 file(s)\"]\n  n18[\"commit 6586401\"]\n  n19[\"5 edits / 1 file(s)\"]\n  n20[\"commit 2bb5b55\"]\n  n21[\"commit 7b1527b\"]\n  n22[\"Round 6 (3 dispatches)\"]\n  n23[\"commit bbaa23a\"]\n  n24[\"1 edits / 1 file(s)\"]\n  n25[\"commit c8305b1\"]\n  n26[\"commit f431193\"]\n  n0 --> n1\n  n1 --> n2\n  n2 --> n3\n  n3 --> n4\n  n4 --> n5\n  n5 --> n6\n  n6 --> n7\n  n7 --> n8\n  n8 --> n9\n  n9 --> n10\n  n10 --> n11\n  n11 --> n12\n  n12 --> n13\n  n13 --> n14\n  n14 --> n15\n  n15 --> n16\n  n16 --> n17\n  n17 --> n18\n  n18 --> n19\n  n19 --> n20\n  n20 --> n21\n  n21 --> n22\n  n22 --> n23\n  n23 --> n24\n  n24 --> n25\n  n25 --> n26",
+    "nodes": 27,
+    "windowMs": 120000,
+    "dropped": 0
+  },
+  "notRecorded": [
+    {
+      "tier": "code-verified",
+      "section": "Oracle conservation",
+      "reason": "not configured — this project declares no \"oracles\" key in nullius.config.json, so this run checked nothing. An unconfigured project and a project whose oracle held still are different facts; declare the glob that grades this project to tell them apart."
+    },
+    {
+      "tier": "hook-attested",
+      "section": "Records attributed to the harness",
+      "reason": "tier breakdown not recorded — 'pr58-session' is version 0.2, and per-record attribution arrived at 0.6"
+    },
+    {
+      "tier": "hook-attested",
+      "section": "Findings raised",
+      "reason": "ledger counts not recorded — 'pr58-session' is version 0.2, and the run ledger's counters arrived at 0.6"
+    },
+    {
+      "tier": "hook-attested",
+      "section": "Operator turns",
+      "reason": "ledger counts not recorded — 'pr58-session' is version 0.2, and the run ledger's counters arrived at 0.6"
+    },
+    {
+      "tier": "hook-attested",
+      "section": "Model and tokens",
+      "reason": "no report record in the bundled journal(s) carries usage — the recorder writes token counts at journal version 0.6"
+    },
+    {
+      "tier": "self-reported",
+      "section": "Records the coordinator claimed",
+      "reason": "tier breakdown not recorded — 'pr58-session' is version 0.2, and per-record attribution arrived at 0.6"
+    },
+    {
+      "tier": "self-reported",
+      "section": "Stages",
+      "reason": "ledger counts not recorded — 'pr58-session' is version 0.2, and the run ledger's counters arrived at 0.6"
+    },
+    {
+      "tier": "self-reported",
+      "section": "Resolutions",
+      "reason": "ledger counts not recorded — 'pr58-session' is version 0.2, and the run ledger's counters arrived at 0.6"
+    },
+    {
+      "tier": "self-reported",
+      "section": "Decisions",
+      "reason": "ledger counts not recorded — 'pr58-session' is version 0.2, and the run ledger's counters arrived at 0.6"
+    },
+    {
+      "tier": "self-reported",
+      "section": "Checks",
+      "reason": "ledger counts not recorded — 'pr58-session' is version 0.2, and the run ledger's counters arrived at 0.6"
+    },
+    {
+      "tier": "unattributed",
+      "section": "Records that belong to nobody",
+      "reason": "tier breakdown not recorded — 'pr58-session' is version 0.2, and per-record attribution arrived at 0.6"
+    },
+    {
+      "tier": null,
+      "section": "session review-only",
+      "reason": "overlaps the range in time but mutates no file in it — a review-only session has this shape; include it with --include <session> if it belongs — carry it with: witness bundle --include review-only"
+    }
+  ],
+  "check": {
+    "version": 1,
+    "documents": [
+      {
+        "doc": ".claude/retrospectives/2026-08-31-proposal-to-pr-add-canary-status-redaction.md",
+        "lines": 385,
+        "results": [
+          {
+            "verdict": "ok",
+            "label": "OK",
+            "failing": false,
+            "source": {
+              "doc": ".claude/retrospectives/2026-08-31-proposal-to-pr-add-canary-status-redaction.md",
+              "line": 186
+            },
+            "claim": {
+              "kind": "presence",
+              "path": "packages/claims/src/canary.ts",
+              "line": 83,
+              "rev": "bbaa23a",
+              "text": "const TAINT_TOKENS = [\"canaries.json\", \".git/nullius\", \"CANARY-\"];"
+            },
+            "detail": ""
+          },
+          {
+            "verdict": "ok",
+            "label": "OK",
+            "failing": false,
+            "source": {
+              "doc": ".claude/retrospectives/2026-08-31-proposal-to-pr-add-canary-status-redaction.md",
+              "line": 188
+            },
+            "claim": {
+              "kind": "presence",
+              "path": "packages/claims/src/canary.ts",
+              "line": 358,
+              "rev": "bbaa23a",
+              "text": "if (report.includes(token)) return \"tainted\";"
+            },
+            "detail": ""
+          },
+          {
+            "verdict": "ok",
+            "label": "OK",
+            "failing": false,
+            "source": {
+              "doc": ".claude/retrospectives/2026-08-31-proposal-to-pr-add-canary-status-redaction.md",
+              "line": 213
+            },
+            "claim": {
+              "kind": "presence",
+              "path": "packages/claims/src/canary.ts",
+              "line": 220,
+              "rev": "bbaa23a",
+              "text": "function harvestFalseClaim("
+            },
+            "detail": ""
+          },
+          {
+            "verdict": "ok",
+            "label": "OK",
+            "failing": false,
+            "source": {
+              "doc": ".claude/retrospectives/2026-08-31-proposal-to-pr-add-canary-status-redaction.md",
+              "line": 215
+            },
+            "claim": {
+              "kind": "presence",
+              "path": "packages/claims/src/canary.ts",
+              "line": 223,
+              "rev": "bbaa23a",
+              "text": "const candidates = globSync(SOURCE_GLOB, {"
+            },
+            "detail": ""
+          },
+          {
+            "verdict": "ok",
+            "label": "OK",
+            "failing": false,
+            "source": {
+              "doc": ".claude/retrospectives/2026-08-31-proposal-to-pr-add-canary-status-redaction.md",
+              "line": 237
+            },
+            "claim": {
+              "kind": "presence",
+              "path": "packages/claims/src/cli.ts",
+              "line": 1109,
+              "rev": "bbaa23a",
+              "text": "warning: the registered canary points at a document outside the matched set"
+            },
+            "detail": ""
+          }
+        ]
+      },
+      {
+        "doc": ".claude/skills/proposal-to-pr/SKILL.md",
+        "lines": 1284,
+        "results": [
+          {
+            "verdict": "stale",
+            "label": "STALE",
+            "failing": false,
+            "source": {
+              "doc": ".claude/skills/proposal-to-pr/SKILL.md",
+              "line": 162
+            },
+            "claim": {
+              "kind": "presence",
+              "path": "packages/kit/src/pipeline.ts",
+              "line": 251,
+              "rev": "437aeb6",
+              "text": "join(root, \".git\", \"nullius\", \"pipeline\","
+            },
+            "detail": "verified at 437aeb6; text is on line 284, not 251 — the quote still identifies real code, so this is stale rather than wrong; update the citation"
+          },
+          {
+            "verdict": "stale",
+            "label": "STALE",
+            "failing": false,
+            "source": {
+              "doc": ".claude/skills/proposal-to-pr/SKILL.md",
+              "line": 601
+            },
+            "claim": {
+              "kind": "presence",
+              "path": "packages/claims/src/cli.ts",
+              "line": 81,
+              "rev": "437aeb6",
+              "text": "exit 0 CANARY-CAUGHT, 1 CANARY-MISSED, 3 CANARY-TAINTED"
+            },
+            "detail": "verified at 437aeb6; text is on line 189, not 81 — the quote still identifies real code, so this is stale rather than wrong; update the citation"
+          },
+          {
+            "verdict": "stale",
+            "label": "STALE",
+            "failing": false,
+            "source": {
+              "doc": ".claude/skills/proposal-to-pr/SKILL.md",
+              "line": 919
+            },
+            "claim": {
+              "kind": "presence",
+              "path": "packages/kit/src/pipeline.ts",
+              "line": 158,
+              "rev": "437aeb6",
+              "text": "Those paths must NOT go through"
+            },
+            "detail": "verified at 437aeb6; text is on line 176, not 158 — the quote still identifies real code, so this is stale rather than wrong; update the citation"
+          },
+          {
+            "verdict": "stale",
+            "label": "STALE",
+            "failing": false,
+            "source": {
+              "doc": ".claude/skills/proposal-to-pr/SKILL.md",
+              "line": 1008
+            },
+            "claim": {
+              "kind": "presence",
+              "path": ".github/workflows/ci.yml",
+              "line": 149,
+              "rev": "437aeb6",
+              "text": "node packages/claims/dist/cli.js check 'openspec/**/*.md'"
+            },
+            "detail": "verified at 437aeb6; text is on line 184, not 149 — the quote still identifies real code, so this is stale rather than wrong; update the citation"
+          }
+        ]
+      },
+      {
+        "doc": "CHANGELOG.md",
+        "lines": 673,
+        "results": []
+      },
+      {
+        "doc": "openspec/changes/add-canary-status-redaction/design.md",
+        "lines": 351,
+        "results": [
+          {
+            "verdict": "stale",
+            "label": "STALE",
+            "failing": false,
+            "source": {
+              "doc": "openspec/changes/add-canary-status-redaction/design.md",
+              "line": 7
+            },
+            "claim": {
+              "kind": "presence",
+              "path": "packages/claims/src/cli.ts",
+              "line": 1026,
+              "rev": "2792fa1",
+              "text": "  if (sub === \"status\") {"
+            },
+            "detail": "verified at 2792fa1; text is on line 1333, not 1026 — the quote still identifies real code, so this is stale rather than wrong; update the citation"
+          },
+          {
+            "verdict": "stale",
+            "label": "STALE",
+            "failing": false,
+            "source": {
+              "doc": "openspec/changes/add-canary-status-redaction/design.md",
+              "line": 33
+            },
+            "claim": {
+              "kind": "presence",
+              "path": ".github/workflows/ci.yml",
+              "line": 200,
+              "rev": "3f64b6e",
+              "text": "          node packages/claims/dist/cli.js canary status"
+            },
+            "detail": "verified at 3f64b6e; text is on line 206, not 200 — the quote still identifies real code, so this is stale rather than wrong; update the citation"
+          },
+          {
+            "verdict": "stale",
+            "label": "STALE",
+            "failing": false,
+            "source": {
+              "doc": "openspec/changes/add-canary-status-redaction/design.md",
+              "line": 40
+            },
+            "claim": {
+              "kind": "presence",
+              "path": ".github/workflows/ci.yml",
+              "line": 187,
+              "rev": "3f64b6e",
+              "text": "      - name: nullius canary (self)"
+            },
+            "detail": "verified at 3f64b6e; text is on line 193, not 187 — the quote still identifies real code, so this is stale rather than wrong; update the citation"
+          },
+          {
+            "verdict": "stale",
+            "label": "STALE",
+            "failing": false,
+            "source": {
+              "doc": "openspec/changes/add-canary-status-redaction/design.md",
+              "line": 45
+            },
+            "claim": {
+              "kind": "presence",
+              "path": ".github/workflows/ci.yml",
+              "line": 199,
+              "rev": "3f64b6e",
+              "text": "          node packages/claims/dist/cli.js canary clear"
+            },
+            "detail": "verified at 3f64b6e; text is on line 205, not 199 — the quote still identifies real code, so this is stale rather than wrong; update the citation"
+          },
+          {
+            "verdict": "ok",
+            "label": "OK",
+            "failing": false,
+            "source": {
+              "doc": "openspec/changes/add-canary-status-redaction/design.md",
+              "line": 50
+            },
+            "claim": {
+              "kind": "presence",
+              "path": ".claude/skills/proposal-to-pr/SKILL.md",
+              "line": 1000,
+              "rev": "3f64b6e",
+              "text": "node packages/claims/dist/cli.js canary status    # must print \"no active canary\""
+            },
+            "detail": ""
+          },
+          {
+            "verdict": "ok",
+            "label": "OK",
+            "failing": false,
+            "source": {
+              "doc": "openspec/changes/add-canary-status-redaction/design.md",
+              "line": 54
+            },
+            "claim": {
+              "kind": "presence",
+              "path": ".claude/skills/proposal-to-pr/SKILL.md",
+              "line": 1234,
+              "rev": "3f64b6e",
+              "text": "(`canary status` exits 1), clear it before running any `check`."
+            },
+            "detail": ""
+          },
+          {
+            "verdict": "ok",
+            "label": "OK",
+            "failing": false,
+            "source": {
+              "doc": "openspec/changes/add-canary-status-redaction/design.md",
+              "line": 88
+            },
+            "claim": {
+              "kind": "presence",
+              "path": "spec/canary.md",
+              "line": 26,
+              "rev": "df9a0cb",
+              "text": "nullius canary status                 # scriptable guard: exit 1 while planted"
+            },
+            "detail": ""
+          },
+          {
+            "verdict": "ok",
+            "label": "OK",
+            "failing": false,
+            "source": {
+              "doc": "openspec/changes/add-canary-status-redaction/design.md",
+              "line": 90
+            },
+            "claim": {
+              "kind": "presence",
+              "path": "spec/canary.md",
+              "line": 93,
+              "rev": "df9a0cb",
+              "text": "plan-approval hook stay loud. `canary status` is the scriptable form for"
+            },
+            "detail": ""
+          },
+          {
+            "verdict": "stale",
+            "label": "STALE",
+            "failing": false,
+            "source": {
+              "doc": "openspec/changes/add-canary-status-redaction/design.md",
+              "line": 116
+            },
+            "claim": {
+              "kind": "presence",
+              "path": "packages/claims/src/cli.ts",
+              "line": 1107,
+              "rev": "3f64b6e",
+              "text": "        `warning: the registered canary points at a document outside the matched set (${activeCanary.doc}) — not read; run \\`canary status\\``,"
+            },
+            "detail": "verified at 3f64b6e; that text is no longer in packages/claims/src/cli.ts — the code moved on, so re-read it before relying on this claim"
+          },
+          {
+            "verdict": "stale",
+            "label": "STALE",
+            "failing": false,
+            "source": {
+              "doc": "openspec/changes/add-canary-status-redaction/design.md",
+              "line": 122
+            },
+            "claim": {
+              "kind": "presence",
+              "path": "packages/claims/src/cli.ts",
+              "line": 1111,
+              "rev": "3f64b6e",
+              "text": "        `warning: the registered canary is no longer present in ${activeCanary.doc} — stale registry; delete .git/nullius/canaries.json after restoring the document`,"
+            },
+            "detail": "verified at 3f64b6e; that text is no longer in packages/claims/src/cli.ts — the code moved on, so re-read it before relying on this claim"
+          },
+          {
+            "verdict": "stale",
+            "label": "STALE",
+            "failing": false,
+            "source": {
+              "doc": "openspec/changes/add-canary-status-redaction/design.md",
+              "line": 166
+            },
+            "claim": {
+              "kind": "presence",
+              "path": "packages/claims/src/cli.ts",
+              "line": 1322,
+              "rev": "3f64b6e",
+              "text": "        console.log(`CANARY-CAUGHT — the review flagged ${entry.doc}:${entry.line}`);"
+            },
+            "detail": "verified at 3f64b6e; that text is no longer in packages/claims/src/cli.ts — the code moved on, so re-read it before relying on this claim"
+          },
+          {
+            "verdict": "stale",
+            "label": "STALE",
+            "failing": false,
+            "source": {
+              "doc": "openspec/changes/add-canary-status-redaction/design.md",
+              "line": 168
+            },
+            "claim": {
+              "kind": "presence",
+              "path": "packages/claims/src/cli.ts",
+              "line": 1326,
+              "rev": "3f64b6e",
+              "text": "          `CANARY-MISSED — nothing in the review references ${entry.doc}:${entry.line} or the planted claim`,"
+            },
+            "detail": "verified at 3f64b6e; that text is no longer in packages/claims/src/cli.ts — the code moved on, so re-read it before relying on this claim"
+          },
+          {
+            "verdict": "ok",
+            "label": "OK",
+            "failing": false,
+            "source": {
+              "doc": "openspec/changes/add-canary-status-redaction/design.md",
+              "line": 210
+            },
+            "claim": {
+              "kind": "presence",
+              "path": "packages/claims/src/checkReport.ts",
+              "line": 270,
+              "rev": "df9a0cb",
+              "text": "    source: { doc: source.doc, line: source.line },"
+            },
+            "detail": ""
+          },
+          {
+            "verdict": "stale",
+            "label": "STALE",
+            "failing": false,
+            "source": {
+              "doc": "openspec/changes/add-canary-status-redaction/design.md",
+              "line": 250
+            },
+            "claim": {
+              "kind": "presence",
+              "path": "packages/claims/src/cli.ts",
+              "line": 1348,
+              "rev": "df9a0cb",
+              "text": "    console.log(`cleared ${entry.doc}:${entry.line}`);"
+            },
+            "detail": "verified at df9a0cb; that text is no longer in packages/claims/src/cli.ts — the code moved on, so re-read it before relying on this claim"
+          },
+          {
+            "verdict": "stale",
+            "label": "STALE",
+            "failing": false,
+            "source": {
+              "doc": "openspec/changes/add-canary-status-redaction/design.md",
+              "line": 252
+            },
+            "claim": {
+              "kind": "presence",
+              "path": "packages/claims/src/canary.ts",
+              "line": 344,
+              "rev": "df9a0cb",
+              "text": "      `the registered line no longer carries the planted claim (${entry.doc}:${entry.line}) — clear refused; restore the line or remove it by hand, then delete the registry`,"
+            },
+            "detail": "verified at df9a0cb; that text is no longer in packages/claims/src/canary.ts — the code moved on, so re-read it before relying on this claim"
+          },
+          {
+            "verdict": "stale",
+            "label": "STALE",
+            "failing": false,
+            "source": {
+              "doc": "openspec/changes/add-canary-status-redaction/design.md",
+              "line": 270
+            },
+            "claim": {
+              "kind": "presence",
+              "path": "packages/claims/src/canary.ts",
+              "line": 276,
+              "rev": "3b547b4",
+              "text": "      `an active canary is already registered (${active.doc}:${active.line}) — run \\`canary status\\` or \\`canary clear\\` first`,"
+            },
+            "detail": "verified at 3b547b4; that text is no longer in packages/claims/src/canary.ts — the code moved on, so re-read it before relying on this claim"
+          },
+          {
+            "verdict": "stale",
+            "label": "STALE",
+            "failing": false,
+            "source": {
+              "doc": "openspec/changes/add-canary-status-redaction/design.md",
+              "line": 281
+            },
+            "claim": {
+              "kind": "presence",
+              "path": "packages/claims/src/canary.ts",
+              "line": 175,
+              "rev": "3b547b4",
+              "text": "      warning: `canary registry entry has an unsafe path and was ignored: ${entry.doc}`,"
+            },
+            "detail": "verified at 3b547b4; that text is no longer in packages/claims/src/canary.ts — the code moved on, so re-read it before relying on this claim"
+          },
+          {
+            "verdict": "stale",
+            "label": "STALE",
+            "failing": false,
+            "source": {
+              "doc": "openspec/changes/add-canary-status-redaction/design.md",
+              "line": 287
+            },
+            "claim": {
+              "kind": "presence",
+              "path": "packages/claims/src/canary.ts",
+              "line": 282,
+              "rev": "3b547b4",
+              "text": "  if (!docSafety.safe) throw new Error(`unsafe document path — ${docSafety.reason}`);"
+            },
+            "detail": "verified at 3b547b4; text is on line 316, not 282 — the quote still identifies real code, so this is stale rather than wrong; update the citation"
+          },
+          {
+            "verdict": "stale",
+            "label": "STALE",
+            "failing": false,
+            "source": {
+              "doc": "openspec/changes/add-canary-status-redaction/design.md",
+              "line": 292
+            },
+            "claim": {
+              "kind": "presence",
+              "path": "packages/claims/src/canary.ts",
+              "line": 273,
+              "rev": "3b547b4",
+              "text": "  if (warning !== undefined) throw new Error(warning);"
+            },
+            "detail": "verified at 3b547b4; text is on line 307, not 273 — the quote still identifies real code, so this is stale rather than wrong; update the citation"
+          }
+        ]
+      },
+      {
+        "doc": "openspec/changes/add-canary-status-redaction/progress.md",
+        "lines": 61,
+        "results": []
+      },
+      {
+        "doc": "openspec/changes/add-canary-status-redaction/proposal.md",
+        "lines": 206,
+        "results": [
+          {
+            "verdict": "stale",
+            "label": "STALE",
+            "failing": false,
+            "source": {
+              "doc": "openspec/changes/add-canary-status-redaction/proposal.md",
+              "line": 12
+            },
+            "claim": {
+              "kind": "presence",
+              "path": "packages/claims/src/cli.ts",
+              "line": 1032,
+              "rev": "2792fa1",
+              "text": "      `active canary: ${entry.doc}:${entry.line} (planted ${entry.plantedAt})`,"
+            },
+            "detail": "verified at 2792fa1; that text is no longer in packages/claims/src/cli.ts — the code moved on, so re-read it before relying on this claim"
+          },
+          {
+            "verdict": "ok",
+            "label": "OK",
+            "failing": false,
+            "source": {
+              "doc": "openspec/changes/add-canary-status-redaction/proposal.md",
+              "line": 17
+            },
+            "claim": {
+              "kind": "presence",
+              "path": "openspec/changes/archive/2026-08-30-add-probe-visibility/review-evidence.md",
+              "line": 860,
+              "rev": "df9a0cb",
+              "text": "architecture-reviewer 5/5 (2 via the registry side channel, 3 by reading),"
+            },
+            "detail": ""
+          },
+          {
+            "verdict": "ok",
+            "label": "OK",
+            "failing": false,
+            "source": {
+              "doc": "openspec/changes/add-canary-status-redaction/proposal.md",
+              "line": 19
+            },
+            "claim": {
+              "kind": "presence",
+              "path": "openspec/changes/archive/2026-08-30-add-authoring-ergonomics/review-evidence.md",
+              "line": 133,
+              "rev": "df9a0cb",
+              "text": "- FP1 `openspec/changes/add-authoring-ergonomics/proposal.md:6` — the `retry` / \"must stay in sync\" sentence naming `spec/fixtures/rules-valid/src/example.ts` (defines only `widgetCount`). Flagged by both reviewers (2 of 2). architecture-reviewer confirmed via the local registry (\"third successive plant\"); rule-auditor from the grammar break and a grep."
+            },
+            "detail": ""
+          },
+          {
+            "verdict": "ok",
+            "label": "OK",
+            "failing": false,
+            "source": {
+              "doc": "openspec/changes/add-canary-status-redaction/proposal.md",
+              "line": 37
+            },
+            "claim": {
+              "kind": "presence",
+              "path": "plugin/hooks/hooks.json",
+              "line": 14,
+              "rev": "2792fa1",
+              "text": "        \"matcher\": \"^(Task|Agent)$\","
+            },
+            "detail": ""
+          },
+          {
+            "verdict": "ok",
+            "label": "OK",
+            "failing": false,
+            "source": {
+              "doc": "openspec/changes/add-canary-status-redaction/proposal.md",
+              "line": 41
+            },
+            "claim": {
+              "kind": "presence",
+              "path": "plugin/hooks/hooks.json",
+              "line": 25,
+              "rev": "2792fa1",
+              "text": "        \"matcher\": \"^(Task|Agent|Edit|Write|MultiEdit|NotebookEdit)$\","
+            },
+            "detail": ""
+          },
+          {
+            "verdict": "stale",
+            "label": "STALE",
+            "failing": false,
+            "source": {
+              "doc": "openspec/changes/add-canary-status-redaction/proposal.md",
+              "line": 56
+            },
+            "claim": {
+              "kind": "presence",
+              "path": "packages/claims/src/cli.ts",
+              "line": 1107,
+              "rev": "3f64b6e",
+              "text": "        `warning: the registered canary points at a document outside the matched set (${activeCanary.doc}) — not read; run \\`canary status\\``,"
+            },
+            "detail": "verified at 3f64b6e; that text is no longer in packages/claims/src/cli.ts — the code moved on, so re-read it before relying on this claim"
+          }
+        ]
+      },
+      {
+        "doc": "openspec/changes/add-canary-status-redaction/review-evidence.md",
+        "lines": 1189,
+        "results": []
+      },
+      {
+        "doc": "openspec/changes/add-canary-status-redaction/specs/canary/spec.md",
+        "lines": 110,
+        "results": []
+      },
+      {
+        "doc": "openspec/changes/add-canary-status-redaction/tasks.md",
+        "lines": 242,
+        "results": [
+          {
+            "verdict": "stale",
+            "label": "STALE",
+            "failing": false,
+            "source": {
+              "doc": "openspec/changes/add-canary-status-redaction/tasks.md",
+              "line": 10
+            },
+            "claim": {
+              "kind": "presence",
+              "path": "packages/claims/src/cli.ts",
+              "line": 1026,
+              "rev": "2792fa1",
+              "text": "  if (sub === \"status\") {"
+            },
+            "detail": "verified at 2792fa1; text is on line 1333, not 1026 — the quote still identifies real code, so this is stale rather than wrong; update the citation"
+          },
+          {
+            "verdict": "stale",
+            "label": "STALE",
+            "failing": false,
+            "source": {
+              "doc": "openspec/changes/add-canary-status-redaction/tasks.md",
+              "line": 12
+            },
+            "claim": {
+              "kind": "presence",
+              "path": "packages/claims/src/cli.ts",
+              "line": 1017,
+              "rev": "2792fa1",
+              "text": "      console.log(`CANARY-CAUGHT — the review flagged ${entry.doc}:${entry.line}`);"
+            },
+            "detail": "verified at 2792fa1; that text is no longer in packages/claims/src/cli.ts — the code moved on, so re-read it before relying on this claim"
+          },
+          {
+            "verdict": "ok",
+            "label": "OK",
+            "failing": false,
+            "source": {
+              "doc": "openspec/changes/add-canary-status-redaction/tasks.md",
+              "line": 14
+            },
+            "claim": {
+              "kind": "presence",
+              "path": "plugin/hooks/hooks.json",
+              "line": 14,
+              "rev": "2792fa1",
+              "text": "        \"matcher\": \"^(Task|Agent)$\","
+            },
+            "detail": ""
+          }
+        ]
+      },
+      {
+        "doc": "spec/canary.md",
+        "lines": 124,
+        "results": [
+          {
+            "verdict": "ok",
+            "label": "OK",
+            "failing": false,
+            "source": {
+              "doc": "spec/canary.md",
+              "line": 51
+            },
+            "claim": {
+              "kind": "presence",
+              "path": "packages/claims/src/canary.ts",
+              "line": 77,
+              "text": "const REGISTRY_REL = join(\"nullius\", \"canaries.json\");"
+            },
+            "detail": ""
+          },
+          {
+            "verdict": "ok",
+            "label": "OK",
+            "failing": false,
+            "source": {
+              "doc": "spec/canary.md",
+              "line": 81
+            },
+            "claim": {
+              "kind": "presence",
+              "path": "packages/claims/src/canary.ts",
+              "line": 83,
+              "text": "const TAINT_TOKENS = [\"canaries.json\", \".git/nullius\", \"CANARY-\"];"
+            },
+            "detail": ""
+          }
+        ]
+      }
+    ],
+    "summary": {
+      "documents": 10,
+      "anchoredDocuments": 6,
+      "unanchored": [
+        {
+          "doc": "CHANGELOG.md",
+          "lines": 673
+        },
+        {
+          "doc": "openspec/changes/add-canary-status-redaction/progress.md",
+          "lines": 61
+        },
+        {
+          "doc": "openspec/changes/add-canary-status-redaction/review-evidence.md",
+          "lines": 1189
+        },
+        {
+          "doc": "openspec/changes/add-canary-status-redaction/specs/canary/spec.md",
+          "lines": 110
+        }
+      ],
+      "presenceAnchors": 39,
+      "absenceAnchors": 0,
+      "verdicts": {
+        "ok": 17,
+        "stale": 22
+      },
+      "failures": 0,
+      "markerFloorFailed": false,
+      "next": null
+    }
+  }
+}

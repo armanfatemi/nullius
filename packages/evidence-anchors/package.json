@@ -1,6 +1,6 @@
 {
   "name": "evidence-anchors",
-  "version": "0.9.1",
+  "version": "0.10.0",
   "description": "Deterministic checker for Evidence Anchors \u2014 machine-verifiable claims about a codebase in design docs, RFCs, and agent-written proposals. Unscoped alias of @nullius-inverba/claims.",
   "license": "MIT",
   "author": "Arman Fatemi",
@@ -46,6 +46,6 @@
     "README.md"
   ],
   "dependencies": {
-    "@nullius-inverba/claims": "^0.9.1"
+    "@nullius-inverba/claims": "^0.10.0"
   }
 }

@@ -209,7 +209,6 @@ jobs:
           set -euo pipefail
           work=$(mktemp -d)
           kit="node packages/kit/dist/cli.js"
-          claims="node packages/claims/dist/cli.js"
           journal="$work/.nullius/runs/ledger.jsonl"
 
           # A dispatch, then a synchronous terminal whose return text carries
@@ -228,8 +227,8 @@ jobs:
           # satisfied identically by "the verdict fired" and by "the file was
           # not there". The output arm is a redirect rather than a pipe:
           # `! cmd | grep -q X` negates the pipeline instead of the command.
-          ! $claims witness validate "$journal"
-          $claims witness validate "$journal" > "$work/unanswered.log" 2>&1 || true
+          ! node packages/claims/dist/cli.js witness validate "$journal"
+          node packages/claims/dist/cli.js witness validate "$journal" > "$work/unanswered.log" 2>&1 || true
           grep -q 'SUPPRESSED-FINDING' "$work/unanswered.log"
 
           # The id comes from the journal, never from the coordinator's memory
@@ -243,7 +242,7 @@ jobs:
           $kit witness ledger check --command 'pnpm test' --outcome pass --text 'every suite green' --counts 'failures=0' --session ledger --root "$work"
           $kit witness ledger resolution --finding "$finding" --outcome fixed --text 'the anchor was stamped and re-read' --session ledger --root "$work"
 
-          $claims witness validate "$journal" > "$work/answered.log" 2>&1
+          node packages/claims/dist/cli.js witness validate "$journal" > "$work/answered.log" 2>&1
           cat "$work/answered.log"
           # And the three records land in the SELF-REPORTED tier. Exit 0 alone
           # would be satisfied by a build that wrote them with the header's
@@ -271,6 +270,78 @@ jobs:
           # No --require-markers: a tasks.md asserts nothing about the code and
           # should not be forced to carry an anchor.
           node packages/claims/dist/cli.js check 'openspec/**/*.md'
+
+      # `witness report` over this repository's own history, both polarities of
+      # the bundle.
+      #
+      # The range is the one PR #58 landed on, and the envelopes under
+      # spec/fixtures/report/ were produced by the real `witness bundle` over
+      # it — so this step exercises the join the feature exists for rather than
+      # a synthesised stand-in.
+      #
+      # EVERY ASSERTION HERE IS A `grep`, not an exit code. The verb's contract
+      # is that it exits 0 whenever it produced a report, so its exit code
+      # carries one bit and that bit is "the process ran". A step that only
+      # checked `$?` would stay green on a build whose every tier had gone
+      # silent, which is the defect .claude/rules/verdict-needs-fixture-and-test.md
+      # is about, in the one place where the exit code CANNOT be the gate.
+      - name: nullius witness report (self, both polarities of the bundle)
+        run: |
+          set -euo pipefail
+          fixtures=spec/fixtures/report
+          range='8211685..f431193'
+          work=$(mktemp -d)
+
+          node packages/claims/dist/cli.js witness report "$range" --bundle "$fixtures/pr58-bundle.json" --format md > "$work/with.md"
+          grep -q '^## Code-verified' "$work/with.md"
+          grep -q '^## Hook-attested' "$work/with.md"
+          grep -q '^## Self-reported' "$work/with.md"
+          grep -q '^## Unattributed' "$work/with.md"
+          grep -q '^```mermaid' "$work/with.md"
+          # The bundled journal is version 0.2, so the tier breakdown is an
+          # ABSENCE. Both arms: the sentence is present AND no count was
+          # printed. A build that rendered `— 0` here would satisfy the first
+          # arm alone, and rendering absence as zero is the whole feature.
+          grep -q 'tier breakdown not recorded' "$work/with.md"
+          # BOTH arms, and the positive one first. A bare negative grep passes
+          # vacuously the day the heading is renamed — the assertion stops
+          # asserting without going red, which is the exact failure
+          # .claude/rules/verdict-needs-fixture-and-test.md describes. Assert
+          # the heading EXISTS, then that it carries no count.
+          grep -q '^### Records attributed to the harness' "$work/with.md"
+          ! grep -qE '^### Records attributed to the harness — [0-9]' "$work/with.md"
+
+          # No bundle. The contributor-independent tier is unaffected — which is
+          # why it is rendered first — and the three bundle tiers name the path
+          # that held nothing rather than reporting zero.
+          node packages/claims/dist/cli.js witness report "$range" --bundle "$fixtures/absent.json" --format md > "$work/without.md"
+          grep -q '^## Code-verified' "$work/without.md"
+          grep -q "no bundle at $fixtures/absent.json" "$work/without.md"
+
+          # The JSON form. This arm depends on the exit-code contract: under any
+          # other contract it would fail exactly when the report had something
+          # to report.
+          node packages/claims/dist/cli.js witness report "$range" --bundle "$fixtures/pr58-bundle.json" --format json > "$work/report.json"
+          test "$(jq -r .kind "$work/report.json")" = 'run-report'
+          test "$(jq -r .version "$work/report.json")" = '1'
+          # The embedded check document carries ITS OWN version and has no
+          # `kind` of its own — the two documents are told apart by the outer
+          # discriminator and by the key, never by their matching version.
+          test "$(jq -r .check.version "$work/report.json")" = '1'
+          test "$(jq -r '.check.kind // "absent"' "$work/report.json")" = 'absent'
+
+          # A tampered envelope — a journal one terminal record short, which
+          # `witness bundle` cannot produce. The hook-attested tier is replaced
+          # by the validator's finding and NO dispatch count is printed. The
+          # absence of the number is the assertion: `grep -q NO-TERMINAL` alone
+          # would stay green on a build that printed the finding and the count.
+          node packages/claims/dist/cli.js witness report "$range" --bundle "$fixtures/tampered-bundle.json" --format md > "$work/tampered.md"
+          grep -q 'NO-TERMINAL' "$work/tampered.md"
+          # Same pairing. The heading must be present in the with-bundle render —
+          # which is where a count legitimately appears — so a rename breaks a
+          # positive assertion rather than silently satisfying a negative one.
+          grep -qE '^### Dispatches — [0-9]' "$work/with.md"
+          ! grep -qE '^### Dispatches — [0-9]' "$work/tampered.md"
 
       # The canary, dogfooded through its whole lifecycle. There is no static
       # fixture for CANARY-PRESENT and there cannot be one: the registry lives

@@ -63,3 +63,17 @@ all (0 mentions across six rounds) on a change to `canary.ts` and `cli.ts`, with
 no pre-flight justification — while the coordinator did correct itself for
 dropping rule-auditor from a single dispatch. Absence gets less scrutiny than
 omission, and `grep -c '<agent>' review-evidence.md` finds it in one command.
+
+**Third clean run — `add-pr-process-report` (PR #75, 2026-09-02).** Same grep,
+same answer (architecture-reviewer 10, rule-auditor 7, checker-engineer 0,
+test-engineer 0), and all five probe sections' `in scope of:` lines check out.
+Round 3 explicitly declines to score test-engineer on a plant it read and did not
+flag, on the correct ground that it declares no such pass. Keep running the grep.
+
+The adjacent "who was NOT dispatched" check paid off again, and this time the
+answer mattered for the probe rather than for coverage: rule-auditor was dropped
+at pre-flight in round 4 and briefed off the false-premise pass in round 5, which
+halved the probe's scored population in both rounds. `grep -c '<agent>'
+review-evidence.md` plus the journal's `agent` histogram settles composition in
+two commands. Record it as `probe_effective_population` — see
+[[probe-leak-side-channels]].

@@ -1,0 +1,753 @@
+{
+  "version": 1,
+  "documents": [
+    {
+      "doc": ".claude/retrospectives/2026-08-31-proposal-to-pr-add-canary-status-redaction.md",
+      "lines": 385,
+      "results": [
+        {
+          "verdict": "ok",
+          "label": "OK",
+          "failing": false,
+          "source": {
+            "doc": ".claude/retrospectives/2026-08-31-proposal-to-pr-add-canary-status-redaction.md",
+            "line": 186
+          },
+          "claim": {
+            "kind": "presence",
+            "path": "packages/claims/src/canary.ts",
+            "line": 83,
+            "rev": "bbaa23a",
+            "text": "const TAINT_TOKENS = [\"canaries.json\", \".git/nullius\", \"CANARY-\"];"
+          },
+          "detail": ""
+        },
+        {
+          "verdict": "ok",
+          "label": "OK",
+          "failing": false,
+          "source": {
+            "doc": ".claude/retrospectives/2026-08-31-proposal-to-pr-add-canary-status-redaction.md",
+            "line": 188
+          },
+          "claim": {
+            "kind": "presence",
+            "path": "packages/claims/src/canary.ts",
+            "line": 358,
+            "rev": "bbaa23a",
+            "text": "if (report.includes(token)) return \"tainted\";"
+          },
+          "detail": ""
+        },
+        {
+          "verdict": "ok",
+          "label": "OK",
+          "failing": false,
+          "source": {
+            "doc": ".claude/retrospectives/2026-08-31-proposal-to-pr-add-canary-status-redaction.md",
+            "line": 213
+          },
+          "claim": {
+            "kind": "presence",
+            "path": "packages/claims/src/canary.ts",
+            "line": 220,
+            "rev": "bbaa23a",
+            "text": "function harvestFalseClaim("
+          },
+          "detail": ""
+        },
+        {
+          "verdict": "ok",
+          "label": "OK",
+          "failing": false,
+          "source": {
+            "doc": ".claude/retrospectives/2026-08-31-proposal-to-pr-add-canary-status-redaction.md",
+            "line": 215
+          },
+          "claim": {
+            "kind": "presence",
+            "path": "packages/claims/src/canary.ts",
+            "line": 223,
+            "rev": "bbaa23a",
+            "text": "const candidates = globSync(SOURCE_GLOB, {"
+          },
+          "detail": ""
+        },
+        {
+          "verdict": "ok",
+          "label": "OK",
+          "failing": false,
+          "source": {
+            "doc": ".claude/retrospectives/2026-08-31-proposal-to-pr-add-canary-status-redaction.md",
+            "line": 237
+          },
+          "claim": {
+            "kind": "presence",
+            "path": "packages/claims/src/cli.ts",
+            "line": 1109,
+            "rev": "bbaa23a",
+            "text": "warning: the registered canary points at a document outside the matched set"
+          },
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "doc": ".claude/skills/proposal-to-pr/SKILL.md",
+      "lines": 1284,
+      "results": [
+        {
+          "verdict": "stale",
+          "label": "STALE",
+          "failing": false,
+          "source": {
+            "doc": ".claude/skills/proposal-to-pr/SKILL.md",
+            "line": 162
+          },
+          "claim": {
+            "kind": "presence",
+            "path": "packages/kit/src/pipeline.ts",
+            "line": 251,
+            "rev": "437aeb6",
+            "text": "join(root, \".git\", \"nullius\", \"pipeline\","
+          },
+          "detail": "verified at 437aeb6; text is on line 284, not 251 — the quote still identifies real code, so this is stale rather than wrong; update the citation"
+        },
+        {
+          "verdict": "stale",
+          "label": "STALE",
+          "failing": false,
+          "source": {
+            "doc": ".claude/skills/proposal-to-pr/SKILL.md",
+            "line": 601
+          },
+          "claim": {
+            "kind": "presence",
+            "path": "packages/claims/src/cli.ts",
+            "line": 81,
+            "rev": "437aeb6",
+            "text": "exit 0 CANARY-CAUGHT, 1 CANARY-MISSED, 3 CANARY-TAINTED"
+          },
+          "detail": "verified at 437aeb6; text is on line 189, not 81 — the quote still identifies real code, so this is stale rather than wrong; update the citation"
+        },
+        {
+          "verdict": "stale",
+          "label": "STALE",
+          "failing": false,
+          "source": {
+            "doc": ".claude/skills/proposal-to-pr/SKILL.md",
+            "line": 919
+          },
+          "claim": {
+            "kind": "presence",
+            "path": "packages/kit/src/pipeline.ts",
+            "line": 158,
+            "rev": "437aeb6",
+            "text": "Those paths must NOT go through"
+          },
+          "detail": "verified at 437aeb6; text is on line 176, not 158 — the quote still identifies real code, so this is stale rather than wrong; update the citation"
+        },
+        {
+          "verdict": "stale",
+          "label": "STALE",
+          "failing": false,
+          "source": {
+            "doc": ".claude/skills/proposal-to-pr/SKILL.md",
+            "line": 1008
+          },
+          "claim": {
+            "kind": "presence",
+            "path": ".github/workflows/ci.yml",
+            "line": 149,
+            "rev": "437aeb6",
+            "text": "node packages/claims/dist/cli.js check 'openspec/**/*.md'"
+          },
+          "detail": "verified at 437aeb6; text is on line 184, not 149 — the quote still identifies real code, so this is stale rather than wrong; update the citation"
+        }
+      ]
+    },
+    {
+      "doc": "CHANGELOG.md",
+      "lines": 673,
+      "results": []
+    },
+    {
+      "doc": "openspec/changes/add-canary-status-redaction/design.md",
+      "lines": 351,
+      "results": [
+        {
+          "verdict": "stale",
+          "label": "STALE",
+          "failing": false,
+          "source": {
+            "doc": "openspec/changes/add-canary-status-redaction/design.md",
+            "line": 7
+          },
+          "claim": {
+            "kind": "presence",
+            "path": "packages/claims/src/cli.ts",
+            "line": 1026,
+            "rev": "2792fa1",
+            "text": "  if (sub === \"status\") {"
+          },
+          "detail": "verified at 2792fa1; text is on line 1333, not 1026 — the quote still identifies real code, so this is stale rather than wrong; update the citation"
+        },
+        {
+          "verdict": "stale",
+          "label": "STALE",
+          "failing": false,
+          "source": {
+            "doc": "openspec/changes/add-canary-status-redaction/design.md",
+            "line": 33
+          },
+          "claim": {
+            "kind": "presence",
+            "path": ".github/workflows/ci.yml",
+            "line": 200,
+            "rev": "3f64b6e",
+            "text": "          node packages/claims/dist/cli.js canary status"
+          },
+          "detail": "verified at 3f64b6e; text is on line 206, not 200 — the quote still identifies real code, so this is stale rather than wrong; update the citation"
+        },
+        {
+          "verdict": "stale",
+          "label": "STALE",
+          "failing": false,
+          "source": {
+            "doc": "openspec/changes/add-canary-status-redaction/design.md",
+            "line": 40
+          },
+          "claim": {
+            "kind": "presence",
+            "path": ".github/workflows/ci.yml",
+            "line": 187,
+            "rev": "3f64b6e",
+            "text": "      - name: nullius canary (self)"
+          },
+          "detail": "verified at 3f64b6e; text is on line 193, not 187 — the quote still identifies real code, so this is stale rather than wrong; update the citation"
+        },
+        {
+          "verdict": "stale",
+          "label": "STALE",
+          "failing": false,
+          "source": {
+            "doc": "openspec/changes/add-canary-status-redaction/design.md",
+            "line": 45
+          },
+          "claim": {
+            "kind": "presence",
+            "path": ".github/workflows/ci.yml",
+            "line": 199,
+            "rev": "3f64b6e",
+            "text": "          node packages/claims/dist/cli.js canary clear"
+          },
+          "detail": "verified at 3f64b6e; text is on line 205, not 199 — the quote still identifies real code, so this is stale rather than wrong; update the citation"
+        },
+        {
+          "verdict": "ok",
+          "label": "OK",
+          "failing": false,
+          "source": {
+            "doc": "openspec/changes/add-canary-status-redaction/design.md",
+            "line": 50
+          },
+          "claim": {
+            "kind": "presence",
+            "path": ".claude/skills/proposal-to-pr/SKILL.md",
+            "line": 1000,
+            "rev": "3f64b6e",
+            "text": "node packages/claims/dist/cli.js canary status    # must print \"no active canary\""
+          },
+          "detail": ""
+        },
+        {
+          "verdict": "ok",
+          "label": "OK",
+          "failing": false,
+          "source": {
+            "doc": "openspec/changes/add-canary-status-redaction/design.md",
+            "line": 54
+          },
+          "claim": {
+            "kind": "presence",
+            "path": ".claude/skills/proposal-to-pr/SKILL.md",
+            "line": 1234,
+            "rev": "3f64b6e",
+            "text": "(`canary status` exits 1), clear it before running any `check`."
+          },
+          "detail": ""
+        },
+        {
+          "verdict": "ok",
+          "label": "OK",
+          "failing": false,
+          "source": {
+            "doc": "openspec/changes/add-canary-status-redaction/design.md",
+            "line": 88
+          },
+          "claim": {
+            "kind": "presence",
+            "path": "spec/canary.md",
+            "line": 26,
+            "rev": "df9a0cb",
+            "text": "nullius canary status                 # scriptable guard: exit 1 while planted"
+          },
+          "detail": ""
+        },
+        {
+          "verdict": "ok",
+          "label": "OK",
+          "failing": false,
+          "source": {
+            "doc": "openspec/changes/add-canary-status-redaction/design.md",
+            "line": 90
+          },
+          "claim": {
+            "kind": "presence",
+            "path": "spec/canary.md",
+            "line": 93,
+            "rev": "df9a0cb",
+            "text": "plan-approval hook stay loud. `canary status` is the scriptable form for"
+          },
+          "detail": ""
+        },
+        {
+          "verdict": "stale",
+          "label": "STALE",
+          "failing": false,
+          "source": {
+            "doc": "openspec/changes/add-canary-status-redaction/design.md",
+            "line": 116
+          },
+          "claim": {
+            "kind": "presence",
+            "path": "packages/claims/src/cli.ts",
+            "line": 1107,
+            "rev": "3f64b6e",
+            "text": "        `warning: the registered canary points at a document outside the matched set (${activeCanary.doc}) — not read; run \\`canary status\\``,"
+          },
+          "detail": "verified at 3f64b6e; that text is no longer in packages/claims/src/cli.ts — the code moved on, so re-read it before relying on this claim"
+        },
+        {
+          "verdict": "stale",
+          "label": "STALE",
+          "failing": false,
+          "source": {
+            "doc": "openspec/changes/add-canary-status-redaction/design.md",
+            "line": 122
+          },
+          "claim": {
+            "kind": "presence",
+            "path": "packages/claims/src/cli.ts",
+            "line": 1111,
+            "rev": "3f64b6e",
+            "text": "        `warning: the registered canary is no longer present in ${activeCanary.doc} — stale registry; delete .git/nullius/canaries.json after restoring the document`,"
+          },
+          "detail": "verified at 3f64b6e; that text is no longer in packages/claims/src/cli.ts — the code moved on, so re-read it before relying on this claim"
+        },
+        {
+          "verdict": "stale",
+          "label": "STALE",
+          "failing": false,
+          "source": {
+            "doc": "openspec/changes/add-canary-status-redaction/design.md",
+            "line": 166
+          },
+          "claim": {
+            "kind": "presence",
+            "path": "packages/claims/src/cli.ts",
+            "line": 1322,
+            "rev": "3f64b6e",
+            "text": "        console.log(`CANARY-CAUGHT — the review flagged ${entry.doc}:${entry.line}`);"
+          },
+          "detail": "verified at 3f64b6e; that text is no longer in packages/claims/src/cli.ts — the code moved on, so re-read it before relying on this claim"
+        },
+        {
+          "verdict": "stale",
+          "label": "STALE",
+          "failing": false,
+          "source": {
+            "doc": "openspec/changes/add-canary-status-redaction/design.md",
+            "line": 168
+          },
+          "claim": {
+            "kind": "presence",
+            "path": "packages/claims/src/cli.ts",
+            "line": 1326,
+            "rev": "3f64b6e",
+            "text": "          `CANARY-MISSED — nothing in the review references ${entry.doc}:${entry.line} or the planted claim`,"
+          },
+          "detail": "verified at 3f64b6e; that text is no longer in packages/claims/src/cli.ts — the code moved on, so re-read it before relying on this claim"
+        },
+        {
+          "verdict": "ok",
+          "label": "OK",
+          "failing": false,
+          "source": {
+            "doc": "openspec/changes/add-canary-status-redaction/design.md",
+            "line": 210
+          },
+          "claim": {
+            "kind": "presence",
+            "path": "packages/claims/src/checkReport.ts",
+            "line": 270,
+            "rev": "df9a0cb",
+            "text": "    source: { doc: source.doc, line: source.line },"
+          },
+          "detail": ""
+        },
+        {
+          "verdict": "stale",
+          "label": "STALE",
+          "failing": false,
+          "source": {
+            "doc": "openspec/changes/add-canary-status-redaction/design.md",
+            "line": 250
+          },
+          "claim": {
+            "kind": "presence",
+            "path": "packages/claims/src/cli.ts",
+            "line": 1348,
+            "rev": "df9a0cb",
+            "text": "    console.log(`cleared ${entry.doc}:${entry.line}`);"
+          },
+          "detail": "verified at df9a0cb; that text is no longer in packages/claims/src/cli.ts — the code moved on, so re-read it before relying on this claim"
+        },
+        {
+          "verdict": "stale",
+          "label": "STALE",
+          "failing": false,
+          "source": {
+            "doc": "openspec/changes/add-canary-status-redaction/design.md",
+            "line": 252
+          },
+          "claim": {
+            "kind": "presence",
+            "path": "packages/claims/src/canary.ts",
+            "line": 344,
+            "rev": "df9a0cb",
+            "text": "      `the registered line no longer carries the planted claim (${entry.doc}:${entry.line}) — clear refused; restore the line or remove it by hand, then delete the registry`,"
+          },
+          "detail": "verified at df9a0cb; that text is no longer in packages/claims/src/canary.ts — the code moved on, so re-read it before relying on this claim"
+        },
+        {
+          "verdict": "stale",
+          "label": "STALE",
+          "failing": false,
+          "source": {
+            "doc": "openspec/changes/add-canary-status-redaction/design.md",
+            "line": 270
+          },
+          "claim": {
+            "kind": "presence",
+            "path": "packages/claims/src/canary.ts",
+            "line": 276,
+            "rev": "3b547b4",
+            "text": "      `an active canary is already registered (${active.doc}:${active.line}) — run \\`canary status\\` or \\`canary clear\\` first`,"
+          },
+          "detail": "verified at 3b547b4; that text is no longer in packages/claims/src/canary.ts — the code moved on, so re-read it before relying on this claim"
+        },
+        {
+          "verdict": "stale",
+          "label": "STALE",
+          "failing": false,
+          "source": {
+            "doc": "openspec/changes/add-canary-status-redaction/design.md",
+            "line": 281
+          },
+          "claim": {
+            "kind": "presence",
+            "path": "packages/claims/src/canary.ts",
+            "line": 175,
+            "rev": "3b547b4",
+            "text": "      warning: `canary registry entry has an unsafe path and was ignored: ${entry.doc}`,"
+          },
+          "detail": "verified at 3b547b4; that text is no longer in packages/claims/src/canary.ts — the code moved on, so re-read it before relying on this claim"
+        },
+        {
+          "verdict": "stale",
+          "label": "STALE",
+          "failing": false,
+          "source": {
+            "doc": "openspec/changes/add-canary-status-redaction/design.md",
+            "line": 287
+          },
+          "claim": {
+            "kind": "presence",
+            "path": "packages/claims/src/canary.ts",
+            "line": 282,
+            "rev": "3b547b4",
+            "text": "  if (!docSafety.safe) throw new Error(`unsafe document path — ${docSafety.reason}`);"
+          },
+          "detail": "verified at 3b547b4; text is on line 316, not 282 — the quote still identifies real code, so this is stale rather than wrong; update the citation"
+        },
+        {
+          "verdict": "stale",
+          "label": "STALE",
+          "failing": false,
+          "source": {
+            "doc": "openspec/changes/add-canary-status-redaction/design.md",
+            "line": 292
+          },
+          "claim": {
+            "kind": "presence",
+            "path": "packages/claims/src/canary.ts",
+            "line": 273,
+            "rev": "3b547b4",
+            "text": "  if (warning !== undefined) throw new Error(warning);"
+          },
+          "detail": "verified at 3b547b4; text is on line 307, not 273 — the quote still identifies real code, so this is stale rather than wrong; update the citation"
+        }
+      ]
+    },
+    {
+      "doc": "openspec/changes/add-canary-status-redaction/progress.md",
+      "lines": 61,
+      "results": []
+    },
+    {
+      "doc": "openspec/changes/add-canary-status-redaction/proposal.md",
+      "lines": 206,
+      "results": [
+        {
+          "verdict": "stale",
+          "label": "STALE",
+          "failing": false,
+          "source": {
+            "doc": "openspec/changes/add-canary-status-redaction/proposal.md",
+            "line": 12
+          },
+          "claim": {
+            "kind": "presence",
+            "path": "packages/claims/src/cli.ts",
+            "line": 1032,
+            "rev": "2792fa1",
+            "text": "      `active canary: ${entry.doc}:${entry.line} (planted ${entry.plantedAt})`,"
+          },
+          "detail": "verified at 2792fa1; that text is no longer in packages/claims/src/cli.ts — the code moved on, so re-read it before relying on this claim"
+        },
+        {
+          "verdict": "ok",
+          "label": "OK",
+          "failing": false,
+          "source": {
+            "doc": "openspec/changes/add-canary-status-redaction/proposal.md",
+            "line": 17
+          },
+          "claim": {
+            "kind": "presence",
+            "path": "openspec/changes/archive/2026-08-30-add-probe-visibility/review-evidence.md",
+            "line": 860,
+            "rev": "df9a0cb",
+            "text": "architecture-reviewer 5/5 (2 via the registry side channel, 3 by reading),"
+          },
+          "detail": ""
+        },
+        {
+          "verdict": "ok",
+          "label": "OK",
+          "failing": false,
+          "source": {
+            "doc": "openspec/changes/add-canary-status-redaction/proposal.md",
+            "line": 19
+          },
+          "claim": {
+            "kind": "presence",
+            "path": "openspec/changes/archive/2026-08-30-add-authoring-ergonomics/review-evidence.md",
+            "line": 133,
+            "rev": "df9a0cb",
+            "text": "- FP1 `openspec/changes/add-authoring-ergonomics/proposal.md:6` — the `retry` / \"must stay in sync\" sentence naming `spec/fixtures/rules-valid/src/example.ts` (defines only `widgetCount`). Flagged by both reviewers (2 of 2). architecture-reviewer confirmed via the local registry (\"third successive plant\"); rule-auditor from the grammar break and a grep."
+          },
+          "detail": ""
+        },
+        {
+          "verdict": "ok",
+          "label": "OK",
+          "failing": false,
+          "source": {
+            "doc": "openspec/changes/add-canary-status-redaction/proposal.md",
+            "line": 37
+          },
+          "claim": {
+            "kind": "presence",
+            "path": "plugin/hooks/hooks.json",
+            "line": 14,
+            "rev": "2792fa1",
+            "text": "        \"matcher\": \"^(Task|Agent)$\","
+          },
+          "detail": ""
+        },
+        {
+          "verdict": "ok",
+          "label": "OK",
+          "failing": false,
+          "source": {
+            "doc": "openspec/changes/add-canary-status-redaction/proposal.md",
+            "line": 41
+          },
+          "claim": {
+            "kind": "presence",
+            "path": "plugin/hooks/hooks.json",
+            "line": 25,
+            "rev": "2792fa1",
+            "text": "        \"matcher\": \"^(Task|Agent|Edit|Write|MultiEdit|NotebookEdit)$\","
+          },
+          "detail": ""
+        },
+        {
+          "verdict": "stale",
+          "label": "STALE",
+          "failing": false,
+          "source": {
+            "doc": "openspec/changes/add-canary-status-redaction/proposal.md",
+            "line": 56
+          },
+          "claim": {
+            "kind": "presence",
+            "path": "packages/claims/src/cli.ts",
+            "line": 1107,
+            "rev": "3f64b6e",
+            "text": "        `warning: the registered canary points at a document outside the matched set (${activeCanary.doc}) — not read; run \\`canary status\\``,"
+          },
+          "detail": "verified at 3f64b6e; that text is no longer in packages/claims/src/cli.ts — the code moved on, so re-read it before relying on this claim"
+        }
+      ]
+    },
+    {
+      "doc": "openspec/changes/add-canary-status-redaction/review-evidence.md",
+      "lines": 1189,
+      "results": []
+    },
+    {
+      "doc": "openspec/changes/add-canary-status-redaction/specs/canary/spec.md",
+      "lines": 110,
+      "results": []
+    },
+    {
+      "doc": "openspec/changes/add-canary-status-redaction/tasks.md",
+      "lines": 242,
+      "results": [
+        {
+          "verdict": "stale",
+          "label": "STALE",
+          "failing": false,
+          "source": {
+            "doc": "openspec/changes/add-canary-status-redaction/tasks.md",
+            "line": 10
+          },
+          "claim": {
+            "kind": "presence",
+            "path": "packages/claims/src/cli.ts",
+            "line": 1026,
+            "rev": "2792fa1",
+            "text": "  if (sub === \"status\") {"
+          },
+          "detail": "verified at 2792fa1; text is on line 1333, not 1026 — the quote still identifies real code, so this is stale rather than wrong; update the citation"
+        },
+        {
+          "verdict": "stale",
+          "label": "STALE",
+          "failing": false,
+          "source": {
+            "doc": "openspec/changes/add-canary-status-redaction/tasks.md",
+            "line": 12
+          },
+          "claim": {
+            "kind": "presence",
+            "path": "packages/claims/src/cli.ts",
+            "line": 1017,
+            "rev": "2792fa1",
+            "text": "      console.log(`CANARY-CAUGHT — the review flagged ${entry.doc}:${entry.line}`);"
+          },
+          "detail": "verified at 2792fa1; that text is no longer in packages/claims/src/cli.ts — the code moved on, so re-read it before relying on this claim"
+        },
+        {
+          "verdict": "ok",
+          "label": "OK",
+          "failing": false,
+          "source": {
+            "doc": "openspec/changes/add-canary-status-redaction/tasks.md",
+            "line": 14
+          },
+          "claim": {
+            "kind": "presence",
+            "path": "plugin/hooks/hooks.json",
+            "line": 14,
+            "rev": "2792fa1",
+            "text": "        \"matcher\": \"^(Task|Agent)$\","
+          },
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "doc": "spec/canary.md",
+      "lines": 124,
+      "results": [
+        {
+          "verdict": "ok",
+          "label": "OK",
+          "failing": false,
+          "source": {
+            "doc": "spec/canary.md",
+            "line": 51
+          },
+          "claim": {
+            "kind": "presence",
+            "path": "packages/claims/src/canary.ts",
+            "line": 77,
+            "text": "const REGISTRY_REL = join(\"nullius\", \"canaries.json\");"
+          },
+          "detail": ""
+        },
+        {
+          "verdict": "ok",
+          "label": "OK",
+          "failing": false,
+          "source": {
+            "doc": "spec/canary.md",
+            "line": 81
+          },
+          "claim": {
+            "kind": "presence",
+            "path": "packages/claims/src/canary.ts",
+            "line": 83,
+            "text": "const TAINT_TOKENS = [\"canaries.json\", \".git/nullius\", \"CANARY-\"];"
+          },
+          "detail": ""
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "documents": 10,
+    "anchoredDocuments": 6,
+    "unanchored": [
+      {
+        "doc": "CHANGELOG.md",
+        "lines": 673
+      },
+      {
+        "doc": "openspec/changes/add-canary-status-redaction/progress.md",
+        "lines": 61
+      },
+      {
+        "doc": "openspec/changes/add-canary-status-redaction/review-evidence.md",
+        "lines": 1189
+      },
+      {
+        "doc": "openspec/changes/add-canary-status-redaction/specs/canary/spec.md",
+        "lines": 110
+      }
+    ],
+    "presenceAnchors": 39,
+    "absenceAnchors": 0,
+    "verdicts": {
+      "ok": 17,
+      "stale": 22
+    },
+    "failures": 0,
+    "markerFloorFailed": false,
+    "next": null
+  }
+}

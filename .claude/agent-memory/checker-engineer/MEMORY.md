@@ -6,3 +6,4 @@
 - [add-authoring-ergonomics pre-review](project_add-authoring-ergonomics.md) — 2026-08-27 plan review; --fix/--stamp blockers from checkStamped fail-open returning unstamped result
 - [add-journal-identity](project_add-journal-identity.md) — 2026-08-29 pre-review iters 1-3 + sections 1 & 2 implemented; floor/fall-through and survey-never-merges shapes recorded
 - [add-run-ledger-producer pre-review](project_add-run-ledger-producer.md) — 2026-08-30 plan review; JournalReport.findings collision, expects fail-open, loosening inverts the compat-pair
+- [add-pr-process-report pre-review](project_add-pr-process-report.md) — 2026-08-31 plan review; redaction breaks validateJournal (collapsed-state), describeCanary reveal leak, no exit-code contract

@@ -32,14 +32,25 @@ tool whose thesis is that unrecorded work launders into evidence of absence.
    /plugin marketplace add armanfatemi/nullius
    /plugin install nullius@nullius
    ```
-2. **A build**, because `.claude/settings.json` pins the recorder to this
-   repo's own kit rather than a published copy from npm:
-   ```json
-   "NULLIUS_KIT_BIN": "node packages/kit/dist/cli.js"
-   ```
-   Run `pnpm build` first. If the binary is missing the hook fails **loudly**
-   on stderr rather than silently recording nothing — an empty `runs/` must
-   never be indistinguishable from a session where nothing happened.
+2. **Nothing else.** `.claude/settings.json` here carries plugin enablement and
+   no more — in particular it does **not** set `NULLIUS_KIT_BIN`, so the hooks
+   take the default `npx -y @nullius-inverba/kit` path. That is the one real
+   users take, and nothing else in this repository exercises it.
+
+   The trade is deliberate and worth knowing: **a change to
+   `packages/kit/src/**` is not exercised by this repo's own recording until it
+   is published.** The journals in `runs/` are written by whatever version npm
+   is serving, so they can lag the working tree by a whole schema version — see
+   "Reading what it produces" below.
+
+   If the recorder cannot run at all, the hook says so **loudly** on stderr
+   rather than silently recording nothing: an empty `runs/` must never be
+   indistinguishable from a session where nothing happened.
+
+`pnpm build` is still required before any *checker* run — every gate in this
+repo invokes `node packages/claims/dist/cli.js` against the working tree, so
+`build-before-cli` applies here exactly as it does everywhere else. It is just
+not what makes the recorder work.
 
 ## The two probe directories, which are not the same thing
 
@@ -94,6 +105,24 @@ Redaction of captured payloads is not solved here. If you turn capture on,
 node packages/claims/dist/cli.js witness validate .nullius/runs/<session>.jsonl
 ```
 
-Journals from this repo are v0.2 (hooks tier). The v0.3 ledger records —
-`stage`, `finding`, `resolution`, `check`, `decision` — have no producer yet;
-that is the follow-up to `add-run-ledger`, tracked in `IDEAS.md`.
+**Every journal on disk declares `version: "0.2"`**, because they were written
+by the published kit. The working tree's producer writes `0.6`; you will not
+see a `0.6` header here until that version ships to npm. Read a header's
+`version` before concluding anything about what a journal should contain.
+
+The ledger records **do** have a producer now — `witness ledger`, added by
+`add-run-ledger-producer` — and `stage`, `decision`, `finding` and `prompt`
+records appear in journals in this directory. They carry
+`origin: "self-reported"`, which is the point: a coordinator's account of its
+own run must never be laundered by a header that says `hooks`.
+
+Two consequences of the published-kit lag, both visible in `runs/` today:
+
+- **`report.model` is almost always absent.** The model rides in the
+  `.links.json` sidecar, because `SubagentStop` carries no model at all and the
+  launch acknowledgement is the only event that states it. That is `0.6`
+  behaviour, so the older sidecars use the bare-string form and record no model.
+- **No header carries `user`.** `user: { name }` is `0.6` as well.
+
+Neither is a defect in the recorder. Both are what "the hooks run the published
+kit" costs, and the cost is paid in the field the reader wanted.

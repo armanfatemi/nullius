@@ -214,6 +214,63 @@ export function collectJustifications(journal: string): RawJustification[] {
   return out;
 }
 
+/** One commit in a range, as `witness report` renders it. */
+export interface RangeCommit {
+  sha: string;
+  /** Author time, ISO 8601. The side of a commit that survives a rebase. */
+  at: string;
+}
+
+/**
+ * The commits in a range, oldest first.
+ *
+ * Separate from `gitOracleDeps` because `oracle` has no use for it: the oracle
+ * asks what changed between two revisions, and the report asks how the range
+ * was arrived at. The author date is read rather than the committer date for
+ * the same reason `witness bundle` reads it — a rebase rewrites the committer
+ * date on every commit it touches, which would make a rendered timeline move
+ * under a maintainer who only reordered the branch.
+ *
+ * A failure returns the reason rather than an empty list. "git could not be
+ * read" and "the range has no commits" are different facts, and the report
+ * renders the first as *not recorded* rather than as zero.
+ */
+export function readRangeCommits(
+  range: ParsedRange,
+  root: string,
+  timeoutMs = DEFAULT_GIT_TIMEOUT_MS,
+  run: (args: string[], root: string, timeoutMs: number) => GitResult = git,
+): RangeCommit[] | { error: string } {
+  // `git log a...b` is the SYMMETRIC difference — commits on either side but
+  // not both — which is not what `a...b` means anywhere else in this kernel.
+  // The merge base is resolved here so `...` keeps the one reading
+  // `gitOracleDeps` gives it: merge-base(a, b)..b.
+  let base = range.base;
+  if (range.sep === "...") {
+    const merged = run(["merge-base", range.base, range.head], root, timeoutMs);
+    if (merged.status === "failed") {
+      return {
+        error: `could not resolve merge-base of ${range.base} and ${range.head}: ${merged.reason}`,
+      };
+    }
+    base = merged.stdout.trim();
+  }
+  const spec = `${base}..${range.head}`;
+  const result = run(["log", "--reverse", "--format=%H%x00%aI", spec], root, timeoutMs);
+  if (result.status === "failed") {
+    return { error: `could not read the commits of ${spec}: ${result.reason}` };
+  }
+  const commits: RangeCommit[] = [];
+  for (const line of result.stdout.split("\n")) {
+    const trimmed = line.trim();
+    if (trimmed === "") continue;
+    const [sha, at] = trimmed.split("\0");
+    if (sha === undefined || at === undefined) continue;
+    commits.push({ sha, at });
+  }
+  return commits;
+}
+
 /**
  * Live deps, reading the repository through git.
  *
