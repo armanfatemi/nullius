@@ -148,6 +148,29 @@ describe("search timeouts", () => {
     expect(elapsed).toBeLessThan(6_000);
   });
 
+  it.skipIf(!fifoAvailable())("names the BUDGET, not the per-search timeout, when the budget is what stopped it", () => {
+    const root = sandbox();
+    execFileSync("mkfifo", [join(root, "src", "blocking.pipe")]);
+    const parsed = parseSearchCommand("grep -n needle src/blocking.pipe");
+    expect(parsed.safe).toBe(true);
+    if (!parsed.safe) return;
+
+    // Budget far SMALLER than the per-search timeout, so the budget is
+    // unambiguously the binding limit on the very first search. No timing race:
+    // 100ms of budget cannot survive a search that blocks forever.
+    const run = searchRunner(root, 5000, 100);
+    const outcome = run(parsed.plan);
+
+    expect(outcome.ok).toBe(false);
+    if (outcome.ok) return;
+    // The old code reported `search exceeded 5000ms` here — naming a limit that
+    // had not been reached, after ~100ms. The two limits imply different
+    // repairs, so attributing one to the other sends an operator to optimise a
+    // search that was never the problem.
+    expect(outcome.error).toMatch(/budget/);
+    expect(outcome.error).not.toMatch(/5000ms/);
+  });
+
   it.skipIf(!fifoAvailable())("stops running searches once the run-wide budget is spent", () => {
     const root = sandbox();
     execFileSync("mkfifo", [join(root, "src", "blocking.pipe")]);

@@ -333,6 +333,22 @@ export function headRev(root?: string, timeoutMs = DEFAULT_GIT_TIMEOUT_MS): stri
   return REV_PATTERN.test(rev) ? rev : null;
 }
 
+/**
+ * One wording for a spent run budget, wherever it is detected.
+ *
+ * The budget stops a search in three places — before it starts, when the
+ * remaining slice computes to zero, and when the spawn is killed on a
+ * budget-derived timeout — and all three used to be reachable while only the
+ * first said "budget". The other two named the per-search timeout, which is a
+ * different limit implying a different fix.
+ */
+function budgetExhausted(runBudgetMs: number): SearchOutcome {
+  return {
+    ok: false,
+    error: `run search budget of ${runBudgetMs}ms is exhausted — this document's searches cost too much to keep running`,
+  };
+}
+
 export function searchRunner(
   root?: string,
   timeoutMs = DEFAULT_SEARCH_TIMEOUT_MS,
@@ -346,10 +362,7 @@ export function searchRunner(
     const base = root ?? process.cwd();
 
     if (spentMs >= runBudgetMs) {
-      return {
-        ok: false,
-        error: `run search budget of ${runBudgetMs}ms is exhausted — this document's searches cost too much to keep running`,
-      };
+      return budgetExhausted(runBudgetMs);
     }
 
     // Symlink containment, which the string-level guard cannot do. Checked for
@@ -381,12 +394,21 @@ export function searchRunner(
       const segment = plan.segments[index];
       if (segment === undefined) continue;
 
-      const remaining = Math.min(
-        timeoutMs - (Date.now() - started),
-        runBudgetMs - spentMs - (Date.now() - started),
-      );
+      // Two independent limits, tracked separately so the error can name the
+      // one that actually stopped the search. They imply different repairs: a
+      // per-search timeout says make THIS search cheaper, a spent run budget
+      // says this document has too many searches. Reporting the first when the
+      // second is true sends an operator to optimise a search that was never
+      // the problem.
+      const perSearchLeft = timeoutMs - (Date.now() - started);
+      const budgetLeft = runBudgetMs - spentMs - (Date.now() - started);
+      const remaining = Math.min(perSearchLeft, budgetLeft);
+      const limitedByBudget = budgetLeft <= perSearchLeft;
+      const stopped = (): SearchOutcome =>
+        limitedByBudget ? budgetExhausted(runBudgetMs) : { ok: false, error: `search exceeded ${timeoutMs}ms` };
+
       if (remaining <= 0) {
-        return { ok: false, error: `search exceeded ${timeoutMs}ms` };
+        return stopped();
       }
 
       // Pruning is prepended at spawn time rather than during parsing, so the
@@ -408,7 +430,7 @@ export function searchRunner(
         spentMs += Date.now() - started;
         const error = result.error as NodeJS.ErrnoException;
         if (error.code === 'ETIMEDOUT') {
-          return { ok: false, error: `search exceeded ${timeoutMs}ms` };
+          return stopped();
         }
         if (error.code === 'ENOBUFS') {
           return {
@@ -421,6 +443,9 @@ export function searchRunner(
 
       if (result.signal !== null) {
         spentMs += Date.now() - started;
+        // A SIGKILL here is the timeout arriving as a signal rather than as
+        // ETIMEDOUT, so it takes the same attribution.
+        if (limitedByBudget) return budgetExhausted(runBudgetMs);
         return { ok: false, error: `search killed by ${result.signal} (limit ${timeoutMs}ms)` };
       }
 
