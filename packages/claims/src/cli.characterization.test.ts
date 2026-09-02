@@ -46,15 +46,20 @@ interface Run {
 // spawnSync, not execFileSync: the latter discards stderr on a zero exit, and
 // several behaviours worth pinning here (the eager-prompt deprecation note)
 // are written to stderr by a command that succeeds.
-function run(...args: string[]): Run {
+function runIn(cwd: string, ...args: string[]): Run {
   const result = spawnSync(process.execPath, [CLI, ...args], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
-    cwd: REPO_ROOT,
+    cwd,
   });
   const stdout = result.stdout ?? "";
   const stderr = result.stderr ?? "";
   return { code: result.status ?? 1, stdout, stderr, output: stdout + stderr };
+}
+
+/** Most cases want the repository root, where the fixture documents live. */
+function run(...args: string[]): Run {
+  return runIn(REPO_ROOT, ...args);
 }
 
 /**
@@ -296,7 +301,19 @@ suite("CLI characterization — check", () => {
   });
 
   it("refuses to run with no globs and no configured docs", () => {
-    const result = run("check");
+    // Run from a scratch directory, NOT the repository root.
+    //
+    // This assertion is about the absence of configured docs, and running it
+    // in the repo root silently made it depend on this repository never
+    // acquiring a `nullius.config.json`. That held until somebody ran
+    // `nullius-kit init` here — the tool's own onboarding command — and the
+    // test then failed for a reason having nothing to do with the behaviour it
+    // describes: `check` found the configured docs and ran, correctly.
+    //
+    // A characterization test that breaks when its host repository adopts the
+    // product is testing the host, not the product.
+    const empty = mkdtempSync(join(tmpdir(), "nullius-nocfg-"));
+    const result = runIn(empty, "check");
 
     expect(result.code).toBe(2);
     expect(result.output).toContain("no documents to check");
