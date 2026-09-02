@@ -4,7 +4,18 @@ Bare version headings are the kernel — `@nullius-inverba/claims` and its
 unscoped alias `evidence-anchors`, which ship together. Headings prefixed with
 a package name are that package's own release; the kit versions independently.
 
-## Unreleased
+## 0.10.0
+
+Adds the run report: `witness report` in the kernel, `witness bundle` in the
+kit, and the Action input that posts it. `@nullius-inverba/kit` goes to 0.5.0 —
+it versions independently, and 0.4.0 → 0.5.0 is the minor bump a new command
+earns; jumping it to 0.10.0 would imply six releases that never happened.
+
+**This release is what makes the Action's `run-report` input usable at all.**
+The Action `npx`-installs the version in `claims-version`, so `witness report`
+had to exist in a published tarball rather than only in the repository. Until
+this release the input rendered nothing and said so.
+
 
 ### Added
 
