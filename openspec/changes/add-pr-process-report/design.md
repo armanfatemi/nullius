@@ -255,7 +255,21 @@ Redaction rewrites only these fields, and only on a line that carries a valid
 `id`:
 
 - **`report.findings`** — the array's length is preserved and each entry is
-  capped. The entries are plain strings and carry no ids:
+  **replaced** by a placeholder carrying its length. Not capped: capping is the
+  wrong tool for this field, and the first bundle this repository committed
+  proved it. The entries are a subagent's return carried verbatim, and their
+  problem is what they *say* rather than how long they are — that envelope
+  published eleven absolute paths under the operator's home directory, the taint
+  token `CANARY-PRESENT`, and the live review probe's planted sentence with its
+  host document and line number, into a public pull request, all from inside
+  entries that were within the cap. Five rounds of review asked whether
+  `report.statement` was safe to commit and capped it; nobody asked the same
+  question of the larger field beside it.
+
+  The report does not need the text. Counts and severities come from the
+  extracted `finding` records, which are structured and keep their capped
+  `text`; what is kept here is arity and length, which is every property a
+  verdict or a count reads. The entries are plain strings and carry no ids:
 
   **Evidence:** `packages/kit/src/record.ts:486@04cd9ac` — `      // clipped copy that went into `report.findings`.`
 
@@ -264,7 +278,21 @@ Redaction rewrites only these fields, and only on a line that carries a valid
 
   **Evidence:** `packages/claims/src/witness.ts:970@04cd9ac` — `              detail: 'outcome "found" with no findings — report "empty" instead, and say so explicitly',`
 
-- **`finding.text` and `prompt.text`** — capped.
+- **`finding.text` and `prompt.text`** — capped, and scrubbed.
+
+**Scrubbing is universal; capping is not.** Every string on every record, of
+whatever kind, has operator-absolute paths (`/Users/<u>/`, `/home/<u>/`,
+`C:\Users\<u>\`) rewritten to `~/`. Capping and replacing have to know which
+field they are looking at; scrubbing does not, and keying it to a kind list was
+the same mistake one level up — the first fix closed `report.findings` and still
+published a path out of an `append` record's `corrections_since_last_append`, a
+kind the list did not name and was never going to. A deny-list of kinds always
+lags the producer.
+
+It is a scrub, not a guarantee: it handles the shapes that occur and cannot
+handle a path an operator invented. That residual is why the envelope is a
+committed artefact in the diff — a contributor can read it before committing —
+rather than something CI uploads unseen.
 - **`report.statement`** — capped, **under a bundle-set flag of its own**. It
   is an unbounded contributor-controlled string landing in a public committed
   file, so it is bounded here; and the flag is new rather than borrowed,

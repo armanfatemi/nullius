@@ -73,6 +73,30 @@ export const STATEMENT_CAP = 800;
  */
 export const STATEMENT_CAP_FLAG = "bundle_statement_capped";
 
+/** What replaces a `report.findings` entry. Deliberately not a plausible excerpt. */
+export const FINDINGS_PLACEHOLDER = "<redacted by bundle:";
+
+/**
+ * Absolute paths under an operator's home directory, rewritten to `~/`.
+ *
+ * A journal is written on somebody's machine and the envelope is committed to a
+ * public repository. Every free-text field that survives redaction can carry a
+ * path an agent happened to print, and the length caps do nothing about it —
+ * the problem is what the string says, not how long it is.
+ *
+ * This is a scrub, not a guarantee. It handles the three shapes that actually
+ * occur (`/Users/<u>/`, `/home/<u>/`, `C:\Users\<u>\`) and cannot handle a
+ * path the operator invented. Decision 3 states the residual honestly: the
+ * envelope is a faithful record of a local journal, and a contributor who needs
+ * more than this should read the file before committing it — which is why it is
+ * a committed artefact in the diff rather than something CI uploads unseen.
+ */
+export function scrubHomePaths(text: string): string {
+  return text
+    .replace(/\/(?:Users|home)\/[^/\s"'`)]+\//g, "~/")
+    .replace(/[A-Za-z]:\\Users\\[^\\\s"'`)]+\\/g, "~\\");
+}
+
 /** How far outside the range's commit window a record may fall and still
  *  count as overlapping. Recording starts before the first commit and outlives
  *  the last one; zero slack would exclude the session that made the range. */
@@ -504,20 +528,44 @@ function redactLine(line: string, options: RedactOptions): string {
   if (kind === "report") {
     const findings = record["findings"];
     if (Array.isArray(findings)) {
-      // Length preserved, entries capped. Arity is what the validator reads —
+      // Length preserved, entries REPLACED. Arity is what the validator reads —
       // an `outcome: "found"` with an emptied array trips the hard
-      // `collapsed-state` verdict, so emptying would manufacture a failure the
-      // source journal does not have. The entries are plain strings and carry
-      // no ids; there is nothing here to look one up by.
-      const capped = findings.map((entry) => (typeof entry === "string" ? clip(entry, EXCERPT_CAP) : entry));
-      if (capped.some((entry, index) => entry !== findings[index])) {
-        record["findings"] = capped;
+      // `collapsed-state` verdict, so emptying the array would manufacture a
+      // failure the source journal does not have. Emptying each entry does not.
+      //
+      // An earlier version capped these instead, and capping is the wrong tool
+      // for this field. `report.findings` is a subagent's return carried
+      // VERBATIM, and its problem is what it says rather than how long it is:
+      // the first bundle this repository ever committed published eleven
+      // absolute paths under the operator's home directory, the taint token
+      // `CANARY-PRESENT`, and the live review probe's planted sentence with its
+      // host document and line number — all inside capped entries, all into a
+      // public pull request. Five rounds of review asked whether
+      // `report.statement` was safe to commit and capped it; nobody asked the
+      // same question of the larger field beside it.
+      //
+      // The report does not need this text. Counts and severities come from the
+      // extracted `finding` records, which are structured, are what the
+      // hook-attested tier renders, and keep their capped `text`. What is kept
+      // here is arity and length, which is every property a verdict or a count
+      // reads.
+      const replaced = findings.map((entry) =>
+        typeof entry === "string" ? `${FINDINGS_PLACEHOLDER} ${entry.length} chars` : entry,
+      );
+      if (replaced.some((entry, index) => entry !== findings[index])) {
+        record["findings"] = replaced;
         changed = true;
       }
     }
     const statement = record["statement"];
+    if (typeof statement === "string") {
+      const scrubbed = scrubHomePaths(clip(statement, STATEMENT_CAP));
+      if (scrubbed !== statement) {
+        record["statement"] = scrubbed;
+        changed = true;
+      }
+    }
     if (typeof statement === "string" && statement.length > STATEMENT_CAP) {
-      record["statement"] = clip(statement, STATEMENT_CAP);
       // The bundler's own flag. `truncated` and `response_chars` describe the
       // producer's clipped findings entry and are carried untouched.
       record[STATEMENT_CAP_FLAG] = true;
@@ -527,25 +575,86 @@ function redactLine(line: string, options: RedactOptions): string {
 
   if (kind === "finding") {
     const text = record["text"];
-    if (typeof text === "string" && text.length > EXCERPT_CAP) {
-      record["text"] = clip(text, EXCERPT_CAP);
-      changed = true;
+    if (typeof text === "string") {
+      const next = scrubHomePaths(clip(text, EXCERPT_CAP));
+      if (next !== text) {
+        record["text"] = next;
+        changed = true;
+      }
     }
   }
 
   if (kind === "prompt") {
     if (options.prompts) {
       const text = record["text"];
-      if (typeof text === "string" && text.length > EXCERPT_CAP) {
-        record["text"] = clip(text, EXCERPT_CAP);
-        changed = true;
+      if (typeof text === "string") {
+        const next = scrubHomePaths(clip(text, EXCERPT_CAP));
+        if (next !== text) {
+          record["text"] = next;
+          changed = true;
+        }
       }
     } else {
       changed = convertPrompt(record) || changed;
     }
   }
 
+  // A UNIVERSAL last pass, over every string on the record whatever its kind.
+  //
+  // Everything above is keyed to a kind — `report`, `finding`, `prompt` — because
+  // capping and replacing need to know which field they are looking at. Scrubbing
+  // does not, and keying it to a kind list was the same mistake one level up: the
+  // first bundle that closed the `report.findings` leak still published an
+  // operator path out of an `append` record's `corrections_since_last_append`,
+  // a kind the list did not name and was never going to.
+  //
+  // A deny-list of kinds always lags the producer. This walks what is actually
+  // there.
+  if (scrubRecordStrings(record)) changed = true;
+
   return changed ? JSON.stringify(record) : line;
+}
+
+/**
+ * Scrub every string reachable in a record, in place. Returns whether anything
+ * moved.
+ *
+ * Depth is bounded by the record itself, which the producer writes as a flat-ish
+ * object of scalars, arrays and small objects; there are no cycles because it
+ * came from `JSON.parse`.
+ */
+function scrubRecordStrings(value: unknown): boolean {
+  let changed = false;
+  if (Array.isArray(value)) {
+    for (let index = 0; index < value.length; index += 1) {
+      const entry = value[index];
+      if (typeof entry === "string") {
+        const next = scrubHomePaths(entry);
+        if (next !== entry) {
+          value[index] = next;
+          changed = true;
+        }
+      } else if (entry !== null && typeof entry === "object") {
+        if (scrubRecordStrings(entry)) changed = true;
+      }
+    }
+    return changed;
+  }
+  if (value === null || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  for (const key of Object.keys(record)) {
+    const entry = record[key];
+    if (typeof entry === "string") {
+      const next = scrubHomePaths(entry);
+      if (next !== entry) {
+        record[key] = next;
+        changed = true;
+      }
+    } else if (entry !== null && typeof entry === "object") {
+      if (scrubRecordStrings(entry)) changed = true;
+    }
+  }
+  return changed;
 }
 
 /**

@@ -72,3 +72,33 @@ is actually in that round — the Stage 8 note said "iteration 4" and the entry 
 in iteration 3. Also: a `## Reviewer error, noted` section is a claim about an
 agent, not a fact — re-verify it. This run's was the coordinator's error, filed
 under the reviewer's name.
+
+**`add-pr-process-report` (PR #75, 2026-09-02) — 12 blocks, 36 bullets, 7 tagged.
+The densest yet, and the first where the coordinator's own words are the best
+statement of the run's two findings.** Quote these rather than paraphrasing:
+
+> each time, I read exactly as deep as the correction I had just received and no
+> deeper — line, then comment, then paragraph — while the governing scope was one
+> level further out each time
+> — review-evidence.md:133-140
+
+> My own `check` run cannot catch this — anchors verify documents against *code*,
+> and nothing verifies a change's documents against *each other*.
+> — review-evidence.md:377-383
+
+**New failure mode, and it is this repo's thesis inverted inside the coordinator:
+a hand-rolled grep placed over a checker's own output.** It grepped
+`FABRICATED|WEAK-ANCHOR|WRONG-LINE` over `check` output and reported "no anchor
+defects" while two claims were unverified; the verdict was `UNPINNED`, not in the
+pattern (`:114-120`). Whenever a corrections block says the coordinator "ran a
+check and it was clean", ask what it read — the tool's exit code and summary, or
+its own filter over the tool.
+
+**Also: mid-run countermeasures are worth grading, not just noting.** That run
+adopted two. "Read, then cite" cut anchor errors and did not close the class —
+seven anchor defects still reached the checker. The post-design grep sweep caught
+one line, then MISSED two the next round because it swept abandoned *phrasings*
+rather than abandoned *nouns*; the corrected form then worked once. Both are
+recorded only in `review-evidence.md`, i.e. nowhere the next run reads. A
+countermeasure that exists only in the artefact of the run that invented it is a
+rule proposal, and saying so is more useful than saying "the coordinator adapted".

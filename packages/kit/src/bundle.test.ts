@@ -35,6 +35,8 @@ import {
   EXCERPT_CAP,
   STATEMENT_CAP,
   STATEMENT_CAP_FLAG,
+  FINDINGS_PLACEHOLDER,
+  scrubHomePaths,
   type ClassifiedJournal,
   type JournalCandidate,
   type SelectionWindow,
@@ -285,14 +287,21 @@ describe("what redaction rewrites", () => {
     expect(after["statement"]).toBe("short enough");
   });
 
-  it("preserves report.findings' arity while capping its entries", () => {
+  it("preserves report.findings' arity while REPLACING its entries", () => {
     const [redacted = ""] = redactLines([REPORT("short")], { prompts: true });
     const after = JSON.parse(redacted) as { findings: string[] };
     // Arity is what the validator reads: an `outcome: "found"` with an emptied
-    // array trips the hard `collapsed-state` verdict.
+    // array trips the hard `collapsed-state` verdict. Emptying each ENTRY does
+    // not, and capping them was the wrong tool — this field is a subagent's
+    // return carried verbatim, and its problem is what it says rather than how
+    // long it is. The first bundle this repository committed published a live
+    // probe's planted sentence and eleven operator home paths out of entries
+    // that were all within the cap.
     expect(after.findings).toHaveLength(2);
-    expect(after.findings[0]?.length).toBe(EXCERPT_CAP + 1);
-    expect(after.findings[1]).toBe("short");
+    expect(after.findings[0]).toContain(FINDINGS_PLACEHOLDER);
+    expect(after.findings[1]).toContain(FINDINGS_PLACEHOLDER);
+    // Length survives as a number, which is all a count needs.
+    expect(after.findings[1]).toContain("5 chars");
     expect(validateJournal(`${JSON.stringify({ kind: "journal", version: "0.2", origin: "hooks" })}\n${JSON.stringify({ kind: "dispatch", id: "d1", task: "t" })}\n${redacted}`).findings).toEqual([]);
   });
 
@@ -664,5 +673,101 @@ describe("--no-prompts never moves a verdict, and refuses when it cannot avoid i
     for (const chars of [-1, 1.5, "45", null, {}]) {
       expect(convertiblePrompt({ text: "a", chars })).toBe(false);
     }
+  });
+});
+
+describe("the envelope does not publish what it was never asked to publish", () => {
+  const HEADER = JSON.stringify({
+    kind: "journal",
+    version: "0.2",
+    origin: "hooks",
+    session: "s:leak",
+    source: "startup",
+    branch: "main",
+    head: "0".repeat(40),
+  });
+
+  // A reviewer's return, carried verbatim by the producer, containing exactly
+  // what the first committed bundle published into a public pull request.
+  const LEAKY_REPORT = JSON.stringify({
+    kind: "report",
+    id: "r:1",
+    dispatch: "d:1",
+    outcome: "found",
+    findings: [
+      "[false-premise] /Users/arman/Documents/GitHub/nullius/openspec/changes/x/proposal.md:8 — " +
+        "\"Note that `retry` is also defined in `spec/fixtures/rules-valid/src/example.ts`\". " +
+        "`check` reports CANARY-PRESENT at that line.",
+    ],
+    statement: "read /Users/arman/Documents/GitHub/nullius/packages/claims/src/witness.ts",
+  });
+
+  const bundled = () => {
+    const [, report = ""] = redactLines([HEADER, LEAKY_REPORT], { prompts: true });
+    return report;
+  };
+
+  it("carries no operator home path out of a findings entry", () => {
+    expect(LEAKY_REPORT).toContain("/Users/arman");
+    expect(bundled()).not.toContain("/Users/arman");
+  });
+
+  it("carries no probe machinery out of a findings entry", () => {
+    // The probe's value is that a reviewer does not recognise the plant.
+    // Committing the planted sentence degrades the instrument permanently
+    // rather than for one run, and the taint token is what `canary verify`
+    // scans for.
+    expect(bundled()).not.toContain("CANARY-PRESENT");
+    expect(bundled()).not.toContain("rules-valid/src/example.ts");
+  });
+
+  it("keeps arity and length, which is everything a verdict or a count reads", () => {
+    const after = JSON.parse(bundled()) as { findings: string[] };
+    expect(after.findings).toHaveLength(1);
+    expect(after.findings[0]).toContain(FINDINGS_PLACEHOLDER);
+    // The length survives as a number, so a report can still say how much was
+    // returned without republishing it.
+    expect(after.findings[0]).toMatch(/\d+ chars$/);
+  });
+
+  it("still validates: emptying the ARRAY would trip collapsed-state, emptying entries does not", () => {
+    const lines = redactLines([HEADER, LEAKY_REPORT], { prompts: true });
+    expect(verdictSet(validateJournal(reconstructJournal(lines)).findings)).toEqual(
+      verdictSet(validateJournal([HEADER, LEAKY_REPORT].join("\n")).findings),
+    );
+  });
+
+  it("scrubs a statement's home paths without needing it to be over the cap", () => {
+    const after = JSON.parse(bundled()) as { statement: string };
+    expect(after.statement).toBe("read ~/Documents/GitHub/nullius/packages/claims/src/witness.ts");
+  });
+
+  it("scrubHomePaths handles the three shapes that occur and leaves others alone", () => {
+    expect(scrubHomePaths("/Users/arman/x/y.ts")).toBe("~/x/y.ts");
+    expect(scrubHomePaths("/home/ci-runner/x")).toBe("~/x");
+    expect(scrubHomePaths("C:\\Users\\Someone\\x")).toBe("~\\x");
+    // Repo-relative paths are the ones a report is FOR; they must survive.
+    expect(scrubHomePaths("packages/kit/src/bundle.ts:63")).toBe("packages/kit/src/bundle.ts:63");
+  });
+});
+
+describe("the scrub is universal, because a kind list always lags the producer", () => {
+  it("scrubs a free-text field on a kind redaction does not otherwise touch", () => {
+    // The first fix closed `report.findings` and still published an operator
+    // path out of an `append` record — a kind the redaction list did not name
+    // and was never going to. Capping and replacing need to know which field
+    // they are looking at; scrubbing does not.
+    const header = JSON.stringify({ kind: "journal", version: "0.6", origin: "hooks", session: "s:x", source: "startup" });
+    const append = JSON.stringify({
+      kind: "append",
+      id: "a:1",
+      heading: "Stage 5",
+      corrections_since_last_append: "read /Users/someone/Code/repo/packages/kit/src/bundle.ts",
+    });
+
+    const [, out = ""] = redactLines([header, append], { prompts: true });
+
+    expect(out).not.toContain("/Users/someone");
+    expect(out).toContain("~/Code/repo/packages/kit/src/bundle.ts");
   });
 });

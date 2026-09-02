@@ -1294,6 +1294,20 @@ git push
 the working tree can hold another change's work, and this commit is the one most
 likely to be made in a hurry at the end of a long run.
 
+**Read the envelope before you commit it.** It is a faithful record of local
+journals, and the bundler's scrub handles the path shapes that occur rather than
+every one that could. One grep, and it is not optional:
+
+```bash
+grep -c -e "$HOME" -e 'CANARY-' -e 'canaries.json' nullius.runs/*.json
+```
+
+Any non-zero count means something reached the envelope that the redaction did
+not anticipate — stop and say so rather than committing it. This exists because
+the first bundle this repository ever committed published a live probe's planted
+sentence and eleven operator home paths into a public pull request, and no
+reviewer and no gate saw it: the retro did, after the PR was open.
+
 **Exit 1 with no journals selected is a fact, not a failure to fix.** It means
 no session on this machine both overlapped the range and touched a file in it —
 which is the honest answer for a change implemented in a different worktree, or
