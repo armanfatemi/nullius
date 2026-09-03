@@ -537,3 +537,138 @@ four times.
 The probe cannot be repaired by being more careful. Its text is deterministic,
 its location is mandated to be committed, and reviewers correctly quote what
 they find. Filed as its own change.
+
+## Stage 6 — Post-review round 1
+
+Routed on the diff rather than the proposal, via `route-paths`:
+architecture-reviewer, rule-auditor, test-engineer. checker-engineer dropped —
+the router did not earn it and `witnessReport.ts` is outside its declared
+kernel set. Unprobed, as Stage 6 always is.
+
+## Blockers
+
+**[blocker] The card committed the defect it exists to prevent.**
+architecture-reviewer, on `witnessReport.ts:1215`:
+
+> the `graders` row reads `oracle.findings.length`, but when git cannot be diffed `runOracle` returns `findings: []` with `unconfigured: false` and an `unreadable` note — `packages/claims/src/oracle.ts:302`: `// Zero findings because git could not be read is not zero findings.` The card renders that synthesized zero as clear.
+
+## False premises
+
+**[false-premise] [corrected-coordinator] `design.md:52`** — "One field, two
+populating sections." Four sections populated `failing` when the reviewer
+looked; five do now. The paragraph was written from memory rather than counted,
+twice.
+
+## Concerns
+
+- `canary`'s figure makes "never planted" and "planted and cleared"
+  indistinguishable. The design argues for it; carried.
+- `journal-validation` kept a second copy of the validator's passing set.
+  Fixed — it calls `isJournalFailure`.
+- `buildCard(built as RunReport)` was runtime-safe only because the body
+  happened not to read the missing field. Fixed — the parameter is now
+  `Pick<RunReport, "tiers">`.
+- A duplicate section id resolves first-wins to the strongest tier. Carried.
+- The Action drift test is coupled to a literal shell string; a reformat breaks
+  it for no semantic reason. Carried deliberately: the failure mode is a false
+  red, and the coupling is what proves the gate iterates rather than compares.
+
+## Looks good
+
+- rule-auditor: zero blockers, zero concerns. It verified the seven anchor
+  repoints in `spec/run-report.md` carry no stamp in both base and diff, so
+  `never-repoint-under-old-stamp` governs the stamped case only and repointing
+  was correct. It also checked `add-run-report-metrics`'s stamped claim *at its
+  stamp* rather than at HEAD, where this branch's own commit makes it false.
+- test-engineer: verified all three golden regenerations were exactly the
+  intended diff, that the absence tests are not vacuous, and that the ugrep
+  baseline held at exactly 6 with the flag table untouched.
+
+## Coordinator corrections since last append
+
+- The card rendered a synthesized zero as a pass. That is the single failure the
+  card exists to prevent, committed by the card, and found by a reviewer rather
+  than by me.
+- I asserted a section count from memory instead of counting it.
+
+## Stage 6 — Post-review round 2 (the sweep)
+
+One dispatch, asking the systematic question rather than confirming the single
+fix: are there other paths where a figure is a synthesized zero? It found four
+more.
+
+## Blockers
+
+**[blocker] `cli.ts:940`** — architecture-reviewer:
+
+> `const { entry: activeCanary } = loadActiveCanary(root);` discards the sibling `warning`. `canary.ts:194/204/208` return `entry: null` + a warning for an unparseable registry, an invalid entry, and an unsafe path. All three reach `witnessReport.ts:1299` `failing: canary === null ? 0 : 1` → clear. Your defect, one function over.
+
+**[blocker] `witnessReport.ts:1175`** — the sharpest of the run:
+
+> `unverifiable-rev` is in the kernel's PASSING set (`checkClaims.ts:172`), so a shallow clone or a squashed history makes every stamped anchor unverifiable and `failures` 0 → clear over zero verified anchors. `.claude/rules/merge-never-squash.md` names this exactly: "a disarmed gate and a satisfied one produce the same green check."
+
+**[blocker] the oracle condition was too narrow** — `weakeningUnchecked` names
+every declared glob with no weakening marker, so the sub-check never ran, and
+"was anything weakened" is precisely the row's question.
+
+## Concerns
+
+- `outcomes` sums to zero when no dispatch reached a terminal state. Fixed.
+- `renderJson` emitted the stored card while `renderMarkdown` derived one, so
+  the "cannot disagree" guarantee held for one output only. Fixed — both derive,
+  and a test hands in a deliberately stale card.
+- `renderCard`'s "all N checks" runs over a denominator `omitted` has shrunk.
+
+## Coordinator corrections since last append
+
+- I fixed one instance of a defect class and reported it addressed. Asking
+  "where else does this occur?" found four more, three of them blockers. The
+  first fix was correct and the conclusion drawn from it — that the problem was
+  handled — was not.
+
+## Stage 6 — Post-review round 3 (is the set closed)
+
+One dispatch, asking whether the set was now closed. Answer: no. Two blockers,
+one of which does not reproduce.
+
+## Blockers
+
+**[blocker] `anchors` had no empty-denominator guard** — architecture-reviewer:
+
+> A range whose changed docs carry no anchors gives `results.length === 0`, `failures === 0` → clear for "are claims cited and verified?". The kernel already names this shape: `checkReport.ts:113-118` — "`All 0 grounding marker(s) verified.` is literally true and reads as a pass on a repository the tool has not examined" — and hands you the signal, `summary.next !== null`.
+
+Fixed using the kernel's own signal. Test observed failing against the pre-fix
+code.
+
+**[blocker] REJECTED — `outcomes` cannot emit a partial count.** The reviewer
+argued a readable journal beside an `unsupported-version` one would emit
+`failing: noReport` over a set excluding the unread journal. It cannot:
+`unsupported-version` is a journal failure, so the whole bundle tier is blocked
+before any outcome is counted. I built the scenario described and the assertion
+passed unchanged against current code. Rejected with a test that pins the
+reasoning where it can be re-checked rather than remembered.
+
+## Concerns
+
+- `attention-when-zero` rows are immune to undercount but read records from
+  `bundle.journals` directly. In practice any failing journal blocks the tier
+  first, which the rejected blocker's test also demonstrates.
+- `canary.ts:185` has a fourth null path (`resolveGitDir` null) with no warning,
+  so `canaryUnreadable` cannot fire there. Carried.
+- `weakening` is optional in config, so a project declaring an oracle without it
+  greys `graders` permanently. Honest but noisy. Carried.
+
+## Looks good
+
+- The narrow trigger for the anchors guard is right and should not be widened:
+  `drift`, `wrong-line` and `stale` settle "this text is in this file"; only
+  `unverifiable-rev` settles neither axis.
+
+## Coordinator corrections since last append
+
+- Three passes, each finding more of one class: 1, then 4, then 1. My estimate
+  after each pass that the class was closed was wrong twice.
+- I verified the fourth blocker rather than implementing it, and it did not
+  reproduce. Three of the four blockers across the last two passes were real,
+  which is the reason to check the fourth rather than assume it — and equally
+  the reason not to reject one on reasoning alone.
