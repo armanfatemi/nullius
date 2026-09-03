@@ -37,7 +37,47 @@ one, so it is rendered first and rendered always.
 The provenance line for each tier is a constant in the renderer, not a value
 computed per run:
 
-**Evidence:** `packages/claims/src/witnessReport.ts:625` — `const TIER_PROVENANCE: Record<TierId, string> = {`
+**Evidence:** `packages/claims/src/witnessReport.ts:787` — `const TIER_PROVENANCE: Record<TierId, string> = {`
+
+## The card is a projection; it is not a fifth tier
+
+Above the four tiers the report renders a **card**: one row per question a
+reviewer asks about how the change was produced, each row carrying a mark, the
+section it read, and that section's tier.
+
+The card computes nothing of its own. `buildCard` takes a finished `RunReport`
+and no other parameter, so it cannot call git, read the bundle, or re-validate
+anything — every value on a row was computed by the builder and is reachable
+from a section:
+
+**Evidence:** `packages/claims/src/witnessReport.ts:850` — `export function buildCard(report: RunReport): Card {`
+
+**A row never assigns a tier.** It locates the tier that contains its section
+and reports that, so a section moving tier moves its row with it and there is no
+second place to edit. This is the same prohibition the module header states
+about record kinds, applied to the one structure that could have re-introduced
+it.
+
+Three marks, never two: a figure nobody recorded and a figure that came back
+zero are different facts, and rendering the first as the second is the
+flattering default the tiers exist to prevent. A section whose figure is absent
+marks *not recorded*, not *clear*.
+
+Two mark shapes. Most rows want attention when a bad count is above zero; two —
+did review happen, did reviewers run together — are inverted, because there the
+count is the good thing and zero is the finding. A single rule would have
+rendered a run with no review at all as clean.
+
+The card carries **no composite score and no role inference**. Both were
+proposed and refused: a weighted aggregate over these rows is a judgment in the
+shape of a measurement, and deciding that an agent is a critique reviewer
+because its name matched a pattern is a claim about a role evidenced by a
+string.
+
+Because a row holds only an id, a question, a section id, a tier and a mark —
+every one a constant in the renderer — no contributor-controlled text reaches
+the card at all. That is a stronger property than escaping one, and it is what
+the tests assert.
 
 ## The report takes its tiers; it does not compute them
 
@@ -46,7 +86,7 @@ validator computes and which is `null` below journal version `0.6`. The
 renderer has no tiering rule of its own — no `tierOf`, no list of kinds mapped
 to tiers, no reading of the header's `origin`. Below the floor it says so:
 
-**Evidence:** `packages/claims/src/witnessReport.ts:1010` — `    (entry) => entry.report.provenance === null,`
+**Evidence:** `packages/claims/src/witnessReport.ts:1334` — `    (entry) => entry.report.provenance === null,`
 
 That is this feature's own absence rule turned on its headline section. Every
 journal in this repository today is version `0.2`, including the one that
@@ -61,7 +101,7 @@ Every section renders its data or one line naming why it has none. The
 distinction is carried in the structure and not only in the prose: a section
 with no data has no `count` key at all.
 
-**Evidence:** `packages/claims/src/witnessReport.ts:509` — `  return { id, title, statement, status: "not-recorded", reason, notes: [] };`
+**Evidence:** `packages/claims/src/witnessReport.ts:671` — `  return { id, title, statement, status: "not-recorded", reason, notes: [] };`
 
 A zero would be a claim that the thing was counted and came to nothing. "No
 oracles are configured" and "no oracle changed" are different facts and only
@@ -91,7 +131,7 @@ it. A record-level rule would have lost exactly those.
 Range scoping therefore belongs to the renderer, and it reaches the
 **mutation-derived tables and the flowchart only**:
 
-**Evidence:** `packages/claims/src/witnessReport.ts:693` — `  const inRangeMutations = allMutations.filter(`
+**Evidence:** `packages/claims/src/witnessReport.ts:948` — `  const inRangeMutations = allMutations.filter(`
 
 It never reaches the tier counts. `provenance` is a whole-journal partition
 with no path predicate, so scoping it would mean the renderer re-partitioning
@@ -126,7 +166,7 @@ bundle's *internal consistency* and says nothing about its *completeness*. A
 bundle with whole journals removed validates cleanly, and the report says so in
 the section itself rather than in a footnote:
 
-**Evidence:** `packages/claims/src/witnessReport.ts:791` — `const JOURNAL_VALIDATION_STATEMENT =`
+**Evidence:** `packages/claims/src/witnessReport.ts:1051` — `const JOURNAL_VALIDATION_STATEMENT =`
 
 ## The exit-code contract
 
@@ -174,7 +214,7 @@ Every bundle- or document-derived string passes through a **markdown-cell**
 escaper; every flowchart label passes through a **mermaid-label** escaper. The
 mermaid grammar is an allow-list, not a deny-list:
 
-**Evidence:** `packages/claims/src/witnessReport.ts:352` — `const MERMAID_ALLOWED = /[^A-Za-z0-9 ._:/x()-]/g;`
+**Evidence:** `packages/claims/src/witnessReport.ts:370` — `const MERMAID_ALLOWED = /[^A-Za-z0-9 ._:/x()-]/g;`
 
 The `x` is ASCII, not `×` (U+00D7), which the label grammar has no need of.
 Everything outside the list becomes `·`. Quoting is the second half of the
@@ -203,13 +243,19 @@ moment they were taken.
 
 The JSON form carries a discriminator and its own version:
 
-**Evidence:** `packages/claims/src/witnessReport.ts:36` — `export const RUN_REPORT_VERSION = 1;`
+**Evidence:** `packages/claims/src/witnessReport.ts:41` — `export const RUN_REPORT_VERSION = 2;`
 
 It embeds the `check --format json` document under its own key, **carrying that
 document's own `version`**, rather than restating it. Two documents numbered
 `version: 1` on one CLI, distinguishable only by which subcommand produced
 them, is a consumer bug waiting for the first tool that reads a file it did not
-invoke.
+invoke. The outer number reaching 2 while the inner stays 1 is the first time
+that separation is visible rather than merely intended.
+
+Version 2 added the `card` key. The number moved for a purely additive change
+because compatibility is decided by the reading end's accepted **set**, not by
+the writer's optimism: a consumer that recognises only 1 must refuse the
+document rather than read the fields it happens to know.
 
 ## Fixtures
 
