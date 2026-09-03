@@ -66,6 +66,23 @@ a zero.
 - **WHEN** any row is not recorded
 - **THEN** a line above the table states how many rows are unanswerable and why
 
+### Requirement: A section exposes the figure its card row is about
+
+Every section a card row reads SHALL expose that row's figure as a named
+numeric field, and a section whose figure exists today only inside a rendered
+table or not at all SHALL gain one, because a mark derived from presentation is
+a mark that changes when the presentation does.
+
+#### Scenario: the never-reported count is readable without parsing
+
+- **WHEN** the dispatch-outcomes row is built
+- **THEN** it reads a named field carrying the never-reported count, not the section's total and not a table cell
+
+#### Scenario: the review-probe row has a figure to read
+
+- **WHEN** the review-probe row is built
+- **THEN** the canary section exposes a numeric field for it, rather than only the note it carries today
+
 ### Requirement: The card reports no composite score
 
 The card SHALL NOT render a score, grade, percentage of process followed, or
@@ -75,18 +92,7 @@ report cannot justify presented in the form of a measurement.
 #### Scenario: components are shown rather than combined
 
 - **WHEN** steering is reported
-- **THEN** operator turns, characters typed, dispatches and mutations are printed as separate figures
-
-### Requirement: Session time is reported as active time with its threshold stated
-
-The card SHALL report active time together with the idle threshold and window
-count that produced it, and SHALL label wall-clock span separately rather than
-presenting it as the duration of the work.
-
-#### Scenario: an overnight gap does not inflate the reported duration
-
-- **WHEN** a journal's records span a long idle gap
-- **THEN** the gap is excluded from active time, the threshold is printed, and the span is labelled as span
+- **THEN** each figure the card reports is printed on its own, and no figure is combined with another into a derived total
 
 ### Requirement: Dispatched agents are listed without role inference
 

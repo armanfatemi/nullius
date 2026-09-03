@@ -11,10 +11,17 @@
 - [ ] `CardRow` type: id, question, backing section id, **tier id**, mark, result text.
 - [ ] The row table: one entry per question, naming its section id and the
       **typed numeric field** its failing figure is read from.
+- [ ] Add two named optional numeric fields to `ReportSection`, one per row that
+      has no figure today, and populate them where the sections are built:
+      `outcomes` gains the never-reported count (its `count` is the total of all
+      three terminal states), and `canary` gains a figure for the probe row (it
+      is built with notes and no count at all).
+- [ ] Test each new field is populated from a real built report, and that the
+      row reading it produces the right mark. Two named fields, not a general
+      multi-figure capability — that belongs to `add-run-report-metrics`.
 - [ ] A row's failing figure is always a first-class numeric field on the section,
       never a cell parsed out of a rendered `table`. Where a section holds the
-      figure only in a cell today — `outcomes` carries `count` as the *total*,
-      with `never reported` as a cell — add the field to the section rather than
+      figure only in a cell today, add the field to the section rather than
       teaching the card to parse. Parsing a rendered table would make the card's
       mark depend on presentation.
 - [ ] `buildCard(report: RunReport): Card` — projection only; no `RunReportInput` parameter.
@@ -40,50 +47,36 @@
       not clear. This is the case that would otherwise print green for a number
       nobody recorded.
 
-## 2. The derived metrics — as SECTIONS, before any card work
+## 2. Deferred — the derived metrics
 
-These land in `buildRunReport` as ordinary sections in the tier that owns their
-records. They are **not** card-only values: a row with no backing section has no
-containing tier, which would force the implementer to hand-assign one and
-reintroduce the map section 1 forbids.
+Active time, operator characters and loop depth are **not in this change**. Three
+pre-review rounds established they are kernel work, not rendering: `ReportSection`
+carries one numeric field where they need four, the renderer may not derive a
+tier from a record kind, and `RecordView` has no `origin` to attribute a derived
+span with. They are filed as `add-run-report-metrics`, which depends on this
+change and arrives through this change's row model with no new card mechanism.
 
-- [ ] New section `session-span` in the **hook-attested** tier: active time,
-      window count, the threshold, and the wall-clock span.
-- [ ] New section `loop-depth` in the **self-reported** tier — `stage` is in
-      `SELF_REPORTED_KINDS`, so this row is the coordinator's own account.
-- [ ] Extend the existing `prompts` section (hook-attested) with a character total.
-- [ ] No new section for the agent list: `dispatches` already carries that table.
-- [ ] Test: every card row resolves to a section that exists in the built report,
-      asserted by iterating the row table — so a row can never be added without
-      its section.
-- [ ] Active time: sum gaps below the threshold, count windows, keep the span separate.
-- [ ] Name the idle threshold as an exported constant and print it.
-- [ ] Operator turns and characters, read from `chars` so redacted bundles still count.
-- [ ] Loop depth from the maximum `stage.iteration`, tier read from its section.
-- [ ] Agent list by name and dispatch count, with no role classification.
-- [ ] Expose `phase`, `iteration` and `chars` on `RecordView`.
-- [ ] **Test — active time diverges from span.** A journal with one long idle gap:
-      assert active time excludes it, the window count is 2, and the span is
-      reported separately and is larger. The naive implementation (span) must fail
-      this test. Design Decision 5 rests on a ~9x divergence on real data; without
-      this case the threshold logic can ship unexercised.
-- [ ] **Test — the printed threshold is the constant that drove the computation.**
-      Assert against the exported constant, not against a literal: a decorative
-      number that agrees with nothing would pass a string-presence check.
-- [ ] **Test — operator characters survive redaction.** A bundle whose prompt text
-      is withheld still reports a non-zero character count. This is the whole
-      reason the metric is characters rather than words.
-- [ ] **Test — loop depth reads the maximum iteration**, not the count of `stage`
-      records and not the last one seen.
-- [ ] **Test — agent list carries no role field**, asserted by name, so a later
-      change cannot quietly reintroduce role inference.
+- [ ] Confirm no task below reintroduces a metric row.
 
 ## 3. Rendering
 
 - [ ] `renderCard` emitted ahead of the tiers in `renderMarkdown`.
 - [ ] Summary line stating how many rows are unanswerable, above the table.
 - [ ] The tier-strength sentence above the table.
+- [ ] **Test the tier-strength sentence by content**, and that it is present
+      whenever any row sits in the self-reported tier. A task to write a sentence
+      is not an assertion that it says anything.
+- [ ] **Test that the agent row asserts no role.** The spec requires it and the
+      refusal is one of three the change is built on; nothing currently would
+      fail if a later edit added a role-classification pass. Assert the row
+      carries no role field and that its text is names and counts only.
 - [ ] Escape every interpolated value; agent names and prompts are contributor-controlled.
+- [ ] **Test the escaping by name**, which is the one security-relevant rendering
+      claim the card makes and the only §3 claim that had no assertion. An agent
+      name or section title containing a pipe, a newline, a backtick or a leading
+      `#` must render inertly with the table structure intact. Use the existing
+      `escapeCell` tests as the model; the checked document and the bundle are
+      both contributor-controlled input.
 - [ ] Test: a report over budget keeps its card **byte-identically**. Assert the
       card substring is equal to the card rendered without truncation, not merely
       that a marker is present — a presence check passes on a half-truncated card.

@@ -155,7 +155,8 @@
           "status": "data",
           "notes": [
             "No canary is registered for this repository."
-          ]
+          ],
+          "failing": 0
         }
       ]
     },
@@ -215,6 +216,7 @@
           "status": "data",
           "notes": [],
           "count": 20,
+          "failing": 0,
           "table": {
             "columns": [
               "outcome",

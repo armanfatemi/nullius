@@ -405,6 +405,22 @@ export interface ReportSection {
    * consumer that reads the JSON rather than the prose.
    */
   count?: number;
+  /**
+   * How many of this section's subjects are the case a reader is asking about,
+   * where that differs from `count` and a card row needs it.
+   *
+   * `count` is how many things the section is about; `failing` is how many of
+   * them are the bad one. The two are different numbers and were previously
+   * only different in prose: `outcomes` carries three terminal states summed
+   * into `count`, with the one that matters — never reported — reachable only
+   * as a cell in the rendered table, and `canary` carried no number at all.
+   *
+   * Optional, and absent rather than zero when the section has nothing to say.
+   * A consumer distinguishing "none failing" from "this section does not report
+   * a failing figure" needs the key's absence to mean the second, exactly as it
+   * does for `count`. A section with no data never carries it.
+   */
+  failing?: number;
   table?: ReportTable;
   notes: string[];
 }
@@ -504,10 +520,11 @@ function dataSection(
   id: string,
   title: string,
   statement: string,
-  extra: { count?: number; table?: ReportTable; notes?: string[] } = {},
+  extra: { count?: number; failing?: number; table?: ReportTable; notes?: string[] } = {},
 ): ReportSection {
   const section: ReportSection = { id, title, statement, status: "data", notes: extra.notes ?? [] };
   if (extra.count !== undefined) section.count = extra.count;
+  if (extra.failing !== undefined) section.failing = extra.failing;
   if (extra.table !== undefined) section.table = extra.table;
   return section;
 }
@@ -1021,6 +1038,11 @@ function codeVerifiedSections(input: RunReportInput): ReportSection[] {
       "Review probe",
       "Whether a canary claim is planted in a document under review. The location is never printed — printing it answers the question the probe asks.",
       {
+        // Whether one is planted, and nothing about where. The section knows
+        // only the registration state — not whether a reviewer found it — so
+        // this figure reports an uncleared probe, which is a merge blocker, and
+        // makes no claim about whether the review worked.
+        failing: canary === null ? 0 : 1,
         notes: [
           canary === null
             ? "No canary is registered for this repository."
@@ -1189,6 +1211,9 @@ function hookAttestedSections(
       "The validator's three terminal states, counted apart. `never reported` is the one a summary cannot surface on its own, because the missing record is missing.",
       {
         count: outcomes.found + outcomes.empty + outcomes.noReport,
+        // The one of the three a reader acts on, lifted out of the table so a
+        // consumer reads it as a number rather than by matching a row label.
+        failing: outcomes.noReport,
         table: {
           columns: ["outcome", "count"],
           rows: [

@@ -672,6 +672,96 @@ describe("the size budget", () => {
 });
 
 /* -------------------------------------------------------------------------
+ * The figure a card row is about
+ *
+ * `count` is how many things a section is about; `failing` is how many of them
+ * are the case the row asks about. Two sections owed their row a figure and
+ * had none: `outcomes` puts its never-reported count only in a rendered cell,
+ * and `canary` is built with notes and no count at all. A mark read out of a
+ * rendered table would change when the table's formatting did.
+ * ---------------------------------------------------------------------- */
+
+describe("the failing figure on a section", () => {
+  it("gives outcomes a never-reported count distinct from its total", () => {
+    const report = buildRunReport(baseInput());
+    const outcomes = section(report, "hook-attested", "outcomes");
+
+    // The total stays the total: three terminal states added together.
+    expect(outcomes.count).toBe(20);
+    // And the figure the row is about is the third of them, on its own. It
+    // agrees with the cell rather than replacing it — the table still renders
+    // all three, and `failing` is the one a consumer reads without parsing.
+    const rows = outcomes.table?.rows ?? [];
+    const cell = rows.find((row) => row[0] === "never reported")?.[1];
+    expect(outcomes.failing).toBe(Number(cell));
+  });
+
+  it("carries a non-zero never-reported count through to `failing`", () => {
+    // No committed bundle has one: `noReport` counts a report record whose
+    // outcome says it never reported, and a dispatch with no terminal record
+    // at all is NO-TERMINAL instead — a finding, not an outcome. So the count
+    // is raised on the validator's own report, which is where the renderer
+    // reads it from.
+    const bundle = readBundle("pr58-bundle.json");
+    const raised = reportsFor(bundle).map((entry, index) => ({
+      ...entry,
+      report:
+        index === 0
+          ? { ...entry.report, outcomes: { ...entry.report.outcomes, noReport: 2 } }
+          : entry.report,
+    }));
+    const report = buildRunReport(baseInput({ bundle, journalReports: raised }));
+    const outcomes = section(report, "hook-attested", "outcomes");
+
+    expect(outcomes.failing).toBe(2);
+    // The total moved with it: `failing` is a member of `count`, not a rival.
+    expect(outcomes.count).toBe(22);
+  });
+
+  it("gives the canary section a figure, so its row is answerable", () => {
+    const clean = buildRunReport(baseInput({ canary: null }));
+    expect(section(clean, "code-verified", "canary").failing).toBe(0);
+  });
+
+  it("counts a registered canary as the case the row is about", () => {
+    const entry: CanaryEntry = {
+      doc: "openspec/changes/add-run-report-card/design.md",
+      line: 4242,
+      text: "**Evidence:** `packages/claims/src/nowhere.ts:1@deadbee` — `never`",
+      plantedAt: "2026-08-31T09:00:00.000Z",
+    };
+    const planted = buildRunReport(baseInput({ canary: entry }));
+    const canary = section(planted, "code-verified", "canary");
+
+    expect(canary.failing).toBe(1);
+    // Still no location, in either rendering. The figure says one is planted;
+    // it must not say where.
+    const rendered = renderMarkdown(planted) + renderJson(planted);
+    expect(rendered).not.toContain(entry.doc);
+    expect(rendered).not.toContain(String(entry.line));
+  });
+
+  it("leaves `failing` absent on a section that owes no row a figure", () => {
+    // Absence is what makes a row unanswerable rather than clear, so it must
+    // not be defaulted to zero across the board.
+    const report = buildRunReport(baseInput());
+    expect(Object.hasOwn(section(report, "code-verified", "commits"), "failing")).toBe(false);
+  });
+
+  it("never carries `failing` on a not-recorded section", () => {
+    const report = buildRunReport(
+      baseInput({ bundle: null, journalReports: [], commits: [], changedFiles: [] }),
+    );
+    for (const tier of report.tiers) {
+      for (const entry of tier.sections) {
+        if (entry.status !== "not-recorded") continue;
+        expect(Object.hasOwn(entry, "failing")).toBe(false);
+      }
+    }
+  });
+});
+
+/* -------------------------------------------------------------------------
  * The JSON discriminator
  * ---------------------------------------------------------------------- */
 

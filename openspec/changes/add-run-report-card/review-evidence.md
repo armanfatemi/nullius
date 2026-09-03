@@ -397,3 +397,101 @@ by the coordinator.
 Worth noting against the probe's own value: the plant is a synthetic claim, and
 all three rounds caught it. The twelve real defects this review found were found
 by reviewers doing ordinary work, not by the probe.
+
+## Stage 2 — Pre-review iteration 4
+
+Iteration 4, a confirming round on a reduced change. architecture-reviewer four
+blockers; test-engineer none, two concerns. The reduction was real but
+incomplete, and one finding says the split was made in the wrong direction.
+
+## False premises
+
+**[false-premise] `openspec/changes/add-run-report-card/proposal.md:8`** — the
+planted claim, rotated back to proposal.md. Confirmed false against
+`spec/fixtures/rules-valid/src/example.ts`.
+
+**[false-premise] [corrected-coordinator] `openspec/changes/add-run-report-card/proposal.md:21-23`** —
+architecture-reviewer:
+
+> the fix now says "The data for the seven question rows already exists and is already computed," two lines above the unchanged "Six of the seven questions … are answered somewhere in the document today." Seven cannot all be computed if one is unanswered. The repair contradicts the sentence it was inserted before.
+
+I repaired one false sentence into a second one, against text I did not re-read.
+
+## Blockers
+
+**[blocker] The reduction touched Decision 1 and nothing else.**
+
+> `design.md` Decisions 5 and 6 survive the reduction verbatim: Decision 5 — "The card prints active time, the window count, and the idle threshold" — and Decision 6 — operator volume in characters, anchored to `packages/kit/src/record.ts:900@80f862d`. Both specify metric rows this change no longer contains.
+
+**[blocker] A spec scenario still mandates a deferred figure.**
+`specs/check-cli/spec.md:76-78` still reads "operator turns, characters typed,
+dispatches and mutations are printed as separate figures."
+
+**[blocker] Decision 1's claim is still false, for two of the seven rows kept.**
+
+> The `canary` section carries no numeric field at all — its content is one note string (`witnessReport.ts:1017-1030`) — so the review-probe row, one of the proposal's two headline rows, has no value to project. And `outcomes` carries `count` as the **total**; `never reported` exists only as a rendered cell (`witnessReport.ts:1188-1200`). `tasks.md` §1 concedes the fix: "add the field to the section." That is a second named numeric field on `ReportSection` — exactly `add-run-report-metrics` tasks §1 bullet 3, the deferred kernel change.
+
+test-engineer independently verified the `outcomes` half at
+`witnessReport.ts:1191`. Two reviewers converging on one finding.
+
+**[blocker] The dependency direction is inverted.**
+
+> `Depends on: add-run-report-card` is inverted for metrics §1. Its kernel groundwork (validator iteration, `RecordView.origin`, multi-figure `ReportSection`) needs no card, and the card needs the third item. Land metrics §1 first, or the card cannot satisfy its own typed-figure rule.
+
+## Concerns
+
+**[concern] The role-inference refusal has no test.** test-engineer: the spec
+requires the agent row assert nothing about role, and "nothing in §1/§3 would
+fail if a future edit quietly added a role-classification pass to that row."
+This is one of the three refusals the change is built on.
+
+**[concern] The tier-strength sentence has no test.** test-engineer: §3 has a
+task to write it but nothing asserts its content, or its presence for a
+self-reported row. The tier-move test checks the tier id propagates, not the
+disclaimer.
+
+## Looks good
+
+- All sixteen anchors verify byte-exact — eleven at `80f862d` in the card, five
+  at `7e807ba` in the metrics change (architecture-reviewer, independently).
+- `add-run-report-metrics` carries the three structural findings faithfully and
+  strengthens the loop-depth one with the `sumLedger` precedent anchor. No
+  softening in the handoff.
+- "the tiers are unchanged from version 1" is true again.
+- The escaping test plan is adequate: `escapeCell` (`witnessReport.ts:336`) and
+  its existing tests already exercise all four vectors the task names, and the
+  card introduces no new interpolation path (test-engineer).
+- The `count`-absent case is satisfiable from a real fixture rather than a
+  hand-built section: the `canary` section is always built via `dataSection`
+  with no `count` (test-engineer).
+- The version-vocabulary test plus the end-to-end task together are adequate;
+  the string test alone would not have been.
+- `pr58-bundle.json` plus the no-bundle case is the right corpus;
+  `stale-header-bundle.json` adds no row-model coverage because the mark reads
+  only `section.status`, which is source-agnostic.
+- Decision 7 and the metrics non-goals still hold: no role inference, no score.
+
+## Coordinator corrections since last append
+
+- **I reduced the change in one document and called it reduced.** Decisions 5
+  and 6, and a spec scenario, still specify metrics that left. A reader of
+  `design.md` would still believe this change prints active time.
+- **My repair of a false sentence produced a second false sentence.** I rewrote
+  `proposal.md:21` without reading the paragraph it sits in, and the document
+  now says both that seven rows are computed and that six of seven are.
+- **I split the change in the wrong direction.** I put the kernel groundwork
+  behind the card, but the card needs a multi-figure `ReportSection` for two of
+  the seven rows I kept — the probe row and the never-reported row. The
+  groundwork depends on nothing and must land first. Deciding this needs the
+  user, so the run pauses rather than picking a sequencing answer on its own.
+
+## Probe — stage 2
+
+verdict: CAUGHT (iteration 4)
+planted: openspec/changes/add-run-report-card/proposal.md:8, under "## Problem"
+  (cycled back to proposal.md after design.md and tasks.md)
+in scope of: architecture-reviewer
+dispatched: architecture-reviewer, test-engineer
+found by: architecture-reviewer
+note: uncontaminated. rule-auditor was not dispatched, so no reviewer ran the
+  checker against the change directory and no reviewer was told a probe existed.

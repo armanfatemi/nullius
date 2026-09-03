@@ -12,38 +12,70 @@ rendering of the same object.
 `RunReportInput`, does not call git, does not read the bundle, and does not
 re-validate anything. Every value on a row is already present in a section.
 
-**That last sentence was false in the first draft, and making it true is a
-prerequisite of this change rather than a description of it.** The seven
-question rows project cleanly. The derived metrics did not: no section carried
-active time, loop depth or operator characters, and `RecordView` carries none of
-the fields they need:
+**That sentence was false in the first draft, and the change was reduced rather
+than the claim weakened.** The seven question rows project cleanly from sections
+that exist. The derived metrics did not: no section carried active time, loop
+depth or operator characters, and the record view carries none of the fields
+they need:
 
-**Evidence:** `packages/claims/src/witnessReport.ts:257@80f862d` — `export interface RecordView {`
+**Evidence:** `packages/claims/src/witnessReport.ts:257@7e807ba` — `export interface RecordView {`
 
 A card row with no backing section also has no containing `ReportTier`, which
-would have left an implementer hand-assigning a tier — the map Decision 3 just
-banned — or inventing sections silently. So the metrics land in
-`buildRunReport` as ordinary sections, in the tier that already owns their
-records, **before** any card work:
+would have left an implementer hand-assigning a tier — the map Decision 3 bans —
+or inventing sections silently. Two rounds were spent trying to fix that inside
+this change; both attempts relocated the problem rather than removing it.
 
-| new or extended section | tier | why that tier |
-| --- | --- | --- |
-| `session-span` (active time, windows, threshold, span) | hook-attested | derived from record timestamps the hooks wrote |
-| `loop-depth` (maximum `stage.iteration`) | self-reported | `stage` is in `SELF_REPORTED_KINDS` |
-| `prompts` (extended with a character total) | hook-attested | the section already exists in that tier |
-| `dispatches` (already carries the agent table) | hook-attested | no change needed |
+So the metrics leave. They are `add-run-report-metrics`, which depends on this
+change, does the kernel work on its own terms, and then arrives through this
+row model with no new card-side mechanism. What remains here is true as
+written: every value on a row is already present in a section.
 
-Two new sections, one extended, and the card then projects all of them exactly
-as it projects everything else. The tier is still never assigned by the card;
-it is read from whichever tier the section was placed in, and that placement is
-made once, in the builder, where every other section's is.
+## Decision 1b — the card adds the two figures its own rows need, and no more
 
-The reason is the module's existing invariant: the renderer decides nothing
-about provenance, and three earlier drafts of this feature each invented an
-attribution the data did not carry. A card that reached for its own inputs
-would be a fourth. Keeping it downstream of `buildRunReport` means a row can
-only ever restate a section, and a row with no section behind it cannot
-compile.
+Two of the seven rows have no number to read, and they are found by opening the
+builder rather than by reasoning about it.
+
+`outcomes` carries its `count` as the **total** of the three terminal states, so
+the figure the card's row is about — how many reviews never reported — exists
+only as a rendered table cell:
+
+**Evidence:** `packages/claims/src/witnessReport.ts:1191@7e807ba` — `        count: outcomes.found + outcomes.empty + outcomes.noReport,`
+
+And the `canary` section is built with notes and nothing else — no `count` at
+all — so the review-probe row, which is the one row that measures whether review
+*found* something rather than that it ran, has no value to project.
+
+So `ReportSection` gains **one named optional numeric field**, `failing`, and the
+two sections that owe their row a figure populate it. An earlier draft of this
+decision said two fields, one per row; building it showed both rows want the
+same quantity — *how many of the bad case* — so a second field would have been
+two names for one idea. One field, two populating sections. That is the whole of
+the kernel change here.
+
+`count` is untouched and keeps meaning what it means: how many things the
+section is about. `failing` is how many of them are the case the row is asking
+about, and its absence is what makes a row unanswerable rather than clear —
+which is why it is optional rather than defaulted to zero.
+
+**What the probe row can honestly say.** The `canary` section knows whether a
+probe is registered *now*; it does not know whether a reviewer found one. So the
+row reports an uncleared probe, which is a real merge blocker, and does not
+claim to report whether review worked. That claim lives in `review-evidence.md`,
+which the report does not read.
+
+**This is deliberately not the general capability.** `add-run-report-metrics`
+needs a section that can carry four figures at once, and generalising for that
+here would be designing for a change that has not been reviewed. Two named
+fields is the smallest thing that makes Decision 1's claim true, and it is
+testable by name rather than by shape.
+
+**It also corrects a sequencing error.** An earlier draft deferred all of this
+to `add-run-report-metrics` and left that change declaring
+`Depends on: add-run-report-card` — while the card needed a field only that
+change provided. The dependency pointed backwards and neither could go first.
+With the two fields here, the card depends on nothing and the metrics change
+depends on the card for its row model, which is the direction the work actually
+runs in.
 
 ## Decision 2 — the tri-state is mechanical, and derived from data already there
 
@@ -114,29 +146,16 @@ would be indistinguishable from a measured quantity while being an opinion,
 which is the exact substitution this project exists to refuse. The components
 are printed; the reader does the weighing.
 
-## Decision 5 — session time is reported as active time, with the threshold named
+## Decisions 5 and 6 — moved, not deleted
 
-Wall-clock span is the wrong number and is misleading by a large factor. On
-the range this change was designed against, the span is 26.8 hours and the
-active time is 3.1 hours across ten windows: the difference is a night.
+Session time and operator volume were Decisions 5 and 6. They specified metric
+rows this change no longer contains, and their arguments — active time with the
+threshold named rather than wall-clock span, and operator volume measured in
+characters because the count survives redaction when the text does not — now
+live in `add-run-report-metrics`, which is where the rows do.
 
-The card prints active time, the window count, and the idle threshold that
-produced them, and prints the span second and labelled. A reader who disagrees
-with the threshold can see it and discount accordingly, which is not possible
-if only the derived figure is shown.
-
-## Decision 6 — operator volume is measured in characters, because that survives redaction
-
-The prompt recorder writes a character count beside the text, and it is
-written into the record itself rather than derived at render time:
-
-**Evidence:** `packages/kit/src/record.ts:900@80f862d` — `        chars: text.length,`
-
-This matters because prompt text does not always travel. Under hashed mode and
-under the bundler's `--no-prompts`, the text is withheld and the count is not.
-Measuring steering in characters therefore works on bundles where measuring it
-in words or content would silently degrade to zero — and a steering metric
-that reads zero because the text was redacted is worse than no metric.
+They are recorded as moved rather than dropped because both arguments were
+settled with the user and would otherwise be re-litigated from scratch.
 
 ## Decision 7 — the agents are listed, and their roles are not inferred
 
