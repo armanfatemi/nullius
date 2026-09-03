@@ -50,9 +50,11 @@ JSON schema is at version 1.
 - The renderer gains a **card**: a fixed set of rows, one per question a
   reviewer asks, each carrying a tri-state mark, a short result, and the tier
   the answer came from. It is rendered above the existing document.
-- The card is a **projection of the sections that already exist**. It reads
-  the built `RunReport` and adds no input, runs no new command, and reaches
-  for no data the tiers do not already carry.
+- The card is a **projection of sections**. It reads the built `RunReport` and
+  adds no input and runs no new command. Where a row needs a figure no section
+  carries — active time, loop depth, operator characters — that figure becomes a
+  section in the tier that owns its records **first**, and the card then projects
+  it like any other row. The card never holds a value the tiers do not.
 - Every row names its provenance, because rows differ in what they are worth.
   A loop count is the coordinator describing its own run; an anchor verdict is
   code re-reading a file. The kernel already partitions them, and the card

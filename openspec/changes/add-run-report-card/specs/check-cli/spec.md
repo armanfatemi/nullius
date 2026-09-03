@@ -21,13 +21,23 @@ additional input.
 
 ### Requirement: Each card row states the tier its answer came from
 
-The card SHALL print the provenance tier of every row, because a mark in the
-self-reported tier and the same mark in the code-verified tier are claims of
-different strength, and SHALL state that distinction in prose above the table.
+The card SHALL read every row's provenance tier from the `ReportTier` that
+contains the row's backing section, and SHALL NOT derive a tier from record
+kinds or from any other second attribution it maintains itself.
+
+#### Scenario: tier is read from the containing tier, never mapped
+
+- **WHEN** a row is built from a section
+- **THEN** its tier is the `id` of the `ReportTier` that section was found under, and no mapping from record kind to tier exists anywhere in the card
+
+#### Scenario: a section that moves tier moves its row with it
+
+- **WHEN** a section is relocated to a different tier in a later version
+- **THEN** the row's printed tier changes with it, with no card-side edit
 
 #### Scenario: a self-reported row is not presented as verified
 
-- **WHEN** a row is derived from `stage` or `check` records
+- **WHEN** a row's containing tier is self-reported
 - **THEN** the row is marked self-reported, and the card states that such a row is the coordinator's own account
 
 ### Requirement: A row with no data is distinguishable from a row with a clean result
@@ -35,6 +45,16 @@ different strength, and SHALL state that distinction in prose above the table.
 The card SHALL render three distinct states — clear, attention, and not
 recorded — and SHALL NOT render an unrecorded section as a clean result or as
 a zero.
+
+#### Scenario: a row's failing figure is a typed field, not a rendered cell
+
+- **WHEN** a row's mark is computed
+- **THEN** the figure is read from a numeric field on the section, and no card code parses a rendered table cell
+
+#### Scenario: every row resolves to a section that exists
+
+- **WHEN** the card is built
+- **THEN** each row in the row table names a section present in the report, and a row cannot be added without one
 
 #### Scenario: an absent section renders as unanswerable
 
@@ -99,3 +119,20 @@ the card restates.
 
 - **WHEN** the JSON form is rendered
 - **THEN** the document version is 2 and the tiers are unchanged from version 1
+
+#### Scenario: a card value never disagrees with the section behind it
+
+- **WHEN** the card and the tiers are rendered into one document
+- **THEN** every value a row restates equals the value in the section the row names, and a test asserts that equality rather than assuming it
+
+### Requirement: A row references its section by id rather than copying its identity
+
+The card SHALL carry the backing section's `id` on every row so a consumer can
+resolve a row to the section it came from, because the card restates values the
+tiers already hold and a restatement that cannot be traced is the duplication
+this report has already had to remove once.
+
+#### Scenario: a row can be resolved to its source
+
+- **WHEN** a consumer reads a card row
+- **THEN** the row names the section id and tier id it was built from

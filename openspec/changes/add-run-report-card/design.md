@@ -6,11 +6,37 @@ The run report is built as four tiers of sections and rendered top to bottom.
 The card changes nothing about how the report is built; it is a second
 rendering of the same object.
 
-## Decision 1 — the card is a projection, not a second data path
+## Decision 1 — the card is a projection, and the metrics become sections first
 
 `buildCard` takes a `RunReport` and returns rows. It does not take
 `RunReportInput`, does not call git, does not read the bundle, and does not
 re-validate anything. Every value on a row is already present in a section.
+
+**That last sentence was false in the first draft, and making it true is a
+prerequisite of this change rather than a description of it.** The seven
+question rows project cleanly. The derived metrics did not: no section carried
+active time, loop depth or operator characters, and `RecordView` carries none of
+the fields they need:
+
+**Evidence:** `packages/claims/src/witnessReport.ts:257@80f862d` — `export interface RecordView {`
+
+A card row with no backing section also has no containing `ReportTier`, which
+would have left an implementer hand-assigning a tier — the map Decision 3 just
+banned — or inventing sections silently. So the metrics land in
+`buildRunReport` as ordinary sections, in the tier that already owns their
+records, **before** any card work:
+
+| new or extended section | tier | why that tier |
+| --- | --- | --- |
+| `session-span` (active time, windows, threshold, span) | hook-attested | derived from record timestamps the hooks wrote |
+| `loop-depth` (maximum `stage.iteration`) | self-reported | `stage` is in `SELF_REPORTED_KINDS` |
+| `prompts` (extended with a character total) | hook-attested | the section already exists in that tier |
+| `dispatches` (already carries the agent table) | hook-attested | no change needed |
+
+Two new sections, one extended, and the card then projects all of them exactly
+as it projects everything else. The tier is still never assigned by the card;
+it is read from whichever tier the section was placed in, and that placement is
+made once, in the builder, where every other section's is.
 
 The reason is the module's existing invariant: the renderer decides nothing
 about provenance, and three earlier drafts of this feature each invented an
@@ -29,9 +55,18 @@ judgment:
 
 **Evidence:** `packages/claims/src/witnessReport.ts:522@80f862d` — `  return { id, title, statement, status: "not-recorded", reason, notes: [] };`
 
-- **attention** — the section carries data and its row's *named failing count*
-  is greater than zero.
-- **clear** — the section carries data and that count is zero.
+- **attention** — the section carries data, its row's *named failing count*
+  resolves, and that count is greater than zero.
+- **clear** — the section carries data, its row's named failing count
+  resolves, and that count is zero.
+
+**A fourth case exists and is not `clear`.** A section may carry
+`status: "data"` and still have no `count`, because `count` is optional
+precisely so that "not recorded" is distinguishable from `0` by a consumer
+reading the JSON. Treating an absent count as zero would render a green mark
+for a number nobody recorded — the exact substitution the tiered document
+refuses everywhere else. A row whose named count does not resolve renders
+**not recorded**, and says which field was missing.
 
 Each row declares which number is its failing count, in one table in the
 source. That table is the only judgment in the feature, it is a constant, and
@@ -40,14 +75,27 @@ set: a small, explicit, reviewable calibration rather than a heuristic.
 
 **A row never invents a mark.** There is no fallback branch that guesses when a
 section is shaped unexpectedly; an unrecognised section is a missing row, and
-the card says so.
+the card says so. The same applies within a recognised section: a missing count
+produces *not recorded*, never a default.
 
 ## Decision 3 — every row carries its tier, and the tiers are not flattened
 
 A mark means different things per tier, and hiding that would make the card a
-worse document than the one it replaces. Loop depth and check counts come from
-`stage` and `check` records, which the validator classifies as the
-coordinator's own account of itself.
+worse document than the one it replaces.
+
+**The tier is read from the `ReportTier` that contains the row's backing
+section, and is never mapped from record kinds.** This is the correction that
+matters most in this document. An earlier draft of the spec said a row derived
+from `stage` or `check` records is marked self-reported — which is true of the
+data and is exactly the map the module header forbids:
+
+**Evidence:** `packages/claims/src/witnessReport.ts:15@80f862d` — ` * of the header's `origin` — three drafts of this feature each invented an`
+
+`SELF_REPORTED_KINDS` already owns that classification and lives in the
+validator. A second copy in the card would be the fourth draft the header
+warns about: a hand-maintained attribution that silently disagrees with the
+first the moment a section moves tier. Reading `ReportTier.id` at build time
+makes the disagreement unrepresentable rather than merely discouraged.
 
 Rows therefore print their tier. A green row in the self-reported tier says
 *the coordinator says so*; a green row in the code-verified tier says *this was
@@ -128,6 +176,25 @@ the last thing that can be lost.
 tiers and does not move data out of them: the card duplicates, and the tiers
 remain the source. `RUN_REPORT_VERSION` goes to 2, because a consumer that
 reads version 1 must not be handed a document whose top level changed shape.
+
+**Raising the version is a breaking change to this repository's own Action, and
+the change must carry the fix.** The Action's gate is an equality test, so
+version 2 makes it post nothing at all:
+
+**Evidence:** `action/action.yml:231@80f862d` — `        if [ "$kind" != 'run-report' ] || [ "$version" != '1' ]; then`
+
+A card nobody sees is worse than no card, and the failure is silent — the step
+succeeds and simply skips the comment. The Action therefore learns to accept a
+**set** of versions it can render rather than one, in this change, with a task
+of its own. A version outside that set still refuses and still says which
+version it saw; the point is that the refusal stays deliberate rather than
+becoming the default for every future bump.
+
+**Rows carry the backing section's id.** The duplication concern is real: this
+card lands immediately after `fix-run-report-duplication` removed restatement
+from the same document. Carrying the section id makes every restated value
+traceable to its source, and a test asserts a row's value equals the section's
+rather than trusting that it does.
 
 ## Risks
 
