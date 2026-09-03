@@ -1,6 +1,13 @@
 {
   "docs": [
-    "openspec/**/*.md",
-    "spec/**/*.md"
+    "openspec/**/*.md"
+  ],
+  "exclude": [
+    "openspec/**/tasks.md",
+    "openspec/**/progress.md",
+    "openspec/**/review-evidence.md",
+    "openspec/**/spec.md",
+    "openspec/changes/archive/**",
+    "openspec/project.md"
   ]
 }
