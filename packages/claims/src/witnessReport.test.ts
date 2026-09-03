@@ -1408,6 +1408,18 @@ describe("the Action's accepted run-report versions", () => {
     expect(actionYml).not.toMatch(/\[ "\$version" != '\d+' \]/);
   });
 
+  it("is not the only place outside this file the version lives", () => {
+    // CI pinned `.version` to 1 in a jq assertion and went red when the card
+    // raised it — the second home found by breaking rather than by a test, and
+    // the reason this case exists. It now derives the number from the constant.
+    const ci = readFileSync(
+      fileURLToPath(new URL("../../../.github/workflows/ci.yml", import.meta.url)),
+      "utf8",
+    );
+    expect(ci).not.toMatch(/jq -r \.version "\$work\/report\.json"\)" = '\d+'/);
+    expect(ci).toContain("RUN_REPORT_VERSION = [0-9]+");
+  });
+
   it("still refuses a version outside the set rather than guessing", () => {
     expect(actionYml).toContain("Not posted");
     expect(actionYml).toContain("rendered=false");
