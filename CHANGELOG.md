@@ -4,6 +4,34 @@ Bare version headings are the kernel — `@nullius-inverba/claims` and its
 unscoped alias `evidence-anchors`, which ship together. Headings prefixed with
 a package name are that package's own release; the kit versions independently.
 
+## kit 0.5.1
+
+A patch, and the reason it needs a version of its own is the point of it.
+
+`0.11.0` moved the kit's dependency range to `^0.11.0` and left the kit itself
+at 0.5.0, on the reasoning that the release "adds nothing to it beyond the
+finding-extraction fix, which is a patch to behaviour it already had". That is
+the description of a patch release, not of a release to skip. npm will not
+republish a version, so the fix reached nobody: the published 0.5.0 and the
+repository's 0.5.0 were different code.
+
+It matters more here than for most packages. This repository's witness hooks run
+the **published** kit rather than the working tree, so until this release the
+repository's own recording kept dropping every finding whose severity tag was
+written with markdown emphasis — the exact defect the fix addresses, going
+unfixed in the tool that records whether defects were found.
+
+### Fixed
+
+- **Finding extraction tolerates markdown emphasis around a severity tag.** A
+  reviewer writing ``- `[blocker]` `` or `- **[blocker]** ` previously produced
+  no finding at all, so `witness ledger findings --open` answered "no unanswered
+  blockers" while one was outstanding, and `SUPPRESSED-FINDING` could not fire
+  because it compares resolutions against *recorded* findings and nothing had
+  been recorded. A list item carrying a bracketed severity word the pattern
+  still declines is now reported in the plan's note, so the next unanticipated
+  formatting surfaces as a diagnostic rather than as an absence.
+
 ## 0.11.0
 
 Two changes to what a pull request comment says, and one to what it costs to
