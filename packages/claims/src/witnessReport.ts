@@ -32,8 +32,13 @@ import type { JournalFinding, JournalReport } from "./witness";
 
 /** The report document's own schema version. Independent of `REPORT_VERSION`
  *  (`check --format json`) and of the envelope's `version`: three documents on
- *  one CLI that break on different events, told apart by `kind`. */
-export const RUN_REPORT_VERSION = 1;
+ *  one CLI that break on different events, told apart by `kind`.
+ *
+ *  2 adds the `card` key at the top level. A consumer that recognises only 1
+ *  must refuse this document rather than read the fields it knows, which is why
+ *  the number moves for an additive change: the Action's accepted set is the
+ *  thing that decides compatibility, not this file's optimism. */
+export const RUN_REPORT_VERSION = 2;
 
 /**
  * A *round* is a maximal set of dispatches whose start times fall within this
@@ -583,6 +588,15 @@ export interface RunReport {
     commits: number;
     changedFiles: number;
   };
+  /**
+   * The reviewer's summary, projected from `tiers` below.
+   *
+   * Duplicates nothing: a row carries the *id* of the section it read and its
+   * mark, never a copy of that section's title, table or figures. The tiers
+   * stay the source, and a consumer that disagrees with a mark can resolve the
+   * row and see the section it was computed from.
+   */
+  card: Card;
   /** Exactly four, in the fixed order code-verified → unattributed. */
   tiers: ReportTier[];
   flowchart: Flowchart | null;
@@ -1001,7 +1015,7 @@ export function buildRunReport(input: RunReportInput): RunReport {
     });
   }
 
-  return {
+  const built: Omit<RunReport, "card"> = {
     kind: "run-report",
     version: RUN_REPORT_VERSION,
     range: {
@@ -1016,6 +1030,11 @@ export function buildRunReport(input: RunReportInput): RunReport {
     notRecorded,
     check: input.checkRun,
   };
+
+  // Built last, from the finished tiers, so it cannot see anything the tiers do
+  // not carry — the same guarantee `buildCard`'s signature gives, made true at
+  // the one call site that could have bypassed it.
+  return { ...built, card: buildCard(built as RunReport) };
 }
 
 // ---------------------------------------------------------------------------
@@ -1797,6 +1816,14 @@ export function renderMarkdown(
 
   // Ahead of the tiers, and therefore ahead of anything the budget can cut:
   // truncation slices from the end, so the summary is the last thing lost.
+  //
+  // Rebuilt from `report.tiers` rather than read from `report.card`, and the
+  // difference matters. The tiers are the source; a `card` handed in by a
+  // caller is a claim about them. Deriving here means the rendered card cannot
+  // disagree with the document it sits on top of, even for a report assembled
+  // by hand — which is the same reason every verdict in this project re-reads
+  // the artefact instead of trusting a field. For a report from
+  // `buildRunReport` the two are identical, and a test asserts it.
   out.push("");
   out.push(...renderCard(buildCard(report)));
 

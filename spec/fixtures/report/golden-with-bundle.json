@@ -1,6 +1,6 @@
 {
   "kind": "run-report",
-  "version": 1,
+  "version": 2,
   "range": {
     "spec": "8211685..f431193",
     "base": "8211685",
@@ -1315,5 +1315,60 @@
       "markerFloorFailed": false,
       "next": null
     }
+  },
+  "card": {
+    "rows": [
+      {
+        "id": "grounded",
+        "question": "Are load-bearing claims cited and verified?",
+        "section": "anchors",
+        "tier": "code-verified",
+        "mark": "clear"
+      },
+      {
+        "id": "graders",
+        "question": "Was anything that grades this project weakened?",
+        "section": "oracle",
+        "tier": "code-verified",
+        "mark": "not-recorded"
+      },
+      {
+        "id": "record",
+        "question": "Does the run's own record hold up?",
+        "section": "journal-validation",
+        "tier": "code-verified",
+        "mark": "clear"
+      },
+      {
+        "id": "probe",
+        "question": "Is a review probe still planted?",
+        "section": "canary",
+        "tier": "code-verified",
+        "mark": "clear"
+      },
+      {
+        "id": "reviewed",
+        "question": "Did agent review happen at all?",
+        "section": "dispatches",
+        "tier": "hook-attested",
+        "mark": "clear"
+      },
+      {
+        "id": "concurrent",
+        "question": "Did reviewers run together rather than in series?",
+        "section": "rounds",
+        "tier": "hook-attested",
+        "mark": "clear"
+      },
+      {
+        "id": "reported",
+        "question": "Did every review report back?",
+        "section": "outcomes",
+        "tier": "hook-attested",
+        "mark": "clear"
+      }
+    ],
+    "omitted": [],
+    "unanswerable": 1
   }
 }

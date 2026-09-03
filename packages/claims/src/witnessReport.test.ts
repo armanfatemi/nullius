@@ -1043,6 +1043,17 @@ describe("the rendered card", () => {
     expect(head).not.toContain("fake heading");
   });
 
+  it("renders the same card the JSON document carries", () => {
+    // The markdown derives its card from the tiers; the JSON carries one built
+    // the same way. For any report `buildRunReport` produced they agree, and
+    // this is what says so — two renderings of one document must not differ.
+    const head = markdown.slice(0, markdown.indexOf("## Code-verified"));
+    for (const row of report.card.rows) {
+      expect(head).toContain(row.question);
+    }
+    expect(report.card.rows).toEqual(buildCard(report).rows);
+  });
+
   it("survives truncation, because it is emitted first", () => {
     const full = renderMarkdown(report);
     const cardOf = (text: string): string =>
@@ -1065,7 +1076,56 @@ describe("the JSON form", () => {
     const document = JSON.parse(renderJson(buildRunReport(baseInput()))) as RunReport;
     expect(document.kind).toBe("run-report");
     expect(document.version).toBe(RUN_REPORT_VERSION);
-    expect(document.version).toBe(1);
+    // Raised when the card was added: a consumer that reads version 1 must not
+    // be handed a document whose top level grew a key.
+    expect(document.version).toBe(2);
+  });
+
+  it("carries the card under its own key, leaving the tiers as the source", () => {
+    const report = buildRunReport(baseInput());
+    const document = JSON.parse(renderJson(report)) as RunReport;
+
+    expect(document.card.rows).toHaveLength(7);
+    // The tiers are untouched by the card's arrival: same four, same order,
+    // same section ids.
+    expect(document.tiers.map((tier) => tier.id)).toEqual(
+      report.tiers.map((tier) => tier.id),
+    );
+    expect(document.tiers.flatMap((tier) => tier.sections.map((s) => s.id))).toEqual(
+      report.tiers.flatMap((tier) => tier.sections.map((s) => s.id)),
+    );
+  });
+
+  it("never lets a card value disagree with the section behind it", () => {
+    // The hazard Decision 9 names: a card that duplicates tier-derived values
+    // is a second place for them to be wrong. Every row is re-resolved against
+    // the tiers and must agree.
+    const report = buildRunReport(baseInput());
+    const document = JSON.parse(renderJson(report)) as RunReport;
+
+    for (const row of document.card.rows) {
+      const owner = document.tiers.find((tier) =>
+        tier.sections.some((entry) => entry.id === row.section),
+      );
+      expect(owner).toBeDefined();
+      expect(row.tier).toBe(owner?.id);
+      const section = owner?.sections.find((entry) => entry.id === row.section);
+      // A row is never clear over a section that recorded nothing.
+      if (section?.status === "not-recorded") expect(row.mark).toBe("not-recorded");
+    }
+  });
+
+  it("references a section by id rather than copying its content", () => {
+    const document = JSON.parse(renderJson(buildRunReport(baseInput()))) as RunReport;
+    for (const row of document.card.rows) {
+      expect(typeof row.section).toBe("string");
+      // No copied title, statement, table or notes: the row points, and the
+      // tier holds. Duplicating them would reintroduce the restatement that
+      // fix-run-report-duplication removed.
+      for (const key of ["title", "statement", "table", "notes", "count", "failing"]) {
+        expect(Object.hasOwn(row, key)).toBe(false);
+      }
+    }
   });
 
   it("embeds the check document under its own key, carrying ITS version", () => {
