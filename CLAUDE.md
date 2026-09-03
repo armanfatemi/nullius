@@ -96,3 +96,5 @@ tasks. `openspec validate <change>` gates them.
 Its requirement check reads **only the first line** of a requirement body for
 SHALL/MUST. A requirement whose modal verb wraps to line 2 fails with a
 misleading "must contain SHALL or MUST". Put the verb on the first line.
+
+Load-bearing claims about existing code carry an Evidence Anchor — see `nullius.authoring.md`.

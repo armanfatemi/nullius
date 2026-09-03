@@ -52,12 +52,23 @@ it so**, which is the one anchor here that had to move:
 
 **Evidence:** `grep -rn '%0A' action/ packages/claims/src packages/kit/src` → 0 results
 
-**Evidence:** `grep -rn 'mermaid' action/ packages/ docs/ README.md .github/` → 26 results
+**Evidence:** `grep -rn 'mermaid' action/ packages/claims/src packages/kit/src docs/ README.md .github/` → 19 results
 
 **Evidence:** `grep -rn 'uses: ./action' .github/workflows/ci.yml` → 0 results
 
-The middle one is worth pausing on, because it exposes a gap in the anchor
-grammar rather than a defect in this document. `rev-stamp-change-anchors`
+The middle one is worth pausing on twice over.
+
+**It also had to stop searching `packages/` and search the two `src/` trees
+instead**, because `packages/claims/dist/` is a build artifact: gitignored, present
+on a developer's machine after `pnpm build`, and absent from a fresh checkout.
+Seven of the original 26 hits were in `dist/cli.js`, so the same anchor read 26
+locally and 19 in CI — and CI is where it failed. **A search anchor whose count
+depends on generated files is not a claim about the repository; it is a claim
+about whoever ran it last.** The stamped form has no equivalent hazard, because
+`git show` reads a commit rather than a working tree.
+
+The first thing it exposes is a gap in the anchor grammar rather than a defect
+in this document. `rev-stamp-change-anchors`
 exists because a change proposal cites code it is about to modify, and a stamp
 splits that citation into an immutable half and an advisory half. **A search
 anchor has no stamp available** — `grep … → N results` is a claim about the
