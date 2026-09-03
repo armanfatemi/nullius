@@ -18,7 +18,7 @@ status:
 
 A reviewer looking at a diff too large to read wants one thing: evidence that
 the work went through a process, and a pointer to where their attention is
-worth spending. The data for that already exists and is already computed. Six
+worth spending. Most of that data already exists and is already computed. Six
 of the seven questions such a reviewer asks are answered somewhere in the
 document today — including the two that no other tool produces, and that are
 currently the least visible.
@@ -50,9 +50,9 @@ JSON schema is at version 1.
 - The renderer gains a **card**: a fixed set of rows, one per question a
   reviewer asks, each carrying a tri-state mark, a short result, and the tier
   the answer came from. It is rendered above the existing document.
-- The card is a **projection of the sections that already exist**. It reads
-  the built `RunReport` and adds no input, runs no new command, and reaches
-  for no data the tiers do not already carry.
+- The card is a **projection of sections that already exist**. It reads the
+  built `RunReport`, adds no input, runs no command, and holds no value the
+  tiers do not.
 - Every row names its provenance, because rows differ in what they are worth.
   A loop count is the coordinator describing its own run; an anchor verdict is
   code re-reading a file. The kernel already partitions them, and the card
@@ -60,9 +60,10 @@ JSON schema is at version 1.
 
 **Evidence:** `packages/claims/src/witness.ts:368@80f862d` — `const SELF_REPORTED_KINDS: ReadonlySet<Kind> = new Set<Kind>([`
 
-- Three metrics are added, all derived from records already in the journal:
-  operator turns and characters typed, active session time, and the pipeline
-  loop depth read from `stage.iteration`.
+- **No derived metrics.** Active time, operator characters and loop depth were
+  in the first draft and are removed: each needs a `ReportSection` that carries
+  more than one figure, a validator-computed loop depth, and a `RecordView` that
+  carries `origin`. They are filed as `add-run-report-metrics`.
 - The agents dispatched are listed by name and count, with **no role
   judgment**. Naming which agent counts as a critique agent would require this
   renderer to hold a vocabulary of another repository's conventions, and a row

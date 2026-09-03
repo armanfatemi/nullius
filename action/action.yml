@@ -226,15 +226,31 @@ runs:
           exit 0
         fi
 
+        # The run-report document versions this action can render. A SET, not an
+        # equality: the action re-invokes a pinned `claims-version`, so a caller
+        # holding an older pin produces an older document, and an equality here
+        # would stop posting for every one of them the day this action learned a
+        # newer one. Version 2 added the `card` key and changed nothing the
+        # renderer below depends on, so both are renderable.
+        #
+        # A version outside the set is still refused rather than guessed at. The
+        # cost of guessing is a comment that looks complete and is not.
+        ACCEPTED_REPORT_VERSIONS='1 2'
+
         version=$(jq -r '.version // "absent"' nullius-run-report.json)
         kind=$(jq -r '.kind // "absent"' nullius-run-report.json)
-        if [ "$kind" != 'run-report' ] || [ "$version" != '1' ]; then
+        known=no
+        for accepted in $ACCEPTED_REPORT_VERSIONS; do
+          if [ "$version" = "$accepted" ]; then known=yes; fi
+        done
+        if [ "$kind" != 'run-report' ] || [ "$known" != 'yes' ]; then
           {
             echo '## nullius run report'
             echo
-            echo "Not posted: this action understands \`run-report\` version 1, and the checker"
-            echo "produced kind \`${kind}\` version \`${version}\`. Pin \`claims-version\` to a"
-            echo 'release this action knows, or upgrade the action.'
+            echo "Not posted: this action understands \`run-report\` version(s)"
+            echo "\`${ACCEPTED_REPORT_VERSIONS}\`, and the checker produced kind \`${kind}\`"
+            echo "version \`${version}\`. Pin \`claims-version\` to a release this action"
+            echo 'knows, or upgrade the action.'
           } >> "$GITHUB_STEP_SUMMARY"
           echo 'rendered=false' >> "$GITHUB_OUTPUT"
           exit 0

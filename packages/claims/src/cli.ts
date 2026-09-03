@@ -937,7 +937,11 @@ function runWitnessReport(args: WitnessArgs): number {
   //     `check` collects it, and rendered rather than gated: `exitCode` is
   //     never consulted.
   const docs = reportDocuments(changedFiles, config, args.prBody);
-  const { entry: activeCanary } = loadActiveCanary(root);
+  // The warning is not decoration: `loadActiveCanary` returns a null entry with
+  // one for an unparseable registry, an invalid entry, and an unsafe path, and
+  // discarding it made the report say "no canary is registered" about a
+  // registry it could not open.
+  const { entry: activeCanary, warning: canaryWarning } = loadActiveCanary(root);
   let checkRun: CheckReport | null = null;
   let checkUnavailable: string | undefined;
   if (docs.length === 0) {
@@ -990,6 +994,7 @@ function runWitnessReport(args: WitnessArgs): number {
     oracleReport,
     journalReports,
     canary: activeCanary,
+    ...(canaryWarning === undefined ? {} : { canaryUnreadable: canaryWarning }),
   });
 
   process.stdout.write(

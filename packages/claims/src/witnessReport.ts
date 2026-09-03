@@ -28,12 +28,17 @@
 import { describeCanary, type CanaryEntry } from "./canary";
 import type { CheckReport, ReportResult } from "./checkReport";
 import type { OracleReport } from "./oracle";
-import type { JournalFinding, JournalReport } from "./witness";
+import { isJournalFailure, type JournalFinding, type JournalReport } from "./witness";
 
 /** The report document's own schema version. Independent of `REPORT_VERSION`
  *  (`check --format json`) and of the envelope's `version`: three documents on
- *  one CLI that break on different events, told apart by `kind`. */
-export const RUN_REPORT_VERSION = 1;
+ *  one CLI that break on different events, told apart by `kind`.
+ *
+ *  2 adds the `card` key at the top level. A consumer that recognises only 1
+ *  must refuse this document rather than read the fields it knows, which is why
+ *  the number moves for an additive change: the Action's accepted set is the
+ *  thing that decides compatibility, not this file's optimism. */
+export const RUN_REPORT_VERSION = 2;
 
 /**
  * A *round* is a maximal set of dispatches whose start times fall within this
@@ -405,6 +410,22 @@ export interface ReportSection {
    * consumer that reads the JSON rather than the prose.
    */
   count?: number;
+  /**
+   * How many of this section's subjects are the case a reader is asking about,
+   * where that differs from `count` and a card row needs it.
+   *
+   * `count` is how many things the section is about; `failing` is how many of
+   * them are the bad one. The two are different numbers and were previously
+   * only different in prose: `outcomes` carries three terminal states summed
+   * into `count`, with the one that matters — never reported — reachable only
+   * as a cell in the rendered table, and `canary` carried no number at all.
+   *
+   * Optional, and absent rather than zero when the section has nothing to say.
+   * A consumer distinguishing "none failing" from "this section does not report
+   * a failing figure" needs the key's absence to mean the second, exactly as it
+   * does for `count`. A section with no data never carries it.
+   */
+  failing?: number;
   table?: ReportTable;
   notes: string[];
 }
@@ -439,6 +460,126 @@ export interface NotRecordedEntry {
   reason: string;
 }
 
+/**
+ * What a card row can say, and the whole of it.
+ *
+ * Three states, because two would collapse the distinction the tiered document
+ * exists to hold: a figure nobody recorded and a figure that came back zero are
+ * different facts, and rendering the first as the second is the flattering
+ * default this report refuses everywhere else.
+ */
+export type CardMark = "clear" | "attention" | "not-recorded";
+
+/**
+ * How a row decides its mark, and the entire vocabulary of that decision.
+ *
+ * Two shapes rather than one. Most rows ask "how many of the bad thing", where
+ * more than none wants attention. Two rows — did review happen, did reviewers
+ * run together — ask the opposite: the count *is* the good thing, and zero is
+ * the finding. A single "above zero is bad" rule would have rendered a run with
+ * no review at all as clear, which is the most important thing a card claiming
+ * to describe review could get wrong.
+ *
+ * Both read a named numeric field off a section. Neither inspects a record,
+ * neither knows a record kind, and neither has a default branch: a field that
+ * is absent is `not-recorded`, never a guess.
+ */
+type MarkShape = "attention-when-positive" | "attention-when-zero";
+
+interface RowSpec {
+  id: string;
+  question: string;
+  /** The section id this row reads. Never a tier — see `buildCard`. */
+  section: string;
+  /** Which numeric field on that section carries this row's figure. */
+  figure: "count" | "failing";
+  shape: MarkShape;
+}
+
+/**
+ * The rows, in render order, and the only judgment in this feature.
+ *
+ * It is a constant rather than a computation for the same reason the kernel's
+ * PASSING set is: a calibration that decides an outcome has to be reviewable in
+ * one place, and testable by name. Each row is asserted individually.
+ *
+ * Every entry names a section that `buildRunReport` produces. A row whose
+ * section is missing is omitted and reported, never defaulted — which is what
+ * keeps this table from quietly becoming a second source of truth about what
+ * the report contains.
+ */
+const CARD_ROWS: readonly RowSpec[] = [
+  {
+    id: "grounded",
+    question: "Are load-bearing claims cited and verified?",
+    section: "anchors",
+    figure: "failing",
+    shape: "attention-when-positive",
+  },
+  {
+    id: "graders",
+    question: "Was anything that grades this project weakened?",
+    section: "oracle",
+    // `failing`, not `count`: they are the same number for a complete run, and
+    // only `failing` is withheld when the run was partial.
+    figure: "failing",
+    shape: "attention-when-positive",
+  },
+  {
+    id: "record",
+    question: "Does the run's own record hold up?",
+    section: "journal-validation",
+    figure: "failing",
+    shape: "attention-when-positive",
+  },
+  {
+    id: "probe",
+    question: "Is a review probe still planted?",
+    section: "canary",
+    figure: "failing",
+    shape: "attention-when-positive",
+  },
+  {
+    id: "reviewed",
+    question: "Did agent review happen at all?",
+    section: "dispatches",
+    figure: "count",
+    shape: "attention-when-zero",
+  },
+  {
+    id: "concurrent",
+    question: "Did reviewers run together rather than in series?",
+    section: "rounds",
+    figure: "count",
+    shape: "attention-when-zero",
+  },
+  {
+    id: "reported",
+    question: "Did every review report back?",
+    section: "outcomes",
+    figure: "failing",
+    shape: "attention-when-positive",
+  },
+];
+
+export interface CardRow {
+  id: string;
+  question: string;
+  /** The section id this row read. A reference, never a copy of its content. */
+  section: string;
+  /** Read from the tier that contains the section. Never assigned here. */
+  tier: TierId;
+  mark: CardMark;
+}
+
+export interface Card {
+  rows: CardRow[];
+  /** Row ids whose section was not in the report. Stated, never silent. */
+  omitted: string[];
+  /** How many rendered rows are `not-recorded`. */
+  unanswerable: number;
+}
+
 export interface RunReport {
   kind: "run-report";
   version: typeof RUN_REPORT_VERSION;
@@ -449,6 +590,15 @@ export interface RunReport {
     commits: number;
     changedFiles: number;
   };
+  /**
+   * The reviewer's summary, projected from `tiers` below.
+   *
+   * Duplicates nothing: a row carries the *id* of the section it read and its
+   * mark, never a copy of that section's title, table or figures. The tiers
+   * stay the source, and a consumer that disagrees with a mark can resolve the
+   * row and see the section it was computed from.
+   */
+  card: Card;
   /** Exactly four, in the fixed order code-verified → unattributed. */
   tiers: ReportTier[];
   flowchart: Flowchart | null;
@@ -494,6 +644,17 @@ export interface RunReportInput {
   /** The registered canary, if any. Rendered through `describeCanary` with
    *  `reveal` unset, so neither its document nor its line can reach the page. */
   canary?: CanaryEntry | null;
+  /**
+   * Why the canary registry could not be read, when it could not.
+   *
+   * `loadActiveCanary` returns `entry: null` alongside a warning for an
+   * unparseable registry, an invalid entry, and an unsafe path — three states
+   * where "no canary is registered" is a guess rather than a reading. Without
+   * this the row renders clear over a registry nobody could open, which is the
+   * same defect as a synthesized zero and reached this report through a
+   * destructuring that dropped the warning.
+   */
+  canaryUnreadable?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -504,10 +665,11 @@ function dataSection(
   id: string,
   title: string,
   statement: string,
-  extra: { count?: number; table?: ReportTable; notes?: string[] } = {},
+  extra: { count?: number; failing?: number; table?: ReportTable; notes?: string[] } = {},
 ): ReportSection {
   const section: ReportSection = { id, title, statement, status: "data", notes: extra.notes ?? [] };
   if (extra.count !== undefined) section.count = extra.count;
+  if (extra.failing !== undefined) section.failing = extra.failing;
   if (extra.table !== undefined) section.table = extra.table;
   return section;
 }
@@ -662,13 +824,106 @@ function shortSha(sha: string): string {
   return sha.slice(0, 7);
 }
 
+/**
+ * The card: one row per question a reviewer asks, projected from the report.
+ *
+ * Takes a built `RunReport` and nothing else. It has no `RunReportInput`
+ * parameter, so it cannot call git, read the bundle, or re-validate anything —
+ * every value it renders was computed by the builder above and is reachable
+ * from a section. That is the whole of the guarantee, and it is enforced by the
+ * signature rather than by discipline.
+ *
+ * **A row never assigns a tier.** It finds the tier that contains its section
+ * and reports that. There is no row-to-tier map here and no reading of a record
+ * kind: a section that moves tier moves its row with it, because there is no
+ * second place to edit. Three earlier drafts of this feature each invented an
+ * attribution the data did not carry, and this signature is the fourth draft's
+ * defence.
+ */
+/**
+ * How a mark is drawn, and its word.
+ *
+ * The glyph is for the glance and the word is for everything else — a screen
+ * reader, a terminal without colour emoji, a `grep`. A card that carried only
+ * the glyph would be unreadable in exactly the places a maintainer triaging a
+ * queue actually reads it.
+ */
+const MARK_GLYPH: Readonly<Record<CardMark, string>> = {
+  clear: "\u2705",
+  attention: "\u26a0\ufe0f",
+  "not-recorded": "\u26aa",
+};
+
+const MARK_WORD: Readonly<Record<CardMark, string>> = {
+  clear: "clear",
+  attention: "look",
+  "not-recorded": "not recorded",
+};
+
+export function buildCard(report: Pick<RunReport, "tiers">): Card {
+  const located = new Map<string, { section: ReportSection; tier: TierId }>();
+  for (const tier of report.tiers) {
+    for (const section of tier.sections) {
+      // First wins. Ids are unique across the report today; if that ever stops
+      // being true, the row reads the earlier tier rather than silently the
+      // later one, and the duplicate is a bug in the builder, not here.
+      if (!located.has(section.id)) located.set(section.id, { section, tier: tier.id });
+    }
+  }
+
+  const rows: CardRow[] = [];
+  const omitted: string[] = [];
+  for (const spec of CARD_ROWS) {
+    const found = located.get(spec.section);
+    if (found === undefined) {
+      // No section, no row. Rendering it anyway would mean inventing both a
+      // tier and a mark, which is exactly what this function refuses to do.
+      omitted.push(spec.id);
+      continue;
+    }
+    rows.push({
+      id: spec.id,
+      question: spec.question,
+      section: spec.section,
+      tier: found.tier,
+      mark: markOf(found.section, spec),
+    });
+  }
+
+  return {
+    rows,
+    omitted,
+    unanswerable: rows.filter((row) => row.mark === "not-recorded").length,
+  };
+}
+
+/**
+ * One row's mark, from one section's own fields.
+ *
+ * Absence is the first question and it is not a fallback: a section with no
+ * data, or with no figure recorded, cannot be clear. `failing: 0` and no
+ * `failing` at all are different answers, and only the first is a pass.
+ */
+function markOf(section: ReportSection, spec: RowSpec): CardMark {
+  if (section.status === "not-recorded") return "not-recorded";
+  const figure = spec.figure === "count" ? section.count : section.failing;
+  if (figure === undefined) return "not-recorded";
+  return spec.shape === "attention-when-zero"
+    ? figure === 0
+      ? "attention"
+      : "clear"
+    : figure > 0
+      ? "attention"
+      : "clear";
+}
+
 export function buildRunReport(input: RunReportInput): RunReport {
   const bundle = input.bundle;
   const changedFiles = new Set(input.changedFiles);
 
   // --- Which journals are readable, and can any of the bundle tiers be counted?
   const failedJournals = input.journalReports.filter((entry) =>
-    entry.report.findings.some((finding) => finding.verdict !== "ok"),
+    entry.report.findings.some((finding) => isJournalFailure(finding.verdict)),
   );
 
   let block: BundleBlock | null = null;
@@ -684,7 +939,7 @@ export function buildRunReport(input: RunReportInput): RunReport {
     // table that could be acted on under thirteen copies of its own text.
     const detail = failedJournals
       .map((entry) => {
-        const first = entry.report.findings.find((finding) => finding.verdict !== "ok");
+        const first = entry.report.findings.find((finding) => isJournalFailure(finding.verdict));
         return `${entry.session} reports ${first?.verdict.toUpperCase() ?? "an invalid record"} at line ${String(first?.line ?? 0)}`;
       })
       .join("; ");
@@ -773,7 +1028,7 @@ export function buildRunReport(input: RunReportInput): RunReport {
     });
   }
 
-  return {
+  const built: Omit<RunReport, "card"> = {
     kind: "run-report",
     version: RUN_REPORT_VERSION,
     range: {
@@ -788,6 +1043,11 @@ export function buildRunReport(input: RunReportInput): RunReport {
     notRecorded,
     check: input.checkRun,
   };
+
+  // Built last, from the finished tiers, so it cannot see anything the tiers do
+  // not carry — the same guarantee `buildCard`'s signature gives, made true at
+  // the one call site that could have bypassed it.
+  return { ...built, card: buildCard(built) };
 }
 
 // ---------------------------------------------------------------------------
@@ -918,6 +1178,29 @@ function codeVerifiedSections(input: RunReportInput): ReportSection[] {
         "Every anchor in the range's touched documents, re-verified by re-reading the cited file. A failure here is rendered, not gated: the gate is `nullius check`, which runs on its own.",
         {
           count: results.length,
+          // The number the card's row is about, lifted out of the note string
+          // it was only reachable from. `check.summary.failures` rather than a
+          // recount here: the check document already decided which verdicts
+          // fail, and a second opinion about that in this file would be a copy
+          // of the kernel's PASSING set.
+          //
+          // Withheld when any anchor came back `unverifiable-rev`. That verdict
+          // passes, and it should — a clone that cannot resolve a commit has no
+          // evidence about the author. But it means the stamped half of those
+          // citations was never settled, so `failures: 0` is "nothing was
+          // checked", not "nothing failed". `merge-never-squash.md` names this
+          // exactly: a disarmed gate and a satisfied one produce the same green
+          // check. The verdict counts stay in the table below, which is where a
+          // reader sees how many.
+          //
+          // Also withheld when nothing was checked. `checkReport.ts` names this
+          // shape where it computes the signal: "All 0 grounding marker(s)
+          // verified." is literally true and reads as a pass on a repository
+          // the tool has not examined. `summary.next` is non-null exactly then,
+          // and it is the kernel's own answer rather than a recount here.
+          ...(unverifiableAnchors(check) > 0 || check.summary.next !== null || results.length === 0
+            ? {}
+            : { failing: check.summary.failures }),
           table: { columns: ["verdict", "count"], rows: verdictRows },
           notes,
         },
@@ -964,6 +1247,22 @@ function codeVerifiedSections(input: RunReportInput): ReportSection[] {
         "Whether anything that grades this project was deleted, skipped or weakened in the range, and whether a decision accounted for it.",
         {
           count: oracle.findings.length,
+          // Absent when git could not be read for part of the range. Zero
+          // findings because nothing was diffed is not zero findings —
+          // `oracle.ts` says so where it synthesizes the empty result — and a
+          // card row over that count would render a partial run as a clean
+          // one. The section keeps its count and table, which are true of what
+          // *was* read; the row loses its figure and marks not-recorded, which
+          // is the honest answer to "was anything weakened".
+          // Withheld whenever some part of the run did not happen, not only
+          // when git failed. `weakeningUnchecked` names every declared oracle
+          // glob with no `weakening` marker, which means the weakened sub-check
+          // never ran — and "was anything weakened" is precisely this row's
+          // question. Zero findings from a check that was skipped is not zero
+          // findings.
+          ...(oracle.unreadable.length > 0 || oracle.weakeningUnchecked.length > 0
+            ? {}
+            : { failing: oracle.findings.length }),
           table: {
             columns: ["verdict", "subject", "detail"],
             rows: oracle.findings.map((finding) => [
@@ -992,7 +1291,7 @@ function codeVerifiedSections(input: RunReportInput): ReportSection[] {
     );
   } else {
     const rows = input.journalReports.map((entry) => {
-      const failures = entry.report.findings.filter((finding) => finding.verdict !== "ok");
+      const failures = entry.report.findings.filter((finding) => isJournalFailure(finding.verdict));
       return [
         entry.session,
         entry.report.version,
@@ -1007,6 +1306,16 @@ function codeVerifiedSections(input: RunReportInput): ReportSection[] {
         JOURNAL_VALIDATION_STATEMENT,
         {
           count: input.journalReports.length,
+          // How many of the bundled journals failed re-validation. A run whose
+          // own record does not hold up cannot support any bundle-derived row,
+          // and the card says so on one line rather than through several grey
+          // ones.
+          failing: input.journalReports.filter((entry) =>
+            // `isJournalFailure`, not `verdict !== "ok"`: the validator owns
+            // which verdicts fail, and a second copy here would over-flag the
+            // first advisory journal verdict anyone adds.
+            entry.report.findings.some((finding) => isJournalFailure(finding.verdict)),
+          ).length,
           table: { columns: ["session", "schema", "records", "verdict"], rows },
         },
       ),
@@ -1015,16 +1324,28 @@ function codeVerifiedSections(input: RunReportInput): ReportSection[] {
 
   // --- Canary
   const canary = input.canary ?? null;
+  const canaryUnreadable = input.canaryUnreadable;
   sections.push(
     dataSection(
       "canary",
       "Review probe",
       "Whether a canary claim is planted in a document under review. The location is never printed — printing it answers the question the probe asks.",
       {
+        // Whether one is planted, and nothing about where. The section knows
+        // only the registration state — not whether a reviewer found it — so
+        // this figure reports an uncleared probe, which is a merge blocker, and
+        // makes no claim about whether the review worked.
+        //
+        // Withheld when the registry could not be read. A null entry from an
+        // unparseable registry and a null entry from an empty one are the same
+        // value and different facts.
+        ...(canaryUnreadable === undefined ? { failing: canary === null ? 0 : 1 } : {}),
         notes: [
-          canary === null
-            ? "No canary is registered for this repository."
-            : `A canary is registered (${describeCanary(canary)}). Run: nullius canary clear — before approval.`,
+          canaryUnreadable !== undefined
+            ? `The canary registry could not be read, so whether a probe is planted is unknown — ${canaryUnreadable}`
+            : canary === null
+              ? "No canary is registered for this repository."
+              : `A canary is registered (${describeCanary(canary)}). Run: nullius canary clear — before approval.`,
         ],
       },
     ),
@@ -1041,6 +1362,19 @@ function codeVerifiedSections(input: RunReportInput): ReportSection[] {
  * pair the probe measures whether a reviewer found for themselves. The failure
  * is still counted and still shown — only its location is withheld.
  */
+/**
+ * Anchors whose stamped commit could not be resolved.
+ *
+ * `unverifiable-rev` is a passing verdict and belongs in the passing set: a
+ * clone that cannot read the history it was pointed at has learned nothing
+ * about the author, and accusing them would be the wrong call. But a passing
+ * verdict is not a verified one, and a card row that cannot tell the two apart
+ * reports a disarmed gate as a satisfied one.
+ */
+function unverifiableAnchors(check: CheckReport): number {
+  return check.summary.verdicts["unverifiable-rev"] ?? 0;
+}
+
 function anchorSubject(result: ReportResult): string {
   if (result.claim.kind === "canary") {
     return "CANARY-PRESENT — a registered canary is still planted in a checked document (location withheld); run: nullius canary clear — before approval";
@@ -1189,6 +1523,17 @@ function hookAttestedSections(
       "The validator's three terminal states, counted apart. `never reported` is the one a summary cannot surface on its own, because the missing record is missing.",
       {
         count: outcomes.found + outcomes.empty + outcomes.noReport,
+        // The one of the three a reader acts on, lifted out of the table so a
+        // consumer reads it as a number rather than by matching a row label.
+        //
+        // Withheld when no dispatch reached a terminal state at all. A journal
+        // whose schema this build cannot read contributes three zeros, and
+        // `noReport: 0` then means "nothing was counted" rather than "every
+        // review reported back". `journal-validation` flags that separately,
+        // but a row has to stand on its own section.
+        ...(outcomes.found + outcomes.empty + outcomes.noReport === 0
+          ? {}
+          : { failing: outcomes.noReport }),
         table: {
           columns: ["outcome", "count"],
           rows: [
@@ -1479,6 +1824,63 @@ function renderTable(table: ReportTable): string[] {
  * The markdown form — what the Action posts, verbatim and without ever
  * interpolating a report string into a workflow command.
  */
+/**
+ * The card, as the lines that lead the document.
+ *
+ * Renders only what `buildCard` returned: an id, a question, a section id, a
+ * tier and a mark, every one of them a constant declared in this file. No
+ * contributor-controlled string reaches these lines, which is a stronger
+ * property than escaping one would be — it survives someone deleting an escape
+ * call. `escapeCell` is still applied, because a constant that stops being one
+ * should not silently become an injection.
+ */
+export function renderCard(card: Card): string[] {
+  const out: string[] = [];
+  out.push("## How this run was produced");
+  out.push("");
+
+  const total = card.rows.length;
+  if (card.unanswerable === 0) {
+    // `total` is the number of rows rendered, which `omitted` has already
+    // shrunk. Saying "all N" over a denominator something was removed from
+    // would be true of the table and misleading about the report, so the
+    // omission is stated on its own line below rather than folded in here.
+    out.push(`All ${String(total)} checks below have an answer.`);
+  } else {
+    out.push(
+      `**${String(card.unanswerable)} of ${String(total)}** checks could not be answered — ` +
+        "the sections they read recorded nothing. A row with a hollow mark is a question this run " +
+        "cannot answer, which is not the same as a clean result.",
+    );
+  }
+  out.push("");
+  // Said once, above the table, because a reader skims marks rather than
+  // columns and the tier column alone does not carry it.
+  out.push(
+    "_A `code-verified` row was re-computed here by re-reading the repository. " +
+      "A `hook-attested` row comes from records the harness wrote, which the agent " +
+      "had no opportunity to decline. A `self-reported` row is the coordinator's " +
+      "own account of its run, and is the weakest of the three._",
+  );
+  out.push("");
+  out.push("| | check | reads | tier |");
+  out.push("| --- | --- | --- | --- |");
+  for (const row of card.rows) {
+    out.push(
+      `| ${MARK_GLYPH[row.mark]} ${MARK_WORD[row.mark]} | ${escapeCell(row.question)} | \`${escapeCell(row.section)}\` | ${escapeCell(row.tier)} |`,
+    );
+  }
+
+  if (card.omitted.length > 0) {
+    out.push("");
+    out.push(
+      `${String(card.omitted.length)} row(s) are not shown because no section in this ` +
+        `report answers them: ${card.omitted.map((id) => escapeCell(id)).join(", ")}.`,
+    );
+  }
+  return out;
+}
+
 export function renderMarkdown(
   report: RunReport,
   options: { budgetBytes?: number } = {},
@@ -1492,6 +1894,19 @@ export function renderMarkdown(
     `${String(report.range.commits)} commit(s), ${String(report.range.changedFiles)} file(s) changed. ` +
       "This report renders what happened; it does not gate. Every section shows its data or says why it has none.",
   );
+
+  // Ahead of the tiers, and therefore ahead of anything the budget can cut:
+  // truncation slices from the end, so the summary is the last thing lost.
+  //
+  // Rebuilt from `report.tiers` rather than read from `report.card`, and the
+  // difference matters. The tiers are the source; a `card` handed in by a
+  // caller is a claim about them. Deriving here means the rendered card cannot
+  // disagree with the document it sits on top of, even for a report assembled
+  // by hand — which is the same reason every verdict in this project re-reads
+  // the artefact instead of trusting a field. For a report from
+  // `buildRunReport` the two are identical, and a test asserts it.
+  out.push("");
+  out.push(...renderCard(buildCard(report)));
 
   for (const tier of report.tiers) {
     out.push("");
@@ -1593,5 +2008,11 @@ export function renderMarkdown(
 
 /** One pretty-printed JSON document, two-space indent, trailing newline. */
 export function renderJson(report: RunReport): string {
-  return `${JSON.stringify(report, null, 2)}\n`;
+  // The card is re-derived here for the same reason `renderMarkdown` derives
+  // it: the tiers are the source, and a `card` on the object handed in is a
+  // claim about them. Emitting the stored one would have left the two
+  // renderings able to disagree — the markdown deriving, the JSON trusting —
+  // which is the drift the "a card value never disagrees with the section
+  // behind it" test exists to forbid, holding for only one of the two outputs.
+  return `${JSON.stringify({ ...report, card: buildCard(report) }, null, 2)}\n`;
 }

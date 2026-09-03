@@ -19,11 +19,14 @@ import {
   reconstructJournal,
   renderJson,
   renderMarkdown,
+  buildCard,
   ROUND_WINDOW_MS,
   summariseJournalFindings,
   VALIDATION_GROUP_CAP,
   RUN_REPORT_VERSION,
   type BundledJournalReport,
+  type Card,
+  type CardRow,
   type ReportSection,
   type ReportTier,
   type RunBundle,
@@ -572,6 +575,38 @@ describe("the oracle row", () => {
     expect(oracle.reason).toContain("oracles");
   });
 
+  it("does not render a partial oracle run as a clean one", () => {
+    // `runOracle` returns zero findings with `unconfigured: false` when git
+    // could not be diffed, and says so: "Zero findings because git could not be
+    // read is not zero findings." A card row over that count would render a run
+    // that checked nothing as a pass — the exact collapse the card exists to
+    // refuse. The section keeps its count and table, which are true of what was
+    // read; the row loses its figure.
+    const partial: OracleReport = {
+      ...CONFIGURED_ORACLE,
+      findings: [],
+      unreadable: ["8211685..f431193: fatal: bad object"],
+    };
+    const report = buildRunReport(baseInput({ oracleReport: partial }));
+    const oracle = section(report, "code-verified", "oracle");
+
+    expect(oracle.status).toBe("data");
+    expect(oracle.count).toBe(0);
+    expect(Object.hasOwn(oracle, "failing")).toBe(false);
+    expect(oracle.notes.join(" ")).toContain("partial");
+
+    const row = buildCard(report).rows.find((entry) => entry.id === "graders");
+    expect(row?.mark).toBe("not-recorded");
+  });
+
+  it("renders a complete oracle run with zero findings as clear", () => {
+    const clean: OracleReport = { ...CONFIGURED_ORACLE, findings: [], unreadable: [] };
+    const report = buildRunReport(baseInput({ oracleReport: clean }));
+
+    expect(section(report, "code-verified", "oracle").failing).toBe(0);
+    expect(buildCard(report).rows.find((entry) => entry.id === "graders")?.mark).toBe("clear");
+  });
+
   it("renders findings when the project does declare oracles", () => {
     const report = buildRunReport(baseInput({ oracleReport: CONFIGURED_ORACLE }));
     const oracle = section(report, "code-verified", "oracle");
@@ -672,6 +707,541 @@ describe("the size budget", () => {
 });
 
 /* -------------------------------------------------------------------------
+ * The figure a card row is about
+ *
+ * `count` is how many things a section is about; `failing` is how many of them
+ * are the case the row asks about. Two sections owed their row a figure and
+ * had none: `outcomes` puts its never-reported count only in a rendered cell,
+ * and `canary` is built with notes and no count at all. A mark read out of a
+ * rendered table would change when the table's formatting did.
+ * ---------------------------------------------------------------------- */
+
+describe("the failing figure on a section", () => {
+  it("gives outcomes a never-reported count distinct from its total", () => {
+    const report = buildRunReport(baseInput());
+    const outcomes = section(report, "hook-attested", "outcomes");
+
+    // The total stays the total: three terminal states added together.
+    expect(outcomes.count).toBe(20);
+    // And the figure the row is about is the third of them, on its own. It
+    // agrees with the cell rather than replacing it — the table still renders
+    // all three, and `failing` is the one a consumer reads without parsing.
+    const rows = outcomes.table?.rows ?? [];
+    const cell = rows.find((row) => row[0] === "never reported")?.[1];
+    expect(outcomes.failing).toBe(Number(cell));
+  });
+
+  it("carries a non-zero never-reported count through to `failing`", () => {
+    // No committed bundle has one: `noReport` counts a report record whose
+    // outcome says it never reported, and a dispatch with no terminal record
+    // at all is NO-TERMINAL instead — a finding, not an outcome. So the count
+    // is raised on the validator's own report, which is where the renderer
+    // reads it from.
+    const bundle = readBundle("pr58-bundle.json");
+    const raised = reportsFor(bundle).map((entry, index) => ({
+      ...entry,
+      report:
+        index === 0
+          ? { ...entry.report, outcomes: { ...entry.report.outcomes, noReport: 2 } }
+          : entry.report,
+    }));
+    const report = buildRunReport(baseInput({ bundle, journalReports: raised }));
+    const outcomes = section(report, "hook-attested", "outcomes");
+
+    expect(outcomes.failing).toBe(2);
+    // The total moved with it: `failing` is a member of `count`, not a rival.
+    expect(outcomes.count).toBe(22);
+  });
+
+  it("gives the canary section a figure, so its row is answerable", () => {
+    const clean = buildRunReport(baseInput({ canary: null }));
+    expect(section(clean, "code-verified", "canary").failing).toBe(0);
+  });
+
+  it("counts a registered canary as the case the row is about", () => {
+    const entry: CanaryEntry = {
+      doc: "openspec/changes/add-run-report-card/design.md",
+      line: 4242,
+      text: "**Evidence:** `packages/claims/src/nowhere.ts:1@deadbee` — `never`",
+      plantedAt: "2026-08-31T09:00:00.000Z",
+    };
+    const planted = buildRunReport(baseInput({ canary: entry }));
+    const canary = section(planted, "code-verified", "canary");
+
+    expect(canary.failing).toBe(1);
+    // Still no location, in either rendering. The figure says one is planted;
+    // it must not say where.
+    const rendered = renderMarkdown(planted) + renderJson(planted);
+    expect(rendered).not.toContain(entry.doc);
+    expect(rendered).not.toContain(String(entry.line));
+  });
+
+  it("leaves `failing` absent on a section that owes no row a figure", () => {
+    // Absence is what makes a row unanswerable rather than clear, so it must
+    // not be defaulted to zero across the board.
+    const report = buildRunReport(baseInput());
+    expect(Object.hasOwn(section(report, "code-verified", "commits"), "failing")).toBe(false);
+  });
+
+  it("never carries `failing` on a not-recorded section", () => {
+    const report = buildRunReport(
+      baseInput({ bundle: null, journalReports: [], commits: [], changedFiles: [] }),
+    );
+    for (const tier of report.tiers) {
+      for (const entry of tier.sections) {
+        if (entry.status !== "not-recorded") continue;
+        expect(Object.hasOwn(entry, "failing")).toBe(false);
+      }
+    }
+  });
+});
+
+/* -------------------------------------------------------------------------
+ * Synthesized zeros
+ *
+ * A figure that is zero because nothing was measured must never mark a row
+ * clear. Each case below produced a green row before it was fixed, and each is
+ * a different way for a count to be zero without anything having been checked.
+ * ---------------------------------------------------------------------- */
+
+describe("a figure that is zero because nothing was checked", () => {
+  function markOfRow(report: RunReport, id: string): string | undefined {
+    return buildCard(report).rows.find((row) => row.id === id)?.mark;
+  }
+
+  it("withholds the anchor figure when a stamped commit could not be resolved", () => {
+    // `unverifiable-rev` passes, and should: a clone that cannot read the
+    // history it was pointed at has learned nothing about the author. But the
+    // stamped half was never settled, so `failures: 0` means nothing was
+    // checked. merge-never-squash.md: a disarmed gate and a satisfied one
+    // produce the same green check.
+    const disarmed: CheckReport = {
+      ...PR58_CHECK,
+      summary: {
+        ...PR58_CHECK.summary,
+        failures: 0,
+        verdicts: { ...PR58_CHECK.summary.verdicts, "unverifiable-rev": 4 },
+      },
+    };
+    const report = buildRunReport(baseInput({ checkRun: disarmed }));
+
+    expect(Object.hasOwn(section(report, "code-verified", "anchors"), "failing")).toBe(false);
+    expect(markOfRow(report, "grounded")).toBe("not-recorded");
+  });
+
+  it("withholds the anchor figure when nothing was checked at all", () => {
+    // `checkReport.ts` names this where it computes the signal: "All 0
+    // grounding marker(s) verified." is literally true and reads as a pass on a
+    // repository the tool has not examined. A range whose documents carry no
+    // anchors produced exactly that green row.
+    const nothing: CheckReport = {
+      ...PR58_CHECK,
+      documents: [],
+      summary: { ...PR58_CHECK.summary, failures: 0, documents: 0, verdicts: {}, next: "run: nullius check ..." },
+    };
+    const report = buildRunReport(baseInput({ checkRun: nothing }));
+
+    expect(Object.hasOwn(section(report, "code-verified", "anchors"), "failing")).toBe(false);
+    expect(markOfRow(report, "grounded")).toBe("not-recorded");
+  });
+
+  it("does not withhold outcomes merely because one journal was unreadable", () => {
+    // A reviewer proposed that a readable journal beside an unsupported-version
+    // one would emit a partial never-reported count. It cannot: an
+    // unsupported-version finding is a journal failure, so the whole bundle
+    // tier is blocked before any outcome is counted. Asserted so the reasoning
+    // is checkable rather than remembered.
+    const bundle = readBundle("pr58-bundle.json");
+    const good = reportsFor(bundle);
+    const unread: BundledJournalReport = {
+      session: "unread",
+      report: {
+        ...(good[0] as BundledJournalReport).report,
+        findings: [
+          { line: 1, verdict: "unsupported-version", subject: "header", detail: "schema 9.9" },
+        ],
+        outcomes: { found: 0, empty: 0, noReport: 0 },
+      },
+    };
+    const report = buildRunReport(baseInput({ bundle, journalReports: [...good, unread] }));
+
+    expect(section(report, "hook-attested", "outcomes").status).toBe("not-recorded");
+    expect(markOfRow(report, "reported")).toBe("not-recorded");
+  });
+
+  it("still marks anchors clear when every stamp did resolve", () => {
+    const settled: CheckReport = {
+      ...PR58_CHECK,
+      summary: { ...PR58_CHECK.summary, failures: 0, verdicts: { ok: 9 }, next: null },
+    };
+    expect(markOfRow(buildRunReport(baseInput({ checkRun: settled })), "grounded")).toBe("clear");
+  });
+
+  it("withholds the oracle figure when a weakening sub-check never ran", () => {
+    // `weakeningUnchecked` names every declared glob with no weakening marker.
+    // "Was anything weakened" is exactly this row's question, so a zero from a
+    // sub-check that did not run is not an answer to it.
+    const skipped: OracleReport = {
+      ...CONFIGURED_ORACLE,
+      findings: [],
+      unreadable: [],
+      weakeningUnchecked: ["packages/claims/src/**/*.test.ts"],
+    };
+    const report = buildRunReport(baseInput({ oracleReport: skipped }));
+
+    expect(Object.hasOwn(section(report, "code-verified", "oracle"), "failing")).toBe(false);
+    expect(markOfRow(report, "graders")).toBe("not-recorded");
+  });
+
+  it("withholds the probe figure when the registry could not be read", () => {
+    // `loadActiveCanary` returns a null entry with a warning for an unparseable
+    // registry, an invalid entry and an unsafe path. A null from a registry
+    // nobody could open and a null from an empty one are the same value and
+    // different facts.
+    const report = buildRunReport(
+      baseInput({ canary: null, canaryUnreadable: "canaries.json is not valid JSON" }),
+    );
+    const canary = section(report, "code-verified", "canary");
+
+    expect(Object.hasOwn(canary, "failing")).toBe(false);
+    expect(canary.notes.join(" ")).toContain("could not be read");
+    expect(markOfRow(report, "probe")).toBe("not-recorded");
+  });
+
+  it("withholds the outcomes figure when no dispatch reached a terminal state", () => {
+    // A journal whose schema this build cannot read contributes three zeros,
+    // and `noReport: 0` then means nothing was counted.
+    const bundle = readBundle("pr58-bundle.json");
+    const emptied = reportsFor(bundle).map((entry) => ({
+      ...entry,
+      report: { ...entry.report, outcomes: { found: 0, empty: 0, noReport: 0 } },
+    }));
+    const report = buildRunReport(baseInput({ bundle, journalReports: emptied }));
+
+    expect(Object.hasOwn(section(report, "hook-attested", "outcomes"), "failing")).toBe(false);
+    expect(markOfRow(report, "reported")).toBe("not-recorded");
+  });
+
+  it("keeps both renderings of the card in agreement", () => {
+    // markdown derives from the tiers; the JSON now does too. Before, the JSON
+    // emitted a stored card, so the "cannot disagree" guarantee held for one
+    // output only.
+    const report = buildRunReport(baseInput());
+    const stale: RunReport = {
+      ...report,
+      card: { rows: [], omitted: ["grounded"], unanswerable: 99 },
+    };
+    const document = JSON.parse(renderJson(stale)) as RunReport;
+
+    expect(document.card.rows).toHaveLength(7);
+    expect(document.card.unanswerable).not.toBe(99);
+  });
+});
+
+/* -------------------------------------------------------------------------
+ * The card
+ * ---------------------------------------------------------------------- */
+
+describe("buildCard", () => {
+  function rowOf(card: Card, id: string): CardRow {
+    const found = card.rows.find((row) => row.id === id);
+    if (found === undefined) throw new Error(`no row ${id}`);
+    return found;
+  }
+
+  it("names seven rows, in a fixed order", () => {
+    const card = buildCard(buildRunReport(baseInput()));
+    expect(card.rows.map((row) => row.id)).toEqual([
+      "grounded",
+      "graders",
+      "record",
+      "probe",
+      "reviewed",
+      "concurrent",
+      "reported",
+    ]);
+  });
+
+  it("resolves every row to a section that exists in the report", () => {
+    // The guard against a row being added without its section — the shape that
+    // would otherwise force a tier to be assigned by hand.
+    const report = buildRunReport(baseInput());
+    const ids = new Set(report.tiers.flatMap((tier) => tier.sections.map((s) => s.id)));
+    const card = buildCard(report);
+
+    expect(card.rows).toHaveLength(7);
+    expect(card.omitted).toEqual([]);
+    for (const row of card.rows) expect(ids.has(row.section)).toBe(true);
+  });
+
+  it("reads each row's tier from the tier containing its section, never from a map", () => {
+    const report = buildRunReport(baseInput());
+    const card = buildCard(report);
+    for (const row of card.rows) {
+      const owner = report.tiers.find((tier) =>
+        tier.sections.some((entry) => entry.id === row.section),
+      );
+      expect(row.tier).toBe(owner?.id);
+    }
+    expect(rowOf(card, "grounded").tier).toBe("code-verified");
+    expect(rowOf(card, "reported").tier).toBe("hook-attested");
+  });
+
+  it("moves a row's tier when its section moves tier", () => {
+    // Unrepresentable-by-construction: there is no second place to edit.
+    const report = buildRunReport(baseInput());
+    const moved: RunReport = {
+      ...report,
+      tiers: report.tiers.map((tier) => {
+        if (tier.id === "code-verified") {
+          return { ...tier, sections: tier.sections.filter((s) => s.id !== "anchors") };
+        }
+        if (tier.id === "self-reported") {
+          const anchors = report.tiers
+            .flatMap((t) => t.sections)
+            .find((s) => s.id === "anchors");
+          return { ...tier, sections: [...tier.sections, anchors as ReportSection] };
+        }
+        return tier;
+      }),
+    };
+
+    expect(rowOf(buildCard(moved), "grounded").tier).toBe("self-reported");
+  });
+
+  it("omits a row whose section is absent, and records the omission", () => {
+    // A distinct behaviour from any mark: the row does not appear at all.
+    const report = buildRunReport(baseInput());
+    const without: RunReport = {
+      ...report,
+      tiers: report.tiers.map((tier) => ({
+        ...tier,
+        sections: tier.sections.filter((entry) => entry.id !== "oracle"),
+      })),
+    };
+    const card = buildCard(without);
+
+    expect(card.rows.map((row) => row.id)).not.toContain("graders");
+    expect(card.rows).toHaveLength(6);
+    expect(card.omitted).toEqual(["graders"]);
+  });
+
+  it("marks a not-recorded section unanswerable, never clear", () => {
+    const report = buildRunReport(
+      baseInput({ bundle: null, journalReports: [], commits: [], changedFiles: [] }),
+    );
+    const card = buildCard(report);
+
+    for (const id of ["reviewed", "concurrent", "reported"]) {
+      expect(rowOf(card, id).mark).toBe("not-recorded");
+    }
+    expect(card.unanswerable).toBeGreaterThanOrEqual(3);
+  });
+
+  it("counts zero dispatches as attention, not as clear", () => {
+    // The inverted shape, and the most important thing the card could get
+    // wrong: a run with no review at all must not read as a pass.
+    const report = buildRunReport(baseInput());
+    const emptied: RunReport = {
+      ...report,
+      tiers: report.tiers.map((tier) => ({
+        ...tier,
+        sections: tier.sections.map((entry) =>
+          entry.id === "dispatches" ? { ...entry, count: 0 } : entry,
+        ),
+      })),
+    };
+
+    expect(rowOf(buildCard(emptied), "reviewed").mark).toBe("attention");
+    expect(rowOf(buildCard(report), "reviewed").mark).toBe("clear");
+  });
+
+  it("counts a positive failing figure as attention", () => {
+    const report = buildRunReport(baseInput());
+    const raised: RunReport = {
+      ...report,
+      tiers: report.tiers.map((tier) => ({
+        ...tier,
+        sections: tier.sections.map((entry) =>
+          entry.id === "outcomes" ? { ...entry, failing: 3 } : entry,
+        ),
+      })),
+    };
+
+    expect(rowOf(buildCard(raised), "reported").mark).toBe("attention");
+    expect(rowOf(buildCard(report), "reported").mark).toBe("clear");
+  });
+
+  it("treats a data section with no figure as unanswerable rather than clear", () => {
+    // `failing` absent is not `failing: 0`. A row cannot be green because the
+    // number it is about was never recorded.
+    const report = buildRunReport(baseInput());
+    const stripped: RunReport = {
+      ...report,
+      tiers: report.tiers.map((tier) => ({
+        ...tier,
+        sections: tier.sections.map((entry) => {
+          if (entry.id !== "outcomes") return entry;
+          const { failing: _drop, ...rest } = entry;
+          return rest;
+        }),
+      })),
+    };
+
+    expect(rowOf(buildCard(stripped), "reported").mark).toBe("not-recorded");
+  });
+
+  /*
+   * The two refusals, asserted structurally rather than by word search.
+   *
+   * A first draft of these grepped the serialized card for "score", "grade",
+   * "role" and friends, and failed on the `graders` row — "grade" is a
+   * substring of "graders" and of "grades this project". A key-set assertion
+   * says the thing that is actually meant: these shapes have no field to put a
+   * score or a role in, so neither can be added without failing here.
+   */
+  it("has no field a composite score or a role judgment could live in", () => {
+    const card = buildCard(buildRunReport(baseInput()));
+
+    expect(Object.keys(card).sort()).toEqual(["omitted", "rows", "unanswerable"]);
+    for (const row of card.rows) {
+      expect(Object.keys(row).sort()).toEqual(["id", "mark", "question", "section", "tier"]);
+    }
+  });
+
+  it("carries no aggregate over the rows beyond counting the unanswerable ones", () => {
+    const card = buildCard(buildRunReport(baseInput()));
+    // `unanswerable` is a count of a state, not a weighting of the rows: it is
+    // exactly the number of not-recorded marks and nothing else.
+    expect(card.unanswerable).toBe(card.rows.filter((row) => row.mark === "not-recorded").length);
+    expect(typeof card.unanswerable).toBe("number");
+  });
+});
+
+/* -------------------------------------------------------------------------
+ * Rendering the card
+ * ---------------------------------------------------------------------- */
+
+describe("the rendered card", () => {
+  const report = buildRunReport(baseInput());
+  const markdown = renderMarkdown(report);
+
+  it("leads the document, ahead of the first tier", () => {
+    const card = markdown.indexOf("## How this run was produced");
+    const firstTier = markdown.indexOf("## Code-verified");
+    expect(card).toBeGreaterThan(-1);
+    expect(firstTier).toBeGreaterThan(-1);
+    expect(card).toBeLessThan(firstTier);
+  });
+
+  it("prints every row's question and its tier", () => {
+    const card = buildCard(report);
+    const head = markdown.slice(0, markdown.indexOf("## Code-verified"));
+    for (const row of card.rows) {
+      expect(head).toContain(row.question);
+      expect(head).toContain(row.tier);
+    }
+  });
+
+  it("states how many rows are unanswerable, above the table", () => {
+    const card = buildCard(report);
+    const head = markdown.slice(0, markdown.indexOf("## Code-verified"));
+    const table = head.indexOf("| --- |");
+    const claim = head.indexOf(`${String(card.unanswerable)} of ${String(card.rows.length)}`);
+    expect(claim).toBeGreaterThan(-1);
+    expect(claim).toBeLessThan(table);
+  });
+
+  it("says a self-reported row is a weaker claim, whenever one is rendered", () => {
+    // The tier column is not enough on its own: a reader skims marks, not
+    // columns. The sentence is asserted by content, not by presence of a task.
+    const moved: RunReport = {
+      ...report,
+      tiers: report.tiers.map((tier) => {
+        if (tier.id === "code-verified") {
+          return { ...tier, sections: tier.sections.filter((s) => s.id !== "oracle") };
+        }
+        if (tier.id === "self-reported") {
+          const oracle = report.tiers.flatMap((t) => t.sections).find((s) => s.id === "oracle");
+          return { ...tier, sections: [...tier.sections, oracle as ReportSection] };
+        }
+        return tier;
+      }),
+    };
+    const rendered = renderMarkdown(moved);
+    expect(buildCard(moved).rows.some((row) => row.tier === "self-reported")).toBe(true);
+    expect(rendered).toContain("own account");
+  });
+
+  it("names what it omitted, when a row had no section", () => {
+    const without: RunReport = {
+      ...report,
+      tiers: report.tiers.map((tier) => ({
+        ...tier,
+        sections: tier.sections.filter((entry) => entry.id !== "oracle"),
+      })),
+    };
+    const rendered = renderMarkdown(without);
+    expect(rendered).toContain("graders");
+    expect(rendered.slice(0, rendered.indexOf("## Code-verified"))).toContain("no section");
+  });
+
+  /*
+   * The card cannot be a markdown-injection vector, and the reason is stronger
+   * than escaping: a row carries an id, a question, a section id, a tier and a
+   * mark, and every one of those is a constant in this file. No contributor
+   * text reaches it. The test asserts that property rather than asserting that
+   * an escape function was called, because the property is what matters and it
+   * would survive someone deleting the escape call.
+   */
+  it("interpolates no contributor-controlled value", () => {
+    const hostile = "evil | pipe\n## fake heading\n`code` <img src=x>";
+    const poisoned: RunReport = {
+      ...report,
+      tiers: report.tiers.map((tier) => ({
+        ...tier,
+        sections: tier.sections.map((entry) => ({
+          ...entry,
+          title: `${entry.title} ${hostile}`,
+          statement: hostile,
+          notes: [hostile],
+        })),
+      })),
+    };
+    const head = renderMarkdown(poisoned).slice(
+      0,
+      renderMarkdown(poisoned).indexOf("## Code-verified"),
+    );
+
+    expect(head).not.toContain("evil");
+    expect(head).not.toContain("fake heading");
+  });
+
+  it("renders the same card the JSON document carries", () => {
+    // The markdown derives its card from the tiers; the JSON carries one built
+    // the same way. For any report `buildRunReport` produced they agree, and
+    // this is what says so — two renderings of one document must not differ.
+    const head = markdown.slice(0, markdown.indexOf("## Code-verified"));
+    for (const row of report.card.rows) {
+      expect(head).toContain(row.question);
+    }
+    expect(report.card.rows).toEqual(buildCard(report).rows);
+  });
+
+  it("survives truncation, because it is emitted first", () => {
+    const full = renderMarkdown(report);
+    const cardOf = (text: string): string =>
+      text.slice(text.indexOf("## How this run was produced"), text.indexOf("## Code-verified"));
+    const truncated = renderMarkdown(report, { budgetBytes: 2_000 });
+
+    expect(truncated).toContain("**Truncated**");
+    // Byte-identical, not merely present: a partially truncated card is a
+    // summary a reader would trust and should not.
+    expect(cardOf(truncated)).toBe(cardOf(full));
+  });
+});
+
+/* -------------------------------------------------------------------------
  * The JSON discriminator
  * ---------------------------------------------------------------------- */
 
@@ -680,7 +1250,56 @@ describe("the JSON form", () => {
     const document = JSON.parse(renderJson(buildRunReport(baseInput()))) as RunReport;
     expect(document.kind).toBe("run-report");
     expect(document.version).toBe(RUN_REPORT_VERSION);
-    expect(document.version).toBe(1);
+    // Raised when the card was added: a consumer that reads version 1 must not
+    // be handed a document whose top level grew a key.
+    expect(document.version).toBe(2);
+  });
+
+  it("carries the card under its own key, leaving the tiers as the source", () => {
+    const report = buildRunReport(baseInput());
+    const document = JSON.parse(renderJson(report)) as RunReport;
+
+    expect(document.card.rows).toHaveLength(7);
+    // The tiers are untouched by the card's arrival: same four, same order,
+    // same section ids.
+    expect(document.tiers.map((tier) => tier.id)).toEqual(
+      report.tiers.map((tier) => tier.id),
+    );
+    expect(document.tiers.flatMap((tier) => tier.sections.map((s) => s.id))).toEqual(
+      report.tiers.flatMap((tier) => tier.sections.map((s) => s.id)),
+    );
+  });
+
+  it("never lets a card value disagree with the section behind it", () => {
+    // The hazard Decision 9 names: a card that duplicates tier-derived values
+    // is a second place for them to be wrong. Every row is re-resolved against
+    // the tiers and must agree.
+    const report = buildRunReport(baseInput());
+    const document = JSON.parse(renderJson(report)) as RunReport;
+
+    for (const row of document.card.rows) {
+      const owner = document.tiers.find((tier) =>
+        tier.sections.some((entry) => entry.id === row.section),
+      );
+      expect(owner).toBeDefined();
+      expect(row.tier).toBe(owner?.id);
+      const section = owner?.sections.find((entry) => entry.id === row.section);
+      // A row is never clear over a section that recorded nothing.
+      if (section?.status === "not-recorded") expect(row.mark).toBe("not-recorded");
+    }
+  });
+
+  it("references a section by id rather than copying its content", () => {
+    const document = JSON.parse(renderJson(buildRunReport(baseInput()))) as RunReport;
+    for (const row of document.card.rows) {
+      expect(typeof row.section).toBe("string");
+      // No copied title, statement, table or notes: the row points, and the
+      // tier holds. Duplicating them would reintroduce the restatement that
+      // fix-run-report-duplication removed.
+      for (const key of ["title", "statement", "table", "notes", "count", "failing"]) {
+        expect(Object.hasOwn(row, key)).toBe(false);
+      }
+    }
   });
 
   it("embeds the check document under its own key, carrying ITS version", () => {
@@ -743,6 +1362,67 @@ describe("parseBundle", () => {
   ])("refuses %s", (_label, text) => {
     const parsed = parseBundle(text);
     expect("error" in parsed).toBe(true);
+  });
+});
+
+/* -------------------------------------------------------------------------
+ * The two places a version number lives
+ * ---------------------------------------------------------------------- */
+
+describe("the Action's accepted run-report versions", () => {
+  /*
+   * The version now lives here and in `action/action.yml`, and the Action's
+   * copy is the one that decides whether a comment is posted at all. It reads
+   * `.version` and refuses a document it does not recognise — correctly — so
+   * raising RUN_REPORT_VERSION without teaching the Action would make the run
+   * report silently stop posting while the step still succeeded. That is the
+   * failure this file exists to make impossible elsewhere.
+   *
+   * Read as text rather than parsed: no package.json in this repo carries a
+   * YAML dependency, and `packages/kit/src/init.test.ts` already asserts
+   * against rendered YAML the same way.
+   */
+  const actionYml = readFileSync(
+    fileURLToPath(new URL("../../../action/action.yml", import.meta.url)),
+    "utf8",
+  );
+
+  function acceptedVersions(): number[] {
+    const match = /ACCEPTED_REPORT_VERSIONS='([^']*)'/.exec(actionYml);
+    if (match === null) throw new Error("no ACCEPTED_REPORT_VERSIONS in action/action.yml");
+    return (match[1] ?? "")
+      .split(/\s+/)
+      .filter((token) => token.length > 0)
+      .map(Number);
+  }
+
+  it("contains the version this build produces", () => {
+    expect(acceptedVersions()).toContain(RUN_REPORT_VERSION);
+  });
+
+  it("is a set the Action iterates, not an equality it compares", () => {
+    // An equality would stop posting for every caller pinned to an older
+    // claims release the day this action learned a newer document.
+    expect(acceptedVersions().length).toBeGreaterThan(1);
+    expect(actionYml).toContain("for accepted in $ACCEPTED_REPORT_VERSIONS");
+    expect(actionYml).not.toMatch(/\[ "\$version" != '\d+' \]/);
+  });
+
+  it("is not the only place outside this file the version lives", () => {
+    // CI pinned `.version` to 1 in a jq assertion and went red when the card
+    // raised it — the second home found by breaking rather than by a test, and
+    // the reason this case exists. It now derives the number from the constant.
+    const ci = readFileSync(
+      fileURLToPath(new URL("../../../.github/workflows/ci.yml", import.meta.url)),
+      "utf8",
+    );
+    expect(ci).not.toMatch(/jq -r \.version "\$work\/report\.json"\)" = '\d+'/);
+    expect(ci).toContain("RUN_REPORT_VERSION = [0-9]+");
+  });
+
+  it("still refuses a version outside the set rather than guessing", () => {
+    expect(actionYml).toContain("Not posted");
+    expect(actionYml).toContain("rendered=false");
   });
 });
 
@@ -916,7 +1596,13 @@ describe("a journal whose header names an older schema than its records", () => 
   it("fits a comment a reviewer will actually read", () => {
     // Before the collapse this rendered at 15,676 bytes, of which one table
     // cell was 3,994 and the repeated reason another 6,180.
-    expect(markdown.length).toBeLessThan(7_500);
+    //
+    // Raised from 7,500 when the card landed: the card is roughly 900 bytes of
+    // fixed prose and seven rows, and it is the part a reviewer reads. The
+    // bound exists to catch restatement coming back, not to keep the document
+    // at a particular length, so it moves by the size of a deliberate addition
+    // and no further.
+    expect(markdown.length).toBeLessThan(8_500);
   });
 });
 

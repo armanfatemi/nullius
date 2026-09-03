@@ -339,7 +339,14 @@ jobs:
           # to report.
           node packages/claims/dist/cli.js witness report "$range" --config "$fixtures/report.config.json" --bundle "$fixtures/pr58-bundle.json" --format json > "$work/report.json"
           test "$(jq -r .kind "$work/report.json")" = 'run-report'
-          test "$(jq -r .version "$work/report.json")" = '1'
+          # The version this build produces, read from the source of truth
+          # rather than pinned here. This assertion was pinned to `1` and went
+          # red the day the card raised it to 2 — the third place the number
+          # lives, after the constant itself and the Action's accepted set, and
+          # the second one to be found by breaking rather than by a test.
+          expected_version=$(grep -oE 'RUN_REPORT_VERSION = [0-9]+' packages/claims/src/witnessReport.ts | grep -oE '[0-9]+')
+          test -n "$expected_version"
+          test "$(jq -r .version "$work/report.json")" = "$expected_version"
           # The embedded check document carries ITS OWN version and has no
           # `kind` of its own — the two documents are told apart by the outer
           # discriminator and by the key, never by their matching version.
