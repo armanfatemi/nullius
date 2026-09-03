@@ -99,6 +99,7 @@
             "0 failing, over 10 document(s)."
           ],
           "count": 39,
+          "failing": 0,
           "table": {
             "columns": [
               "verdict",
@@ -131,6 +132,7 @@
           "status": "data",
           "notes": [],
           "count": 1,
+          "failing": 0,
           "table": {
             "columns": [
               "session",

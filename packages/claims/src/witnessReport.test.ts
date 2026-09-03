@@ -19,11 +19,14 @@ import {
   reconstructJournal,
   renderJson,
   renderMarkdown,
+  buildCard,
   ROUND_WINDOW_MS,
   summariseJournalFindings,
   VALIDATION_GROUP_CAP,
   RUN_REPORT_VERSION,
   type BundledJournalReport,
+  type Card,
+  type CardRow,
   type ReportSection,
   type ReportTier,
   type RunBundle,
@@ -758,6 +761,186 @@ describe("the failing figure on a section", () => {
         expect(Object.hasOwn(entry, "failing")).toBe(false);
       }
     }
+  });
+});
+
+/* -------------------------------------------------------------------------
+ * The card
+ * ---------------------------------------------------------------------- */
+
+describe("buildCard", () => {
+  function rowOf(card: Card, id: string): CardRow {
+    const found = card.rows.find((row) => row.id === id);
+    if (found === undefined) throw new Error(`no row ${id}`);
+    return found;
+  }
+
+  it("names seven rows, in a fixed order", () => {
+    const card = buildCard(buildRunReport(baseInput()));
+    expect(card.rows.map((row) => row.id)).toEqual([
+      "grounded",
+      "graders",
+      "record",
+      "probe",
+      "reviewed",
+      "concurrent",
+      "reported",
+    ]);
+  });
+
+  it("resolves every row to a section that exists in the report", () => {
+    // The guard against a row being added without its section — the shape that
+    // would otherwise force a tier to be assigned by hand.
+    const report = buildRunReport(baseInput());
+    const ids = new Set(report.tiers.flatMap((tier) => tier.sections.map((s) => s.id)));
+    const card = buildCard(report);
+
+    expect(card.rows).toHaveLength(7);
+    expect(card.omitted).toEqual([]);
+    for (const row of card.rows) expect(ids.has(row.section)).toBe(true);
+  });
+
+  it("reads each row's tier from the tier containing its section, never from a map", () => {
+    const report = buildRunReport(baseInput());
+    const card = buildCard(report);
+    for (const row of card.rows) {
+      const owner = report.tiers.find((tier) =>
+        tier.sections.some((entry) => entry.id === row.section),
+      );
+      expect(row.tier).toBe(owner?.id);
+    }
+    expect(rowOf(card, "grounded").tier).toBe("code-verified");
+    expect(rowOf(card, "reported").tier).toBe("hook-attested");
+  });
+
+  it("moves a row's tier when its section moves tier", () => {
+    // Unrepresentable-by-construction: there is no second place to edit.
+    const report = buildRunReport(baseInput());
+    const moved: RunReport = {
+      ...report,
+      tiers: report.tiers.map((tier) => {
+        if (tier.id === "code-verified") {
+          return { ...tier, sections: tier.sections.filter((s) => s.id !== "anchors") };
+        }
+        if (tier.id === "self-reported") {
+          const anchors = report.tiers
+            .flatMap((t) => t.sections)
+            .find((s) => s.id === "anchors");
+          return { ...tier, sections: [...tier.sections, anchors as ReportSection] };
+        }
+        return tier;
+      }),
+    };
+
+    expect(rowOf(buildCard(moved), "grounded").tier).toBe("self-reported");
+  });
+
+  it("omits a row whose section is absent, and records the omission", () => {
+    // A distinct behaviour from any mark: the row does not appear at all.
+    const report = buildRunReport(baseInput());
+    const without: RunReport = {
+      ...report,
+      tiers: report.tiers.map((tier) => ({
+        ...tier,
+        sections: tier.sections.filter((entry) => entry.id !== "oracle"),
+      })),
+    };
+    const card = buildCard(without);
+
+    expect(card.rows.map((row) => row.id)).not.toContain("graders");
+    expect(card.rows).toHaveLength(6);
+    expect(card.omitted).toEqual(["graders"]);
+  });
+
+  it("marks a not-recorded section unanswerable, never clear", () => {
+    const report = buildRunReport(
+      baseInput({ bundle: null, journalReports: [], commits: [], changedFiles: [] }),
+    );
+    const card = buildCard(report);
+
+    for (const id of ["reviewed", "concurrent", "reported"]) {
+      expect(rowOf(card, id).mark).toBe("not-recorded");
+    }
+    expect(card.unanswerable).toBeGreaterThanOrEqual(3);
+  });
+
+  it("counts zero dispatches as attention, not as clear", () => {
+    // The inverted shape, and the most important thing the card could get
+    // wrong: a run with no review at all must not read as a pass.
+    const report = buildRunReport(baseInput());
+    const emptied: RunReport = {
+      ...report,
+      tiers: report.tiers.map((tier) => ({
+        ...tier,
+        sections: tier.sections.map((entry) =>
+          entry.id === "dispatches" ? { ...entry, count: 0 } : entry,
+        ),
+      })),
+    };
+
+    expect(rowOf(buildCard(emptied), "reviewed").mark).toBe("attention");
+    expect(rowOf(buildCard(report), "reviewed").mark).toBe("clear");
+  });
+
+  it("counts a positive failing figure as attention", () => {
+    const report = buildRunReport(baseInput());
+    const raised: RunReport = {
+      ...report,
+      tiers: report.tiers.map((tier) => ({
+        ...tier,
+        sections: tier.sections.map((entry) =>
+          entry.id === "outcomes" ? { ...entry, failing: 3 } : entry,
+        ),
+      })),
+    };
+
+    expect(rowOf(buildCard(raised), "reported").mark).toBe("attention");
+    expect(rowOf(buildCard(report), "reported").mark).toBe("clear");
+  });
+
+  it("treats a data section with no figure as unanswerable rather than clear", () => {
+    // `failing` absent is not `failing: 0`. A row cannot be green because the
+    // number it is about was never recorded.
+    const report = buildRunReport(baseInput());
+    const stripped: RunReport = {
+      ...report,
+      tiers: report.tiers.map((tier) => ({
+        ...tier,
+        sections: tier.sections.map((entry) => {
+          if (entry.id !== "outcomes") return entry;
+          const { failing: _drop, ...rest } = entry;
+          return rest;
+        }),
+      })),
+    };
+
+    expect(rowOf(buildCard(stripped), "reported").mark).toBe("not-recorded");
+  });
+
+  /*
+   * The two refusals, asserted structurally rather than by word search.
+   *
+   * A first draft of these grepped the serialized card for "score", "grade",
+   * "role" and friends, and failed on the `graders` row — "grade" is a
+   * substring of "graders" and of "grades this project". A key-set assertion
+   * says the thing that is actually meant: these shapes have no field to put a
+   * score or a role in, so neither can be added without failing here.
+   */
+  it("has no field a composite score or a role judgment could live in", () => {
+    const card = buildCard(buildRunReport(baseInput()));
+
+    expect(Object.keys(card).sort()).toEqual(["omitted", "rows", "unanswerable"]);
+    for (const row of card.rows) {
+      expect(Object.keys(row).sort()).toEqual(["id", "mark", "question", "section", "tier"]);
+    }
+  });
+
+  it("carries no aggregate over the rows beyond counting the unanswerable ones", () => {
+    const card = buildCard(buildRunReport(baseInput()));
+    // `unanswerable` is a count of a state, not a weighting of the rows: it is
+    // exactly the number of not-recorded marks and nothing else.
+    expect(card.unanswerable).toBe(card.rows.filter((row) => row.mark === "not-recorded").length);
+    expect(typeof card.unanswerable).toBe("number");
   });
 });
 

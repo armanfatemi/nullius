@@ -77,6 +77,43 @@ With the two fields here, the card depends on nothing and the metrics change
 depends on the card for its row model, which is the direction the work actually
 runs in.
 
+## Decision 1c — the seven rows, named
+
+The change asserted "the seven question rows" throughout and never wrote them
+down. Enumerating them found the same defect twice more: a row for *was a spec
+touched* had no backing section, and two rows read a figure no section carried.
+
+| row | question | section | tier | mark |
+| --- | --- | --- | --- | --- |
+| `grounded` | Are load-bearing claims cited and verified? | `anchors` | code-verified | attention when `failing` > 0 |
+| `graders` | Was anything that grades this project weakened? | `oracle` | code-verified | attention when `count` > 0 |
+| `record` | Does the run's own record hold up? | `journal-validation` | code-verified | attention when `failing` > 0 |
+| `probe` | Is a review probe still planted? | `canary` | code-verified | attention when `failing` > 0 |
+| `reviewed` | Did agent review happen at all? | `dispatches` | hook-attested | attention when `count` is 0 |
+| `concurrent` | Did reviewers run together rather than in series? | `rounds` | hook-attested | attention when `count` is 0 |
+| `reported` | Did every review report back? | `outcomes` | hook-attested | attention when `failing` > 0 |
+
+**A row for "was a spec written" is dropped.** No section answers it. The report
+knows which files changed, not which of them are specs, and inventing that
+classification in the renderer is the map this design bans. It is replaced by
+`record`, which is better evidence and is already computed: a run whose own
+journal fails re-validation cannot support any of the three hook-attested rows,
+and the reader should learn that from the card rather than from four grey rows.
+
+**Two mark shapes, not one.** Five rows are "attention when the bad count is
+above zero". Two — `reviewed` and `concurrent` — are the opposite: zero
+dispatches means no review happened, so *zero* is the bad case. A single
+"failing > 0" rule would have rendered a run with no review at all as clear,
+which is the most important thing the card could get wrong.
+
+Both shapes read a named numeric field off the section, so neither is a
+heuristic and neither reaches for a record. The pair is a closed vocabulary in
+one constant, and each row's shape is asserted by name in a test.
+
+**`anchors` and `journal-validation` gain `failing` too**, for the same reason
+`outcomes` and `canary` did in Decision 1b: their figure existed only in a note
+string or a table.
+
 ## Decision 2 — the tri-state is mechanical, and derived from data already there
 
 Each row resolves to one of three marks. The mapping is a lookup, not a

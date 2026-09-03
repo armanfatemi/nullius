@@ -455,6 +455,124 @@ export interface NotRecordedEntry {
   reason: string;
 }
 
+/**
+ * What a card row can say, and the whole of it.
+ *
+ * Three states, because two would collapse the distinction the tiered document
+ * exists to hold: a figure nobody recorded and a figure that came back zero are
+ * different facts, and rendering the first as the second is the flattering
+ * default this report refuses everywhere else.
+ */
+export type CardMark = "clear" | "attention" | "not-recorded";
+
+/**
+ * How a row decides its mark, and the entire vocabulary of that decision.
+ *
+ * Two shapes rather than one. Most rows ask "how many of the bad thing", where
+ * more than none wants attention. Two rows — did review happen, did reviewers
+ * run together — ask the opposite: the count *is* the good thing, and zero is
+ * the finding. A single "above zero is bad" rule would have rendered a run with
+ * no review at all as clear, which is the most important thing a card claiming
+ * to describe review could get wrong.
+ *
+ * Both read a named numeric field off a section. Neither inspects a record,
+ * neither knows a record kind, and neither has a default branch: a field that
+ * is absent is `not-recorded`, never a guess.
+ */
+type MarkShape = "attention-when-positive" | "attention-when-zero";
+
+interface RowSpec {
+  id: string;
+  question: string;
+  /** The section id this row reads. Never a tier — see `buildCard`. */
+  section: string;
+  /** Which numeric field on that section carries this row's figure. */
+  figure: "count" | "failing";
+  shape: MarkShape;
+}
+
+/**
+ * The rows, in render order, and the only judgment in this feature.
+ *
+ * It is a constant rather than a computation for the same reason the kernel's
+ * PASSING set is: a calibration that decides an outcome has to be reviewable in
+ * one place, and testable by name. Each row is asserted individually.
+ *
+ * Every entry names a section that `buildRunReport` produces. A row whose
+ * section is missing is omitted and reported, never defaulted — which is what
+ * keeps this table from quietly becoming a second source of truth about what
+ * the report contains.
+ */
+const CARD_ROWS: readonly RowSpec[] = [
+  {
+    id: "grounded",
+    question: "Are load-bearing claims cited and verified?",
+    section: "anchors",
+    figure: "failing",
+    shape: "attention-when-positive",
+  },
+  {
+    id: "graders",
+    question: "Was anything that grades this project weakened?",
+    section: "oracle",
+    figure: "count",
+    shape: "attention-when-positive",
+  },
+  {
+    id: "record",
+    question: "Does the run's own record hold up?",
+    section: "journal-validation",
+    figure: "failing",
+    shape: "attention-when-positive",
+  },
+  {
+    id: "probe",
+    question: "Is a review probe still planted?",
+    section: "canary",
+    figure: "failing",
+    shape: "attention-when-positive",
+  },
+  {
+    id: "reviewed",
+    question: "Did agent review happen at all?",
+    section: "dispatches",
+    figure: "count",
+    shape: "attention-when-zero",
+  },
+  {
+    id: "concurrent",
+    question: "Did reviewers run together rather than in series?",
+    section: "rounds",
+    figure: "count",
+    shape: "attention-when-zero",
+  },
+  {
+    id: "reported",
+    question: "Did every review report back?",
+    section: "outcomes",
+    figure: "failing",
+    shape: "attention-when-positive",
+  },
+];
+
+export interface CardRow {
+  id: string;
+  question: string;
+  /** The section id this row read. A reference, never a copy of its content. */
+  section: string;
+  /** Read from the tier that contains the section. Never assigned here. */
+  tier: TierId;
+  mark: CardMark;
+}
+
+export interface Card {
+  rows: CardRow[];
+  /** Row ids whose section was not in the report. Stated, never silent. */
+  omitted: string[];
+  /** How many rendered rows are `not-recorded`. */
+  unanswerable: number;
+}
+
 export interface RunReport {
   kind: "run-report";
   version: typeof RUN_REPORT_VERSION;
@@ -677,6 +795,79 @@ interface BundleBlock {
 
 function shortSha(sha: string): string {
   return sha.slice(0, 7);
+}
+
+/**
+ * The card: one row per question a reviewer asks, projected from the report.
+ *
+ * Takes a built `RunReport` and nothing else. It has no `RunReportInput`
+ * parameter, so it cannot call git, read the bundle, or re-validate anything —
+ * every value it renders was computed by the builder above and is reachable
+ * from a section. That is the whole of the guarantee, and it is enforced by the
+ * signature rather than by discipline.
+ *
+ * **A row never assigns a tier.** It finds the tier that contains its section
+ * and reports that. There is no row-to-tier map here and no reading of a record
+ * kind: a section that moves tier moves its row with it, because there is no
+ * second place to edit. Three earlier drafts of this feature each invented an
+ * attribution the data did not carry, and this signature is the fourth draft's
+ * defence.
+ */
+export function buildCard(report: RunReport): Card {
+  const located = new Map<string, { section: ReportSection; tier: TierId }>();
+  for (const tier of report.tiers) {
+    for (const section of tier.sections) {
+      // First wins. Ids are unique across the report today; if that ever stops
+      // being true, the row reads the earlier tier rather than silently the
+      // later one, and the duplicate is a bug in the builder, not here.
+      if (!located.has(section.id)) located.set(section.id, { section, tier: tier.id });
+    }
+  }
+
+  const rows: CardRow[] = [];
+  const omitted: string[] = [];
+  for (const spec of CARD_ROWS) {
+    const found = located.get(spec.section);
+    if (found === undefined) {
+      // No section, no row. Rendering it anyway would mean inventing both a
+      // tier and a mark, which is exactly what this function refuses to do.
+      omitted.push(spec.id);
+      continue;
+    }
+    rows.push({
+      id: spec.id,
+      question: spec.question,
+      section: spec.section,
+      tier: found.tier,
+      mark: markOf(found.section, spec),
+    });
+  }
+
+  return {
+    rows,
+    omitted,
+    unanswerable: rows.filter((row) => row.mark === "not-recorded").length,
+  };
+}
+
+/**
+ * One row's mark, from one section's own fields.
+ *
+ * Absence is the first question and it is not a fallback: a section with no
+ * data, or with no figure recorded, cannot be clear. `failing: 0` and no
+ * `failing` at all are different answers, and only the first is a pass.
+ */
+function markOf(section: ReportSection, spec: RowSpec): CardMark {
+  if (section.status === "not-recorded") return "not-recorded";
+  const figure = spec.figure === "count" ? section.count : section.failing;
+  if (figure === undefined) return "not-recorded";
+  return spec.shape === "attention-when-zero"
+    ? figure === 0
+      ? "attention"
+      : "clear"
+    : figure > 0
+      ? "attention"
+      : "clear";
 }
 
 export function buildRunReport(input: RunReportInput): RunReport {
@@ -935,6 +1126,12 @@ function codeVerifiedSections(input: RunReportInput): ReportSection[] {
         "Every anchor in the range's touched documents, re-verified by re-reading the cited file. A failure here is rendered, not gated: the gate is `nullius check`, which runs on its own.",
         {
           count: results.length,
+          // The number the card's row is about, lifted out of the note string
+          // it was only reachable from. `check.summary.failures` rather than a
+          // recount here: the check document already decided which verdicts
+          // fail, and a second opinion about that in this file would be a copy
+          // of the kernel's PASSING set.
+          failing: check.summary.failures,
           table: { columns: ["verdict", "count"], rows: verdictRows },
           notes,
         },
@@ -1024,6 +1221,13 @@ function codeVerifiedSections(input: RunReportInput): ReportSection[] {
         JOURNAL_VALIDATION_STATEMENT,
         {
           count: input.journalReports.length,
+          // How many of the bundled journals failed re-validation. A run whose
+          // own record does not hold up cannot support any bundle-derived row,
+          // and the card says so on one line rather than through several grey
+          // ones.
+          failing: input.journalReports.filter((entry) =>
+            entry.report.findings.some((finding) => finding.verdict !== "ok"),
+          ).length,
           table: { columns: ["session", "schema", "records", "verdict"], rows },
         },
       ),
