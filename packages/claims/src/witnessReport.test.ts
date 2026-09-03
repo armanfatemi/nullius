@@ -575,6 +575,38 @@ describe("the oracle row", () => {
     expect(oracle.reason).toContain("oracles");
   });
 
+  it("does not render a partial oracle run as a clean one", () => {
+    // `runOracle` returns zero findings with `unconfigured: false` when git
+    // could not be diffed, and says so: "Zero findings because git could not be
+    // read is not zero findings." A card row over that count would render a run
+    // that checked nothing as a pass — the exact collapse the card exists to
+    // refuse. The section keeps its count and table, which are true of what was
+    // read; the row loses its figure.
+    const partial: OracleReport = {
+      ...CONFIGURED_ORACLE,
+      findings: [],
+      unreadable: ["8211685..f431193: fatal: bad object"],
+    };
+    const report = buildRunReport(baseInput({ oracleReport: partial }));
+    const oracle = section(report, "code-verified", "oracle");
+
+    expect(oracle.status).toBe("data");
+    expect(oracle.count).toBe(0);
+    expect(Object.hasOwn(oracle, "failing")).toBe(false);
+    expect(oracle.notes.join(" ")).toContain("partial");
+
+    const row = buildCard(report).rows.find((entry) => entry.id === "graders");
+    expect(row?.mark).toBe("not-recorded");
+  });
+
+  it("renders a complete oracle run with zero findings as clear", () => {
+    const clean: OracleReport = { ...CONFIGURED_ORACLE, findings: [], unreadable: [] };
+    const report = buildRunReport(baseInput({ oracleReport: clean }));
+
+    expect(section(report, "code-verified", "oracle").failing).toBe(0);
+    expect(buildCard(report).rows.find((entry) => entry.id === "graders")?.mark).toBe("clear");
+  });
+
   it("renders findings when the project does declare oracles", () => {
     const report = buildRunReport(baseInput({ oracleReport: CONFIGURED_ORACLE }));
     const oracle = section(report, "code-verified", "oracle");

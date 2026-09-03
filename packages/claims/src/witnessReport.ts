@@ -28,7 +28,7 @@
 import { describeCanary, type CanaryEntry } from "./canary";
 import type { CheckReport, ReportResult } from "./checkReport";
 import type { OracleReport } from "./oracle";
-import type { JournalFinding, JournalReport } from "./witness";
+import { isJournalFailure, type JournalFinding, type JournalReport } from "./witness";
 
 /** The report document's own schema version. Independent of `REPORT_VERSION`
  *  (`check --format json`) and of the envelope's `version`: three documents on
@@ -520,7 +520,9 @@ const CARD_ROWS: readonly RowSpec[] = [
     id: "graders",
     question: "Was anything that grades this project weakened?",
     section: "oracle",
-    figure: "count",
+    // `failing`, not `count`: they are the same number for a complete run, and
+    // only `failing` is withheld when the run was partial.
+    figure: "failing",
     shape: "attention-when-positive",
   },
   {
@@ -847,7 +849,7 @@ const MARK_WORD: Readonly<Record<CardMark, string>> = {
   "not-recorded": "not recorded",
 };
 
-export function buildCard(report: RunReport): Card {
+export function buildCard(report: Pick<RunReport, "tiers">): Card {
   const located = new Map<string, { section: ReportSection; tier: TierId }>();
   for (const tier of report.tiers) {
     for (const section of tier.sections) {
@@ -1034,7 +1036,7 @@ export function buildRunReport(input: RunReportInput): RunReport {
   // Built last, from the finished tiers, so it cannot see anything the tiers do
   // not carry — the same guarantee `buildCard`'s signature gives, made true at
   // the one call site that could have bypassed it.
-  return { ...built, card: buildCard(built as RunReport) };
+  return { ...built, card: buildCard(built) };
 }
 
 // ---------------------------------------------------------------------------
@@ -1217,6 +1219,14 @@ function codeVerifiedSections(input: RunReportInput): ReportSection[] {
         "Whether anything that grades this project was deleted, skipped or weakened in the range, and whether a decision accounted for it.",
         {
           count: oracle.findings.length,
+          // Absent when git could not be read for part of the range. Zero
+          // findings because nothing was diffed is not zero findings —
+          // `oracle.ts` says so where it synthesizes the empty result — and a
+          // card row over that count would render a partial run as a clean
+          // one. The section keeps its count and table, which are true of what
+          // *was* read; the row loses its figure and marks not-recorded, which
+          // is the honest answer to "was anything weakened".
+          ...(oracle.unreadable.length > 0 ? {} : { failing: oracle.findings.length }),
           table: {
             columns: ["verdict", "subject", "detail"],
             rows: oracle.findings.map((finding) => [
@@ -1265,7 +1275,10 @@ function codeVerifiedSections(input: RunReportInput): ReportSection[] {
           // and the card says so on one line rather than through several grey
           // ones.
           failing: input.journalReports.filter((entry) =>
-            entry.report.findings.some((finding) => finding.verdict !== "ok"),
+            // `isJournalFailure`, not `verdict !== "ok"`: the validator owns
+            // which verdicts fail, and a second copy here would over-flag the
+            // first advisory journal verdict anyone adds.
+            entry.report.findings.some((finding) => isJournalFailure(finding.verdict)),
           ).length,
           table: { columns: ["session", "schema", "records", "verdict"], rows },
         },

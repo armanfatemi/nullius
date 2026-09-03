@@ -45,12 +45,19 @@ And the `canary` section is built with notes and nothing else — no `count` at
 all — so the review-probe row, which is the one row that measures whether review
 *found* something rather than that it ran, has no value to project.
 
-So `ReportSection` gains **one named optional numeric field**, `failing`, and the
-two sections that owe their row a figure populate it. An earlier draft of this
+So `ReportSection` gains **one named optional numeric field**, `failing`, and
+every section that owes a card row a figure populates it. An earlier draft of this
 decision said two fields, one per row; building it showed both rows want the
 same quantity — *how many of the bad case* — so a second field would have been
-two names for one idea. One field, two populating sections. That is the whole of
-the kernel change here.
+two names for one idea. One field, and **five** sections populate it:
+`anchors`, `oracle`, `journal-validation`, `canary` and `outcomes`. Decision 1c
+below names the rows that read them.
+
+This paragraph has now been wrong twice about that number — it said two, then
+four — and both times because it was written from memory of the design rather
+than counted in the code. It is five, counted at
+`witnessReport.ts:1175, 1229, 1277, 1301, 1472`. That is the whole of the kernel
+change here.
 
 `count` is untouched and keeps meaning what it means: how many things the
 section is about. `failing` is how many of them are the case the row is asking
