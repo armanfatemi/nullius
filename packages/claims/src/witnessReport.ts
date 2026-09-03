@@ -813,6 +813,26 @@ function shortSha(sha: string): string {
  * attribution the data did not carry, and this signature is the fourth draft's
  * defence.
  */
+/**
+ * How a mark is drawn, and its word.
+ *
+ * The glyph is for the glance and the word is for everything else — a screen
+ * reader, a terminal without colour emoji, a `grep`. A card that carried only
+ * the glyph would be unreadable in exactly the places a maintainer triaging a
+ * queue actually reads it.
+ */
+const MARK_GLYPH: Readonly<Record<CardMark, string>> = {
+  clear: "\u2705",
+  attention: "\u26a0\ufe0f",
+  "not-recorded": "\u26aa",
+};
+
+const MARK_WORD: Readonly<Record<CardMark, string>> = {
+  clear: "clear",
+  attention: "look",
+  "not-recorded": "not recorded",
+};
+
 export function buildCard(report: RunReport): Card {
   const located = new Map<string, { section: ReportSection; tier: TierId }>();
   for (const tier of report.tiers) {
@@ -1708,6 +1728,59 @@ function renderTable(table: ReportTable): string[] {
  * The markdown form — what the Action posts, verbatim and without ever
  * interpolating a report string into a workflow command.
  */
+/**
+ * The card, as the lines that lead the document.
+ *
+ * Renders only what `buildCard` returned: an id, a question, a section id, a
+ * tier and a mark, every one of them a constant declared in this file. No
+ * contributor-controlled string reaches these lines, which is a stronger
+ * property than escaping one would be — it survives someone deleting an escape
+ * call. `escapeCell` is still applied, because a constant that stops being one
+ * should not silently become an injection.
+ */
+export function renderCard(card: Card): string[] {
+  const out: string[] = [];
+  out.push("## How this run was produced");
+  out.push("");
+
+  const total = card.rows.length;
+  if (card.unanswerable === 0) {
+    out.push(`All ${String(total)} checks below have an answer.`);
+  } else {
+    out.push(
+      `**${String(card.unanswerable)} of ${String(total)}** checks could not be answered — ` +
+        "the sections they read recorded nothing. A row with a hollow mark is a question this run " +
+        "cannot answer, which is not the same as a clean result.",
+    );
+  }
+  out.push("");
+  // Said once, above the table, because a reader skims marks rather than
+  // columns and the tier column alone does not carry it.
+  out.push(
+    "_A `code-verified` row was re-computed here by re-reading the repository. " +
+      "A `hook-attested` row comes from records the harness wrote, which the agent " +
+      "had no opportunity to decline. A `self-reported` row is the coordinator's " +
+      "own account of its run, and is the weakest of the three._",
+  );
+  out.push("");
+  out.push("| | check | reads | tier |");
+  out.push("| --- | --- | --- | --- |");
+  for (const row of card.rows) {
+    out.push(
+      `| ${MARK_GLYPH[row.mark]} ${MARK_WORD[row.mark]} | ${escapeCell(row.question)} | \`${escapeCell(row.section)}\` | ${escapeCell(row.tier)} |`,
+    );
+  }
+
+  if (card.omitted.length > 0) {
+    out.push("");
+    out.push(
+      `${String(card.omitted.length)} row(s) are not shown because no section in this ` +
+        `report answers them: ${card.omitted.map((id) => escapeCell(id)).join(", ")}.`,
+    );
+  }
+  return out;
+}
+
 export function renderMarkdown(
   report: RunReport,
   options: { budgetBytes?: number } = {},
@@ -1721,6 +1794,11 @@ export function renderMarkdown(
     `${String(report.range.commits)} commit(s), ${String(report.range.changedFiles)} file(s) changed. ` +
       "This report renders what happened; it does not gate. Every section shows its data or says why it has none.",
   );
+
+  // Ahead of the tiers, and therefore ahead of anything the budget can cut:
+  // truncation slices from the end, so the summary is the last thing lost.
+  out.push("");
+  out.push(...renderCard(buildCard(report)));
 
   for (const tier of report.tiers) {
     out.push("");

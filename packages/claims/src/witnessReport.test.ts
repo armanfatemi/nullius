@@ -945,6 +945,118 @@ describe("buildCard", () => {
 });
 
 /* -------------------------------------------------------------------------
+ * Rendering the card
+ * ---------------------------------------------------------------------- */
+
+describe("the rendered card", () => {
+  const report = buildRunReport(baseInput());
+  const markdown = renderMarkdown(report);
+
+  it("leads the document, ahead of the first tier", () => {
+    const card = markdown.indexOf("## How this run was produced");
+    const firstTier = markdown.indexOf("## Code-verified");
+    expect(card).toBeGreaterThan(-1);
+    expect(firstTier).toBeGreaterThan(-1);
+    expect(card).toBeLessThan(firstTier);
+  });
+
+  it("prints every row's question and its tier", () => {
+    const card = buildCard(report);
+    const head = markdown.slice(0, markdown.indexOf("## Code-verified"));
+    for (const row of card.rows) {
+      expect(head).toContain(row.question);
+      expect(head).toContain(row.tier);
+    }
+  });
+
+  it("states how many rows are unanswerable, above the table", () => {
+    const card = buildCard(report);
+    const head = markdown.slice(0, markdown.indexOf("## Code-verified"));
+    const table = head.indexOf("| --- |");
+    const claim = head.indexOf(`${String(card.unanswerable)} of ${String(card.rows.length)}`);
+    expect(claim).toBeGreaterThan(-1);
+    expect(claim).toBeLessThan(table);
+  });
+
+  it("says a self-reported row is a weaker claim, whenever one is rendered", () => {
+    // The tier column is not enough on its own: a reader skims marks, not
+    // columns. The sentence is asserted by content, not by presence of a task.
+    const moved: RunReport = {
+      ...report,
+      tiers: report.tiers.map((tier) => {
+        if (tier.id === "code-verified") {
+          return { ...tier, sections: tier.sections.filter((s) => s.id !== "oracle") };
+        }
+        if (tier.id === "self-reported") {
+          const oracle = report.tiers.flatMap((t) => t.sections).find((s) => s.id === "oracle");
+          return { ...tier, sections: [...tier.sections, oracle as ReportSection] };
+        }
+        return tier;
+      }),
+    };
+    const rendered = renderMarkdown(moved);
+    expect(buildCard(moved).rows.some((row) => row.tier === "self-reported")).toBe(true);
+    expect(rendered).toContain("own account");
+  });
+
+  it("names what it omitted, when a row had no section", () => {
+    const without: RunReport = {
+      ...report,
+      tiers: report.tiers.map((tier) => ({
+        ...tier,
+        sections: tier.sections.filter((entry) => entry.id !== "oracle"),
+      })),
+    };
+    const rendered = renderMarkdown(without);
+    expect(rendered).toContain("graders");
+    expect(rendered.slice(0, rendered.indexOf("## Code-verified"))).toContain("no section");
+  });
+
+  /*
+   * The card cannot be a markdown-injection vector, and the reason is stronger
+   * than escaping: a row carries an id, a question, a section id, a tier and a
+   * mark, and every one of those is a constant in this file. No contributor
+   * text reaches it. The test asserts that property rather than asserting that
+   * an escape function was called, because the property is what matters and it
+   * would survive someone deleting the escape call.
+   */
+  it("interpolates no contributor-controlled value", () => {
+    const hostile = "evil | pipe\n## fake heading\n`code` <img src=x>";
+    const poisoned: RunReport = {
+      ...report,
+      tiers: report.tiers.map((tier) => ({
+        ...tier,
+        sections: tier.sections.map((entry) => ({
+          ...entry,
+          title: `${entry.title} ${hostile}`,
+          statement: hostile,
+          notes: [hostile],
+        })),
+      })),
+    };
+    const head = renderMarkdown(poisoned).slice(
+      0,
+      renderMarkdown(poisoned).indexOf("## Code-verified"),
+    );
+
+    expect(head).not.toContain("evil");
+    expect(head).not.toContain("fake heading");
+  });
+
+  it("survives truncation, because it is emitted first", () => {
+    const full = renderMarkdown(report);
+    const cardOf = (text: string): string =>
+      text.slice(text.indexOf("## How this run was produced"), text.indexOf("## Code-verified"));
+    const truncated = renderMarkdown(report, { budgetBytes: 2_000 });
+
+    expect(truncated).toContain("**Truncated**");
+    // Byte-identical, not merely present: a partially truncated card is a
+    // summary a reader would trust and should not.
+    expect(cardOf(truncated)).toBe(cardOf(full));
+  });
+});
+
+/* -------------------------------------------------------------------------
  * The JSON discriminator
  * ---------------------------------------------------------------------- */
 
@@ -1189,7 +1301,13 @@ describe("a journal whose header names an older schema than its records", () => 
   it("fits a comment a reviewer will actually read", () => {
     // Before the collapse this rendered at 15,676 bytes, of which one table
     // cell was 3,994 and the repeated reason another 6,180.
-    expect(markdown.length).toBeLessThan(7_500);
+    //
+    // Raised from 7,500 when the card landed: the card is roughly 900 bytes of
+    // fixed prose and seven rows, and it is the part a reviewer reads. The
+    // bound exists to catch restatement coming back, not to keep the document
+    // at a particular length, so it moves by the size of a deliberate addition
+    // and no further.
+    expect(markdown.length).toBeLessThan(8_500);
   });
 });
 
