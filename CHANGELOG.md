@@ -4,6 +4,67 @@ Bare version headings are the kernel — `@nullius-inverba/claims` and its
 unscoped alias `evidence-anchors`, which ship together. Headings prefixed with
 a package name are that package's own release; the kit versions independently.
 
+## 0.11.0
+
+Two changes to what a pull request comment says, and one to what it costs to
+read. Both were in the repository and neither was in a published tarball, so
+until this release the Action rendered the previous behaviour — a gap worth
+naming, because it is the same one `CLAUDE.md` documents for the witness hooks
+and it applies to the Action identically.
+
+### Added
+
+- **A reviewer card leads the run report.** Seven rows, one per question a
+  reviewer asks about how a change was produced: are load-bearing claims cited
+  and verified, was anything that grades the project weakened, does the run's
+  own record hold up, is a review probe still planted, did agent review happen
+  at all, did reviewers run together, did every review report back. Each row
+  carries a mark, the section it read, and that section's tier.
+
+  Three marks, never two. A figure nobody recorded and a figure that came back
+  zero are different facts, and the card refuses to render the first as the
+  second — six distinct paths where a synthesized zero would have read as a
+  pass were found and closed before release, including one where a shallow
+  clone or a squashed history left every stamped anchor unverifiable and the
+  row would have reported a pass over nothing verified.
+
+  The card carries no composite score and infers no agent's role from its name.
+  Both were proposed and refused: a weighted aggregate over these rows is a
+  judgment in the shape of a measurement, and deciding an agent is a critique
+  reviewer because its name matched a pattern is a claim about a role evidenced
+  by a string.
+
+- **`ReportSection.failing`** — how many of a section's subjects are the case a
+  reader is asking about, where that differs from `count`. Absent rather than
+  zero when a section has nothing to say, on the same rule `count` follows.
+
+- **The run report document is version 2**, carrying the card under its own
+  `card` key. The tiers are unchanged and remain the source; a row references
+  its section by id and copies none of its content.
+
+### Changed
+
+- **The Action accepts a set of run-report versions rather than one.** It
+  re-invokes a pinned `claims-version`, so a caller holding an older pin
+  produces an older document; an equality would have stopped posting for every
+  one of them the day the Action learned a newer one. A version outside the set
+  is still refused rather than guessed at.
+
+- **`nullius-kit`'s finding extraction tolerates markdown emphasis** around a
+  severity tag. A reviewer writing ``- `[blocker]` `` previously had every
+  finding dropped, so the journal reported no unanswered blockers while one was
+  outstanding — and `SUPPRESSED-FINDING` could not fire, because it compares
+  resolutions against recorded findings and nothing had been recorded.
+
+### Fixed
+
+- **The run report stated one cause once, not once per section it blocked.** A
+  single unreadable journal previously produced a 9.5 KB table cell listing
+  every finding and repeated its reason thirty times: 74% of a 21 KB comment.
+  Findings are grouped by detail with their counts stated, a shared reason is
+  given in full once and pointed at thereafter, and the closing list groups by
+  cause. On the range that motivated it, 21,254 bytes became 7,378.
+
 ## 0.10.0
 
 Adds the run report: `witness report` in the kernel, `witness bundle` in the
