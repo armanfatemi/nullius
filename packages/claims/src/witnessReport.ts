@@ -923,7 +923,7 @@ export function buildRunReport(input: RunReportInput): RunReport {
 
   // --- Which journals are readable, and can any of the bundle tiers be counted?
   const failedJournals = input.journalReports.filter((entry) =>
-    entry.report.findings.some((finding) => finding.verdict !== "ok"),
+    entry.report.findings.some((finding) => isJournalFailure(finding.verdict)),
   );
 
   let block: BundleBlock | null = null;
@@ -939,7 +939,7 @@ export function buildRunReport(input: RunReportInput): RunReport {
     // table that could be acted on under thirteen copies of its own text.
     const detail = failedJournals
       .map((entry) => {
-        const first = entry.report.findings.find((finding) => finding.verdict !== "ok");
+        const first = entry.report.findings.find((finding) => isJournalFailure(finding.verdict));
         return `${entry.session} reports ${first?.verdict.toUpperCase() ?? "an invalid record"} at line ${String(first?.line ?? 0)}`;
       })
       .join("; ");
@@ -1192,7 +1192,15 @@ function codeVerifiedSections(input: RunReportInput): ReportSection[] {
           // exactly: a disarmed gate and a satisfied one produce the same green
           // check. The verdict counts stay in the table below, which is where a
           // reader sees how many.
-          ...(unverifiableAnchors(check) > 0 ? {} : { failing: check.summary.failures }),
+          //
+          // Also withheld when nothing was checked. `checkReport.ts` names this
+          // shape where it computes the signal: "All 0 grounding marker(s)
+          // verified." is literally true and reads as a pass on a repository
+          // the tool has not examined. `summary.next` is non-null exactly then,
+          // and it is the kernel's own answer rather than a recount here.
+          ...(unverifiableAnchors(check) > 0 || check.summary.next !== null || results.length === 0
+            ? {}
+            : { failing: check.summary.failures }),
           table: { columns: ["verdict", "count"], rows: verdictRows },
           notes,
         },
@@ -1283,7 +1291,7 @@ function codeVerifiedSections(input: RunReportInput): ReportSection[] {
     );
   } else {
     const rows = input.journalReports.map((entry) => {
-      const failures = entry.report.findings.filter((finding) => finding.verdict !== "ok");
+      const failures = entry.report.findings.filter((finding) => isJournalFailure(finding.verdict));
       return [
         entry.session,
         entry.report.version,

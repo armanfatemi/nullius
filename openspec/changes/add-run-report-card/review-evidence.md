@@ -495,3 +495,45 @@ dispatched: architecture-reviewer, test-engineer
 found by: architecture-reviewer
 note: uncontaminated. rule-auditor was not dispatched, so no reviewer ran the
   checker against the change directory and no reviewer was told a probe existed.
+
+## Probe — stage 2
+
+CORRECTION to all four probe verdicts recorded above.
+
+The plant is deterministic: harvestFalseClaim sorts a source glob and takes the
+first file with a recognisable symbol, with no seed and no variation. The same
+sentence is produced on every plant against an unchanged repository.
+
+That sentence is already published in this repository. It appears in ten or more
+committed files on main, the earliest dated 2026-08-30 — carried there by the
+pipeline's own instructions, which require the plant location in
+review-evidence.md, and by reviewers quoting the claim verbatim when they flag
+it, which the recorder faithfully captures.
+
+And architecture-reviewer carries a committed memory file, .claude/agent-memory/
+architecture-reviewer/project_proposal-injected-prose.md, that names the pattern
+exactly: "a false, topic-unrelated `retry` 'must stay in sync' sentence spliced
+into a document under openspec/changes/", noting it has been "Seen 7+ times".
+test-engineer and rule-auditor carry no equivalent.
+
+Re-scored, honestly:
+
+  iteration 1 — rule-auditor's catch was contaminated by my progress.md leak;
+                test-engineer's was genuine.
+  iteration 2 — architecture-reviewer has the pattern memorised;
+                test-engineer's catch was genuine.
+  iteration 3 — same; test-engineer's catch was genuine.
+  iteration 4 — architecture-reviewer only. Pattern recall, no independent
+                reading. This is the WEAKEST round, not the strongest, and I
+                described it above as the only uncontaminated one. That was
+                wrong.
+
+What the four CAUGHT verdicts actually establish is narrower than reported: that
+test-engineer, which has no memory of the pattern, read the documents closely
+enough to find a spliced false claim in three of four rounds. That is a real
+result and it is worth having. It is not "the review layer was measured alive"
+four times.
+
+The probe cannot be repaired by being more careful. Its text is deterministic,
+its location is mandated to be committed, and reviewers correctly quote what
+they find. Filed as its own change.

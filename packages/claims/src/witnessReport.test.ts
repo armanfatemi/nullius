@@ -829,10 +829,50 @@ describe("a figure that is zero because nothing was checked", () => {
     expect(markOfRow(report, "grounded")).toBe("not-recorded");
   });
 
+  it("withholds the anchor figure when nothing was checked at all", () => {
+    // `checkReport.ts` names this where it computes the signal: "All 0
+    // grounding marker(s) verified." is literally true and reads as a pass on a
+    // repository the tool has not examined. A range whose documents carry no
+    // anchors produced exactly that green row.
+    const nothing: CheckReport = {
+      ...PR58_CHECK,
+      documents: [],
+      summary: { ...PR58_CHECK.summary, failures: 0, documents: 0, verdicts: {}, next: "run: nullius check ..." },
+    };
+    const report = buildRunReport(baseInput({ checkRun: nothing }));
+
+    expect(Object.hasOwn(section(report, "code-verified", "anchors"), "failing")).toBe(false);
+    expect(markOfRow(report, "grounded")).toBe("not-recorded");
+  });
+
+  it("does not withhold outcomes merely because one journal was unreadable", () => {
+    // A reviewer proposed that a readable journal beside an unsupported-version
+    // one would emit a partial never-reported count. It cannot: an
+    // unsupported-version finding is a journal failure, so the whole bundle
+    // tier is blocked before any outcome is counted. Asserted so the reasoning
+    // is checkable rather than remembered.
+    const bundle = readBundle("pr58-bundle.json");
+    const good = reportsFor(bundle);
+    const unread: BundledJournalReport = {
+      session: "unread",
+      report: {
+        ...(good[0] as BundledJournalReport).report,
+        findings: [
+          { line: 1, verdict: "unsupported-version", subject: "header", detail: "schema 9.9" },
+        ],
+        outcomes: { found: 0, empty: 0, noReport: 0 },
+      },
+    };
+    const report = buildRunReport(baseInput({ bundle, journalReports: [...good, unread] }));
+
+    expect(section(report, "hook-attested", "outcomes").status).toBe("not-recorded");
+    expect(markOfRow(report, "reported")).toBe("not-recorded");
+  });
+
   it("still marks anchors clear when every stamp did resolve", () => {
     const settled: CheckReport = {
       ...PR58_CHECK,
-      summary: { ...PR58_CHECK.summary, failures: 0, verdicts: { ok: 9 } },
+      summary: { ...PR58_CHECK.summary, failures: 0, verdicts: { ok: 9 }, next: null },
     };
     expect(markOfRow(buildRunReport(baseInput({ checkRun: settled })), "grounded")).toBe("clear");
   });
