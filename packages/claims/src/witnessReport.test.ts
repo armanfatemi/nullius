@@ -1192,6 +1192,55 @@ describe("parseBundle", () => {
 });
 
 /* -------------------------------------------------------------------------
+ * The two places a version number lives
+ * ---------------------------------------------------------------------- */
+
+describe("the Action's accepted run-report versions", () => {
+  /*
+   * The version now lives here and in `action/action.yml`, and the Action's
+   * copy is the one that decides whether a comment is posted at all. It reads
+   * `.version` and refuses a document it does not recognise — correctly — so
+   * raising RUN_REPORT_VERSION without teaching the Action would make the run
+   * report silently stop posting while the step still succeeded. That is the
+   * failure this file exists to make impossible elsewhere.
+   *
+   * Read as text rather than parsed: no package.json in this repo carries a
+   * YAML dependency, and `packages/kit/src/init.test.ts` already asserts
+   * against rendered YAML the same way.
+   */
+  const actionYml = readFileSync(
+    fileURLToPath(new URL("../../../action/action.yml", import.meta.url)),
+    "utf8",
+  );
+
+  function acceptedVersions(): number[] {
+    const match = /ACCEPTED_REPORT_VERSIONS='([^']*)'/.exec(actionYml);
+    if (match === null) throw new Error("no ACCEPTED_REPORT_VERSIONS in action/action.yml");
+    return (match[1] ?? "")
+      .split(/\s+/)
+      .filter((token) => token.length > 0)
+      .map(Number);
+  }
+
+  it("contains the version this build produces", () => {
+    expect(acceptedVersions()).toContain(RUN_REPORT_VERSION);
+  });
+
+  it("is a set the Action iterates, not an equality it compares", () => {
+    // An equality would stop posting for every caller pinned to an older
+    // claims release the day this action learned a newer document.
+    expect(acceptedVersions().length).toBeGreaterThan(1);
+    expect(actionYml).toContain("for accepted in $ACCEPTED_REPORT_VERSIONS");
+    expect(actionYml).not.toMatch(/\[ "\$version" != '\d+' \]/);
+  });
+
+  it("still refuses a version outside the set rather than guessing", () => {
+    expect(actionYml).toContain("Not posted");
+    expect(actionYml).toContain("rendered=false");
+  });
+});
+
+/* -------------------------------------------------------------------------
  * Goldens. They depend on determinism, above.
  * ---------------------------------------------------------------------- */
 
