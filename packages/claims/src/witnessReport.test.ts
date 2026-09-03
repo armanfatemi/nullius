@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import type { CanaryEntry } from "./canary";
 import type { CheckReport } from "./checkReport";
 import type { OracleReport } from "./oracle";
-import { validateJournal, type JournalReport } from "./witness";
+import { validateJournal, type JournalFinding, type JournalReport } from "./witness";
 import {
   buildRunReport,
   detectRounds,
@@ -20,6 +20,8 @@ import {
   renderJson,
   renderMarkdown,
   ROUND_WINDOW_MS,
+  summariseJournalFindings,
+  VALIDATION_GROUP_CAP,
   RUN_REPORT_VERSION,
   type BundledJournalReport,
   type ReportSection,
@@ -822,5 +824,170 @@ describe("what a green journal-validation row does not certify", () => {
   it("reports every finding a journal carries, not only the first", () => {
     const journal: JournalReport = validateJournal(fixture("rejected-lines.jsonl"));
     expect(journal.findings.filter((f) => f.verdict !== "ok").length).toBeGreaterThan(1);
+  });
+});
+
+/* -------------------------------------------------------------------------
+ * Repetition
+ *
+ * One root cause must not be restated once per section it blocks. The bundle
+ * behind `stale-header-bundle.json` is the real one from PR #80, truncated:
+ * its header declares schema 0.2 and its records carry kinds that arrived at
+ * 0.3, so every one of them is MALFORMED and the whole bundle is uncountable.
+ * That is a single fact. Rendered naively it became 74% of a 21 KB comment —
+ * a 9.5 KB table cell listing 57 findings with 6 distinct details, plus the
+ * blocking reason repeated thirty times.
+ * ---------------------------------------------------------------------- */
+
+describe("a journal whose header names an older schema than its records", () => {
+  const bundle = readBundle("stale-header-bundle.json");
+  const reports = reportsFor(bundle);
+  const report = buildRunReport(
+    baseInput({
+      bundle,
+      journalReports: reports,
+      changedFiles: bundle.selection.changedFiles,
+      commits: bundle.range.commits,
+    }),
+  );
+  const markdown = renderMarkdown(report);
+  const failures = reports.flatMap((entry) =>
+    entry.report.findings.filter((finding) => finding.verdict !== "ok"),
+  );
+
+  it("is rejected once per offending record, over few distinct details", () => {
+    // The premise of every assertion below: many findings, one cause.
+    expect(failures.length).toBeGreaterThan(20);
+    expect(new Set(failures.map((finding) => finding.detail)).size).toBe(4);
+  });
+
+  it("groups the validation cell by detail instead of listing every line", () => {
+    const cell = JSON.stringify(section(report, "code-verified", "journal-validation").table);
+    const rendered = (cell.match(/MALFORMED/g) ?? []).length;
+    expect(rendered).toBeLessThanOrEqual(VALIDATION_GROUP_CAP);
+    expect(rendered).toBeLessThan(failures.length);
+  });
+
+  it("still names how many records each group covers, so the collapse loses no count", () => {
+    const cell = JSON.stringify(section(report, "code-verified", "journal-validation").table);
+    // The largest group's size is stated rather than implied by a list length.
+    const biggest = Math.max(
+      ...[...new Set(failures.map((f) => f.detail))].map(
+        (detail) => failures.filter((f) => f.detail === detail).length,
+      ),
+    );
+    // `(n)` rather than `\u00d7n`, following the burst table three sections down:
+    // one document that spells the same idea two ways invites the reader to
+    // conclude the rule is decorative.
+    expect(cell).toContain(`(${String(biggest)} records`);
+  });
+
+  it("states the blocking reason in full at most twice, however many sections it blocks", () => {
+    const blocked = report.tiers
+      .flatMap((entry) => entry.sections)
+      .filter((entry) => entry.status === "not-recorded");
+    expect(blocked.length).toBeGreaterThan(10);
+    const occurrences = markdown.split("a bundled journal did not re-validate").length - 1;
+    expect(occurrences).toBeLessThanOrEqual(2);
+  });
+
+  it("points a repeat at the section that carries the full reason", () => {
+    expect(markdown).toContain("Bundled journals re-validated");
+    expect(markdown).toMatch(/\*\*Not recorded:\*\* as above/);
+  });
+
+  it("keeps every blocked section's own reason intact in the JSON form", () => {
+    // The collapse is a rendering decision. A consumer reading the document
+    // gets each section's reason in full, exactly as before — otherwise this
+    // is not a shortening, it is a deletion.
+    const document = JSON.parse(renderJson(report)) as RunReport;
+    const blocked = document.tiers
+      .flatMap((entry) => entry.sections)
+      .filter((entry) => entry.status === "not-recorded");
+    for (const entry of blocked) {
+      expect(entry.reason).toBeTruthy();
+      expect(entry.reason?.length).toBeGreaterThan(40);
+    }
+    expect(
+      blocked.filter((entry) => entry.reason?.includes("did not re-validate")).length,
+    ).toBeGreaterThan(10);
+  });
+
+  it("fits a comment a reviewer will actually read", () => {
+    // Before the collapse this rendered at 15,676 bytes, of which one table
+    // cell was 3,994 and the repeated reason another 6,180.
+    expect(markdown.length).toBeLessThan(7_500);
+  });
+});
+
+describe("summariseJournalFindings", () => {
+  function finding(line: number, detail: string): JournalFinding {
+    return { line, verdict: "malformed", subject: `r${String(line)}`, detail };
+  }
+
+  it("renders a lone finding exactly as it always did", () => {
+    expect(summariseJournalFindings([finding(7, "no terminal record")])).toBe(
+      "MALFORMED at line 7: no terminal record",
+    );
+  });
+
+  it("says `valid` for a journal with nothing wrong with it", () => {
+    expect(summariseJournalFindings([])).toBe("valid");
+  });
+
+  it("names the earliest line in a group, not whichever arrived first", () => {
+    const summary = summariseJournalFindings([finding(90, "same"), finding(12, "same")]);
+    expect(summary).toBe("MALFORMED (2 records, first at line 12): same");
+  });
+
+  it("caps the distinct groups and states the drop rather than hiding it", () => {
+    // The fixture bundle has exactly as many distinct details as the cap
+    // allows, so the drop notice has no other coverage.
+    const many = Array.from({ length: VALIDATION_GROUP_CAP + 3 }, (_, index) =>
+      finding(index + 1, `cause ${String(index)}`),
+    );
+    const summary = summariseJournalFindings(many);
+    expect((summary.match(/MALFORMED/g) ?? []).length).toBe(VALIDATION_GROUP_CAP);
+    expect(summary).toContain("+3 further distinct finding(s)");
+    expect(summary).toContain("the JSON form carries them all");
+  });
+});
+
+/* -------------------------------------------------------------------------
+ * The closing list groups by cause
+ * ---------------------------------------------------------------------- */
+
+describe("the closing not-recorded list, when one cause blocks many sections", () => {
+  const bundle = readBundle("stale-header-bundle.json");
+  const report = buildRunReport(
+    baseInput({
+      bundle,
+      journalReports: reportsFor(bundle),
+      changedFiles: bundle.selection.changedFiles,
+      commits: bundle.range.commits,
+    }),
+  );
+
+  it("prints one bullet per distinct reason, not one per section", () => {
+    const markdown = renderMarkdown(report);
+    const closing = markdown.slice(markdown.lastIndexOf("## Not recorded"));
+    const bullets = (closing.match(/^- /gm) ?? []).length;
+    const distinct = new Set(report.notRecorded.map((entry) => entry.reason)).size;
+    expect(bullets).toBe(distinct);
+    expect(bullets).toBeLessThan(report.notRecorded.length);
+  });
+
+  it("names every section the reason covers, so grouping hides no section", () => {
+    const markdown = renderMarkdown(report);
+    const closing = markdown.slice(markdown.lastIndexOf("## Not recorded"));
+    for (const entry of report.notRecorded) {
+      expect(closing).toContain(entry.section);
+    }
+  });
+
+  it("leaves the JSON list one entry per section", () => {
+    const document = JSON.parse(renderJson(report)) as RunReport;
+    expect(document.notRecorded.length).toBe(report.notRecorded.length);
+    expect(document.notRecorded.length).toBeGreaterThan(10);
   });
 });

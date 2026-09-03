@@ -147,7 +147,7 @@ The in-range mutations between consecutive rounds or commits, grouped by path.
 
 `prompt` records — what the operator asked for. The one record in the journal the agent did not cause.
 
-**Not recorded:** ledger counts not recorded — 'pr58-session' is version 0.2, and the run ledger's counters arrived at 0.6
+**Not recorded:** as above, under "Findings raised".
 
 ### Model and tokens
 
@@ -163,31 +163,31 @@ _Written by a coordinator about its own run. Internally consistent; not evidence
 
 How many records carried `origin: "self-reported"` of their own, or none under a self-reported header. Journal-wide.
 
-**Not recorded:** tier breakdown not recorded — 'pr58-session' is version 0.2, and per-record attribution arrived at 0.6
+**Not recorded:** as above, under "Records attributed to the harness".
 
 ### Stages
 
 `stage` records — the pipeline phases the run went through.
 
-**Not recorded:** ledger counts not recorded — 'pr58-session' is version 0.2, and the run ledger's counters arrived at 0.6
+**Not recorded:** as above, under "Findings raised".
 
 ### Resolutions
 
 `resolution` records — what happened to each finding.
 
-**Not recorded:** ledger counts not recorded — 'pr58-session' is version 0.2, and the run ledger's counters arrived at 0.6
+**Not recorded:** as above, under "Findings raised".
 
 ### Decisions
 
 `decision` records — an approach chosen, and why.
 
-**Not recorded:** ledger counts not recorded — 'pr58-session' is version 0.2, and the run ledger's counters arrived at 0.6
+**Not recorded:** as above, under "Findings raised".
 
 ### Checks
 
 `check` records — a command ran, and what it showed.
 
-**Not recorded:** ledger counts not recorded — 'pr58-session' is version 0.2, and the run ledger's counters arrived at 0.6
+**Not recorded:** as above, under "Findings raised".
 
 ## Unattributed
 
@@ -197,7 +197,7 @@ _Records that belong to nobody: no origin of their own, under a header that clai
 
 The validator's third partition: records with no origin of their own under a header whose origin is null or absent, plus any record whose origin this schema cannot read. Journal-wide.
 
-**Not recorded:** tier breakdown not recorded — 'pr58-session' is version 0.2, and per-record attribution arrived at 0.6
+**Not recorded:** as above, under "Records attributed to the harness".
 
 ## Timeline
 
@@ -263,14 +263,9 @@ Rounds group dispatches starting within 120000 ms of the first.
 ## Not recorded
 
 - **code-verified / Oracle conservation** — not configured — this project declares no "oracles" key in nullius.config.json, so this run checked nothing. An unconfigured project and a project whose oracle held still are different facts; declare the glob that grades this project to tell them apart.
-- **hook-attested / Records attributed to the harness** — tier breakdown not recorded — 'pr58-session' is version 0.2, and per-record attribution arrived at 0.6
-- **hook-attested / Findings raised** — ledger counts not recorded — 'pr58-session' is version 0.2, and the run ledger's counters arrived at 0.6
-- **hook-attested / Operator turns** — ledger counts not recorded — 'pr58-session' is version 0.2, and the run ledger's counters arrived at 0.6
+- **3 section(s)** — tier breakdown not recorded — 'pr58-session' is version 0.2, and per-record attribution arrived at 0.6
+  - hook-attested / Records attributed to the harness, self-reported / Records the coordinator claimed, unattributed / Records that belong to nobody
+- **6 section(s)** — ledger counts not recorded — 'pr58-session' is version 0.2, and the run ledger's counters arrived at 0.6
+  - hook-attested / Findings raised, hook-attested / Operator turns, self-reported / Stages, self-reported / Resolutions, self-reported / Decisions, self-reported / Checks
 - **hook-attested / Model and tokens** — no report record in the bundled journal(s) carries usage — the recorder writes token counts at journal version 0.6
-- **self-reported / Records the coordinator claimed** — tier breakdown not recorded — 'pr58-session' is version 0.2, and per-record attribution arrived at 0.6
-- **self-reported / Stages** — ledger counts not recorded — 'pr58-session' is version 0.2, and the run ledger's counters arrived at 0.6
-- **self-reported / Resolutions** — ledger counts not recorded — 'pr58-session' is version 0.2, and the run ledger's counters arrived at 0.6
-- **self-reported / Decisions** — ledger counts not recorded — 'pr58-session' is version 0.2, and the run ledger's counters arrived at 0.6
-- **self-reported / Checks** — ledger counts not recorded — 'pr58-session' is version 0.2, and the run ledger's counters arrived at 0.6
-- **unattributed / Records that belong to nobody** — tier breakdown not recorded — 'pr58-session' is version 0.2, and per-record attribution arrived at 0.6
 - **session review-only** — overlaps the range in time but mutates no file in it — a review-only session has this shape; include it with --include &lt;session&gt; if it belongs — carry it with: witness bundle --include review-only
