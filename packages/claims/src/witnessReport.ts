@@ -644,6 +644,17 @@ export interface RunReportInput {
   /** The registered canary, if any. Rendered through `describeCanary` with
    *  `reveal` unset, so neither its document nor its line can reach the page. */
   canary?: CanaryEntry | null;
+  /**
+   * Why the canary registry could not be read, when it could not.
+   *
+   * `loadActiveCanary` returns `entry: null` alongside a warning for an
+   * unparseable registry, an invalid entry, and an unsafe path — three states
+   * where "no canary is registered" is a guess rather than a reading. Without
+   * this the row renders clear over a registry nobody could open, which is the
+   * same defect as a synthesized zero and reached this report through a
+   * destructuring that dropped the warning.
+   */
+  canaryUnreadable?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -1172,7 +1183,16 @@ function codeVerifiedSections(input: RunReportInput): ReportSection[] {
           // recount here: the check document already decided which verdicts
           // fail, and a second opinion about that in this file would be a copy
           // of the kernel's PASSING set.
-          failing: check.summary.failures,
+          //
+          // Withheld when any anchor came back `unverifiable-rev`. That verdict
+          // passes, and it should — a clone that cannot resolve a commit has no
+          // evidence about the author. But it means the stamped half of those
+          // citations was never settled, so `failures: 0` is "nothing was
+          // checked", not "nothing failed". `merge-never-squash.md` names this
+          // exactly: a disarmed gate and a satisfied one produce the same green
+          // check. The verdict counts stay in the table below, which is where a
+          // reader sees how many.
+          ...(unverifiableAnchors(check) > 0 ? {} : { failing: check.summary.failures }),
           table: { columns: ["verdict", "count"], rows: verdictRows },
           notes,
         },
@@ -1226,7 +1246,15 @@ function codeVerifiedSections(input: RunReportInput): ReportSection[] {
           // one. The section keeps its count and table, which are true of what
           // *was* read; the row loses its figure and marks not-recorded, which
           // is the honest answer to "was anything weakened".
-          ...(oracle.unreadable.length > 0 ? {} : { failing: oracle.findings.length }),
+          // Withheld whenever some part of the run did not happen, not only
+          // when git failed. `weakeningUnchecked` names every declared oracle
+          // glob with no `weakening` marker, which means the weakened sub-check
+          // never ran — and "was anything weakened" is precisely this row's
+          // question. Zero findings from a check that was skipped is not zero
+          // findings.
+          ...(oracle.unreadable.length > 0 || oracle.weakeningUnchecked.length > 0
+            ? {}
+            : { failing: oracle.findings.length }),
           table: {
             columns: ["verdict", "subject", "detail"],
             rows: oracle.findings.map((finding) => [
@@ -1288,6 +1316,7 @@ function codeVerifiedSections(input: RunReportInput): ReportSection[] {
 
   // --- Canary
   const canary = input.canary ?? null;
+  const canaryUnreadable = input.canaryUnreadable;
   sections.push(
     dataSection(
       "canary",
@@ -1298,11 +1327,17 @@ function codeVerifiedSections(input: RunReportInput): ReportSection[] {
         // only the registration state — not whether a reviewer found it — so
         // this figure reports an uncleared probe, which is a merge blocker, and
         // makes no claim about whether the review worked.
-        failing: canary === null ? 0 : 1,
+        //
+        // Withheld when the registry could not be read. A null entry from an
+        // unparseable registry and a null entry from an empty one are the same
+        // value and different facts.
+        ...(canaryUnreadable === undefined ? { failing: canary === null ? 0 : 1 } : {}),
         notes: [
-          canary === null
-            ? "No canary is registered for this repository."
-            : `A canary is registered (${describeCanary(canary)}). Run: nullius canary clear — before approval.`,
+          canaryUnreadable !== undefined
+            ? `The canary registry could not be read, so whether a probe is planted is unknown — ${canaryUnreadable}`
+            : canary === null
+              ? "No canary is registered for this repository."
+              : `A canary is registered (${describeCanary(canary)}). Run: nullius canary clear — before approval.`,
         ],
       },
     ),
@@ -1319,6 +1354,19 @@ function codeVerifiedSections(input: RunReportInput): ReportSection[] {
  * pair the probe measures whether a reviewer found for themselves. The failure
  * is still counted and still shown — only its location is withheld.
  */
+/**
+ * Anchors whose stamped commit could not be resolved.
+ *
+ * `unverifiable-rev` is a passing verdict and belongs in the passing set: a
+ * clone that cannot read the history it was pointed at has learned nothing
+ * about the author, and accusing them would be the wrong call. But a passing
+ * verdict is not a verified one, and a card row that cannot tell the two apart
+ * reports a disarmed gate as a satisfied one.
+ */
+function unverifiableAnchors(check: CheckReport): number {
+  return check.summary.verdicts["unverifiable-rev"] ?? 0;
+}
+
 function anchorSubject(result: ReportResult): string {
   if (result.claim.kind === "canary") {
     return "CANARY-PRESENT — a registered canary is still planted in a checked document (location withheld); run: nullius canary clear — before approval";
@@ -1469,7 +1517,15 @@ function hookAttestedSections(
         count: outcomes.found + outcomes.empty + outcomes.noReport,
         // The one of the three a reader acts on, lifted out of the table so a
         // consumer reads it as a number rather than by matching a row label.
-        failing: outcomes.noReport,
+        //
+        // Withheld when no dispatch reached a terminal state at all. A journal
+        // whose schema this build cannot read contributes three zeros, and
+        // `noReport: 0` then means "nothing was counted" rather than "every
+        // review reported back". `journal-validation` flags that separately,
+        // but a row has to stand on its own section.
+        ...(outcomes.found + outcomes.empty + outcomes.noReport === 0
+          ? {}
+          : { failing: outcomes.noReport }),
         table: {
           columns: ["outcome", "count"],
           rows: [
@@ -1777,6 +1833,10 @@ export function renderCard(card: Card): string[] {
 
   const total = card.rows.length;
   if (card.unanswerable === 0) {
+    // `total` is the number of rows rendered, which `omitted` has already
+    // shrunk. Saying "all N" over a denominator something was removed from
+    // would be true of the table and misleading about the report, so the
+    // omission is stated on its own line below rather than folded in here.
     out.push(`All ${String(total)} checks below have an answer.`);
   } else {
     out.push(
@@ -1940,5 +2000,11 @@ export function renderMarkdown(
 
 /** One pretty-printed JSON document, two-space indent, trailing newline. */
 export function renderJson(report: RunReport): string {
-  return `${JSON.stringify(report, null, 2)}\n`;
+  // The card is re-derived here for the same reason `renderMarkdown` derives
+  // it: the tiers are the source, and a `card` on the object handed in is a
+  // claim about them. Emitting the stored one would have left the two
+  // renderings able to disagree — the markdown deriving, the JSON trusting —
+  // which is the drift the "a card value never disagrees with the section
+  // behind it" test exists to forbid, holding for only one of the two outputs.
+  return `${JSON.stringify({ ...report, card: buildCard(report) }, null, 2)}\n`;
 }

@@ -797,6 +797,108 @@ describe("the failing figure on a section", () => {
 });
 
 /* -------------------------------------------------------------------------
+ * Synthesized zeros
+ *
+ * A figure that is zero because nothing was measured must never mark a row
+ * clear. Each case below produced a green row before it was fixed, and each is
+ * a different way for a count to be zero without anything having been checked.
+ * ---------------------------------------------------------------------- */
+
+describe("a figure that is zero because nothing was checked", () => {
+  function markOfRow(report: RunReport, id: string): string | undefined {
+    return buildCard(report).rows.find((row) => row.id === id)?.mark;
+  }
+
+  it("withholds the anchor figure when a stamped commit could not be resolved", () => {
+    // `unverifiable-rev` passes, and should: a clone that cannot read the
+    // history it was pointed at has learned nothing about the author. But the
+    // stamped half was never settled, so `failures: 0` means nothing was
+    // checked. merge-never-squash.md: a disarmed gate and a satisfied one
+    // produce the same green check.
+    const disarmed: CheckReport = {
+      ...PR58_CHECK,
+      summary: {
+        ...PR58_CHECK.summary,
+        failures: 0,
+        verdicts: { ...PR58_CHECK.summary.verdicts, "unverifiable-rev": 4 },
+      },
+    };
+    const report = buildRunReport(baseInput({ checkRun: disarmed }));
+
+    expect(Object.hasOwn(section(report, "code-verified", "anchors"), "failing")).toBe(false);
+    expect(markOfRow(report, "grounded")).toBe("not-recorded");
+  });
+
+  it("still marks anchors clear when every stamp did resolve", () => {
+    const settled: CheckReport = {
+      ...PR58_CHECK,
+      summary: { ...PR58_CHECK.summary, failures: 0, verdicts: { ok: 9 } },
+    };
+    expect(markOfRow(buildRunReport(baseInput({ checkRun: settled })), "grounded")).toBe("clear");
+  });
+
+  it("withholds the oracle figure when a weakening sub-check never ran", () => {
+    // `weakeningUnchecked` names every declared glob with no weakening marker.
+    // "Was anything weakened" is exactly this row's question, so a zero from a
+    // sub-check that did not run is not an answer to it.
+    const skipped: OracleReport = {
+      ...CONFIGURED_ORACLE,
+      findings: [],
+      unreadable: [],
+      weakeningUnchecked: ["packages/claims/src/**/*.test.ts"],
+    };
+    const report = buildRunReport(baseInput({ oracleReport: skipped }));
+
+    expect(Object.hasOwn(section(report, "code-verified", "oracle"), "failing")).toBe(false);
+    expect(markOfRow(report, "graders")).toBe("not-recorded");
+  });
+
+  it("withholds the probe figure when the registry could not be read", () => {
+    // `loadActiveCanary` returns a null entry with a warning for an unparseable
+    // registry, an invalid entry and an unsafe path. A null from a registry
+    // nobody could open and a null from an empty one are the same value and
+    // different facts.
+    const report = buildRunReport(
+      baseInput({ canary: null, canaryUnreadable: "canaries.json is not valid JSON" }),
+    );
+    const canary = section(report, "code-verified", "canary");
+
+    expect(Object.hasOwn(canary, "failing")).toBe(false);
+    expect(canary.notes.join(" ")).toContain("could not be read");
+    expect(markOfRow(report, "probe")).toBe("not-recorded");
+  });
+
+  it("withholds the outcomes figure when no dispatch reached a terminal state", () => {
+    // A journal whose schema this build cannot read contributes three zeros,
+    // and `noReport: 0` then means nothing was counted.
+    const bundle = readBundle("pr58-bundle.json");
+    const emptied = reportsFor(bundle).map((entry) => ({
+      ...entry,
+      report: { ...entry.report, outcomes: { found: 0, empty: 0, noReport: 0 } },
+    }));
+    const report = buildRunReport(baseInput({ bundle, journalReports: emptied }));
+
+    expect(Object.hasOwn(section(report, "hook-attested", "outcomes"), "failing")).toBe(false);
+    expect(markOfRow(report, "reported")).toBe("not-recorded");
+  });
+
+  it("keeps both renderings of the card in agreement", () => {
+    // markdown derives from the tiers; the JSON now does too. Before, the JSON
+    // emitted a stored card, so the "cannot disagree" guarantee held for one
+    // output only.
+    const report = buildRunReport(baseInput());
+    const stale: RunReport = {
+      ...report,
+      card: { rows: [], omitted: ["grounded"], unanswerable: 99 },
+    };
+    const document = JSON.parse(renderJson(stale)) as RunReport;
+
+    expect(document.card.rows).toHaveLength(7);
+    expect(document.card.unanswerable).not.toBe(99);
+  });
+});
+
+/* -------------------------------------------------------------------------
  * The card
  * ---------------------------------------------------------------------- */
 
