@@ -774,9 +774,9 @@ about how far.** It was `dispatch`, `report`, and `mutation`. It is now those
 three plus `finding` — pulled out of a subagent's return by a line grammar over
 the tags the reviewers themselves publish — and `prompt`, the operator's turn:
 
-**Evidence:** `packages/kit/src/record.ts:749` — `export function extractFindings(`
+**Evidence:** `packages/kit/src/record.ts:803` — `export function extractFindings(`
 
-**Evidence:** `packages/kit/src/record.ts:889` — `        kind: "prompt",`
+**Evidence:** `packages/kit/src/record.ts:939` — `        kind: "prompt",`
 
 What hooks still cannot emit is `verification`, `reliance`, `append`, `stage`,
 `resolution`, `check`, and `decision`, because no tool call states that

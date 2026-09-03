@@ -231,7 +231,24 @@ const ERROR_EXCERPT_LIMIT = 400;
  * on prose shape, and a return with no tag lines produces no findings, which
  * is the honest reading rather than a charitable one.
  */
-const TAG_LINE = /^\s*-\s*\[(blocker|concern|looks-good|false-premise)\]\s+(.+)$/;
+const TAG_LINE =
+  /^\s*-\s*[`*_]*\[(blocker|concern|looks-good|false-premise)\][`*_]*\s+(.+)$/;
+
+/**
+ * A list item carrying a bracketed severity word that `TAG_LINE` declined.
+ *
+ * Used only to emit a diagnostic. The failure this guards against is not a
+ * wrong finding but a missing one: before emphasis was tolerated above, a
+ * reviewer that wrote ``- `[blocker]` `` produced no findings at all, so
+ * `findings --open` answered "no unanswered blockers" while one was
+ * outstanding — and `SUPPRESSED-FINDING` could not fire, because it compares
+ * resolutions against recorded findings and nothing had been recorded.
+ *
+ * A gate passing because its input never arrived is the failure this project
+ * exists to make impossible, so the next formatting nobody anticipated is
+ * reported rather than silently dropped.
+ */
+const NEAR_TAG_LINE = /^\s*-\s*\S*\[(?:blocker|concern|looks-good|false-premise)\]/;
 
 /**
  * A dispatched agent declares the tag contract by containing `[blocker]` under
@@ -489,8 +506,24 @@ function terminalForStop(
         at: context.now(),
       })),
     ],
-    cost.note,
+    joinNotes(cost.note, declinedNote(text)),
   );
+}
+
+/** The declined-tag diagnostic, or null when every candidate was extracted. */
+function declinedNote(text: string): string | null {
+  const declined = declinedTagLines(text);
+  if (declined.length === 0) return null;
+  return `${String(declined.length)} list item(s) carry a severity tag this build did not recognise and no finding was recorded for them: ${declined
+    .map((line) => JSON.stringify(clip(line, 120)))
+    .join("; ")}`;
+}
+
+/** Both notes, or whichever exists. Never drops one to keep the other. */
+function joinNotes(first: string | null, second: string | null): string | null {
+  if (first === null) return second;
+  if (second === null) return first;
+  return `${first}; ${second}`;
 }
 
 /**
@@ -749,6 +782,24 @@ function launchAcknowledgement(
  *                   same journal.
  * @param author     Who raised it — the dispatched agent's name.
  */
+/**
+ * List items that look like a tagged finding and were not extracted.
+ *
+ * Returned so the caller can say so. An unrecognised formatting must surface as
+ * a diagnostic rather than as an absence: the whole cost of the shape this
+ * guards against is that it is indistinguishable, from the outside, from a
+ * reviewer that simply found nothing.
+ */
+export function declinedTagLines(text: string): string[] {
+  const declined: string[] = [];
+  for (const line of text.split("\n")) {
+    if (TAG_LINE.test(line)) continue;
+    if (!NEAR_TAG_LINE.test(line)) continue;
+    declined.push(line.trim());
+  }
+  return declined;
+}
+
 export function extractFindings(
   text: string,
   dispatchId: string,
