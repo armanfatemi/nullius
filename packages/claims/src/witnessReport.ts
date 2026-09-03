@@ -28,7 +28,7 @@
 import { describeCanary, type CanaryEntry } from "./canary";
 import type { CheckReport, ReportResult } from "./checkReport";
 import type { OracleReport } from "./oracle";
-import type { JournalReport } from "./witness";
+import type { JournalFinding, JournalReport } from "./witness";
 
 /** The report document's own schema version. Independent of `REPORT_VERSION`
  *  (`check --format json`) and of the envelope's `version`: three documents on
@@ -50,6 +50,19 @@ export const MERMAID_LABEL_CAP = 60;
 
 /** Nodes beyond this are dropped, with the drop stated under the chart. */
 export const FLOWCHART_NODE_CAP = 60;
+
+/**
+ * Distinct finding groups rendered into one journal's validation cell.
+ *
+ * A journal fails validation for a handful of reasons and once per offending
+ * record, so the finding list is long and its content is short: the bundle
+ * this cap was written for reported 57 findings with 6 distinct details, and
+ * rendered them as a single 9.5 KB table cell — 45% of the comment, restating
+ * one fact 57 times. Grouping by detail is what makes the cell readable; the
+ * cap bounds the case where the details themselves are many, and the drop is
+ * stated rather than silent. The JSON form carries every finding.
+ */
+export const VALIDATION_GROUP_CAP = 4;
 
 /**
  * The markdown budget. A GitHub issue comment is capped at 65536 characters,
@@ -791,6 +804,56 @@ export function buildRunReport(input: RunReportInput): RunReport {
 const JOURNAL_VALIDATION_STATEMENT =
   "`witness validate` re-run over every journal reconstructed from the bundle, before any count was taken from it. This checks a bundle's internal consistency and never its completeness: a bundle with whole journals removed validates cleanly.";
 
+/**
+ * One journal's failing findings, grouped by what they say.
+ *
+ * Deliberately keyed on `detail` alone rather than on `verdict` + `detail`:
+ * the detail is what a reader acts on, and two verdicts that produce the same
+ * sentence are the same instruction. The verdict still leads each group, taken
+ * from the group's first member, so nothing is attributed to a verdict that
+ * did not produce it.
+ *
+ * Counts are stated, never implied by a list length — a collapse that hides
+ * how much it collapsed is worse than the list it replaced. `(n)` rather than
+ * `\u00d7n`, matching the burst table below.
+ */
+export function summariseJournalFindings(findings: readonly JournalFinding[]): string {
+  if (findings.length === 0) return "valid";
+
+  const groups = new Map<string, { verdict: string; line: number; count: number }>();
+  for (const finding of findings) {
+    const existing = groups.get(finding.detail);
+    if (existing === undefined) {
+      groups.set(finding.detail, {
+        verdict: finding.verdict.toUpperCase(),
+        line: finding.line,
+        count: 1,
+      });
+      continue;
+    }
+    existing.count += 1;
+    // The first line is the one a reader opens the journal at, so it is the
+    // minimum rather than whichever member happened to arrive first.
+    if (finding.line < existing.line) existing.line = finding.line;
+  }
+
+  const entries = [...groups.entries()];
+  const shown = entries.slice(0, VALIDATION_GROUP_CAP);
+  const rendered = shown.map(([detail, group]) =>
+    group.count === 1
+      ? `${group.verdict} at line ${String(group.line)}: ${detail}`
+      : `${group.verdict} (${String(group.count)} records, first at line ${String(group.line)}): ${detail}`,
+  );
+
+  const dropped = entries.length - shown.length;
+  if (dropped > 0) {
+    rendered.push(
+      `+${String(dropped)} further distinct finding(s) — the JSON form carries them all`,
+    );
+  }
+  return rendered.join("; ");
+}
+
 function codeVerifiedSections(input: RunReportInput): ReportSection[] {
   const sections: ReportSection[] = [];
 
@@ -934,11 +997,7 @@ function codeVerifiedSections(input: RunReportInput): ReportSection[] {
         entry.session,
         entry.report.version,
         String(entry.report.records),
-        failures.length === 0
-          ? "valid"
-          : failures
-              .map((finding) => `${finding.verdict.toUpperCase()} at line ${String(finding.line)}: ${finding.detail}`)
-              .join("; "),
+        summariseJournalFindings(failures),
       ];
     });
     sections.push(
@@ -1425,6 +1484,8 @@ export function renderMarkdown(
   options: { budgetBytes?: number } = {},
 ): string {
   const out: string[] = [];
+  /** Reason text -> the section title that stated it in full. */
+  const reasonFirstStated = new Map<string, string>();
   out.push(`# Run report — ${escapeCell(report.range.spec)}`);
   out.push("");
   out.push(
@@ -1448,7 +1509,18 @@ export function renderMarkdown(
       out.push(section.statement);
       if (section.status === "not-recorded") {
         out.push("");
-        out.push(`**Not recorded:** ${escapeCell(section.reason ?? "")}`);
+        const reason = section.reason ?? "";
+        const first = reasonFirstStated.get(reason);
+        if (first === undefined) {
+          reasonFirstStated.set(reason, section.title);
+          out.push(`**Not recorded:** ${escapeCell(reason)}`);
+        } else {
+          // One cause blocking fourteen sections is one fact. Restating it
+          // under each of them is how a 21 KB comment spent 6 KB saying the
+          // same sentence thirty times, and buried the one section that could
+          // be acted on. The JSON form still carries every reason in full.
+          out.push(`**Not recorded:** as above, under "${escapeCell(first)}".`);
+        }
         continue;
       }
       if (section.table !== undefined) {
@@ -1484,9 +1556,25 @@ export function renderMarkdown(
   if (report.notRecorded.length === 0) {
     out.push("Nothing. Every section above carries data.");
   } else {
+    // Grouped by cause, in first-seen order. The JSON form keeps one entry per
+    // section: this is a rendering of that list, not a shorter version of it.
+    const byReason = new Map<string, string[]>();
     for (const entry of report.notRecorded) {
       const where = entry.tier === null ? entry.section : `${entry.tier} / ${entry.section}`;
-      out.push(`- **${escapeCell(where)}** — ${escapeCell(entry.reason)}`);
+      const existing = byReason.get(entry.reason);
+      if (existing === undefined) byReason.set(entry.reason, [where]);
+      else existing.push(where);
+    }
+    for (const [reason, wheres] of byReason) {
+      // A cause covering one section keeps the original shape. Where it covers
+      // many, the cause leads: it is the actionable half, and putting fifteen
+      // bold section names in front of it is how the reader loses it.
+      if (wheres.length === 1) {
+        out.push(`- **${escapeCell(wheres[0] ?? "")}** — ${escapeCell(reason)}`);
+        continue;
+      }
+      out.push(`- **${String(wheres.length)} section(s)** — ${escapeCell(reason)}`);
+      out.push(`  - ${wheres.map((where) => escapeCell(where)).join(", ")}`);
     }
   }
   out.push("");

@@ -73,49 +73,49 @@ How many records the validator's provenance partition put in this tier. Journal-
 
 Read from the bundled journals.
 
-**Not recorded:** no bundle at nullius.runs/feat-add-canary-status-redaction.json
+**Not recorded:** as above, under "Records attributed to the harness".
 
 ### Dispatch outcomes
 
 Read from the bundled journals.
 
-**Not recorded:** no bundle at nullius.runs/feat-add-canary-status-redaction.json
+**Not recorded:** as above, under "Records attributed to the harness".
 
 ### Review rounds
 
 Read from the bundled journals.
 
-**Not recorded:** no bundle at nullius.runs/feat-add-canary-status-redaction.json
+**Not recorded:** as above, under "Records attributed to the harness".
 
 ### Files mutated in the range
 
 Read from the bundled journals.
 
-**Not recorded:** no bundle at nullius.runs/feat-add-canary-status-redaction.json
+**Not recorded:** as above, under "Records attributed to the harness".
 
 ### Edit bursts
 
 Read from the bundled journals.
 
-**Not recorded:** no bundle at nullius.runs/feat-add-canary-status-redaction.json
+**Not recorded:** as above, under "Records attributed to the harness".
 
 ### Findings raised
 
 Read from the bundled journals.
 
-**Not recorded:** no bundle at nullius.runs/feat-add-canary-status-redaction.json
+**Not recorded:** as above, under "Records attributed to the harness".
 
 ### Operator turns
 
 Read from the bundled journals.
 
-**Not recorded:** no bundle at nullius.runs/feat-add-canary-status-redaction.json
+**Not recorded:** as above, under "Records attributed to the harness".
 
 ### Model and tokens
 
 Read from the bundled journals.
 
-**Not recorded:** no bundle at nullius.runs/feat-add-canary-status-redaction.json
+**Not recorded:** as above, under "Records attributed to the harness".
 
 ## Self-reported
 
@@ -125,31 +125,31 @@ _Written by a coordinator about its own run. Internally consistent; not evidence
 
 How many records carried `origin: "self-reported"` of their own, or none under a self-reported header. Journal-wide.
 
-**Not recorded:** no bundle at nullius.runs/feat-add-canary-status-redaction.json
+**Not recorded:** as above, under "Records attributed to the harness".
 
 ### Stages
 
 `stage` records — the pipeline phases the run went through.
 
-**Not recorded:** no bundle at nullius.runs/feat-add-canary-status-redaction.json
+**Not recorded:** as above, under "Records attributed to the harness".
 
 ### Resolutions
 
 `resolution` records — what happened to each finding.
 
-**Not recorded:** no bundle at nullius.runs/feat-add-canary-status-redaction.json
+**Not recorded:** as above, under "Records attributed to the harness".
 
 ### Decisions
 
 `decision` records — an approach chosen, and why.
 
-**Not recorded:** no bundle at nullius.runs/feat-add-canary-status-redaction.json
+**Not recorded:** as above, under "Records attributed to the harness".
 
 ### Checks
 
 `check` records — a command ran, and what it showed.
 
-**Not recorded:** no bundle at nullius.runs/feat-add-canary-status-redaction.json
+**Not recorded:** as above, under "Records attributed to the harness".
 
 ## Unattributed
 
@@ -159,7 +159,7 @@ _Records that belong to nobody: no origin of their own, under a header that clai
 
 The validator's third partition: records with no origin of their own under a header whose origin is null or absent, plus any record whose origin this schema cannot read. Journal-wide.
 
-**Not recorded:** no bundle at nullius.runs/feat-add-canary-status-redaction.json
+**Not recorded:** as above, under "Records attributed to the harness".
 
 ## Timeline
 
@@ -198,18 +198,5 @@ Rounds group dispatches starting within 120000 ms of the first.
 
 - **code-verified / Oracle conservation** — not configured — this project declares no "oracles" key in nullius.config.json, so this run checked nothing. An unconfigured project and a project whose oracle held still are different facts; declare the glob that grades this project to tell them apart.
 - **code-verified / Bundled journals re-validated** — no journal to validate — no bundle at nullius.runs/feat-add-canary-status-redaction.json
-- **hook-attested / Records attributed to the harness** — no bundle at nullius.runs/feat-add-canary-status-redaction.json
-- **hook-attested / Dispatches** — no bundle at nullius.runs/feat-add-canary-status-redaction.json
-- **hook-attested / Dispatch outcomes** — no bundle at nullius.runs/feat-add-canary-status-redaction.json
-- **hook-attested / Review rounds** — no bundle at nullius.runs/feat-add-canary-status-redaction.json
-- **hook-attested / Files mutated in the range** — no bundle at nullius.runs/feat-add-canary-status-redaction.json
-- **hook-attested / Edit bursts** — no bundle at nullius.runs/feat-add-canary-status-redaction.json
-- **hook-attested / Findings raised** — no bundle at nullius.runs/feat-add-canary-status-redaction.json
-- **hook-attested / Operator turns** — no bundle at nullius.runs/feat-add-canary-status-redaction.json
-- **hook-attested / Model and tokens** — no bundle at nullius.runs/feat-add-canary-status-redaction.json
-- **self-reported / Records the coordinator claimed** — no bundle at nullius.runs/feat-add-canary-status-redaction.json
-- **self-reported / Stages** — no bundle at nullius.runs/feat-add-canary-status-redaction.json
-- **self-reported / Resolutions** — no bundle at nullius.runs/feat-add-canary-status-redaction.json
-- **self-reported / Decisions** — no bundle at nullius.runs/feat-add-canary-status-redaction.json
-- **self-reported / Checks** — no bundle at nullius.runs/feat-add-canary-status-redaction.json
-- **unattributed / Records that belong to nobody** — no bundle at nullius.runs/feat-add-canary-status-redaction.json
+- **15 section(s)** — no bundle at nullius.runs/feat-add-canary-status-redaction.json
+  - hook-attested / Records attributed to the harness, hook-attested / Dispatches, hook-attested / Dispatch outcomes, hook-attested / Review rounds, hook-attested / Files mutated in the range, hook-attested / Edit bursts, hook-attested / Findings raised, hook-attested / Operator turns, hook-attested / Model and tokens, self-reported / Records the coordinator claimed, self-reported / Stages, self-reported / Resolutions, self-reported / Decisions, self-reported / Checks, unattributed / Records that belong to nobody
