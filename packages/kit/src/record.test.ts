@@ -561,6 +561,87 @@ describe("finding extraction — the reviewers' declared tag grammar", () => {
     expect(finding).toMatchObject({ severity: "blocker", tag: "false-premise" });
   });
 
+  /*
+   * Emphasis around the tag.
+   *
+   * The reviewer agents describe their own tag vocabulary in prose that is
+   * itself written in backticks, and at least one reviewer reproduces that
+   * formatting in its report. Before this was fixed, such a return produced
+   * ZERO findings — so `findings --open` answered "no unanswered blockers"
+   * while a real blocker was outstanding, and SUPPRESSED-FINDING could not
+   * fire because there was no record to compare a resolution against. Observed
+   * on the add-run-report-card run, where test-engineer's iteration-2 blocker
+   * never reached the journal.
+   */
+  it.each([
+    ["inline code", "- `[blocker]` `x.ts:1` — dropped before the fix"],
+    ["bold", "- **[blocker]** `x.ts:1` — dropped before the fix"],
+    ["italic", "- *[blocker]* `x.ts:1` — dropped before the fix"],
+    ["bold inline code", "- **`[blocker]`** `x.ts:1` — dropped before the fix"],
+  ])("extracts a tag emphasised with %s", (_label, line) => {
+    const findings = planRecords({ ...stop, last_assistant_message: line }, linked())
+      .records.filter((record) => record["kind"] === "finding");
+
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({ severity: "blocker" });
+    expect(String(findings[0]?.["text"])).toContain("dropped before the fix");
+    // The emphasis must not survive into the text: two reports of the same
+    // finding, formatted differently, are the same finding.
+    expect(String(findings[0]?.["text"])).not.toContain("[blocker]");
+  });
+
+  it("keeps the bare tag working exactly as before", () => {
+    const findings = planRecords(
+      { ...stop, last_assistant_message: "- [concern] `x.ts:1` — plain tag" },
+      linked(),
+    ).records.filter((record) => record["kind"] === "finding");
+
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({ severity: "concern" });
+  });
+
+  it("does not match a tag discussed in running prose", () => {
+    // This file, the agent definitions and every design document in the repo
+    // name these tags in sentences. Widening the match to "anywhere in the
+    // line" would manufacture findings out of prose about findings.
+    const prose = [
+      "Reviewers mark findings as [blocker], [concern] or [looks-good].",
+      "Count the `[blocker]` lines in review-evidence.md.",
+      "The severity vocabulary is [blocker] and [concern].",
+    ].join("\n");
+    const findings = planRecords({ ...stop, last_assistant_message: prose }, linked())
+      .records.filter((record) => record["kind"] === "finding");
+
+    expect(findings).toHaveLength(0);
+  });
+
+  it("reports a list item whose tag it could not read, rather than dropping it", () => {
+    // The guard against the next formatting nobody anticipated. A finding that
+    // is not extracted must at least be visible; an absence and a clean review
+    // are otherwise the same output.
+    const plan = planRecords(
+      {
+        ...stop,
+        last_assistant_message: "- [[blocker]] `x.ts:1` — a shape this build does not read",
+      },
+      linked(),
+    );
+
+    expect(plan.records.filter((record) => record["kind"] === "finding")).toHaveLength(0);
+    expect(plan.note).toContain("did not recognise");
+    expect(plan.note).toContain("x.ts:1");
+  });
+
+  it("says nothing when every candidate line was extracted", () => {
+    const plan = planRecords(
+      { ...stop, last_assistant_message: "- **[blocker]** `x.ts:1` — read fine" },
+      linked(),
+    );
+
+    expect(plan.records.filter((record) => record["kind"] === "finding")).toHaveLength(1);
+    expect(plan.note ?? "").not.toContain("did not recognise");
+  });
+
   it("extracts nothing from a return that used no tags", () => {
     const plan = planRecords(
       {
