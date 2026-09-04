@@ -79,6 +79,23 @@ runs:
         status=0
         combined=""
 
+        # NULLIUS_CLAIMS_BIN lets the repository that DEVELOPS the checker run
+        # its own build, so its pull-request comments are rendered by the code
+        # under review rather than by the last release. Every other caller
+        # leaves it unset and gets the pinned install, word for word — the pin
+        # is not weakened, an opt-out is added beside it.
+        #
+        # Read from the ambient environment, never declared as an input. An
+        # input is one `${{ }}` away from PR-controlled content, and which
+        # binary CI executes is not a thing a pull request gets to choose. The
+        # kit's recorder takes the same shape for the same reason
+        # (NULLIUS_KIT_BIN in plugin/hooks/witness-record.sh).
+        #
+        # Word-split on use, so an override can carry its own arguments
+        # ("node dist/cli.js", "pnpm exec nullius"). With it unset the split
+        # yields the same argv the quoted literal did.
+        runner="${NULLIUS_CLAIMS_BIN:-npx -y @nullius-inverba/claims@${CLAIMS_VERSION}}"
+
         run_docs=false
         if [ -n "$GLOBS" ]; then
           run_docs=true
@@ -99,7 +116,7 @@ runs:
           # Globs are word-split deliberately so multiple patterns work; the
           # CLI does its own globbing, so patterns must reach it unexpanded.
           # shellcheck disable=SC2086
-          docs_output=$(npx -y "@nullius-inverba/claims@${CLAIMS_VERSION}" check $GLOBS "${args[@]}" 2>&1)
+          docs_output=$($runner check $GLOBS "${args[@]}" 2>&1)
           docs_status=$?
           if [ $docs_status -ne 0 ]; then status=$docs_status; fi
           combined="=== docs ===
@@ -111,7 +128,8 @@ runs:
           # interpolation — the description is PR-controlled content.
           jq -r '.pull_request.body // ""' "$GITHUB_EVENT_PATH" > .nullius-pr-description.md
           if [ -s .nullius-pr-description.md ]; then
-            body_output=$(npx -y "@nullius-inverba/claims@${CLAIMS_VERSION}" check .nullius-pr-description.md 2>&1)
+            # shellcheck disable=SC2086
+            body_output=$($runner check .nullius-pr-description.md 2>&1)
             body_status=$?
             if [ $body_status -ne 0 ]; then status=$body_status; fi
           else
@@ -138,6 +156,26 @@ runs:
         } >> "$GITHUB_STEP_SUMMARY"
 
         echo "status=$status" >> "$GITHUB_OUTPUT"
+        # Computed once here and consumed by BOTH comment steps, so the two
+        # cannot come to disagree about whether a released checker produced
+        # them. Emitted only when the override is in use: absent, the output is
+        # the empty string and every comment body below is byte-identical to
+        # what it was before this input existed.
+        #
+        # A card rendered from somebody's working tree and one rendered by the
+        # released checker look the same on the page, and the difference is
+        # exactly what a reviewer needs — the second is evidence about the
+        # artefact, the first is evidence about a build only the author has.
+        #
+        # Delimiter form rather than `label=...`: a runner string carrying a
+        # newline would otherwise inject a second key into the output file.
+        if [ -n "${NULLIUS_CLAIMS_BIN:-}" ]; then
+          {
+            echo 'label<<NULLIUS_EOF'
+            echo "> ⚠️ Rendered by \`$runner\`, named by \`NULLIUS_CLAIMS_BIN\` — **not** the released \`@nullius-inverba/claims\`. It reports what the code under review does, not what any published version does."
+            echo 'NULLIUS_EOF'
+          } >> "$GITHUB_OUTPUT"
+        fi
         {
           echo 'output<<NULLIUS_EOF'
           echo "$combined"
@@ -154,8 +192,19 @@ runs:
         CONFIG: ${{ inputs.config }}
         REQUIRE_MARKERS: ${{ inputs.require-markers }}
         STRICT: ${{ inputs.strict }}
+        # Read below, and this step runs under `set -u`. Undeclared, bash
+        # aborted here before the card was ever rendered — on every pull
+        # request, silently, with the unstructured fallback comment posted in
+        # its place and nothing in the run saying a card had been attempted.
+        PR_BODY_MODE: ${{ inputs.pr-body }}
       run: |
         set -uo pipefail
+        # See the `Run checker` step for why this is an environment override
+        # and not an input. The `:-` default matters twice here: it supplies
+        # the pin, and it keeps `set -u` from aborting the step when the
+        # override is absent, which is the ordinary case.
+        runner="${NULLIUS_CLAIMS_BIN:-npx -y @nullius-inverba/claims@${CLAIMS_VERSION}}"
+
         # The document versions this Action can render a card from. A SET, for
         # the same reason the run report keeps one: this Action re-invokes a
         # pinned `claims-version`, so a caller on an older pin produces an older
@@ -195,7 +244,8 @@ runs:
         # its output has no contract; a JSON document does, and any diagnostic
         # written to stderr would corrupt it. A parser lenient enough to recover
         # from that is a parser lenient enough to accept a truncated report.
-        npx -y "@nullius-inverba/claims@${CLAIMS_VERSION}" check "${targets[@]}" "${args[@]}" \
+        # shellcheck disable=SC2086
+        $runner check "${targets[@]}" "${args[@]}" \
           --format json > nullius-card.json 2> nullius-card.err || true
 
         version=$(jq -r '.version // "absent"' nullius-card.json 2>/dev/null || echo 'unparseable')
@@ -223,14 +273,30 @@ runs:
         # silent fallback. The pinned default is exactly that case until the
         # release carrying this format lands.
         card_status=0
-        npx -y "@nullius-inverba/claims@${CLAIMS_VERSION}" check "${targets[@]}" "${args[@]}" \
+        # shellcheck disable=SC2086
+        $runner check "${targets[@]}" "${args[@]}" \
           --format card --link-base "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}" \
           > nullius-card.md 2> nullius-card-render.err || card_status=$?
-        if [ "$card_status" -ne 0 ] || [ ! -s nullius-card.md ]; then
+        # THE DISCRIMINATOR IS THE FILE, NOT THE EXIT CODE.
+        #
+        # `check` exits non-zero to report FINDINGS, so keying on the status
+        # discarded the card in exactly the case a reviewer needs one — a
+        # failing run — and announced that a card "did not render" about a card
+        # that had rendered perfectly and was sitting in the file. Every
+        # failing pull request got the unstructured fallback and a sentence
+        # blaming a version pin.
+        #
+        # This branch was written for a checker too old to know `--format
+        # card`, and that checker writes nothing at all. Emptiness is the
+        # condition that was meant, and the one this now tests.
+        #
+        # The gate is untouched: strict mode fails the job from
+        # `steps.check.outputs.status`, never from whether a card was posted.
+        if [ ! -s nullius-card.md ]; then
           {
             echo '## nullius claims check'
             echo
-            echo "No card: \`check --format card\` did not render (exit ${card_status}). The"
+            echo "No card: \`check --format card\` produced nothing (exit ${card_status}). The"
             echo 'unstructured report is above. This is expected when `claims-version` predates'
             echo 'the release that added the format.'
             echo '```'
@@ -299,6 +365,7 @@ runs:
         STATUS: ${{ steps.check.outputs.status }}
         CARD: ${{ steps.card.outputs.card }}
         CARD_RENDERED: ${{ steps.card.outputs.rendered }}
+        LABEL: ${{ steps.check.outputs.label }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
       run: |
         # The marker is unchanged and stays the first line of the body. The
@@ -307,6 +374,14 @@ runs:
         # run after this lands posts a second comment instead of editing the
         # first, on every open pull request at once.
         marker='<!-- nullius-claims -->'
+        # The label goes BELOW the marker, never in place of it or before it,
+        # for the reason directly above: the upsert matches on the marker being
+        # the first line. `header` is the marker alone when the override is
+        # unset, so an ordinary run's body is unchanged byte for byte.
+        header="$marker"
+        if [ -n "${LABEL:-}" ]; then
+          header=$(printf '%s\n%s' "$marker" "$LABEL")
+        fi
         footer='_[Evidence Anchors](https://github.com/armanfatemi/nullius/blob/main/spec/evidence-anchors.md): open the cited file and correct the claim, or move it to "Open questions"._'
 
         if [ "$CARD_RENDERED" = "true" ] && [ -n "$CARD" ]; then
@@ -325,7 +400,7 @@ runs:
           # Before that was true, a failing PR-body anchor could fail the job
           # while the card reported everything verified.
           body=$(printf '%s\n%s\n\n<details><summary>Full report</summary>\n\n```\n%s\n```\n\n</details>\n\n%s\n' \
-            "$marker" "$CARD" "$REPORT" "$footer")
+            "$header" "$CARD" "$REPORT" "$footer")
         else
           if [ "$STATUS" = "0" ]; then
             headline='✅ all grounding markers verified'
@@ -333,7 +408,7 @@ runs:
             headline='❌ unverified claims found'
           fi
           body=$(printf '%s\n## nullius claims check — %s\n\n```\n%s\n```\n\n%s\n' \
-            "$marker" "$headline" "$REPORT" "$footer")
+            "$header" "$headline" "$REPORT" "$footer")
         fi
 
         existing=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" --paginate \
@@ -354,6 +429,11 @@ runs:
         BUNDLE_INPUT: ${{ inputs.run-report-bundle }}
       run: |
         set -uo pipefail
+
+        # See the `Run checker` step. This is the invocation the override was
+        # written for: the run report is the comment that has now been reported
+        # working from a working tree and been wrong on its own pull request.
+        runner="${NULLIUS_CLAIMS_BIN:-npx -y @nullius-inverba/claims@${CLAIMS_VERSION}}"
 
         # Both SHAs come from the event file rather than expression
         # interpolation. They are GitHub-supplied rather than PR-controlled, so
@@ -380,7 +460,8 @@ runs:
         # a partial render of a document whose shape moved is worse than
         # silence, and silence with a reason is not silence.
         json_status=0
-        npx -y "@nullius-inverba/claims@${CLAIMS_VERSION}" witness report "${base}..${head}" \
+        # shellcheck disable=SC2086
+        $runner witness report "${base}..${head}" \
           --bundle "$bundle" --format json > nullius-run-report.json 2> nullius-run-report.err || json_status=$?
 
         if [ "$json_status" -ne 0 ]; then
@@ -428,7 +509,8 @@ runs:
           exit 0
         fi
 
-        npx -y "@nullius-inverba/claims@${CLAIMS_VERSION}" witness report "${base}..${head}" \
+        # shellcheck disable=SC2086
+        $runner witness report "${base}..${head}" \
           --bundle "$bundle" --format md > nullius-run-report.md 2>/dev/null || true
 
         {
@@ -456,6 +538,7 @@ runs:
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.github-token }}
+        LABEL: ${{ steps.check.outputs.label }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
       run: |
         set -uo pipefail
@@ -466,7 +549,15 @@ runs:
         # other and the grounding result and the process result would share a
         # slot.
         marker='<!-- nullius-run-report -->'
-        body=$(printf '%s\n%s\n' "$marker" "$(cat nullius-run-report.md)")
+        # Labelled on the same terms as the grounding comment, and for a
+        # sharper reason: this is the comment that has already been reported
+        # working from a working tree while showing a reviewer three
+        # unanswered rows.
+        header="$marker"
+        if [ -n "${LABEL:-}" ]; then
+          header=$(printf '%s\n%s' "$marker" "$LABEL")
+        fi
+        body=$(printf '%s\n%s\n' "$header" "$(cat nullius-run-report.md)")
 
         existing=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" --paginate \
           | jq -r --arg m "$marker" '[.[] | select(.body | startswith($m)) | .id][0] // empty') || existing=''
