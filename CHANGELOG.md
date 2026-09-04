@@ -70,6 +70,63 @@ unfixed in the tool that records whether defects were found.
   results contribute to the failure total; their document and line are not
   printed to the comment and no annotation is emitted for them.
 
+## 0.12.0
+
+The maintainer card, and a fix to the run report that this session found by
+being asked a question the card could not answer.
+
+### Added
+
+- **`check --format card`** renders the check report as a maintainer's card:
+  documents checked, anchors split into presence and absence, a count per
+  verdict, failures, and the failing anchors. Counts come from the report's
+  `summary` rather than being recomputed, so the card cannot disagree with the
+  exit code beside it. `--link-base` turns each failing location into a jump
+  link; without it the location renders as inert text, because the checker knows
+  no repository and invents none.
+
+  The card states that a verdict certifies the citation and not the argument
+  built on it, and names `audit` as the check it did not perform.
+
+- **The Action posts that card** on a pull request with the unstructured report
+  collapsed beneath it, and emits workflow annotations for failing anchors —
+  `error` under `strict`, `warning` otherwise. A registered canary is counted
+  among the failures and never located.
+
+- **The run report's card names a shared cause.** Where several rows are
+  unanswerable for one reason, it says so once with the count, instead of
+  leaving a reader to count hollow marks and guess why.
+
+### Fixed
+
+- **A failing journal no longer blocks every count taken from it.** The run
+  report discarded all fifteen bundle sections whenever a journal carried any
+  failing finding, so twenty verified dispatch records contributed nothing
+  because a resolution elsewhere in the same file pointed at a missing id. That
+  is a blank reading as "no review happened" when the answer was "twenty
+  dispatches, and some bookkeeping is wrong".
+
+  The validator already refuses to report counts it cannot stand behind, and
+  `JournalReport.bodyRead` states that in a field the renderer reads. Nothing in
+  the renderer keeps a list of which verdicts invalidate which number.
+
+- **A dispatch that never terminated is counted as one that did not report
+  back.** `NO-TERMINAL` is in none of the three outcome states, so a figure of
+  `noReport` alone reported "every review reported back" over a dispatch that
+  demonstrably did not. Found by the fixtures immediately after the block above
+  was removed — the block had been hiding it rather than answering it.
+
+### Security
+
+- **Every value the card interpolates is escaped**, and the checked document is
+  treated as the PR-controlled input it is. Two encodings: markdown cells via
+  the shared `escapeCell`, and workflow-command *property* values via an
+  encoding that also covers `:` and `,`. Two holes were found and closed before
+  release — an unescaped document path let a newline split an annotation across
+  two lines, and `encodeURIComponent` leaves `(` and `)` alone, so a path
+  containing `)` closed a markdown link early and spilled the rest of the row
+  into the comment as live markdown.
+
 ## 0.11.0
 
 Two changes to what a pull request comment says, and one to what it costs to
