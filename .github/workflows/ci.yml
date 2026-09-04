@@ -420,7 +420,24 @@ jobs:
           # which is where a count legitimately appears — so a rename breaks a
           # positive assertion rather than silently satisfying a negative one.
           grep -qE '^### Dispatches — [0-9]' "$work/with.md"
-          ! grep -qE '^### Dispatches — [0-9]' "$work/tampered.md"
+          # The tampered bundle DOES print its counts, and that is the point of
+          # the change that made it so. Its body was read, so twenty verified
+          # dispatch records are measurements; blocking them because a terminal
+          # was missing was the renderer re-deciding what the validator had
+          # already decided, and it rendered "no review happened" over a review
+          # that did.
+          #
+          # What must survive is that the tamper is still named, and that the
+          # outcome it produces is counted where a reader will act on it. A
+          # dispatch with no terminal is in none of the three outcome states, so
+          # it gets its own row — asserted here, because a build that dropped it
+          # would report "every review reported back" over one that did not.
+          grep -qE '^### Dispatches — [0-9]' "$work/tampered.md"
+          grep -q 'NO-TERMINAL' "$work/tampered.md"
+          grep -qE '^\| no terminal record at all \| [1-9]' "$work/tampered.md"
+          # And the clean bundle has none of them, so the row above is not
+          # vacuously true of every report.
+          grep -qE '^\| no terminal record at all \| 0' "$work/with.md"
 
       # The canary, dogfooded through its whole lifecycle. There is no static
       # fixture for CANARY-PRESENT and there cannot be one: the registry lives

@@ -1558,8 +1558,10 @@ function hookAttestedSections(
           rows: [
             ["found", String(outcomes.found)],
             ["explicitly empty", String(outcomes.empty)],
-            ["no terminal record at all", String(neverTerminated)],
             ["never reported", String(outcomes.noReport)],
+            // Last, because it is the one the other three cannot account for:
+            // a dispatch with no terminal record is in none of their counts.
+            ["no terminal record at all", String(neverTerminated)],
           ],
         },
       },
