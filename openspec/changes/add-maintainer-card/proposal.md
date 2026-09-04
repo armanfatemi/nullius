@@ -24,14 +24,18 @@ source document:
 
 **Evidence:** `packages/claims/src/checkReport.ts:216@5f88e21` — `  verdicts: Partial<Record<Verdict, number>>;`
 
-**Evidence:** `grep -rn 'format json' action/` → 1 result
+**Evidence:** `grep -rn 'format json' action/` → 2 results
 
-That one result is `add-pr-process-report`'s run-report step, which landed
-after this proposal was written and asks the checker for JSON on a **different**
-verb. **The claim this paragraph rests on is unchanged**: nothing in the action
-reads `check --format json`, which is the machine-readable rendering this
-proposal is about. The count moved because another change added a JSON consumer
-beside it, not because the gap closed.
+This count has now moved twice, for opposite reasons, and the difference is the
+whole point of the anchor. The first result is `add-pr-process-report`'s
+run-report step, which landed after this proposal was written and asks the
+checker for JSON on a **different** verb — the count moved without the gap
+closing. The second is this change's own card step, and there the count moved
+**because the gap closed**: the Action now reads `check --format json`, which is
+the machine-readable rendering this proposal was written about.
+
+An anchor that had been left at 1 would still be green today and would be
+describing a repository that no longer exists.
 
 The second half of the problem is that the fenced dump is, in one specific
 respect, the *safe* rendering — and any replacement inherits a hazard the

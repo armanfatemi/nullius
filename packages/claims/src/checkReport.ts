@@ -17,6 +17,7 @@
 
 import { isFailure, type ClaimResult, type Verdict } from "./checkClaims";
 import type { Claim, PresenceClaim } from "./parseClaims";
+import { escapeCell } from "./markdown";
 import type { Rewrite, RewritePlan, Skipped } from "./rewrite";
 
 /** One matched document, as `check` read and verified it. */
@@ -329,4 +330,129 @@ export function renderJson(run: CheckRun, diagnostics: readonly string[] = []): 
   const report = buildReport(run);
   if (diagnostics.length > 0) report.diagnostics = [...diagnostics];
   return `${JSON.stringify(report, null, 2)}\n`;
+}
+
+// ---------------------------------------------------------------------------
+// The maintainer card
+// ---------------------------------------------------------------------------
+
+/**
+ * A verdict whose location must not be printed.
+ *
+ * `canary-present` is counted in the failure total and named as a verdict, and
+ * its `source` is withheld. The probe's value depends on its location not being
+ * published, and a pull-request comment is the most public place this tool
+ * writes — more public than the command `add-canary-status-redaction` narrowed.
+ * A card that rendered every result faithfully would reopen that exposure in a
+ * worse place.
+ */
+const REDACTED_VERDICTS: ReadonlySet<Verdict> = new Set<Verdict>(["canary-present"]);
+
+export interface CardOptions {
+  /**
+   * A blob URL the failing-anchor list links into, e.g.
+   * `https://github.com/owner/repo/blob/<sha>/`. Omitted, the list renders the
+   * location as plain text — the kernel knows no repository and invents none.
+   */
+  linkBase?: string;
+}
+
+/**
+ * A location as a jump link, or as inert text when there is nowhere to jump to.
+ *
+ * The path is URL-encoded before it reaches the href and escaped before it
+ * reaches the label, because it comes from the checked document and a `)` in a
+ * path would otherwise close the link and spill the rest into the comment.
+ */
+function locationLink(doc: string, line: number, options: CardOptions): string {
+  const shown = `${escapeCell(doc)}:${String(line)}`;
+  if (options.linkBase === undefined) return shown;
+  const href = `${options.linkBase.replace(/\/$/, "")}/${doc.split("/").map(encodeURIComponent).join("/")}#L${String(line)}`;
+  return `[${shown}](${href})`;
+}
+
+/** How a failing result is named, with its location withheld where required. */
+function failingSubject(result: ReportResult, options: CardOptions): string {
+  if (REDACTED_VERDICTS.has(result.verdict)) {
+    return "a registered canary is still planted in a checked document (location withheld) — run: nullius canary clear";
+  }
+  return `${locationLink(result.source.doc, result.source.line, options)} — ${escapeCell(result.detail)}`;
+}
+
+/**
+ * The pull-request comment's body, as a card rather than a fenced dump of
+ * human-format stdout.
+ *
+ * Every interpolated value goes through `escapeCell`, and that is security work
+ * rather than formatting: the checked document is PR-controlled input, and both
+ * `detail` and the `claim` fields originate there. The fenced dump this replaces
+ * neutralised them by accident; a structured renderer has to do it on purpose.
+ *
+ * Counts come from `summary` and are never recomputed from `documents`. The
+ * summary is what the exit code is derived from, so a card that counted for
+ * itself could disagree with the gate it sits beside.
+ */
+export function renderCard(report: CheckReport, options: CardOptions = {}): string {
+  const s = report.summary;
+  const out: string[] = [];
+
+  const headline =
+    s.failures > 0
+      ? `${String(s.failures)} unverified claim(s)`
+      : s.presenceAnchors + s.absenceAnchors === 0
+        ? "no anchors to verify"
+        : "all grounding markers verified";
+  out.push(`## nullius claims check — ${headline}`);
+  out.push("");
+
+  out.push("| | |");
+  out.push("| --- | --- |");
+  out.push(`| documents checked | ${String(s.documents)}, of which ${String(s.anchoredDocuments)} carry markers |`);
+  out.push(
+    `| anchors checked | ${String(s.presenceAnchors)} presence, ${String(s.absenceAnchors)} absence |`,
+  );
+  const verdicts = Object.entries(s.verdicts).sort((a, b) => a[0].localeCompare(b[0]));
+  out.push(
+    `| verdicts | ${verdicts.length === 0 ? "none" : verdicts.map(([v, n]) => `${escapeCell(v)} ${String(n)}`).join(", ")} |`,
+  );
+  out.push(`| failures | ${String(s.failures)} |`);
+
+  if (s.unanchored.length > 0) {
+    out.push("");
+    out.push(
+      `${String(s.unanchored.length)} matched document(s) carry no grounding markers: ` +
+        `${s.unanchored.map((entry) => escapeCell(entry.doc)).join(", ")}.`,
+    );
+    // Said explicitly, because "All 0 grounding marker(s) verified." is
+    // literally true and reads as a pass on a document nothing examined.
+    if (s.presenceAnchors + s.absenceAnchors === 0) {
+      out.push("Nothing was checked here — that is not the same as nothing being wrong.");
+    }
+  }
+
+  const failing = report.documents.flatMap((document) =>
+    document.results.filter((result) => result.failing),
+  );
+  if (failing.length > 0) {
+    out.push("");
+    out.push("**Unverified:**");
+    for (const result of failing) out.push(`- \`${escapeCell(result.label)}\` ${failingSubject(result, options)}`);
+  }
+
+  if (report.diagnostics !== undefined && report.diagnostics.length > 0) {
+    out.push("");
+    out.push("**Diagnostics:**");
+    for (const line of report.diagnostics) out.push(`- ${escapeCell(line)}`);
+  }
+
+  out.push("");
+  // The modesty line, and it is load-bearing rather than decorative. A tidy
+  // green table reads as a stronger claim than the prose it replaces, and the
+  // one thing it must not imply is that the document's reasoning was checked.
+  out.push(
+    "_A verdict certifies the citation and not the argument built on it: a real line, quoted " +
+      "accurately, can still support a false conclusion. Reasoning is what `nullius audit` " +
+      "examines, and it did not run here._",
+  );
+  return out.join("\n");
 }

@@ -1,0 +1,264 @@
+{
+  "version": 1,
+  "documents": [
+    {
+      "doc": "openspec/changes/add-maintainer-card/design.md",
+      "lines": 189,
+      "results": [
+        {
+          "verdict": "stale",
+          "label": "STALE",
+          "failing": false,
+          "source": {
+            "doc": "openspec/changes/add-maintainer-card/design.md",
+            "line": 20
+          },
+          "claim": {
+            "kind": "presence",
+            "path": "action/action.yml",
+            "line": 47,
+            "rev": "5f88e21",
+            "text": "    default: '0.8.0'"
+          },
+          "detail": "verified at 5f88e21; that text is no longer in action/action.yml — the code moved on, so re-read it before relying on this claim"
+        },
+        {
+          "verdict": "ok",
+          "label": "OK",
+          "failing": false,
+          "source": {
+            "doc": "openspec/changes/add-maintainer-card/design.md",
+            "line": 24
+          },
+          "claim": {
+            "kind": "presence",
+            "path": "action/action.yml",
+            "line": 28,
+            "rev": "5f88e21",
+            "text": "    description: Fail the job when any claim is unverified. Default false (advisory)."
+          },
+          "detail": ""
+        },
+        {
+          "verdict": "stale",
+          "label": "STALE",
+          "failing": false,
+          "source": {
+            "doc": "openspec/changes/add-maintainer-card/design.md",
+            "line": 55
+          },
+          "claim": {
+            "kind": "presence",
+            "path": "spec/evidence-anchors.md",
+            "line": 363,
+            "rev": "5f88e21",
+            "text": "Verdicts certify form, never entailment — a real line, quoted accurately, under"
+          },
+          "detail": "verified at 5f88e21; text is on line 391, not 363 — the quote still identifies real code, so this is stale rather than wrong; update the citation"
+        },
+        {
+          "verdict": "ok",
+          "label": "OK",
+          "failing": false,
+          "source": {
+            "doc": "openspec/changes/add-maintainer-card/design.md",
+            "line": 128
+          },
+          "claim": {
+            "kind": "moment",
+            "moment": "inter-service-skew"
+          },
+          "detail": ""
+        },
+        {
+          "verdict": "stale",
+          "label": "STALE",
+          "failing": false,
+          "source": {
+            "doc": "openspec/changes/add-maintainer-card/design.md",
+            "line": 142
+          },
+          "claim": {
+            "kind": "presence",
+            "path": "action/action.yml",
+            "line": 47,
+            "rev": "5f88e21",
+            "text": "    default: '0.8.0'"
+          },
+          "detail": "verified at 5f88e21; that text is no longer in action/action.yml — the code moved on, so re-read it before relying on this claim"
+        }
+      ]
+    },
+    {
+      "doc": "openspec/changes/add-maintainer-card/proposal.md",
+      "lines": 130,
+      "results": [
+        {
+          "verdict": "stale",
+          "label": "STALE",
+          "failing": false,
+          "source": {
+            "doc": "openspec/changes/add-maintainer-card/proposal.md",
+            "line": 10
+          },
+          "claim": {
+            "kind": "presence",
+            "path": "action/action.yml",
+            "line": 86,
+            "rev": "5f88e21",
+            "text": "          docs_output=$(npx -y \"@nullius-inverba/claims@${CLAIMS_VERSION}\" check $GLOBS \"${args[@]}\" 2>&1)"
+          },
+          "detail": "verified at 5f88e21; text is on line 102, not 86 — the quote still identifies real code, so this is stale rather than wrong; update the citation"
+        },
+        {
+          "verdict": "stale",
+          "label": "STALE",
+          "failing": false,
+          "source": {
+            "doc": "openspec/changes/add-maintainer-card/proposal.md",
+            "line": 12
+          },
+          "claim": {
+            "kind": "presence",
+            "path": "action/action.yml",
+            "line": 122,
+            "rev": "5f88e21",
+            "text": "        } >> \"$GITHUB_STEP_SUMMARY\""
+          },
+          "detail": "verified at 5f88e21; quote matches several lines in action/action.yml and is on none of them at line 122 — neither half of this citation identifies anything"
+        },
+        {
+          "verdict": "ok",
+          "label": "OK",
+          "failing": false,
+          "source": {
+            "doc": "openspec/changes/add-maintainer-card/proposal.md",
+            "line": 21
+          },
+          "claim": {
+            "kind": "presence",
+            "path": "packages/claims/src/checkReport.ts",
+            "line": 195,
+            "rev": "5f88e21",
+            "text": "  failing: boolean;"
+          },
+          "detail": ""
+        },
+        {
+          "verdict": "ok",
+          "label": "OK",
+          "failing": false,
+          "source": {
+            "doc": "openspec/changes/add-maintainer-card/proposal.md",
+            "line": 23
+          },
+          "claim": {
+            "kind": "presence",
+            "path": "packages/claims/src/checkReport.ts",
+            "line": 196,
+            "rev": "5f88e21",
+            "text": "  source: { doc: string; line: number };"
+          },
+          "detail": ""
+        },
+        {
+          "verdict": "ok",
+          "label": "OK",
+          "failing": false,
+          "source": {
+            "doc": "openspec/changes/add-maintainer-card/proposal.md",
+            "line": 25
+          },
+          "claim": {
+            "kind": "presence",
+            "path": "packages/claims/src/checkReport.ts",
+            "line": 216,
+            "rev": "5f88e21",
+            "text": "  verdicts: Partial<Record<Verdict, number>>;"
+          },
+          "detail": ""
+        },
+        {
+          "verdict": "ok",
+          "label": "SEARCH-CLEAN",
+          "failing": false,
+          "source": {
+            "doc": "openspec/changes/add-maintainer-card/proposal.md",
+            "line": 27
+          },
+          "claim": {
+            "kind": "absence",
+            "command": "grep -rn 'format json' action/",
+            "expectedCount": 1
+          },
+          "detail": ""
+        },
+        {
+          "verdict": "stale",
+          "label": "STALE",
+          "failing": false,
+          "source": {
+            "doc": "openspec/changes/add-maintainer-card/proposal.md",
+            "line": 40
+          },
+          "claim": {
+            "kind": "presence",
+            "path": "spec/evidence-anchors.md",
+            "line": 398,
+            "rev": "5f88e21",
+            "text": "The checked document is **untrusted input** — in a CI setting it is"
+          },
+          "detail": "verified at 5f88e21; text is on line 426, not 398 — the quote still identifies real code, so this is stale rather than wrong; update the citation"
+        },
+        {
+          "verdict": "stale",
+          "label": "STALE",
+          "failing": false,
+          "source": {
+            "doc": "openspec/changes/add-maintainer-card/proposal.md",
+            "line": 57
+          },
+          "claim": {
+            "kind": "presence",
+            "path": "packages/claims/src/cli.ts",
+            "line": 1086,
+            "rev": "5f88e21",
+            "text": "    // stdout is the document and nothing else. Every diagnostic below keeps"
+          },
+          "detail": "verified at 5f88e21; text is on line 1413, not 1086 — the quote still identifies real code, so this is stale rather than wrong; update the citation"
+        },
+        {
+          "verdict": "stale",
+          "label": "STALE",
+          "failing": false,
+          "source": {
+            "doc": "openspec/changes/add-maintainer-card/proposal.md",
+            "line": 76
+          },
+          "claim": {
+            "kind": "presence",
+            "path": ".github/workflows/ci.yml",
+            "line": 247,
+            "rev": "5f88e21",
+            "text": "      #    verdict.toUpperCase(), so the token is a de facto contract — but a"
+          },
+          "detail": "verified at 5f88e21; text is on line 493, not 247 — the quote still identifies real code, so this is stale rather than wrong; update the citation"
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "documents": 2,
+    "anchoredDocuments": 2,
+    "unanchored": [],
+    "presenceAnchors": 12,
+    "absenceAnchors": 1,
+    "verdicts": {
+      "stale": 8,
+      "ok": 6
+    },
+    "failures": 0,
+    "markerFloorFailed": false,
+    "next": null
+  }
+}

@@ -141,10 +141,48 @@ displaying its result.
 
 **Evidence:** `action/action.yml:47@5f88e21` — `    default: '0.8.0'`
 
-## Open questions
+## Open questions — resolved at implementation
 
-Mirrored from `proposal.md`:
+All three were open when this was written. They are answered below, and the
+answers are recorded here rather than only in the code, because two of them are
+decisions a reader would otherwise have to reconstruct from a diff.
 
-1. Where the escaping logic lives — `jq` inside `action.yml`, or a testable kit subcommand.
-2. `::error` versus `::warning` in advisory mode.
-3. How the card presents a PR body, which can carry failing anchors but no annotations.
+### 1. Where the rendering and escaping live — RESOLVED: in the kernel
+
+**Chosen:** `checkReport.ts` renders the card, exposed as `check --format card`.
+The Action invokes it and posts the result. Workflow-command escaping for
+annotations stays in the Action, because a `::error` line is a workflow concern
+that no kernel output should be emitting.
+
+**Rejected:** `jq` inside `action.yml`. Tasks 4 and 5 of this change require an
+adversarial fixture and assertions that the escaped output cannot terminate a
+table — and a jq pipeline embedded in YAML has nowhere to put them. That gap is
+not hypothetical: the run report's Action-side version gate was reviewed and
+flagged for exactly it, "nothing in `packages/*/src/*.test.ts` exercises
+`action/action.yml`'s shell gate".
+
+**Cost, stated plainly:** the Action runs the *published* checker, so a card
+rendered in the kernel is invisible until a release — the same gap that made the
+run report's own card absent from its own pull request. That is a real cost and
+it is worth paying here: an untested escaper on untrusted input is a worse
+trade than a release cycle.
+
+**Precedent:** `witness report` renders its card in the kernel and the Action
+posts it. This change follows the shape that already shipped rather than
+inventing a second one.
+
+### 2. `::error` versus `::warning` in advisory mode — RESOLVED: match the gate
+
+**Chosen:** `::error` when `strict: true`, `::warning` otherwise.
+
+**Rationale:** the annotation's severity should never disagree with whether the
+run actually blocks. A red annotation on a green job teaches a reader that
+annotations are decorative, which costs more than the loudness gains.
+
+### 3. How the card presents a PR body — RESOLVED: by Decision 4
+
+A PR-body anchor has no file for GitHub to annotate, so it gets no annotation
+and appears in the card like any other result. This needs no new mechanism:
+Decision 4 already requires the card to be the complete record precisely
+because annotations are partial. The card names the PR description as the
+document rather than omitting the row.

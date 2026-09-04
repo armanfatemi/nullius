@@ -16,9 +16,9 @@
  * `process.exit(main())` and therefore cannot be imported by a test.
  */
 
-export type CheckFormat = "human" | "json";
+export type CheckFormat = "human" | "json" | "card";
 
-const CHECK_FORMATS: ReadonlySet<string> = new Set<CheckFormat>(["human", "json"]);
+const CHECK_FORMATS: ReadonlySet<string> = new Set<CheckFormat>(["human", "json", "card"]);
 
 function isCheckFormat(value: string): value is CheckFormat {
   return CHECK_FORMATS.has(value);
@@ -35,6 +35,8 @@ export interface CheckArgs {
    * and the exit code are the same as `human`.
    */
   format: CheckFormat;
+  /** Blob URL prefix the card links failing anchors into. */
+  linkBase: string | undefined;
   /**
    * Suppress the CANARY-PRESENT merge guard. Set only by the probe run that
    * deliberately checks a document with a planted canary in it; every other
@@ -290,6 +292,7 @@ function parseCheck(rawArgv: readonly string[]): CheckArgs {
     configPath: undefined,
     requireMarkers: false,
     format: "human",
+    linkBase: undefined,
     probing: false,
     fix: false,
     stamp: false,
@@ -308,11 +311,14 @@ function parseCheck(rawArgv: readonly string[]): CheckArgs {
       args.stamp = true;
     } else if (arg === "--format") {
       index += 1;
-      const value = requireValue(argv, index, "--format", "a value: human or json");
+      const value = requireValue(argv, index, "--format", "a value: human, json or card");
       if (!isCheckFormat(value)) {
-        throw new CliError(`--format must be one of human|json, got: ${value}`);
+        throw new CliError(`--format must be one of human|json|card, got: ${value}`);
       }
       args.format = value;
+    } else if (arg === "--link-base") {
+      index += 1;
+      args.linkBase = requireValue(argv, index, "--link-base", "a URL prefix");
     } else if (arg === "--config") {
       index += 1;
       args.configPath = requireValue(argv, index, "--config", "a path argument");

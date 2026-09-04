@@ -285,6 +285,54 @@ jobs:
       # checked `$?` would stay green on a build whose every tier had gone
       # silent, which is the defect .claude/rules/verdict-needs-fixture-and-test.md
       # is about, in the one place where the exit code CANNOT be the gate.
+      - name: nullius grounding card (self, and the adversarial fixture)
+        run: |
+          set -euo pipefail
+          fixtures=spec/fixtures/card
+
+          # The card over this repository's own openspec documents. The verb
+          # renders and the gate is separate, so a failing anchor here would
+          # still produce a card — assert the card exists, not that it is green.
+          node packages/claims/dist/cli.js check 'openspec/**/*.md' --format card > /tmp/card.md || true
+          grep -q '^## nullius claims check' /tmp/card.md
+          grep -q '| anchors checked |' /tmp/card.md
+          # The modesty line is load-bearing: a tidy green table reads as a
+          # stronger claim than the prose it replaces.
+          grep -q 'certifies the citation and not the argument' /tmp/card.md
+          grep -q 'audit' /tmp/card.md
+
+          # BOTH arms. A bare negative grep passes vacuously the day a heading
+          # is renamed, which is the failure verdict-needs-fixture-and-test
+          # describes.
+          node packages/claims/dist/cli.js check 'README.md' --format card > /tmp/card-zero.md || true
+          grep -q '| anchors checked | 0 presence' /tmp/card-zero.md
+          ! grep -qE '^\| failures \| [1-9]' /tmp/card-zero.md
+
+          # The workflow-command escaper, over the adversarial fixture. This is
+          # the half of the escaping that lives in the Action rather than in the
+          # kernel, so this is where its assertion lives. A `::` surviving into
+          # a value would close the annotation and let PR-controlled text run as
+          # a new workflow command.
+          jq -r '
+            def msg: gsub("%"; "%25") | gsub("\r"; "%0D") | gsub("\n"; "%0A") | gsub("::"; "%3A%3A");
+            def prop: msg | gsub(":"; "%3A") | gsub(","; "%2C");
+            .documents[]?.results[]?
+            | select(.failing) | select(.verdict != "canary-present")
+            | select((.source.doc // "") != "")
+            | "::error file=\(.source.doc | prop),line=\(.source.line)::\(.detail // "" | msg)"
+          ' "$fixtures/adversarial-report.json" > /tmp/annotations.txt
+
+          # Exactly one annotation: the canary result is skipped by verdict, and
+          # every emitted line is a single line that cannot open a second
+          # command from inside its own message.
+          test "$(wc -l < /tmp/annotations.txt)" -eq 1
+          ! grep -qE '::.*::.*::' /tmp/annotations.txt
+          grep -q '%3A%3A' /tmp/annotations.txt
+
+          # And the canary's location never reaches either surface.
+          node packages/claims/dist/cli.js check 'openspec/**/*.md' --format card 2>/dev/null | grep -qv '4242' || true
+          ! grep -q '4242' /tmp/annotations.txt
+
       - name: nullius witness report (self, both polarities of the bundle)
         run: |
           set -euo pipefail

@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "documents": [
+    {
+      "doc": "docs/evil | doc\n## injected.md",
+      "lines": 12,
+      "results": [
+        {
+          "verdict": "fabricated",
+          "label": "FABRICATED",
+          "failing": true,
+          "source": {
+            "doc": "docs/evil | doc\n## injected.md",
+            "line": 3
+          },
+          "claim": {
+            "kind": "presence",
+            "path": "src/a|b.ts",
+            "line": 1,
+            "rev": null,
+            "text": "`code` | pipe\n::error file=x::pwned <img src=x>"
+          },
+          "detail": "text does not appear | ::set-output name=x::y\n| --- |"
+        },
+        {
+          "verdict": "canary-present",
+          "label": "CANARY-PRESENT",
+          "failing": true,
+          "source": {
+            "doc": "openspec/changes/secret/proposal.md",
+            "line": 4242
+          },
+          "claim": {
+            "kind": "canary",
+            "path": "spec/fixtures/x.ts",
+            "line": 9,
+            "rev": null,
+            "text": "the planted sentence that must not be printed"
+          },
+          "detail": "a registered canary is still planted"
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "documents": 1,
+    "anchoredDocuments": 1,
+    "unanchored": [],
+    "presenceAnchors": 2,
+    "absenceAnchors": 0,
+    "verdicts": {
+      "fabricated": 1,
+      "canary-present": 1
+    },
+    "failures": 2,
+    "markerFloorFailed": false,
+    "next": null
+  }
+}
