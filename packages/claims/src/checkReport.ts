@@ -367,7 +367,15 @@ export interface CardOptions {
 function locationLink(doc: string, line: number, options: CardOptions): string {
   const shown = `${escapeCell(doc)}:${String(line)}`;
   if (options.linkBase === undefined) return shown;
-  const href = `${options.linkBase.replace(/\/$/, "")}/${doc.split("/").map(encodeURIComponent).join("/")}#L${String(line)}`;
+  // `encodeURIComponent` leaves `(` and `)` alone, and a `)` inside an href
+  // closes the markdown link early — spilling the rest of the row into the
+  // comment as live markdown. The label half is protected by `escapeCell`'s
+  // bracket escaping; the href half needs these two explicitly.
+  const encoded = doc
+    .split("/")
+    .map((segment) => encodeURIComponent(segment).replace(/\(/g, "%28").replace(/\)/g, "%29"))
+    .join("/");
+  const href = `${options.linkBase.replace(/\/$/, "")}/${encoded}#L${String(line)}`;
   return `[${shown}](${href})`;
 }
 

@@ -2,7 +2,7 @@
   "version": 1,
   "documents": [
     {
-      "doc": "docs/evil | doc\n## injected.md",
+      "doc": "docs/evil | doc(paren).md\n## injected.md",
       "lines": 12,
       "results": [
         {
@@ -10,7 +10,7 @@
           "label": "FABRICATED",
           "failing": true,
           "source": {
-            "doc": "docs/evil | doc\n## injected.md",
+            "doc": "docs/evil | doc(paren).md\n## injected.md",
             "line": 3
           },
           "claim": {

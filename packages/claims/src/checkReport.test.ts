@@ -371,10 +371,21 @@ describe("renderCard", () => {
     });
     expect(card).toContain("https://github.com/o/r/blob/abc123/");
     expect(card).toContain("#L3");
-    // The path is URL-encoded on the way into the href: a hostile path
-    // containing a paren or a space would otherwise close the link early and
-    // spill the rest of the row into the comment.
-    expect(card).not.toMatch(/\]\(https:[^)]*[ |]/);
+    // The path is URL-encoded on the way into the href. A `)` is the one that
+    // matters and the one `encodeURIComponent` does NOT escape: it closes the
+    // markdown link early and spills the rest of the row into the comment as
+    // live markdown. The fixture's path carries a paren precisely so this
+    // assertion can see it.
+    const hrefs = [...card.matchAll(/\]\((https:[^\s)]*)\)/g)].map((m) => m[1] ?? "");
+    expect(hrefs.length).toBeGreaterThan(0);
+    for (const href of hrefs) {
+      expect(href).not.toMatch(/[()|\s]/);
+      // And the whole href survived: it still ends in the line anchor rather
+      // than being truncated at a paren.
+      expect(href).toMatch(/#L\d+$/);
+    }
+    expect(card).toContain("%28");
+    expect(card).toContain("%29");
   });
 
   it("renders the location as inert text when there is nowhere to link", () => {

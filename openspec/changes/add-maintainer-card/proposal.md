@@ -81,7 +81,13 @@ the first consumer is what makes the version discipline real.
 
 ## Non-goals
 
-- **Any kernel change.** `packages/claims` is untouched; this is a consumer.
+- ~~**Any kernel change.** `packages/claims` is untouched; this is a consumer.~~
+  **Reversed at implementation, and the reversal is the change's main decision.**
+  Resolving Open question 1 put the renderer in the kernel: `renderCard` and
+  `markdown.ts` in `packages/claims`, reached by `check --format card`. The
+  reason is recorded in `design.md` — an escaper on untrusted input with
+  nowhere to put a test is a worse trade than a release cycle. The JSON
+  document's shape is unchanged, so `REPORT_VERSION` does not move.
 - **Reporting on the agent run that produced the PR.** Witness journal data is
   local, gitignored, and contributor-controlled; putting it in the same table
   as code-verified counts is the specific confusion this card must avoid.
