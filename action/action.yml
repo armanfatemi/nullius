@@ -86,8 +86,12 @@ runs:
         # is not weakened, an opt-out is added beside it.
         #
         # Read from the ambient environment, never declared as an input. An
-        # input is one `${{ }}` away from PR-controlled content, and which
-        # binary CI executes is not a thing a pull request gets to choose. The
+        # input is one workflow-expression interpolation away from
+        # PR-controlled content, and which binary CI executes is not a thing a
+        # pull request gets to choose. (Spelling that interpolation out here,
+        # even inside a comment, is what broke the manifest once: the runner
+        # evaluates the syntax anywhere in the file, `run:` blocks included,
+        # and an empty one is a parse error rather than a comment.) The
         # kit's recorder takes the same shape for the same reason
         # (NULLIUS_KIT_BIN in plugin/hooks/witness-record.sh).
         #

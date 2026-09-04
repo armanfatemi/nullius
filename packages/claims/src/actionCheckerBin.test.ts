@@ -373,6 +373,39 @@ describe("the Grounding card step", () => {
     expect(run.summary).toContain("No card");
   });
 
+  it("keeps workflow expressions out of `run:` blocks entirely", () => {
+    /*
+     * The runner evaluates `${{ }}` ANYWHERE in the manifest, `run:` block
+     * scalars included, and an empty one is a parse error that rejects the
+     * whole file — `An expression was expected`. It cost a red CI run to
+     * learn, in a shell COMMENT that was only describing the syntax.
+     *
+     * Nothing here can catch it: the other tests in this file extract the
+     * `run:` body and execute it as bash, where the text is inert. Only the
+     * runner parses the manifest, so the guard has to be a rule about the
+     * file rather than an observation of its behaviour.
+     *
+     * The rule matches what the file already does — every interpolation
+     * happens in an `env:` block and reaches the shell as a variable, which
+     * is also the boundary that keeps PR-controlled content out of the
+     * scripts.
+     */
+    const lines = ACTION.split("\n");
+    const offenders: string[] = [];
+    for (const [i, line] of lines.entries()) {
+      const named = /^    - name: (.+)$/.exec(line);
+      if (named === null) continue;
+      let script: string;
+      try {
+        script = stepScript(named[1] ?? "");
+      } catch {
+        continue;
+      }
+      if (script.includes("${{")) offenders.push(`${named[1]} (near line ${i + 1})`);
+    }
+    expect(offenders).toEqual([]);
+  });
+
   it("declares every variable it reads under `set -u`", () => {
     /*
      * The general form of the defect above, asserted for every step, because
