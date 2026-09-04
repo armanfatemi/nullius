@@ -6,6 +6,8 @@
 
 **5 of 7** checks could not be answered — the sections they read recorded nothing. A row with a hollow mark is a question this run cannot answer, which is not the same as a clean result.
 
+- **3 rows, one cause:** no bundle at nullius.runs/feat-add-canary-status-redaction.json
+
 _A `code-verified` row was re-computed here by re-reading the repository. A `hook-attested` row comes from records the harness wrote, which the agent had no opportunity to decline. A `self-reported` row is the coordinator's own account of its run, and is the weakest of the three._
 
 | | check | reads | tier |

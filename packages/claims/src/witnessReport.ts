@@ -546,6 +546,16 @@ export interface CardRow {
   /** Read from the tier that contains the section. Never assigned here. */
   tier: TierId;
   mark: CardMark;
+  /**
+   * Why this row is unanswerable, taken verbatim from its section. Present only
+   * on a `not-recorded` row.
+   *
+   * Carried so the card can say a shared cause once rather than leaving a
+   * reader to count hollow marks and guess. It is the section's own text, not
+   * a summary of it: one missing bundle blocking four rows is one fact, and a
+   * reader who sees four unexplained hollows has been told four.
+   */
+  reason?: string;
 }
 
 export interface Card {
@@ -857,12 +867,15 @@ export function buildCard(report: Pick<RunReport, "tiers">): Card {
       omitted.push(spec.id);
       continue;
     }
+    const mark = markOf(found.section, spec);
+    const reason = found.section.reason;
     rows.push({
       id: spec.id,
       question: spec.question,
       section: spec.section,
       tier: found.tier,
-      mark: markOf(found.section, spec),
+      mark,
+      ...(mark === "not-recorded" && reason !== undefined ? { reason } : {}),
     });
   }
 
@@ -1829,6 +1842,25 @@ export function renderCard(card: Card): string[] {
         "cannot answer, which is not the same as a clean result.",
     );
   }
+  // A cause that makes several rows unanswerable is stated once, here, with
+  // how many rows it accounts for. Without this the card showed four hollow
+  // marks and no reason — the reader had to open the tiered document to learn
+  // that one missing file explained all of them, which is exactly the work a
+  // card exists to save. Grouped by the section's own reason text, so two rows
+  // grey for two reasons are never summarised as one.
+  const byReason = new Map<string, number>();
+  for (const row of card.rows) {
+    if (row.reason === undefined) continue;
+    byReason.set(row.reason, (byReason.get(row.reason) ?? 0) + 1);
+  }
+  const shared = [...byReason.entries()].filter(([, n]) => n > 1);
+  if (shared.length > 0) {
+    out.push("");
+    for (const [reason, n] of shared) {
+      out.push(`- **${String(n)} rows, one cause:** ${escapeCell(reason)}`);
+    }
+  }
+
   out.push("");
   // Said once, above the table, because a reader skims marks rather than
   // columns and the tier column alone does not carry it.

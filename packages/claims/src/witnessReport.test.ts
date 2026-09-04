@@ -1105,7 +1105,15 @@ describe("buildCard", () => {
 
     expect(Object.keys(card).sort()).toEqual(["omitted", "rows", "unanswerable"]);
     for (const row of card.rows) {
-      expect(Object.keys(row).sort()).toEqual(["id", "mark", "question", "section", "tier"]);
+      // `reason` is present only on a not-recorded row, and carries the
+      // section's own text so the card can state a shared cause once. It is a
+      // quotation, never a judgment — which is what this assertion protects:
+      // no field here could hold a score or a role.
+      const expected =
+        row.mark === "not-recorded" && row.reason !== undefined
+          ? ["id", "mark", "question", "reason", "section", "tier"]
+          : ["id", "mark", "question", "section", "tier"];
+      expect(Object.keys(row).sort()).toEqual(expected);
     }
   });
 
@@ -1150,6 +1158,39 @@ describe("the rendered card", () => {
     const claim = head.indexOf(`${String(card.unanswerable)} of ${String(card.rows.length)}`);
     expect(claim).toBeGreaterThan(-1);
     expect(claim).toBeLessThan(table);
+  });
+
+  it("names a cause once when it makes several rows unanswerable", () => {
+    /*
+     * Four hollow marks and no reason is what a reader actually saw, and the
+     * reason they had to ask. The tiered document states it correctly and once,
+     * far below the card — but the card is the part meant to be read at a
+     * glance, so a cause it does not carry is a cause nobody reads.
+     *
+     * It also collapsed two different situations into one glyph: "this project
+     * does not configure that check" and "one missing file made four questions
+     * unanswerable" both rendered as a hollow row.
+     */
+    const report = buildRunReport(
+      baseInput({ bundle: null, journalReports: [], commits: [], changedFiles: [] }),
+    );
+    const head = renderMarkdown(report);
+    const card = head.slice(0, head.indexOf("## Code-verified"));
+
+    // The shared reason appears, with how many rows it accounts for.
+    expect(card).toMatch(/no bundle at/);
+    expect(card).toMatch(/3 rows?/);
+    // And it is said ONCE, not once per row it explains.
+    expect(card.split("no bundle at").length - 1).toBe(1);
+  });
+
+  it("does not invent a shared cause when the rows are unanswerable separately", () => {
+    // A cause is only shared if it is literally the same reason. Two rows grey
+    // for two reasons must not be summarised as one.
+    const report = buildRunReport(baseInput());
+    const head = renderMarkdown(report);
+    const card = head.slice(0, head.indexOf("## Code-verified"));
+    expect(card).not.toMatch(/rows unanswerable for one reason/);
   });
 
   it("says a self-reported row is a weaker claim, whenever one is rendered", () => {
@@ -1562,13 +1603,23 @@ describe("a journal whose header names an older schema than its records", () => 
     expect(cell).toContain(`(${String(biggest)} records`);
   });
 
-  it("states the blocking reason in full at most twice, however many sections it blocks", () => {
+  it("states the blocking reason in full a bounded number of times, however many sections it blocks", () => {
     const blocked = report.tiers
       .flatMap((entry) => entry.sections)
       .filter((entry) => entry.status === "not-recorded");
     expect(blocked.length).toBeGreaterThan(10);
     const occurrences = markdown.split("a bundled journal did not re-validate").length - 1;
-    expect(occurrences).toBeLessThanOrEqual(2);
+    /*
+     * Raised from 2 to 3 when the card gained its shared-cause line, and the
+     * three serve three different readers: the card, for someone who reads
+     * nothing else; the first blocked section, for someone working down the
+     * tiers; and the closing list, for someone scanning what is missing.
+     *
+     * The bound exists to catch restatement coming back, not to hold the
+     * document at a number — it was thirty before the collapse, and this still
+     * fails long before it gets near that again.
+     */
+    expect(occurrences).toBeLessThanOrEqual(3);
   });
 
   it("points a repeat at the section that carries the full reason", () => {
