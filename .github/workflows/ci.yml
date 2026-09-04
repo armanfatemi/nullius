@@ -583,8 +583,19 @@ jobs:
             --journal spec/fixtures/oracle-broken/run.jsonl 2>&1 \
             | grep -q 'MALFORMED-JUSTIFICATION'
           # An unconfigured project must report, never reassure.
-          ! node packages/claims/dist/cli.js oracle HEAD..HEAD
-          node packages/claims/dist/cli.js oracle HEAD..HEAD 2>&1 \
+          #
+          # --config, pointing at a fixture that declares no `oracles`. These
+          # two arms previously ran bare and inherited the repository root's own
+          # config, so they asserted a property of unconfigured projects by
+          # relying on THIS project being one. The day the root declared its
+          # oracles the arm inverted: the verb exited 0 and the message was
+          # absent, and a step about unconfigured projects failed because this
+          # project became configured. Same defect the run-report step had, and
+          # the same fix — pin every input that decides the output.
+          ! node packages/claims/dist/cli.js oracle HEAD..HEAD \
+            --config spec/fixtures/oracle-unconfigured/nullius.config.json
+          node packages/claims/dist/cli.js oracle HEAD..HEAD \
+            --config spec/fixtures/oracle-unconfigured/nullius.config.json 2>&1 \
             | grep -q 'no `oracles` declared'
           # A real three-dot range against this repository's own history.
           # HEAD..HEAD cannot see the separator at all — merge-base(HEAD,HEAD)

@@ -1,0 +1,5 @@
+{
+  "docs": [
+    "spec/fixtures/oracle-unconfigured/*.md"
+  ]
+}
