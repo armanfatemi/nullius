@@ -9,5 +9,22 @@
     "openspec/**/spec.md",
     "openspec/changes/archive/**",
     "openspec/project.md"
+  ],
+  "oracles": [
+    {
+      "glob": "packages/*/src/**/*.test.ts",
+      "weakening": "expect\\(",
+      "skipMarker": "\\b(it|describe|test)\\.skip\\("
+    },
+    {
+      "glob": "spec/fixtures/**/*.jsonl",
+      "weakening": "\"kind\"",
+      "skipMarker": "\"skip\""
+    },
+    {
+      "glob": ".github/workflows/ci.yml",
+      "weakening": "node packages/claims/dist/cli\\.js",
+      "skipMarker": "continue-on-error"
+    }
   ]
 }

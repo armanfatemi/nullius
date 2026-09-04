@@ -14,6 +14,10 @@
       {
         "sha": "300d9ce5eee2904675ede4bb90d017404fdd5a60",
         "at": "2026-09-03T20:55:29-06:00"
+      },
+      {
+        "sha": "013d744f52fea0762f906897ec77c19175809bdf",
+        "at": "2026-09-03T21:15:29-06:00"
       }
     ]
   },
@@ -32,6 +36,7 @@
       "CHANGELOG.md",
       "action/README.md",
       "action/action.yml",
+      "nullius.runs/feat-add-maintainer-card.json",
       "openspec/changes/add-maintainer-card/design.md",
       "openspec/changes/add-maintainer-card/proposal.md",
       "openspec/changes/add-maintainer-card/specs/check-cli/spec.md",
@@ -46,17 +51,20 @@
       "packages/claims/src/cli.ts",
       "packages/claims/src/cliArgs.ts",
       "packages/claims/src/markdown.ts",
+      "packages/claims/src/witnessReport.test.ts",
       "packages/claims/src/witnessReport.ts",
       "spec/fixtures/card/adversarial-report.json",
       "spec/fixtures/card/check-report.json",
       "spec/fixtures/card/golden-card.md.txt",
-      "spec/fixtures/card/zero-anchor-report.json"
+      "spec/fixtures/card/zero-anchor-report.json",
+      "spec/fixtures/report/golden-no-bundle.md.txt",
+      "spec/fixtures/report/golden-with-bundle.json"
     ],
     "candidates": [
       {
         "session": "0804e274-52ae-43d8-a59f-3d326b9c387d",
         "classification": "excluded",
-        "reason": "every record falls outside [2026-09-04T02:13:16.000Z, 2026-09-04T03:25:29.000Z]",
+        "reason": "every record falls outside [2026-09-04T02:13:16.000Z, 2026-09-04T03:45:29.000Z]",
         "overlap": false,
         "touches": false,
         "matched_paths": []
@@ -64,7 +72,7 @@
       {
         "session": "080b1cc9-9de3-4bcf-bd0f-1cb30b50abd2",
         "classification": "excluded",
-        "reason": "every record falls outside [2026-09-04T02:13:16.000Z, 2026-09-04T03:25:29.000Z]",
+        "reason": "every record falls outside [2026-09-04T02:13:16.000Z, 2026-09-04T03:45:29.000Z]",
         "overlap": false,
         "touches": false,
         "matched_paths": []
@@ -80,7 +88,7 @@
       {
         "session": "0b822165-4a3b-49f7-ad83-fe14109cce6c",
         "classification": "excluded",
-        "reason": "every record falls outside [2026-09-04T02:13:16.000Z, 2026-09-04T03:25:29.000Z]",
+        "reason": "every record falls outside [2026-09-04T02:13:16.000Z, 2026-09-04T03:45:29.000Z]",
         "overlap": false,
         "touches": false,
         "matched_paths": []
@@ -88,7 +96,7 @@
       {
         "session": "0c54eff6-7534-4a71-b2f5-18be175db5cf",
         "classification": "excluded",
-        "reason": "every record falls outside [2026-09-04T02:13:16.000Z, 2026-09-04T03:25:29.000Z]",
+        "reason": "every record falls outside [2026-09-04T02:13:16.000Z, 2026-09-04T03:45:29.000Z]",
         "overlap": false,
         "touches": true,
         "matched_paths": [
@@ -109,7 +117,7 @@
       {
         "session": "1d6b71e4-b0b0-43a5-a99a-efb9148656ed",
         "classification": "excluded",
-        "reason": "every record falls outside [2026-09-04T02:13:16.000Z, 2026-09-04T03:25:29.000Z]",
+        "reason": "every record falls outside [2026-09-04T02:13:16.000Z, 2026-09-04T03:45:29.000Z]",
         "overlap": false,
         "touches": true,
         "matched_paths": [
@@ -121,7 +129,7 @@
       {
         "session": "20425994-5df1-4ee6-ac06-8f9c24d93148",
         "classification": "excluded",
-        "reason": "every record falls outside [2026-09-04T02:13:16.000Z, 2026-09-04T03:25:29.000Z]",
+        "reason": "every record falls outside [2026-09-04T02:13:16.000Z, 2026-09-04T03:45:29.000Z]",
         "overlap": false,
         "touches": false,
         "matched_paths": []
@@ -129,7 +137,7 @@
       {
         "session": "2755ecd0-6d4a-46e3-b55c-243372a45633",
         "classification": "excluded",
-        "reason": "every record falls outside [2026-09-04T02:13:16.000Z, 2026-09-04T03:25:29.000Z]",
+        "reason": "every record falls outside [2026-09-04T02:13:16.000Z, 2026-09-04T03:45:29.000Z]",
         "overlap": false,
         "touches": true,
         "matched_paths": [
@@ -142,7 +150,7 @@
       {
         "session": "29eba663-7266-462b-a013-01c408553efc",
         "classification": "excluded",
-        "reason": "every record falls outside [2026-09-04T02:13:16.000Z, 2026-09-04T03:25:29.000Z]",
+        "reason": "every record falls outside [2026-09-04T02:13:16.000Z, 2026-09-04T03:45:29.000Z]",
         "overlap": false,
         "touches": false,
         "matched_paths": []
@@ -150,7 +158,7 @@
       {
         "session": "2a01bfb4-fb4a-4249-bdc3-707f9b43aa35",
         "classification": "excluded",
-        "reason": "every record falls outside [2026-09-04T02:13:16.000Z, 2026-09-04T03:25:29.000Z]",
+        "reason": "every record falls outside [2026-09-04T02:13:16.000Z, 2026-09-04T03:45:29.000Z]",
         "overlap": false,
         "touches": false,
         "matched_paths": []
@@ -158,7 +166,7 @@
       {
         "session": "3119b722-050f-465f-b34a-a8c7c8aa5bdb",
         "classification": "excluded",
-        "reason": "every record falls outside [2026-09-04T02:13:16.000Z, 2026-09-04T03:25:29.000Z]",
+        "reason": "every record falls outside [2026-09-04T02:13:16.000Z, 2026-09-04T03:45:29.000Z]",
         "overlap": false,
         "touches": true,
         "matched_paths": [
@@ -168,7 +176,7 @@
       {
         "session": "3b18c3d0-c62d-452a-9d06-dc70b96e1b4b",
         "classification": "excluded",
-        "reason": "every record falls outside [2026-09-04T02:13:16.000Z, 2026-09-04T03:25:29.000Z]",
+        "reason": "every record falls outside [2026-09-04T02:13:16.000Z, 2026-09-04T03:45:29.000Z]",
         "overlap": false,
         "touches": false,
         "matched_paths": []
@@ -176,7 +184,7 @@
       {
         "session": "4d219776-9102-43f2-aa03-3ce5e6dc2d16",
         "classification": "excluded",
-        "reason": "every record falls outside [2026-09-04T02:13:16.000Z, 2026-09-04T03:25:29.000Z]",
+        "reason": "every record falls outside [2026-09-04T02:13:16.000Z, 2026-09-04T03:45:29.000Z]",
         "overlap": false,
         "touches": false,
         "matched_paths": []
@@ -184,7 +192,7 @@
       {
         "session": "5959f4f3-39f8-46d0-ad20-6852f72fe82c",
         "classification": "excluded",
-        "reason": "every record falls outside [2026-09-04T02:13:16.000Z, 2026-09-04T03:25:29.000Z]",
+        "reason": "every record falls outside [2026-09-04T02:13:16.000Z, 2026-09-04T03:45:29.000Z]",
         "overlap": false,
         "touches": false,
         "matched_paths": []
@@ -201,7 +209,7 @@
       {
         "session": "6144095f-0959-4efa-b7ef-ec8b426381f0",
         "classification": "excluded",
-        "reason": "every record falls outside [2026-09-04T02:13:16.000Z, 2026-09-04T03:25:29.000Z]",
+        "reason": "every record falls outside [2026-09-04T02:13:16.000Z, 2026-09-04T03:45:29.000Z]",
         "overlap": false,
         "touches": true,
         "matched_paths": [
@@ -209,13 +217,14 @@
           "openspec/changes/add-pr-process-report/design.md",
           "packages/claims/src/cli.ts",
           "packages/claims/src/cliArgs.ts",
+          "packages/claims/src/witnessReport.test.ts",
           "packages/claims/src/witnessReport.ts"
         ]
       },
       {
         "session": "6f2098a9-460f-4894-9693-34f6c65cc51e",
         "classification": "excluded",
-        "reason": "every record falls outside [2026-09-04T02:13:16.000Z, 2026-09-04T03:25:29.000Z]",
+        "reason": "every record falls outside [2026-09-04T02:13:16.000Z, 2026-09-04T03:45:29.000Z]",
         "overlap": false,
         "touches": true,
         "matched_paths": [
@@ -252,7 +261,7 @@
       {
         "session": "85914ea5-cc8b-4ef8-ac87-bafe0cc0109e",
         "classification": "excluded",
-        "reason": "every record falls outside [2026-09-04T02:13:16.000Z, 2026-09-04T03:25:29.000Z]",
+        "reason": "every record falls outside [2026-09-04T02:13:16.000Z, 2026-09-04T03:45:29.000Z]",
         "overlap": false,
         "touches": true,
         "matched_paths": [
@@ -280,7 +289,7 @@
       {
         "session": "99a88dd7-fdd6-4cd0-9dd5-e39cc5d66638",
         "classification": "excluded",
-        "reason": "every record falls outside [2026-09-04T02:13:16.000Z, 2026-09-04T03:25:29.000Z]",
+        "reason": "every record falls outside [2026-09-04T02:13:16.000Z, 2026-09-04T03:45:29.000Z]",
         "overlap": false,
         "touches": true,
         "matched_paths": [
@@ -306,7 +315,7 @@
       {
         "session": "c51971c4-50f9-4670-b8b1-31cb1009a9fc",
         "classification": "excluded",
-        "reason": "every record falls outside [2026-09-04T02:13:16.000Z, 2026-09-04T03:25:29.000Z]",
+        "reason": "every record falls outside [2026-09-04T02:13:16.000Z, 2026-09-04T03:45:29.000Z]",
         "overlap": false,
         "touches": false,
         "matched_paths": []
@@ -588,6 +597,16 @@
         "{\"kind\":\"report\",\"id\":\"r:a3b1619a6b3ae11a8\",\"dispatch\":\"d:toolu_01YKbv5m4cpGh4fXDEswLKrm\",\"agent\":\"rule-auditor\",\"outcome\":\"found\",\"findings\":[\"<redacted by bundle: 2001 chars\"],\"truncated\":true,\"response_chars\":2998,\"model\":\"claude-sonnet-5\",\"usage\":{\"input\":100,\"output\":20296,\"cache_read\":2340309,\"cache_creation\":246943,\"total\":2607648},\"usage_source\":\"transcript\",\"at\":\"2026-09-04T02:52:46.563Z\"}",
         "{\"kind\":\"prompt\",\"id\":\"p:70f4c46d-6561-40de-8325-c8ea082fac62\",\"chars\":32,\"at\":\"2026-09-04T02:59:53.546Z\",\"hash\":\"0081054ebe23e3242bd380d1ba57c023e244dba687d3d6243ba2189ab9ebbe0a\"}",
         "{\"kind\":\"prompt\",\"id\":\"p:1940fdb3-2725-4288-8853-5a0b78b6e58b\",\"chars\":154,\"at\":\"2026-09-04T03:10:58.139Z\",\"hash\":\"242d081577a74a6d9d31d65db9b5411c1c508f014b0d35bee68b8263e32cd5ab\"}",
+        "{\"kind\":\"prompt\",\"id\":\"p:ab047808-7b24-4cac-aea3-5085bc8532ea\",\"chars\":180,\"at\":\"2026-09-04T03:39:05.678Z\",\"hash\":\"ae182bfdd28000eb5a9d7684de6394c27cf75e31379c1336f84be6c1fe7fbc9e\"}",
+        "{\"kind\":\"resolution\",\"origin\":\"self-reported\",\"at\":\"2026-09-04T03:42:30.565Z\",\"finding\":\"f:898e577b800f92ad\",\"outcome\":\"fixed\",\"text\":\"encodeURIComponent leaves ( and ) unescaped - verified directly rather than taken on assertion - so a doc path containing ) closed the markdown href early and spilled the rest of the row into the comment as live markdown. locationLink now percent-encodes both to %28 and %29. Commit 300d9ce.\",\"id\":\"res:74390c660b9468ee\"}",
+        "{\"kind\":\"resolution\",\"origin\":\"self-reported\",\"at\":\"2026-09-04T03:42:30.600Z\",\"finding\":\"f:5108c9e776eff23a\",\"outcome\":\"fixed\",\"text\":\"Correct and the more useful half of the finding: the adversarial fixture carried a pipe, a newline, ## and :: in its doc path and no paren, so the suite could not see the gap. The fixture now carries a paren and the link test asserts the href survives intact rather than merely existing - it fails against the previous encoding, observed.\",\"id\":\"res:264791145119bf58\"}",
+        "{\"kind\":\"resolution\",\"origin\":\"self-reported\",\"at\":\"2026-09-04T03:42:30.634Z\",\"finding\":\"f:5ff74ed0d1db4254\",\"outcome\":\"fixed\",\"text\":\"The jq lived in both ci.yml and action.yml, hand-copied, so CI proved only its own copy safe while action.yml is what users execute through npx. CI now extracts the program from action.yml with awk and runs it at BOTH severities, which also closed the untested warning-versus-error requirement. My reasoning for the duplication - same code, so the assertion tests what ships - was wrong: identical today is not identical tomorrow.\",\"id\":\"res:edf39086d77a8528\"}",
+        "{\"kind\":\"resolution\",\"origin\":\"self-reported\",\"at\":\"2026-09-04T03:42:30.668Z\",\"finding\":\"f:1e37a67749b69b78\",\"outcome\":\"fixed\",\"text\":\"The severity requirement had no coverage anywhere. The CI step now loops error and warning over the extracted escaper and asserts the emitted line starts with the requested severity, plus that action.yml keys it to STRICT rather than hard-coding it.\",\"id\":\"res:b9185e45c50e6f65\"}",
+        "{\"kind\":\"resolution\",\"origin\":\"self-reported\",\"at\":\"2026-09-04T03:42:30.702Z\",\"finding\":\"f:0b22f1cb31a98028\",\"outcome\":\"fixed\",\"text\":\"The comment claimed the card cannot disagree with the gate because both come from the same summary. They come from different invocations. The comment now says so and says why the unstructured report stays beneath the card - a reader who doubts it has the other run in the same comment.\",\"id\":\"res:c8020371517dc3ad\"}",
+        "{\"kind\":\"resolution\",\"origin\":\"self-reported\",\"at\":\"2026-09-04T03:42:30.736Z\",\"finding\":\"f:211b90ec915b651c\",\"outcome\":\"fixed\",\"text\":\"The non-goal \\\"any kernel change - packages/claims is untouched\\\" was falsified by resolving the changes own open question 1. Struck through in the proposal with the reason rather than deleted, so the reversal is legible.\",\"id\":\"res:fd929ea175cadca9\"}",
+        "{\"kind\":\"resolution\",\"origin\":\"self-reported\",\"at\":\"2026-09-04T03:42:30.769Z\",\"finding\":\"f:1a71e2d4395056b3\",\"outcome\":\"fixed\",\"text\":\"The card step passed only GLOBS while the human step also checks the PR description, so a failing body anchor could fail the job while the card reported every marker verified. Both invocations now build one shared target set including the PR body.\",\"id\":\"res:898736f7459ff78a\"}",
+        "{\"kind\":\"resolution\",\"origin\":\"self-reported\",\"at\":\"2026-09-04T03:42:30.803Z\",\"finding\":\"f:d253131b18a76957\",\"outcome\":\"fixed\",\"text\":\"My insertion script sliced action/README.md and appended without re-attaching the tail, deleting 81 lines documenting the run report, an input row that still exists, and the squash-merge notes. Restored from main and re-inserted: 37 insertions, zero deletions.\",\"id\":\"res:d5a92b7494aa99fb\"}",
+        "{\"kind\":\"prompt\",\"id\":\"p:d7d0ff12-b1db-4065-8dd1-7c13bc8c8f35\",\"chars\":36,\"at\":\"2026-09-04T03:48:32.932Z\",\"hash\":\"9e6fe3c5307783b3748838af82ea27b00b91a20436284eaaf6befc914b9e296c\"}",
         ""
       ]
     }

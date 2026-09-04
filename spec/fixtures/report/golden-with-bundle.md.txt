@@ -107,6 +107,7 @@ The validator's three terminal states, counted apart. `never reported` is the on
 | --- | --- |
 | found | 20 |
 | explicitly empty | 0 |
+| no terminal record at all | 0 |
 | never reported | 0 |
 
 ### Review rounds — 6
