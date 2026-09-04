@@ -144,6 +144,150 @@ runs:
           echo 'NULLIUS_EOF'
         } >> "$GITHUB_OUTPUT"
 
+    - name: Grounding card
+      id: card
+      if: github.event_name == 'pull_request'
+      shell: bash
+      env:
+        CLAIMS_VERSION: ${{ inputs.claims-version }}
+        GLOBS: ${{ inputs.globs }}
+        CONFIG: ${{ inputs.config }}
+        REQUIRE_MARKERS: ${{ inputs.require-markers }}
+        STRICT: ${{ inputs.strict }}
+      run: |
+        set -uo pipefail
+        # The document versions this Action can render a card from. A SET, for
+        # the same reason the run report keeps one: this Action re-invokes a
+        # pinned `claims-version`, so a caller on an older pin produces an older
+        # document, and an equality would stop rendering for all of them the day
+        # a newer one is understood.
+        ACCEPTED_CHECK_VERSIONS='1'
+
+        run_docs=false
+        if [ -n "$GLOBS" ] || { [ -n "$CONFIG" ] && [ -f "$CONFIG" ]; } || [ -f nullius.config.json ]; then
+          run_docs=true
+        fi
+        if [ "$run_docs" != "true" ]; then
+          echo 'rendered=false' >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        args=()
+        [ -n "$CONFIG" ] && args+=(--config "$CONFIG")
+        [ "$REQUIRE_MARKERS" = "true" ] && args+=(--require-markers)
+
+        # The PR description is a checked document like any other, and the
+        # human-format step above checks it. If the card did not, a failing
+        # anchor in the body would fail the job while the card said every
+        # marker verified — a green table over a red run, which is the symptom
+        # this change's own compatibility section names.
+        targets=()
+        # shellcheck disable=SC2206
+        targets=($GLOBS)
+        if [ "$PR_BODY_MODE" = "true" ] && [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+          jq -r '.pull_request.body // ""' "$GITHUB_EVENT_PATH" > .nullius-pr-description.md
+          if [ -s .nullius-pr-description.md ]; then
+            targets+=(.nullius-pr-description.md)
+          fi
+        fi
+
+        # Streams SPLIT, not merged. The human step above uses `2>&1` because
+        # its output has no contract; a JSON document does, and any diagnostic
+        # written to stderr would corrupt it. A parser lenient enough to recover
+        # from that is a parser lenient enough to accept a truncated report.
+        npx -y "@nullius-inverba/claims@${CLAIMS_VERSION}" check "${targets[@]}" "${args[@]}" \
+          --format json > nullius-card.json 2> nullius-card.err || true
+
+        version=$(jq -r '.version // "absent"' nullius-card.json 2>/dev/null || echo 'unparseable')
+        known=no
+        for accepted in $ACCEPTED_CHECK_VERSIONS; do
+          [ "$version" = "$accepted" ] && known=yes
+        done
+        if [ "$known" != 'yes' ]; then
+          # Decision 6: refuse rather than parse a document whose field
+          # expectations may have moved. `jq` returns null for a missing field
+          # rather than failing, so a partial parse would render a green-looking
+          # card over a red run — visible only by comparing it to the exit code.
+          {
+            echo '## nullius claims check'
+            echo
+            echo "No card: this action renders check-report version(s) \`${ACCEPTED_CHECK_VERSIONS}\`,"
+            echo "and the checker produced \`${version}\`. The unstructured report is above."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo 'rendered=false' >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        # Stderr kept, not discarded: a checker too old to know `--format card`
+        # fails here, and Decision 6 requires a stated reason rather than a
+        # silent fallback. The pinned default is exactly that case until the
+        # release carrying this format lands.
+        card_status=0
+        npx -y "@nullius-inverba/claims@${CLAIMS_VERSION}" check "${targets[@]}" "${args[@]}" \
+          --format card --link-base "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}" \
+          > nullius-card.md 2> nullius-card-render.err || card_status=$?
+        if [ "$card_status" -ne 0 ] || [ ! -s nullius-card.md ]; then
+          {
+            echo '## nullius claims check'
+            echo
+            echo "No card: \`check --format card\` did not render (exit ${card_status}). The"
+            echo 'unstructured report is above. This is expected when `claims-version` predates'
+            echo 'the release that added the format.'
+            echo '```'
+            cat nullius-card-render.err 2>/dev/null || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          rm -f .nullius-pr-description.md
+          echo 'rendered=false' >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        rm -f .nullius-pr-description.md
+
+        # Annotations. Severity matches the gate: a red annotation on a green
+        # job teaches a reader that annotations are decorative.
+        level=warning
+        [ "$STRICT" = "true" ] && level=error
+        # Workflow-command escaping, and it is not the same escaping the card
+        # uses: `%25` first or it would double-encode the others, then CR/LF,
+        # then `::` which would otherwise close the command and let the rest of
+        # a PR-controlled string run as a new one. Results with no file anchor
+        # are skipped here and remain in the card, which is the complete record.
+        # Workflow-command escaping, and there are TWO encodings rather than one.
+        # A property value (`file=`) additionally escapes `:` and `,`, either of
+        # which would end the property and begin another — and `source.doc` comes
+        # from a PR-controlled document. An earlier draft escaped only the
+        # message and let a newline in a path split the annotation in two,
+        # putting attacker-controlled text at the start of its own line. The CI
+        # assertion over the adversarial fixture is what caught that.
+        jq -r --arg level "$level" '
+          def msg: gsub("%"; "%25") | gsub("\r"; "%0D") | gsub("\n"; "%0A") | gsub("::"; "%3A%3A");
+          def prop: msg | gsub(":"; "%3A") | gsub(","; "%2C");
+          .documents[]?.results[]?
+          | select(.failing)
+          | select(.verdict != "canary-present")
+          | select((.source.doc // "") != "")
+          | "::\($level) file=\(.source.doc | prop),line=\(.source.line)::\(.detail // "" | msg)"
+        ' nullius-card.json || true
+
+        echo 'rendered=true' >> "$GITHUB_OUTPUT"
+        {
+          echo 'card<<NULLIUS_CARD_EOF'
+          cat nullius-card.md
+          echo 'NULLIUS_CARD_EOF'
+        } >> "$GITHUB_OUTPUT"
+        if [ -s nullius-card.err ]; then
+          {
+            echo
+            echo '<details><summary>checker diagnostics</summary>'
+            echo
+            echo '```'
+            cat nullius-card.err
+            echo '```'
+            echo
+            echo '</details>'
+          } >> "$GITHUB_STEP_SUMMARY"
+        fi
+
     - name: Upsert PR comment
       if: >-
         inputs.comment == 'true' && inputs.github-token != '' &&
@@ -153,16 +297,44 @@ runs:
         GH_TOKEN: ${{ inputs.github-token }}
         REPORT: ${{ steps.check.outputs.output }}
         STATUS: ${{ steps.check.outputs.status }}
+        CARD: ${{ steps.card.outputs.card }}
+        CARD_RENDERED: ${{ steps.card.outputs.rendered }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
       run: |
+        # The marker is unchanged and stays the first line of the body. The
+        # upsert finds its own comment by `startswith`, so changing what the
+        # comment says must not change how it is found — otherwise the first
+        # run after this lands posts a second comment instead of editing the
+        # first, on every open pull request at once.
         marker='<!-- nullius-claims -->'
-        if [ "$STATUS" = "0" ]; then
-          headline='✅ all grounding markers verified'
+        footer='_[Evidence Anchors](https://github.com/armanfatemi/nullius/blob/main/spec/evidence-anchors.md): open the cited file and correct the claim, or move it to "Open questions"._'
+
+        if [ "$CARD_RENDERED" = "true" ] && [ -n "$CARD" ]; then
+          # The card carries its own headline, computed from the summary of the
+          # run that produced it.
+          #
+          # It is NOT the same run as the one behind `status`: that comes from
+          # the human-format step above, over the same globs but invoked
+          # separately. They agree in practice and nothing enforces it, so the
+          # unstructured report stays beneath the card rather than being
+          # replaced by it — a reader who doubts the card has the other run's
+          # output in the same comment.
+          #
+          # The card also covers the same target set as that step, PR body
+          # included, so the two cannot disagree about *what* was checked.
+          # Before that was true, a failing PR-body anchor could fail the job
+          # while the card reported everything verified.
+          body=$(printf '%s\n%s\n\n<details><summary>Full report</summary>\n\n```\n%s\n```\n\n</details>\n\n%s\n' \
+            "$marker" "$CARD" "$REPORT" "$footer")
         else
-          headline='❌ unverified claims found'
+          if [ "$STATUS" = "0" ]; then
+            headline='✅ all grounding markers verified'
+          else
+            headline='❌ unverified claims found'
+          fi
+          body=$(printf '%s\n## nullius claims check — %s\n\n```\n%s\n```\n\n%s\n' \
+            "$marker" "$headline" "$REPORT" "$footer")
         fi
-        body=$(printf '%s\n## nullius claims check — %s\n\n```\n%s\n```\n\n_[Evidence Anchors](https://github.com/armanfatemi/nullius/blob/main/spec/evidence-anchors.md): open the cited file and correct the claim, or move it to "Open questions"._\n' \
-          "$marker" "$headline" "$REPORT")
 
         existing=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" --paginate \
           | jq -r --arg m "$marker" '[.[] | select(.body | startswith($m)) | .id][0] // empty') || existing=''

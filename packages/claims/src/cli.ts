@@ -23,6 +23,7 @@ import {
   exitCode,
   label,
   buildReport,
+  renderCard,
   renderJson,
   summarize,
   type CheckedDocument,
@@ -956,6 +957,7 @@ function runWitnessReport(args: WitnessArgs): number {
       configPath: args.config,
       requireMarkers: false,
       format: "json",
+      linkBase: undefined,
       probing: false,
       fix: false,
       stamp: false,
@@ -1413,6 +1415,15 @@ function runCheck(args: CheckArgs): number {
     // stdout is the document and nothing else. Every diagnostic below keeps
     // its stream, and the exit code is the same expression human mode uses.
     process.stdout.write(renderJson(run, registryFailure));
+  } else if (args.format === "card") {
+    // The same document `--format json` emits, rendered for a human to read in
+    // a pull-request comment. Built from the report rather than from `run` so
+    // that the card and the JSON cannot disagree about what was checked.
+    const report = buildReport(run);
+    if (registryFailure.length > 0) report.diagnostics = [...registryFailure];
+    process.stdout.write(
+      `${renderCard(report, args.linkBase === undefined ? {} : { linkBase: args.linkBase })}\n`,
+    );
   } else {
     renderHumanDocuments(run);
   }

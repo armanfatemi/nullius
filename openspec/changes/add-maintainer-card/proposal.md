@@ -24,14 +24,18 @@ source document:
 
 **Evidence:** `packages/claims/src/checkReport.ts:216@5f88e21` — `  verdicts: Partial<Record<Verdict, number>>;`
 
-**Evidence:** `grep -rn 'format json' action/` → 1 result
+**Evidence:** `grep -rn 'format json' action/` → 2 results
 
-That one result is `add-pr-process-report`'s run-report step, which landed
-after this proposal was written and asks the checker for JSON on a **different**
-verb. **The claim this paragraph rests on is unchanged**: nothing in the action
-reads `check --format json`, which is the machine-readable rendering this
-proposal is about. The count moved because another change added a JSON consumer
-beside it, not because the gap closed.
+This count has now moved twice, for opposite reasons, and the difference is the
+whole point of the anchor. The first result is `add-pr-process-report`'s
+run-report step, which landed after this proposal was written and asks the
+checker for JSON on a **different** verb — the count moved without the gap
+closing. The second is this change's own card step, and there the count moved
+**because the gap closed**: the Action now reads `check --format json`, which is
+the machine-readable rendering this proposal was written about.
+
+An anchor that had been left at 1 would still be green today and would be
+describing a repository that no longer exists.
 
 The second half of the problem is that the fenced dump is, in one specific
 respect, the *safe* rendering — and any replacement inherits a hazard the
@@ -77,7 +81,13 @@ the first consumer is what makes the version discipline real.
 
 ## Non-goals
 
-- **Any kernel change.** `packages/claims` is untouched; this is a consumer.
+- ~~**Any kernel change.** `packages/claims` is untouched; this is a consumer.~~
+  **Reversed at implementation, and the reversal is the change's main decision.**
+  Resolving Open question 1 put the renderer in the kernel: `renderCard` and
+  `markdown.ts` in `packages/claims`, reached by `check --format card`. The
+  reason is recorded in `design.md` — an escaper on untrusted input with
+  nowhere to put a test is a worse trade than a release cycle. The JSON
+  document's shape is unchanged, so `REPORT_VERSION` does not move.
 - **Reporting on the agent run that produced the PR.** Witness journal data is
   local, gitignored, and contributor-controlled; putting it in the same table
   as code-verified counts is the specific confusion this card must avoid.

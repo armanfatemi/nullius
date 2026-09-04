@@ -32,6 +32,44 @@ unfixed in the tool that records whether defects were found.
   still declines is now reported in the plan's note, so the next unanticipated
   formatting surfaces as a diagnostic rather than as an absence.
 
+## Unreleased
+
+### Added
+
+- **`check --format card`** renders the check report as a maintainer's card —
+  documents checked, anchors split into presence and absence, a count per
+  verdict, failures, and the failing anchors with their documents. Counts come
+  from the report's `summary` rather than being recomputed, so the card cannot
+  disagree with the exit code beside it. `--link-base` turns each failing
+  location into a jump link; without it the location renders as inert text,
+  because the checker knows no repository and invents none.
+
+  The card states that a verdict certifies the citation and not the argument
+  built on it, and names `audit` as the check it did not perform. That line is
+  load-bearing rather than decorative: a tidy green table reads as a stronger
+  claim than the prose it replaces.
+
+- **The Action posts the card** on a pull request, with the unstructured report
+  collapsed beneath it, and emits workflow annotations for failing anchors —
+  `error` under `strict`, `warning` otherwise, so severity never disagrees with
+  whether the run blocks. An unrecognised report version renders no card and
+  says which version it saw.
+
+### Security
+
+- **Every value the card interpolates is escaped**, and the checked document is
+  treated as the PR-controlled input it is. Two encodings, not one: markdown
+  cells via the shared `escapeCell`, and workflow-command *property* values via
+  an encoding that also covers `:` and `,`. An earlier draft escaped only the
+  annotation message, and a newline in a document path split the annotation in
+  two — putting attacker-controlled text at the start of its own line. The CI
+  assertion over an adversarial fixture is what caught it, and that assertion
+  ships with the change.
+
+- **A registered canary is counted and never located.** `canary-present`
+  results contribute to the failure total; their document and line are not
+  printed to the comment and no annotation is emitted for them.
+
 ## 0.11.0
 
 Two changes to what a pull request comment says, and one to what it costs to

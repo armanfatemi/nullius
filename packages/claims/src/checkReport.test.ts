@@ -1,3 +1,7 @@
+import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { describe, expect, it } from "vitest";
 
 import { isFailure, type ClaimResult, type Verdict } from "./checkClaims";
@@ -9,6 +13,8 @@ import {
   summarize,
   type CheckedDocument,
   type CheckReport,
+  renderCard,
+  REPORT_VERSION,
 } from "./checkReport";
 import type { RewritePlan } from "./rewrite";
 
@@ -281,5 +287,144 @@ describe("renderJson — diagnostics", () => {
       diagnostics: string[];
     };
     expect(report.diagnostics).toEqual(["no files matched: x/**/*.md"]);
+  });
+});
+
+
+/* -------------------------------------------------------------------------
+ * The maintainer card
+ *
+ * A structured rendering of the report for a pull-request comment, replacing a
+ * fenced dump of human-format stdout. The checked document is PR-controlled
+ * input, so every value the card interpolates is escaped, and the tests below
+ * treat that as security work rather than formatting.
+ * ---------------------------------------------------------------------- */
+
+describe("renderCard", () => {
+  const FIXTURES = fileURLToPath(new URL("../../../spec/fixtures/card/", import.meta.url));
+  const load = (name: string): CheckReport =>
+    JSON.parse(readFileSync(join(FIXTURES, name), "utf8")) as CheckReport;
+
+  it("reports counts taken from the summary, not recomputed", () => {
+    const report = load("check-report.json");
+    const card = renderCard(report);
+
+    expect(card).toContain(`${String(report.summary.presenceAnchors)} presence`);
+    expect(card).toContain(`${String(report.summary.absenceAnchors)} absence`);
+    for (const [verdict, count] of Object.entries(report.summary.verdicts)) {
+      expect(card).toContain(verdict);
+      expect(card).toContain(String(count));
+    }
+  });
+
+  it("states what a passing run does not establish, and names the check it is not", () => {
+    const card = renderCard(load("check-report.json"));
+    expect(card).toMatch(/certif/i);
+    expect(card).toContain("audit");
+    expect(card).not.toMatch(/premise validity/i);
+  });
+
+  it("lists every failing anchor with the document that carries it", () => {
+    const card = renderCard(load("adversarial-report.json"));
+    expect(card).toContain("FABRICATED");
+  });
+
+  it("never prints a canary location, while still counting it as a failure", () => {
+    const card = renderCard(load("adversarial-report.json"));
+    expect(card).not.toContain("openspec/changes/secret/proposal.md");
+    expect(card).not.toContain("4242");
+    expect(card).not.toContain("the planted sentence that must not be printed");
+    expect(card).toMatch(/canary/i);
+  });
+
+  it("renders adversarial text inertly, leaving the table structure intact", () => {
+    const card = renderCard(load("adversarial-report.json"));
+    const rows = card.split("\n").filter((line) => line.startsWith("|"));
+    expect(rows.length).toBeGreaterThan(2);
+
+    // Split on UNESCAPED pipes only. A naive split counts the backslash-pipe
+    // that escaping produces, which would make an escaped cell look like a
+    // broken one — the test would fail on the fix rather than on the defect.
+    const cells = (row: string): number => row.split(/(?<!\\)\|/).length;
+    const widths = new Set(rows.map(cells));
+    expect(widths.size).toBe(1);
+    // And the escaping is doing something: the hostile text had a raw pipe.
+    expect(card).toContain("\\|");
+    // Per LINE, not per document: the document is joined with newlines, and a
+    // newline is itself in the control range. The hazard is a control character
+    // surviving INSIDE a cell, which is what would break out of the row.
+    for (const line of card.split("\n")) {
+      expect(line).not.toMatch(/[\u0000-\u001F\u007F]/);
+      expect(line.trimStart()).not.toMatch(/^::/);
+    }
+  });
+
+  it("says zero rather than rendering an empty card", () => {
+    const card = renderCard(load("zero-anchor-report.json"));
+    expect(card).toContain("0 presence");
+    expect(card).toContain("README.md");
+  });
+
+  it("links a failing anchor into the repository when given somewhere to link", () => {
+    const card = renderCard(load("adversarial-report.json"), {
+      linkBase: "https://github.com/o/r/blob/abc123",
+    });
+    expect(card).toContain("https://github.com/o/r/blob/abc123/");
+    expect(card).toContain("#L3");
+    // The path is URL-encoded on the way into the href. A `)` is the one that
+    // matters and the one `encodeURIComponent` does NOT escape: it closes the
+    // markdown link early and spills the rest of the row into the comment as
+    // live markdown. The fixture's path carries a paren precisely so this
+    // assertion can see it.
+    const hrefs = [...card.matchAll(/\]\((https:[^\s)]*)\)/g)].map((m) => m[1] ?? "");
+    expect(hrefs.length).toBeGreaterThan(0);
+    for (const href of hrefs) {
+      expect(href).not.toMatch(/[()|\s]/);
+      // And the whole href survived: it still ends in the line anchor rather
+      // than being truncated at a paren.
+      expect(href).toMatch(/#L\d+$/);
+    }
+    expect(card).toContain("%28");
+    expect(card).toContain("%29");
+  });
+
+  it("renders the location as inert text when there is nowhere to link", () => {
+    // The kernel knows no repository and must not invent one.
+    const card = renderCard(load("adversarial-report.json"));
+    expect(card).not.toContain("https://");
+  });
+
+  it("is renderable by the Action that will render it", () => {
+    /*
+     * The report version now lives in this file and in `action/action.yml`,
+     * and the Action's copy decides whether a card is rendered at all. On the
+     * run report, exactly this drift went unnoticed twice — once by a unit
+     * test pinning the old number, once by CI — so the guard is written here
+     * before it can happen a third time rather than after.
+     *
+     * Read as text: no package.json in this repo carries a YAML parser, and
+     * `packages/kit/src/init.test.ts` already asserts against rendered YAML
+     * the same way.
+     */
+    const action = readFileSync(
+      fileURLToPath(new URL("../../../action/action.yml", import.meta.url)),
+      "utf8",
+    );
+    const match = /ACCEPTED_CHECK_VERSIONS='([^']*)'/.exec(action);
+    expect(match).not.toBeNull();
+    const accepted = (match?.[1] ?? "").split(/\s+/).filter((t) => t.length > 0).map(Number);
+    expect(accepted).toContain(REPORT_VERSION);
+    // A set the Action iterates, not an equality it compares.
+    expect(action).toContain("for accepted in $ACCEPTED_CHECK_VERSIONS");
+  });
+
+  it("is a golden, so a change to what a maintainer reads is a change to a file", () => {
+    const path = join(FIXTURES, "golden-card.md.txt");
+    const actual = renderCard(load("check-report.json"));
+    if (process.env["NULLIUS_UPDATE_GOLDENS"] === "1") {
+      writeFileSync(path, actual);
+      return;
+    }
+    expect(actual).toBe(readFileSync(path, "utf8"));
   });
 });

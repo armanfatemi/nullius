@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "documents": [
+    {
+      "doc": "README.md",
+      "lines": 800,
+      "results": []
+    }
+  ],
+  "summary": {
+    "documents": 1,
+    "anchoredDocuments": 0,
+    "unanchored": [
+      {
+        "doc": "README.md",
+        "lines": 800
+      }
+    ],
+    "presenceAnchors": 0,
+    "absenceAnchors": 0,
+    "verdicts": {},
+    "failures": 0,
+    "markerFloorFailed": false,
+    "next": "run: nullius check README.md --stamp"
+  }
+}

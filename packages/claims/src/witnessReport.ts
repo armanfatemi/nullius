@@ -26,6 +26,7 @@
  */
 
 import { describeCanary, type CanaryEntry } from "./canary";
+import { escapeCell } from "./markdown";
 import type { CheckReport, ReportResult } from "./checkReport";
 import type { OracleReport } from "./oracle";
 import { isJournalFailure, type JournalFinding, type JournalReport } from "./witness";
@@ -326,32 +327,7 @@ export function readRecords(lines: readonly string[]): RecordView[] {
 // Escaping
 // ---------------------------------------------------------------------------
 
-const CONTROL = /[\u0000-\u001F\u007F]/g;
-
-/**
- * Escape a string for a markdown table cell.
- *
- * Order matters: the backslash goes first, or every escape added below is
- * itself escaped by the pass that was supposed to protect it. Control
- * characters — including the newline that would end the row and the carriage
- * return that would hide the rest of it — become a visible middle dot rather
- * than vanishing, because a cell that silently loses its second half reads as
- * a shorter string rather than as a redacted one.
- */
-export function escapeCell(value: string): string {
-  const flattened = value.replace(CONTROL, "·");
-  const escaped = flattened
-    .replace(/\\/g, "\\\\")
-    .replace(/\|/g, "\\|")
-    .replace(/`/g, "\\`")
-    .replace(/\[/g, "\\[")
-    .replace(/\]/g, "\\]")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-  // A leading markdown control character turns the cell into a heading, a list
-  // item or a blockquote in renderers that reflow a table cell's contents.
-  return /^[#>\-+=!]/.test(escaped) ? `\\${escaped}` : escaped;
-}
+export { escapeCell } from "./markdown";
 
 /**
  * The mermaid label grammar: an allow-list, not a deny-list.
@@ -570,6 +546,16 @@ export interface CardRow {
   /** Read from the tier that contains the section. Never assigned here. */
   tier: TierId;
   mark: CardMark;
+  /**
+   * Why this row is unanswerable, taken verbatim from its section. Present only
+   * on a `not-recorded` row.
+   *
+   * Carried so the card can say a shared cause once rather than leaving a
+   * reader to count hollow marks and guess. It is the section's own text, not
+   * a summary of it: one missing bundle blocking four rows is one fact, and a
+   * reader who sees four unexplained hollows has been told four.
+   */
+  reason?: string;
 }
 
 export interface Card {
@@ -881,12 +867,15 @@ export function buildCard(report: Pick<RunReport, "tiers">): Card {
       omitted.push(spec.id);
       continue;
     }
+    const mark = markOf(found.section, spec);
+    const reason = found.section.reason;
     rows.push({
       id: spec.id,
       question: spec.question,
       section: spec.section,
       tier: found.tier,
-      mark: markOf(found.section, spec),
+      mark,
+      ...(mark === "not-recorded" && reason !== undefined ? { reason } : {}),
     });
   }
 
@@ -922,9 +911,23 @@ export function buildRunReport(input: RunReportInput): RunReport {
   const changedFiles = new Set(input.changedFiles);
 
   // --- Which journals are readable, and can any of the bundle tiers be counted?
-  const failedJournals = input.journalReports.filter((entry) =>
-    entry.report.findings.some((finding) => isJournalFailure(finding.verdict)),
-  );
+  // Journals whose body was never read, and therefore whose counts are
+  // deliberate zeros rather than measurements.
+  //
+  // This used to be "any journal carrying any failing finding", and that was
+  // the renderer making the validator's judgement a second time and worse. A
+  // journal with twenty verified dispatch records was contributing nothing to
+  // the report because a resolution elsewhere in the same file pointed at a
+  // missing id — a blank that read as "no review happened" when the answer was
+  // "twenty dispatches, and some bookkeeping is wrong".
+  //
+  // The validator already refuses to report counts it cannot stand behind: it
+  // zeroes them when nothing past the header was read, and it excludes every
+  // record it rejects from the counts it does report. `bodyRead` is that
+  // decision stated in a field, so nothing here needs a list of which verdicts
+  // invalidate which number — the list that would drift the moment a verdict
+  // is added.
+  const failedJournals = input.journalReports.filter((entry) => !entry.report.bodyRead);
 
   let block: BundleBlock | null = null;
   if (bundle === null) {
@@ -940,11 +943,11 @@ export function buildRunReport(input: RunReportInput): RunReport {
     const detail = failedJournals
       .map((entry) => {
         const first = entry.report.findings.find((finding) => isJournalFailure(finding.verdict));
-        return `${entry.session} reports ${first?.verdict.toUpperCase() ?? "an invalid record"} at line ${String(first?.line ?? 0)}`;
+        return `${entry.session} declares version ${entry.report.version}${first === undefined ? "" : ` and reports ${first.verdict.toUpperCase()} at line ${String(first.line)}`}`;
       })
       .join("; ");
     block = {
-      reason: `a bundled journal did not re-validate, so nothing is counted from the bundle — ${detail}; the finding is under "Bundled journals re-validated" above`,
+      reason: `a bundled journal could not be read past its header, so its counts are zeros rather than measurements — ${detail}; the finding is under "Bundled journals re-validated" above`,
     };
   }
 
@@ -1511,11 +1514,20 @@ function hookAttestedSections(
   );
 
   const outcomes = { found: 0, empty: 0, noReport: 0 };
+  let dispatchCount = 0;
   for (const entry of input.journalReports) {
     outcomes.found += entry.report.outcomes.found;
     outcomes.empty += entry.report.outcomes.empty;
     outcomes.noReport += entry.report.outcomes.noReport;
+    dispatchCount += entry.report.dispatches;
   }
+  // Dispatches with no terminal record of any kind. The validator reports each
+  // as NO-TERMINAL and counts it in none of the three states, so the shortfall
+  // between dispatches and terminals is exactly the set that never came back.
+  const neverTerminated = Math.max(
+    0,
+    dispatchCount - (outcomes.found + outcomes.empty + outcomes.noReport),
+  );
   sections.push(
     dataSection(
       "outcomes",
@@ -1531,15 +1543,25 @@ function hookAttestedSections(
         // `noReport: 0` then means "nothing was counted" rather than "every
         // review reported back". `journal-validation` flags that separately,
         // but a row has to stand on its own section.
+        //
+        // The figure is `noReport` PLUS every dispatch that reached no terminal
+        // record at all. Those are NO-TERMINAL findings and are in none of the
+        // three outcome states, so counting only `noReport` reported "every
+        // review reported back" over a dispatch that demonstrably did not — the
+        // same shape of zero this report exists to refuse, and one a blanket
+        // block was hiding rather than answering.
         ...(outcomes.found + outcomes.empty + outcomes.noReport === 0
           ? {}
-          : { failing: outcomes.noReport }),
+          : { failing: outcomes.noReport + neverTerminated }),
         table: {
           columns: ["outcome", "count"],
           rows: [
             ["found", String(outcomes.found)],
             ["explicitly empty", String(outcomes.empty)],
             ["never reported", String(outcomes.noReport)],
+            // Last, because it is the one the other three cannot account for:
+            // a dispatch with no terminal record is in none of their counts.
+            ["no terminal record at all", String(neverTerminated)],
           ],
         },
       },
@@ -1853,6 +1875,25 @@ export function renderCard(card: Card): string[] {
         "cannot answer, which is not the same as a clean result.",
     );
   }
+  // A cause that makes several rows unanswerable is stated once, here, with
+  // how many rows it accounts for. Without this the card showed four hollow
+  // marks and no reason — the reader had to open the tiered document to learn
+  // that one missing file explained all of them, which is exactly the work a
+  // card exists to save. Grouped by the section's own reason text, so two rows
+  // grey for two reasons are never summarised as one.
+  const byReason = new Map<string, number>();
+  for (const row of card.rows) {
+    if (row.reason === undefined) continue;
+    byReason.set(row.reason, (byReason.get(row.reason) ?? 0) + 1);
+  }
+  const shared = [...byReason.entries()].filter(([, n]) => n > 1);
+  if (shared.length > 0) {
+    out.push("");
+    for (const [reason, n] of shared) {
+      out.push(`- **${String(n)} rows, one cause:** ${escapeCell(reason)}`);
+    }
+  }
+
   out.push("");
   // Said once, above the table, because a reader skims marks rather than
   // columns and the tier column alone does not carry it.

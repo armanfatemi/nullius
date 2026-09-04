@@ -212,6 +212,26 @@ export interface JournalReport {
   /** The header record, or null when the journal carries none. */
   header: JournalHeader | null;
   /**
+   * Whether anything past the header was read, and therefore whether the counts
+   * above are measurements or deliberate zeros.
+   *
+   * `false` only when the journal declares a version this build cannot read.
+   * Every other journal is read in full: a record the validator rejects is
+   * reported as a finding and excluded from the counts, so a count is always of
+   * records it stands behind.
+   *
+   * It exists because `header === null` cannot answer the question — a
+   * headerless journal has no header and is read at the implied version — and
+   * because the alternative is every consumer keeping its own list of which
+   * verdicts invalidate a count, which is this file's judgement copied
+   * somewhere it will drift.
+   *
+   * A finding is NOT a reason to disbelieve a count. `silent-reviewer` says
+   * something about the report that followed a dispatch, not about whether the
+   * dispatch happened.
+   */
+  bodyRead: boolean;
+  /**
    * v0.6 ledger counts, or **null below 0.6** — the floor is decided here, by
    * the private `versionAtLeast`, and never by a caller. 0.3–0.5 journals may
    * carry ledger kinds; their summaries stay exactly as they are today, so the
@@ -744,6 +764,7 @@ export function validateJournal(content: string): JournalReport {
       mutations: 0,
       version: scan.version,
       header: null,
+      bodyRead: false,
       // Null, not zeroed. Nothing below the header was read, and a block of
       // zeros here would say "this journal carries no ledger records" about a
       // file nobody looked at.
@@ -1652,6 +1673,9 @@ export function validateJournal(content: string): JournalReport {
     mutations,
     version: scan.version,
     header: scan.header,
+    // The body was read. Findings below may say plenty about what it contained;
+    // they do not make the counts of what was read untrue.
+    bodyRead: true,
     ledger: ledgerCounts,
     provenance: provenanceCounts,
   };

@@ -1,0 +1,10 @@
+## nullius claims check — all grounding markers verified
+
+| | |
+| --- | --- |
+| documents checked | 2, of which 2 carry markers |
+| anchors checked | 12 presence, 1 absence |
+| verdicts | ok 6, stale 8 |
+| failures | 0 |
+
+_A verdict certifies the citation and not the argument built on it: a real line, quoted accurately, can still support a false conclusion. Reasoning is what `nullius audit` examines, and it did not run here._

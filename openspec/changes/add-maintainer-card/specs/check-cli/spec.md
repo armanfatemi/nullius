@@ -40,3 +40,38 @@ document's reasoning is sound.
 
 - **WHEN** every anchor in a pull request verifies
 - **THEN** the card reports anchor integrity and names `audit` as the check it has not performed
+
+### Requirement: The card is rendered by the checker, not by the workflow
+
+The checker SHALL render the card, and the Action SHALL post what it rendered,
+because the escaping the card performs is security-relevant and a renderer
+embedded in workflow YAML has nowhere to put a test for it.
+
+#### Scenario: the card comes from the checker
+
+- **WHEN** the Action posts a grounding card
+- **THEN** the card text was produced by `check --format card` and the Action did not compose it
+
+### Requirement: An annotation escapes its property values as well as its message
+
+The Action SHALL escape a workflow command's property values with the
+property-value encoding, which also covers `:` and `,`, and SHALL NOT reuse the
+message encoding for them, because a document path is PR-controlled and either
+character would end the property and begin another.
+
+#### Scenario: a newline in a document path cannot split the annotation
+
+- **WHEN** a failing result's document path contains a newline, a colon or a comma
+- **THEN** the emitted annotation is a single line and the path appears percent-encoded inside the property
+
+### Requirement: Annotation severity matches whether the run gates
+
+The Action SHALL emit `::error` when it is configured to fail the job and
+`::warning` when it is advisory, so an annotation's severity never disagrees
+with whether the run blocks.
+
+#### Scenario: an advisory run annotates as a warning
+
+- **WHEN** the Action runs with strict disabled and a claim is unverified
+- **THEN** the annotation is a warning and the job does not fail
+

@@ -285,6 +285,62 @@ jobs:
       # checked `$?` would stay green on a build whose every tier had gone
       # silent, which is the defect .claude/rules/verdict-needs-fixture-and-test.md
       # is about, in the one place where the exit code CANNOT be the gate.
+      - name: nullius grounding card (self, and the adversarial fixture)
+        run: |
+          set -euo pipefail
+          fixtures=spec/fixtures/card
+
+          node packages/claims/dist/cli.js check 'openspec/**/*.md' --format card > /tmp/card.md || true
+          grep -q '^## nullius claims check' /tmp/card.md
+          grep -q '| anchors checked |' /tmp/card.md
+          # The modesty line is load-bearing: a tidy green table reads as a
+          # stronger claim than the prose it replaces.
+          grep -q 'certifies the citation and not the argument' /tmp/card.md
+          grep -q 'audit' /tmp/card.md
+
+          # BOTH arms. A bare negative grep passes vacuously the day a heading
+          # is renamed, which is the failure verdict-needs-fixture-and-test
+          # describes.
+          node packages/claims/dist/cli.js check 'README.md' --format card > /tmp/card-zero.md || true
+          grep -q '| anchors checked | 0 presence' /tmp/card-zero.md
+          ! grep -qE '^\| failures \| [1-9]' /tmp/card-zero.md
+
+          # --- The workflow-command escaper -----------------------------------
+          #
+          # Extracted FROM action/action.yml rather than copied beside it. An
+          # earlier version of this step carried its own copy of the same jq,
+          # which proved only that the copy in this file was safe — while
+          # `action.yml` is the one real users execute through `npx`. A fix
+          # applied to one and not the other would have left the shipped path
+          # vulnerable with CI green, which is the shape
+          # verdict-needs-fixture-and-test names: the property asserted against
+          # the wrong artifact.
+          awk '/jq -r --arg level/{f=1;next} /nullius-card.json/{f=0} f' action/action.yml > /tmp/escaper.jq
+          test -s /tmp/escaper.jq
+          grep -q 'def msg:' /tmp/escaper.jq
+          grep -q 'def prop:' /tmp/escaper.jq
+
+          for level in error warning; do
+            jq -r --arg level "$level" -f /tmp/escaper.jq \
+              "$fixtures/adversarial-report.json" > "/tmp/ann-$level.txt"
+
+            # Exactly one annotation: the canary result is skipped by verdict and
+            # the other failing result yields one line — an unescaped newline in
+            # the PR-controlled document path would make it two.
+            test "$(wc -l < "/tmp/ann-$level.txt")" -eq 1
+            # The severity matches the gate it was asked for.
+            grep -q "^::$level " "/tmp/ann-$level.txt"
+            # No second command can be opened from inside the message.
+            ! grep -qE '::.*::.*::' "/tmp/ann-$level.txt"
+            grep -q '%3A%3A' "/tmp/ann-$level.txt"
+            # The canary's location never reaches an annotation.
+            ! grep -q '4242' "/tmp/ann-$level.txt"
+          done
+
+          # And the severity really is keyed to strict rather than hard-coded.
+          grep -q 'level=warning' action/action.yml
+          grep -q 'STRICT" = "true" \] && level=error' action/action.yml
+
       - name: nullius witness report (self, both polarities of the bundle)
         run: |
           set -euo pipefail
@@ -364,7 +420,24 @@ jobs:
           # which is where a count legitimately appears — so a rename breaks a
           # positive assertion rather than silently satisfying a negative one.
           grep -qE '^### Dispatches — [0-9]' "$work/with.md"
-          ! grep -qE '^### Dispatches — [0-9]' "$work/tampered.md"
+          # The tampered bundle DOES print its counts, and that is the point of
+          # the change that made it so. Its body was read, so twenty verified
+          # dispatch records are measurements; blocking them because a terminal
+          # was missing was the renderer re-deciding what the validator had
+          # already decided, and it rendered "no review happened" over a review
+          # that did.
+          #
+          # What must survive is that the tamper is still named, and that the
+          # outcome it produces is counted where a reader will act on it. A
+          # dispatch with no terminal is in none of the three outcome states, so
+          # it gets its own row — asserted here, because a build that dropped it
+          # would report "every review reported back" over one that did not.
+          grep -qE '^### Dispatches — [0-9]' "$work/tampered.md"
+          grep -q 'NO-TERMINAL' "$work/tampered.md"
+          grep -qE '^\| no terminal record at all \| [1-9]' "$work/tampered.md"
+          # And the clean bundle has none of them, so the row above is not
+          # vacuously true of every report.
+          grep -qE '^\| no terminal record at all \| 0' "$work/with.md"
 
       # The canary, dogfooded through its whole lifecycle. There is no static
       # fixture for CANARY-PRESENT and there cannot be one: the registry lives
@@ -510,8 +583,19 @@ jobs:
             --journal spec/fixtures/oracle-broken/run.jsonl 2>&1 \
             | grep -q 'MALFORMED-JUSTIFICATION'
           # An unconfigured project must report, never reassure.
-          ! node packages/claims/dist/cli.js oracle HEAD..HEAD
-          node packages/claims/dist/cli.js oracle HEAD..HEAD 2>&1 \
+          #
+          # --config, pointing at a fixture that declares no `oracles`. These
+          # two arms previously ran bare and inherited the repository root's own
+          # config, so they asserted a property of unconfigured projects by
+          # relying on THIS project being one. The day the root declared its
+          # oracles the arm inverted: the verb exited 0 and the message was
+          # absent, and a step about unconfigured projects failed because this
+          # project became configured. Same defect the run-report step had, and
+          # the same fix — pin every input that decides the output.
+          ! node packages/claims/dist/cli.js oracle HEAD..HEAD \
+            --config spec/fixtures/oracle-unconfigured/nullius.config.json
+          node packages/claims/dist/cli.js oracle HEAD..HEAD \
+            --config spec/fixtures/oracle-unconfigured/nullius.config.json 2>&1 \
             | grep -q 'no `oracles` declared'
           # A real three-dot range against this repository's own history.
           # HEAD..HEAD cannot see the separator at all — merge-base(HEAD,HEAD)

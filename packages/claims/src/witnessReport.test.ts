@@ -484,30 +484,32 @@ describe("a tampered bundle", () => {
     expect(verdicts).toContain("no-terminal");
   });
 
-  it("replaces the hook-attested tier with the validator's finding", () => {
+  it("reports the tamper, and still counts what the validator read", () => {
+    // The body WAS read, so the counts are measurements. Blocking them was the
+    // renderer making the validator's judgement a second time: a dispatch that
+    // never terminated does not make the dispatch itself imaginary.
     const validation = section(report, "code-verified", "journal-validation");
     expect(JSON.stringify(validation.table)).toContain("NO-TERMINAL");
-    for (const entry of tier(report, "hook-attested").sections) {
-      expect(entry.status).toBe("not-recorded");
-      expect(entry.reason).toContain("NO-TERMINAL");
-    }
+    expect(validation.failing).toBe(1);
+    expect(section(report, "hook-attested", "dispatches").count).toBe(2);
   });
 
-  it("prints no dispatch count — the absence of the number is the assertion", () => {
-    const dispatches = section(report, "hook-attested", "dispatches");
-    expect(Object.hasOwn(dispatches, "count")).toBe(false);
-    const rendered = renderMarkdown(report);
-    expect(rendered).toContain("### Dispatches\n");
-    expect(rendered).not.toMatch(/### Dispatches — \d/);
+  it("counts a dispatch that never terminated as one that did not report back", () => {
+    // The tamper drops a terminal record. NO-TERMINAL is in none of the three
+    // outcome states, so a figure of `noReport` alone reported "every review
+    // reported back" over a dispatch that demonstrably did not.
+    const outcomes = section(report, "hook-attested", "outcomes");
+    expect(outcomes.count).toBe(1);
+    expect(outcomes.failing).toBe(1);
+    expect(JSON.stringify(outcomes.table)).toContain("no terminal record at all");
+
+    const row = buildCard(report).rows.find((entry) => entry.id === "reported");
+    expect(row?.mark).toBe("attention");
   });
 
-  it("does not let the self-reported or unattributed tiers count either", () => {
-    for (const id of ["self-reported", "unattributed"] as const) {
-      for (const entry of tier(report, id).sections) {
-        expect(entry.status).toBe("not-recorded");
-        expect(Object.hasOwn(entry, "count")).toBe(false);
-      }
-    }
+  it("marks the record row for attention, which is where the tamper is named", () => {
+    const row = buildCard(report).rows.find((entry) => entry.id === "record");
+    expect(row?.mark).toBe("attention");
   });
 });
 
@@ -861,6 +863,14 @@ describe("a figure that is zero because nothing was checked", () => {
           { line: 1, verdict: "unsupported-version", subject: "header", detail: "schema 9.9" },
         ],
         outcomes: { found: 0, empty: 0, noReport: 0 },
+        // What the validator actually returns for a version it cannot read:
+        // the body was never reached, so every count below is a deliberate
+        // zero. The earlier version of this fixture spread a read report and
+        // only changed the findings, which modelled a journal that does not
+        // exist.
+        bodyRead: false,
+        records: 0,
+        dispatches: 0,
       },
     };
     const report = buildRunReport(baseInput({ bundle, journalReports: [...good, unread] }));
@@ -1105,7 +1115,15 @@ describe("buildCard", () => {
 
     expect(Object.keys(card).sort()).toEqual(["omitted", "rows", "unanswerable"]);
     for (const row of card.rows) {
-      expect(Object.keys(row).sort()).toEqual(["id", "mark", "question", "section", "tier"]);
+      // `reason` is present only on a not-recorded row, and carries the
+      // section's own text so the card can state a shared cause once. It is a
+      // quotation, never a judgment — which is what this assertion protects:
+      // no field here could hold a score or a role.
+      const expected =
+        row.mark === "not-recorded" && row.reason !== undefined
+          ? ["id", "mark", "question", "reason", "section", "tier"]
+          : ["id", "mark", "question", "section", "tier"];
+      expect(Object.keys(row).sort()).toEqual(expected);
     }
   });
 
@@ -1150,6 +1168,39 @@ describe("the rendered card", () => {
     const claim = head.indexOf(`${String(card.unanswerable)} of ${String(card.rows.length)}`);
     expect(claim).toBeGreaterThan(-1);
     expect(claim).toBeLessThan(table);
+  });
+
+  it("names a cause once when it makes several rows unanswerable", () => {
+    /*
+     * Four hollow marks and no reason is what a reader actually saw, and the
+     * reason they had to ask. The tiered document states it correctly and once,
+     * far below the card — but the card is the part meant to be read at a
+     * glance, so a cause it does not carry is a cause nobody reads.
+     *
+     * It also collapsed two different situations into one glyph: "this project
+     * does not configure that check" and "one missing file made four questions
+     * unanswerable" both rendered as a hollow row.
+     */
+    const report = buildRunReport(
+      baseInput({ bundle: null, journalReports: [], commits: [], changedFiles: [] }),
+    );
+    const head = renderMarkdown(report);
+    const card = head.slice(0, head.indexOf("## Code-verified"));
+
+    // The shared reason appears, with how many rows it accounts for.
+    expect(card).toMatch(/no bundle at/);
+    expect(card).toMatch(/3 rows?/);
+    // And it is said ONCE, not once per row it explains.
+    expect(card.split("no bundle at").length - 1).toBe(1);
+  });
+
+  it("does not invent a shared cause when the rows are unanswerable separately", () => {
+    // A cause is only shared if it is literally the same reason. Two rows grey
+    // for two reasons must not be summarised as one.
+    const report = buildRunReport(baseInput());
+    const head = renderMarkdown(report);
+    const card = head.slice(0, head.indexOf("## Code-verified"));
+    expect(card).not.toMatch(/rows unanswerable for one reason/);
   });
 
   it("says a self-reported row is a weaker claim, whenever one is rendered", () => {
@@ -1562,13 +1613,23 @@ describe("a journal whose header names an older schema than its records", () => 
     expect(cell).toContain(`(${String(biggest)} records`);
   });
 
-  it("states the blocking reason in full at most twice, however many sections it blocks", () => {
+  it("states the blocking reason in full a bounded number of times, however many sections it blocks", () => {
     const blocked = report.tiers
       .flatMap((entry) => entry.sections)
       .filter((entry) => entry.status === "not-recorded");
     expect(blocked.length).toBeGreaterThan(10);
     const occurrences = markdown.split("a bundled journal did not re-validate").length - 1;
-    expect(occurrences).toBeLessThanOrEqual(2);
+    /*
+     * Raised from 2 to 3 when the card gained its shared-cause line, and the
+     * three serve three different readers: the card, for someone who reads
+     * nothing else; the first blocked section, for someone working down the
+     * tiers; and the closing list, for someone scanning what is missing.
+     *
+     * The bound exists to catch restatement coming back, not to hold the
+     * document at a number — it was thirty before the collapse, and this still
+     * fails long before it gets near that again.
+     */
+    expect(occurrences).toBeLessThanOrEqual(3);
   });
 
   it("points a repeat at the section that carries the full reason", () => {
@@ -1576,21 +1637,38 @@ describe("a journal whose header names an older schema than its records", () => 
     expect(markdown).toMatch(/\*\*Not recorded:\*\* as above/);
   });
 
+  it("counts this journal rather than blocking on it, because its body was read", () => {
+    // The header says 0.2 and the records carry later kinds, so the validator
+    // rejects those records and reports each one. It still READ the file, and
+    // the records it did accept are measurements. Blocking all fifteen bundle
+    // sections over that was the renderer re-deciding what the validator had
+    // already decided.
+    expect(reports.every((entry) => entry.report.bodyRead)).toBe(true);
+    expect(section(report, "hook-attested", "dispatches").count).toBeGreaterThan(0);
+    // And the rejection is still reported, loudly, in the row that owns it.
+    expect(section(report, "code-verified", "journal-validation").failing).toBe(1);
+  });
+
   it("keeps every blocked section's own reason intact in the JSON form", () => {
     // The collapse is a rendering decision. A consumer reading the document
-    // gets each section's reason in full, exactly as before — otherwise this
-    // is not a shortening, it is a deletion.
-    const document = JSON.parse(renderJson(report)) as RunReport;
+    // gets each section's reason in full — otherwise this is not a shortening,
+    // it is a deletion. Asserted on the no-bundle case, which is where the
+    // fifteen sections are genuinely blocked now that a merely-failing journal
+    // no longer blocks anything.
+    const noBundle = buildRunReport(
+      baseInput({ bundle: null, journalReports: [], commits: [], changedFiles: [] }),
+    );
+    const document = JSON.parse(renderJson(noBundle)) as RunReport;
     const blocked = document.tiers
       .flatMap((entry) => entry.sections)
       .filter((entry) => entry.status === "not-recorded");
     for (const entry of blocked) {
       expect(entry.reason).toBeTruthy();
-      expect(entry.reason?.length).toBeGreaterThan(40);
+      expect(entry.reason?.length).toBeGreaterThan(20);
     }
-    expect(
-      blocked.filter((entry) => entry.reason?.includes("did not re-validate")).length,
-    ).toBeGreaterThan(10);
+    expect(blocked.filter((entry) => entry.reason?.includes("no bundle at")).length).toBeGreaterThan(
+      10,
+    );
   });
 
   it("fits a comment a reviewer will actually read", () => {
@@ -1602,7 +1680,13 @@ describe("a journal whose header names an older schema than its records", () => 
     // bound exists to catch restatement coming back, not to keep the document
     // at a particular length, so it moves by the size of a deliberate addition
     // and no further.
-    expect(markdown.length).toBeLessThan(8_500);
+    //
+    // Raised again to 10,500 when a failing journal stopped blocking the whole
+    // bundle. This fixture's fifteen bundle sections now render their counts
+    // instead of fifteen copies of one refusal — the document grew because it
+    // says more, which is the opposite of the restatement this bound guards
+    // against. It was 15,676 before the collapse and 21,254 in the wild.
+    expect(markdown.length).toBeLessThan(10_500);
   });
 });
 

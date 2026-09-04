@@ -46,11 +46,13 @@ which the bundle and the report both keep:
 **Evidence:** `action/action.yml:47@04cd9ac` — `    default: '0.9.1'`
 
 Nothing in the repository escaped markdown or workflow commands, rendered
-mermaid, or exercised the Action in CI when this design was written. Two of the
-three are still true; the mermaid count is non-zero **because this change made
-it so**, which is the one anchor here that had to move:
+mermaid, or exercised the Action in CI when this design was written. The mermaid
+count is non-zero **because this change made it so**; the workflow-command
+count is non-zero because a *later* change, `add-maintainer-card`, added the
+annotation escaper this design observed the absence of. Only the third is still
+the number it was:
 
-**Evidence:** `grep -rn '%0A' action/ packages/claims/src packages/kit/src` → 0 results
+**Evidence:** `grep -rn '%0A' action/ packages/claims/src packages/kit/src` → 1 result
 
 **Evidence:** `grep -rn 'mermaid' action/ packages/claims/src packages/kit/src docs/ README.md .github/` → 19 results
 

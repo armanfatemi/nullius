@@ -2251,3 +2251,55 @@ describe("survey — the 0.6 blocks are null when nothing reached the floor", ()
     expect(survey.provenance).toEqual({ hooks: 8, selfReported: 8, unattributed: 0 });
   });
 });
+
+/* -------------------------------------------------------------------------
+ * Whether the counts cover the journal
+ *
+ * The validator already refuses to report counts for records nobody looked at:
+ * an unsupported version returns deliberate zeros. `bodyRead` states that in a
+ * field, so a consumer can tell "this journal was read and has problems" from
+ * "nothing past the header was read" without inspecting verdicts and keeping a
+ * second copy of the validator's judgement.
+ * ---------------------------------------------------------------------- */
+
+describe("bodyRead", () => {
+  it("is true for a journal whose records were read, even when they fail", () => {
+    // A finding is not a reason to disbelieve a count. The dispatch happened,
+    // the validator counted it, and SILENT-REVIEWER says something about the
+    // report that followed rather than about the dispatch.
+    const journal = [
+      JSON.stringify({ kind: "journal", version: "0.6", origin: "hooks", session: "s" }),
+      JSON.stringify({ kind: "dispatch", id: "d:1", agent: "a", task: "t", at: "2026-01-01T00:00:00.000Z" }),
+      JSON.stringify({ kind: "report", id: "r:1", dispatch: "d:1", agent: "a", outcome: "found", at: "2026-01-01T00:01:00.000Z" }),
+    ].join("\n");
+    const report = validateJournal(journal);
+
+    expect(report.bodyRead).toBe(true);
+    expect(report.dispatches).toBe(1);
+    // The journal earns a finding, and the finding is about the report record
+    // rather than about whether the dispatch happened. The count stands.
+    expect(report.findings.length).toBeGreaterThan(0);
+    expect(report.findings.every((f) => f.verdict !== "ok")).toBe(true);
+  });
+
+  it("is false when nothing past the header was read", () => {
+    // The version is one this build cannot read, so every count below is a
+    // deliberate zero rather than a measurement.
+    const journal = JSON.stringify({ kind: "journal", version: "99.0", origin: "hooks", session: "s" });
+    const report = validateJournal(journal);
+
+    expect(report.bodyRead).toBe(false);
+    expect(report.records).toBe(0);
+    expect(report.dispatches).toBe(0);
+  });
+
+  it("is true for a headerless journal, which is read at the implied version", () => {
+    // `header: null` cannot be the signal: a 0.1 journal has no header and is
+    // read in full.
+    const journal = JSON.stringify({ kind: "mutation", id: "m:1", target: { path: "a.ts", hash: "x" }, at: "2026-01-01T00:00:00.000Z" });
+    const report = validateJournal(journal);
+
+    expect(report.header).toBeNull();
+    expect(report.bodyRead).toBe(true);
+  });
+});

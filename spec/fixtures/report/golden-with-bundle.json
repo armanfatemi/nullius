@@ -236,6 +236,10 @@
               [
                 "never reported",
                 "0"
+              ],
+              [
+                "no terminal record at all",
+                "0"
               ]
             ]
           }
@@ -1330,7 +1334,8 @@
         "question": "Was anything that grades this project weakened?",
         "section": "oracle",
         "tier": "code-verified",
-        "mark": "not-recorded"
+        "mark": "not-recorded",
+        "reason": "not configured — this project declares no \"oracles\" key in nullius.config.json, so this run checked nothing. An unconfigured project and a project whose oracle held still are different facts; declare the glob that grades this project to tell them apart."
       },
       {
         "id": "record",

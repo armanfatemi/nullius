@@ -64,6 +64,43 @@ PR-controlled content.
 The comment is upserted by a hidden marker, so re-runs edit one comment
 instead of stacking new ones.
 
+## The grounding card
+
+On a pull request the comment leads with a card: documents checked, anchors
+checked split into presence and absence, a count per verdict, and the failures.
+The unstructured report follows, collapsed, under the same hidden marker so
+re-runs still edit one comment.
+
+**What the card does not claim.** A verdict certifies the citation and not the
+argument built on it — a real line, quoted accurately, can still support a false
+conclusion. The card says so, because a tidy green table reads as a stronger
+claim than the prose it replaces, and that is the one thing it must not imply.
+Reasoning is what `nullius audit` examines, and the card does not run it.
+
+Failing anchors are also emitted as workflow annotations, at `error` when
+`strict` is on and `warning` when it is not, so an annotation's severity never
+disagrees with whether the run blocks. Annotations anchor to the *document*
+making the claim rather than the file it cites, because an Evidence Anchor by
+construction cites code the pull request did not change — and GitHub renders
+annotations only on lines in the diff. A result with no file at all gets no
+annotation and still appears in the card: the card is the complete record, and
+annotations are a convenience.
+
+A registered canary is counted among the failures and never located. The probe's
+value depends on that location not being published, and a pull-request comment
+is the most public surface this action writes to.
+
+If the checker emits a report version this action does not recognise, no card is
+rendered: the unstructured report is posted instead and the step summary says
+which version it saw. A partially parsed card would show a green-looking table
+over a red run, visible only by comparing it against the exit code.
+
+Jump links in the card are built from `GITHUB_SHA`, which on a `pull_request`
+event is the merge commit — the same commit `actions/checkout` checked out, so
+the line numbers agree. They rot once the pull request closes, which is the
+accepted cost of linking to a commit that exists rather than to a branch that
+moves.
+
 ## The run report
 
 With `run-report: true` the action posts a **second** comment, under its own
