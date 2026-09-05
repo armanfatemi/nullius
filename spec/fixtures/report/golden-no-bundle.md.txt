@@ -1,6 +1,6 @@
-# Run report — 8211685..f431193
+# ⚠️ Nullius Report — How this PR was made (5 checks need a look)
 
-13 commit(s), 13 file(s) changed. This report renders what happened; it does not gate. Every section shows its data or says why it has none.
+`8211685..f431193` — 13 commits, 13 files changed. This report renders what happened; it does not gate. Every section shows its data or says why it has none.
 
 ## How this run was produced
 
@@ -10,19 +10,25 @@
 
 _A `code-verified` row was re-computed here by re-reading the repository. A `hook-attested` row comes from records the harness wrote, which the agent had no opportunity to decline. A `self-reported` row is the coordinator's own account of its run, and is the weakest of the three._
 
-| | check | reads | tier |
+| | check | detail | tier |
 | --- | --- | --- | --- |
-| ✅ clear | Are load-bearing claims cited and verified? | `anchors` | code-verified |
-| ⚪ not recorded | Was anything that grades this project weakened? | `oracle` | code-verified |
-| ⚪ not recorded | Does the run's own record hold up? | `journal-validation` | code-verified |
-| ✅ clear | Is a review probe still planted? | `canary` | code-verified |
-| ⚪ not recorded | Did agent review happen at all? | `dispatches` | hook-attested |
-| ⚪ not recorded | Did reviewers run together rather than in series? | `rounds` | hook-attested |
-| ⚪ not recorded | Did every review report back? | `outcomes` | hook-attested |
+| ✅ clear | Are load-bearing claims cited and verified? | 39/39 verified | code-verified |
+| ⚪ not recorded | Was anything that grades this project weakened? | not configured — this project declares no "oracles" key in null… | code-verified |
+| ⚪ not recorded | Does the run's own record hold up? | no journal to validate — no bundle at nullius.runs/feat-add-can… | code-verified |
+| ✅ clear | Is a review probe still planted? | none planted | code-verified |
+| ⚪ not recorded | Did agent review happen at all? | not recorded | hook-attested |
+| ⚪ not recorded | Did reviewers run together rather than in series? | not recorded | hook-attested |
+| ⚪ not recorded | Did every review report back? | not recorded | hook-attested |
+
+<details open>
+<summary><strong>Code-verified</strong> — 2 of 6 need a look</summary>
 
 ## Code-verified
 
 _Re-computed by this command from the repository and its history. Nothing here came from the bundle, so nothing here depends on the contributor._
+
+<details>
+<summary><strong>Commits in range — 13</strong></summary>
 
 ### Commits in range — 13
 
@@ -44,9 +50,35 @@ Read from `git log` over the range.
 | c8305b1 | 2026-08-30T20:09:02-06:00 |
 | f431193 | 2026-08-30T22:17:39-06:00 |
 
+</details>
+
+<details>
+<summary><strong>Files changed — 13</strong></summary>
+
 ### Files changed — 13
 
-Read from `git diff --name-status` over the range. This is the set the mutation-derived tables below are scoped by.
+Read from `git diff --name-status` over the range. The counts and tables below that are scoped to this PR are limited to these files.
+
+| path |
+| --- |
+| .claude/retrospectives/2026-08-31-proposal-to-pr-add-canary-status-redaction.md |
+| .claude/skills/proposal-to-pr/SKILL.md |
+| CHANGELOG.md |
+| openspec/changes/add-canary-status-redaction/design.md |
+| openspec/changes/add-canary-status-redaction/progress.md |
+| openspec/changes/add-canary-status-redaction/proposal.md |
+| openspec/changes/add-canary-status-redaction/review-evidence.md |
+| openspec/changes/add-canary-status-redaction/specs/canary/spec.md |
+| openspec/changes/add-canary-status-redaction/tasks.md |
+| packages/claims/src/canary.test.ts |
+| packages/claims/src/canary.ts |
+| packages/claims/src/cli.ts |
+| spec/canary.md |
+
+</details>
+
+<details>
+<summary><strong>Evidence Anchors re-checked — 39</strong></summary>
 
 ### Evidence Anchors re-checked — 39
 
@@ -57,7 +89,12 @@ Every anchor in the range's touched documents, re-verified by re-reading the cit
 | ok | 17 |
 | stale | 22 |
 
-0 failing, over 10 document(s).
+0 failing, over 10 documents.
+
+</details>
+
+<details open>
+<summary><strong>Oracle conservation</strong></summary>
 
 ### Oracle conservation
 
@@ -65,11 +102,21 @@ Whether anything that grades this project was deleted, skipped or weakened in th
 
 **Not recorded:** not configured — this project declares no "oracles" key in nullius.config.json, so this run checked nothing. An unconfigured project and a project whose oracle held still are different facts; declare the glob that grades this project to tell them apart.
 
+</details>
+
+<details open>
+<summary><strong>Bundled journals re-validated</strong></summary>
+
 ### Bundled journals re-validated
 
 `witness validate` re-run over every journal reconstructed from the bundle, before any count was taken from it. This checks a bundle's internal consistency and never its completeness: a bundle with whole journals removed validates cleanly.
 
 **Not recorded:** no journal to validate — no bundle at nullius.runs/feat-add-canary-status-redaction.json
+
+</details>
+
+<details>
+<summary><strong>Review probe</strong></summary>
 
 ### Review probe
 
@@ -77,15 +124,30 @@ Whether a canary claim is planted in a document under review. The location is ne
 
 No canary is registered for this repository.
 
+</details>
+
+</details>
+
+<details open>
+<summary><strong>Hook-attested</strong> — 9 of 9 need a look</summary>
+
 ## Hook-attested
 
 _Emitted by the harness's own runtime hooks — the agent had no opportunity to decline to write them. Read from the bundle, after every bundled journal re-validated._
 
+<details open>
+<summary><strong>Records attributed to the harness</strong></summary>
+
 ### Records attributed to the harness
 
-How many records the validator's provenance partition put in this tier. Journal-wide: `provenance` has no path predicate, so scoping it by the range would mean re-partitioning records here, which is the one thing this renderer does not do.
+How many records the harness attributed to this tier, across this entire working session rather than just this PR.
 
 **Not recorded:** no bundle at nullius.runs/feat-add-canary-status-redaction.json
+
+</details>
+
+<details open>
+<summary><strong>Dispatches</strong></summary>
 
 ### Dispatches
 
@@ -93,11 +155,21 @@ Read from the bundled journals.
 
 **Not recorded:** as above, under "Records attributed to the harness".
 
+</details>
+
+<details open>
+<summary><strong>Dispatch outcomes</strong></summary>
+
 ### Dispatch outcomes
 
 Read from the bundled journals.
 
 **Not recorded:** as above, under "Records attributed to the harness".
+
+</details>
+
+<details open>
+<summary><strong>Review rounds</strong></summary>
 
 ### Review rounds
 
@@ -105,11 +177,21 @@ Read from the bundled journals.
 
 **Not recorded:** as above, under "Records attributed to the harness".
 
+</details>
+
+<details open>
+<summary><strong>Files mutated in the range</strong></summary>
+
 ### Files mutated in the range
 
 Read from the bundled journals.
 
 **Not recorded:** as above, under "Records attributed to the harness".
+
+</details>
+
+<details open>
+<summary><strong>Edit bursts</strong></summary>
 
 ### Edit bursts
 
@@ -117,11 +199,21 @@ Read from the bundled journals.
 
 **Not recorded:** as above, under "Records attributed to the harness".
 
+</details>
+
+<details open>
+<summary><strong>Findings raised</strong></summary>
+
 ### Findings raised
 
 Read from the bundled journals.
 
 **Not recorded:** as above, under "Records attributed to the harness".
+
+</details>
+
+<details open>
+<summary><strong>Operator turns</strong></summary>
 
 ### Operator turns
 
@@ -129,21 +221,41 @@ Read from the bundled journals.
 
 **Not recorded:** as above, under "Records attributed to the harness".
 
+</details>
+
+<details open>
+<summary><strong>Model and tokens</strong></summary>
+
 ### Model and tokens
 
 Read from the bundled journals.
 
 **Not recorded:** as above, under "Records attributed to the harness".
 
+</details>
+
+</details>
+
+<details open>
+<summary><strong>Self-reported</strong> — 5 of 5 need a look</summary>
+
 ## Self-reported
 
 _Written by a coordinator about its own run. Internally consistent; not evidence the run went this way._
 
+<details open>
+<summary><strong>Records the coordinator claimed</strong></summary>
+
 ### Records the coordinator claimed
 
-How many records carried `origin: "self-reported"` of their own, or none under a self-reported header. Journal-wide.
+How many records the coordinator reported about itself, across this entire working session.
 
 **Not recorded:** as above, under "Records attributed to the harness".
+
+</details>
+
+<details open>
+<summary><strong>Stages</strong></summary>
 
 ### Stages
 
@@ -151,11 +263,21 @@ How many records carried `origin: "self-reported"` of their own, or none under a
 
 **Not recorded:** as above, under "Records attributed to the harness".
 
+</details>
+
+<details open>
+<summary><strong>Resolutions</strong></summary>
+
 ### Resolutions
 
-`resolution` records — what happened to each finding.
+`resolution` records — what the coordinator says happened to a finding. Not one-to-one with findings raised: several can share a single resolution.
 
 **Not recorded:** as above, under "Records attributed to the harness".
+
+</details>
+
+<details open>
+<summary><strong>Decisions</strong></summary>
 
 ### Decisions
 
@@ -163,21 +285,40 @@ How many records carried `origin: "self-reported"` of their own, or none under a
 
 **Not recorded:** as above, under "Records attributed to the harness".
 
+</details>
+
+<details open>
+<summary><strong>Checks</strong></summary>
+
 ### Checks
 
 `check` records — a command ran, and what it showed.
 
 **Not recorded:** as above, under "Records attributed to the harness".
 
+</details>
+
+</details>
+
+<details open>
+<summary><strong>Unattributed</strong> — 1 of 1 needs a look</summary>
+
 ## Unattributed
 
-_Records that belong to nobody: no origin of their own, under a header that claims none. Counting these as hook-attested would be the flattering default the field exists to remove._
+_Records with no origin of their own, filed under a header that names none either. Counting these as harness-verified would be a guess this report refuses to make._
+
+<details open>
+<summary><strong>Records that belong to nobody</strong></summary>
 
 ### Records that belong to nobody
 
-The validator's third partition: records with no origin of their own under a header whose origin is null or absent, plus any record whose origin this schema cannot read. Journal-wide.
+What's described above, plus any record whose origin this report simply can't read at all. Counted across this entire working session.
 
 **Not recorded:** as above, under "Records attributed to the harness".
+
+</details>
+
+</details>
 
 ## Timeline
 
@@ -208,13 +349,21 @@ flowchart LR
   n9 --> n10
   n10 --> n11
   n11 --> n12
+  classDef human fill:#4C6EF5,color:#ffffff,stroke:#364FC7,stroke-width:1px
+  classDef system fill:#adb5bd,color:#212529,stroke:#868e96,stroke-width:1px
+  classDef round fill:#2F9E44,color:#ffffff,stroke:#2B8A3E,stroke-width:1px
+  classDef burst fill:#F59F00,color:#212529,stroke:#E67700,stroke-width:1px
+  classDef commit fill:#7048E8,color:#ffffff,stroke:#5F3DC4,stroke-width:1px
+  class n0,n1,n2,n3,n4,n5,n6,n7,n8,n9,n10,n11,n12 commit
 ```
 
-Rounds group dispatches starting within 120000 ms of the first.
+**Legend:** 🟦 human prompt · 🟧 edit burst · 🟪 commit · 🟩 agent (grouped by round) · 🔳 agent reported back
+
+Rounds group dispatches starting within 2 minutes (120000 ms) of the first.
 
 ## Not recorded
 
 - **code-verified / Oracle conservation** — not configured — this project declares no "oracles" key in nullius.config.json, so this run checked nothing. An unconfigured project and a project whose oracle held still are different facts; declare the glob that grades this project to tell them apart.
 - **code-verified / Bundled journals re-validated** — no journal to validate — no bundle at nullius.runs/feat-add-canary-status-redaction.json
-- **15 section(s)** — no bundle at nullius.runs/feat-add-canary-status-redaction.json
+- **15 sections** — no bundle at nullius.runs/feat-add-canary-status-redaction.json
   - hook-attested / Records attributed to the harness, hook-attested / Dispatches, hook-attested / Dispatch outcomes, hook-attested / Review rounds, hook-attested / Files mutated in the range, hook-attested / Edit bursts, hook-attested / Findings raised, hook-attested / Operator turns, hook-attested / Model and tokens, self-reported / Records the coordinator claimed, self-reported / Stages, self-reported / Resolutions, self-reported / Decisions, self-reported / Checks, unattributed / Records that belong to nobody

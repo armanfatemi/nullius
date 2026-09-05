@@ -101,7 +101,9 @@ describe("witness report — the exit-code contract", () => {
   it("exits 0 with a failing code-verified tier, and shows the failure", () => {
     const result = run("witness", "report", "HEAD");
     expect(result.code).toBe(0);
-    expect(result.stdout).toContain("# Run report");
+    // Not anchored to "# " — a failing anchor here means the title itself
+    // carries a "⚠️ " triage glyph ahead of the name, which is the point.
+    expect(result.stdout).toContain("Nullius Report — How this PR was made");
     // Rendered, not gated. Both halves matter: an exit 0 that also hid the
     // failure would satisfy the code and defeat the point.
     expect(result.stdout).toContain("FABRICATED");

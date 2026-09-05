@@ -17,7 +17,7 @@
 
 import { isFailure, type ClaimResult, type Verdict } from "./checkClaims";
 import type { Claim, PresenceClaim } from "./parseClaims";
-import { escapeCell } from "./markdown";
+import { escapeCell, plural } from "./markdown";
 import type { Rewrite, RewritePlan, Skipped } from "./rewrite";
 
 /** One matched document, as `check` read and verified it. */
@@ -406,7 +406,7 @@ export function renderCard(report: CheckReport, options: CardOptions = {}): stri
 
   const headline =
     s.failures > 0
-      ? `${String(s.failures)} unverified claim(s)`
+      ? `${String(s.failures)} unverified ${plural(s.failures, "claim")}`
       : s.presenceAnchors + s.absenceAnchors === 0
         ? "no anchors to verify"
         : "all grounding markers verified";
@@ -428,7 +428,7 @@ export function renderCard(report: CheckReport, options: CardOptions = {}): stri
   if (s.unanchored.length > 0) {
     out.push("");
     out.push(
-      `${String(s.unanchored.length)} matched document(s) carry no grounding markers: ` +
+      `${String(s.unanchored.length)} matched ${plural(s.unanchored.length, "document")} ${plural(s.unanchored.length, "carries", "carry")} no grounding markers: ` +
         `${s.unanchored.map((entry) => escapeCell(entry.doc)).join(", ")}.`,
     );
     // Said explicitly, because "All 0 grounding marker(s) verified." is

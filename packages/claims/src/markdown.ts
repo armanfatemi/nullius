@@ -37,3 +37,26 @@ export function escapeCell(value: string): string {
   // item or a blockquote in renderers that reflow a table cell's contents.
   return /^[#>\-+=!]/.test(escaped) ? `\\${escaped}` : escaped;
 }
+
+/**
+ * The noun (or verb) for a count, singular or plural. Never `"noun(s)"` — a
+ * literal, unresolved parenthesis is a template nobody finished, not a
+ * compromise, and both renderers in this package had it in a dozen places at
+ * once, which is what made it read as unproofread rather than as one missed
+ * spot. Shared for the same reason `escapeCell` is: a second copy is the
+ * thing to avoid, not a convenience.
+ */
+export function plural(n: number, singular: string, irregularPlural?: string): string {
+  return n === 1 ? singular : (irregularPlural ?? `${singular}s`);
+}
+
+/**
+ * A count, with thousands separated by commas — "4,986,490" tokens scans in
+ * one glance; "4986490" does not. Not `toLocaleString()`: that reads the
+ * runtime's default locale, which is exactly the kind of environment
+ * dependency that would make a golden fixture differ machine to machine. A
+ * fixed comma is deterministic regardless of where this renders.
+ */
+export function formatCount(n: number): string {
+  return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}

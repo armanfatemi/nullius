@@ -229,9 +229,23 @@ describe("the flowchart", () => {
     const mermaid = report.flowchart?.mermaid ?? "";
     expect(mermaid.startsWith("flowchart LR\n")).toBe(true);
     // Node ids are generated, never derived from content: an id is the one
-    // position in the grammar quoting cannot protect.
+    // position in the grammar quoting cannot protect. `s\d+` (a subgraph per
+    // round) and `n\d+_\d+` (one agent node per member of that round) extend
+    // the id grammar without weakening it — both are still purely positional,
+    // never a slice of an agent name or a round label.
+    const id = "n\\d+(?:_\\d+)?";
+    const lineShapes = [
+      `${id}\\[".*"\\]`, // a plain event node
+      `${id}\\(\\[".*"\\]\\)`, // a stadium-shaped agent node, inside a round's subgraph
+      `${id} --> ${id}`, // an edge, including a round's fan-out/fan-in
+      `subgraph s\\d+\\[".*"\\]`, // a round's subgraph opening
+      "end", // a subgraph's closing line
+      `classDef \\w+ fill:#[0-9a-fA-F]{6},color:#[0-9a-fA-F]{6},stroke:#[0-9a-fA-F]{6},stroke-width:1px`,
+      `class (?:${id})(?:,${id})* \\w+`, // one event kind's nodes assigned its color
+    ];
+    const linePattern = new RegExp(`^ {2}(?:${lineShapes.join("|")})$`);
     for (const line of mermaid.split("\n").slice(1)) {
-      expect(line).toMatch(/^ {2}(n\d+\[".*"\]|n\d+ --> n\d+)$/);
+      expect(line).toMatch(linePattern);
     }
   });
 });
@@ -350,7 +364,7 @@ describe("range scoping", () => {
     const paths = (mutations.table?.rows ?? []).map((row) => row[0]);
     for (const path of OUT_OF_RANGE) expect(paths).not.toContain(path);
     expect(mutations.count).toBe(33);
-    expect(mutations.notes.join(" ")).toContain("4 mutation record(s)");
+    expect(mutations.notes.join(" ")).toContain("4 mutation records");
   });
 
   it("never reaches the tier counts, which stay journal-wide", () => {
@@ -360,7 +374,7 @@ describe("range scoping", () => {
     // which is the one thing Decision 1 forbids.
     const attribution = section(report, "hook-attested", "hook-attribution");
     expect(attribution.reason).not.toContain("range");
-    expect(attribution.statement).toContain("Journal-wide");
+    expect(attribution.statement).toContain("working session");
   });
 
   it("leaves the tier counts of a 0.6 journal at their whole-journal figures", () => {
@@ -380,12 +394,16 @@ describe("range scoping", () => {
     // ...while the mutation-derived table is empty and says so.
     const mutations = section(rendered, "hook-attested", "mutations");
     expect(mutations.count).toBe(0);
-    expect(mutations.notes.join(" ")).toContain("1 mutation record(s)");
+    expect(mutations.notes.join(" ")).toContain("1 mutation record");
   });
 
   it("counts kinds that carry no path in full, and the report says so", () => {
+    // "Says so" no longer means "explains why in mechanism terms" — a
+    // dispatch record carrying no path is the reason this count is
+    // whole-session rather than range-scoped, but a reader needs the fact
+    // (not scoped to just this PR), not the internal reason for it.
     expect(section(report, "hook-attested", "dispatches").statement).toContain(
-      "carries no path to scope by",
+      "working session",
     );
   });
 });
@@ -1190,8 +1208,16 @@ describe("the rendered card", () => {
     // The shared reason appears, with how many rows it accounts for.
     expect(card).toMatch(/no bundle at/);
     expect(card).toMatch(/3 rows?/);
-    // And it is said ONCE, not once per row it explains.
-    expect(card.split("no bundle at").length - 1).toBe(1);
+    // And the summary line that states it is said ONCE, not once per row —
+    // checked by the exact sentence rather than the bare substring "no bundle
+    // at", because a *different*, correctly-unique reason two rows down
+    // (`record`'s "no journal to validate — no bundle at ...") legitimately
+    // contains that same substring without being a repeat of this cause.
+    expect(card.split("**3 rows, one cause:**").length - 1).toBe(1);
+    // The three rows this cause actually explains print the generic word,
+    // not the reason text — the reason lives in the summary line above them.
+    const genericDetailCells = card.split("\n").filter((line) => line.includes("| not recorded |"));
+    expect(genericDetailCells).toHaveLength(3);
   });
 
   it("does not invent a shared cause when the rows are unanswerable separately", () => {
@@ -1686,7 +1712,21 @@ describe("a journal whose header names an older schema than its records", () => 
     // instead of fifteen copies of one refusal — the document grew because it
     // says more, which is the opposite of the restatement this bound guards
     // against. It was 15,676 before the collapse and 21,254 in the wild.
-    expect(markdown.length).toBeLessThan(10_500);
+    //
+    // Raised again to 12,500 for the `<details>`/`<summary>` wrapper around
+    // each of the four tiers (a fixed handful of bytes per tier, independent
+    // of section count) and the card's `reads` column becoming `detail` — a
+    // few words of computed figure in place of a backtick-quoted section id,
+    // which is usually longer, not shorter. Both are deliberate additions the
+    // same way the card itself was; this is not restatement coming back.
+    //
+    // Raised again to 14,500 for a second `<details>` layer, nested one per
+    // SECTION inside each tier's own: fifteen bundle sections in this fixture
+    // each gained an open/close tag pair and a one-line summary, so a tier
+    // that used to dump six subsections flat now lets a reader open only the
+    // ones that need a look. More scannable, not more restated — the added
+    // bytes are per-section chrome, not a sentence said twice.
+    expect(markdown.length).toBeLessThan(14_500);
   });
 });
 
@@ -1718,7 +1758,7 @@ describe("summariseJournalFindings", () => {
     );
     const summary = summariseJournalFindings(many);
     expect((summary.match(/MALFORMED/g) ?? []).length).toBe(VALIDATION_GROUP_CAP);
-    expect(summary).toContain("+3 further distinct finding(s)");
+    expect(summary).toContain("+3 further distinct findings");
     expect(summary).toContain("the JSON form carries them all");
   });
 });
