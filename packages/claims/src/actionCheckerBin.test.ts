@@ -469,3 +469,117 @@ describe("the Grounding card step", () => {
     expect([...new Set(undeclared)]).toEqual([]);
   });
 });
+
+/*
+ * The `Run report` step, executed the same way, for the same reason.
+ *
+ * The report's grounding row reads the range's touched documents, and on a
+ * repository whose `docs` globs cover design documents that is every pull
+ * request that changed one and no other. The pull-request description is the
+ * one claim-carrying document every pull request has — the two steps above
+ * already check it — and until this step passed it along, the row that asks
+ * whether load-bearing claims are cited rendered *not recorded* on a pull
+ * request whose body had just been verified anchor by anchor.
+ *
+ * Asserted over argv rather than over the file, because "the flag is written
+ * in the manifest" and "the checker received it" have been different facts
+ * here before: the step builds two invocations from one array, and a flag
+ * appended after the first is a report gated on a document that is not the one
+ * posted.
+ */
+
+/** Emits a renderable run-report document and records its argv. */
+const REPORT_STUB = `#!/bin/sh
+printf '%s\\n' "$*" >> "$ARGV_LOG"
+echo '{"version":2,"kind":"run-report"}'
+exit 0
+`;
+
+function runReportStep(
+  env: Record<string, string> = {},
+  body = "**Evidence:** \`a.ts:1\` — \`x\`",
+): { status: number; outputs: string; invocations: string[]; stderr: string } {
+  const dir = mkdtempSync(join(tmpdir(), "nullius-run-report-"));
+  temps.push(dir);
+  const bin = join(dir, "bin");
+  execFileSync("mkdir", ["-p", bin]);
+  const log = join(dir, "argv.log");
+  writeFileSync(log, "");
+  const stubPath = join(bin, "local-checker");
+  writeFileSync(stubPath, REPORT_STUB);
+  chmodSync(stubPath, 0o755);
+
+  const event = join(dir, "event.json");
+  writeFileSync(
+    event,
+    JSON.stringify({
+      pull_request: { base: { sha: "aaaaaaa" }, head: { sha: "bbbbbbb", ref: "feat/x" }, body },
+    }),
+  );
+  const outputs = join(dir, "github_output");
+  const summary = join(dir, "github_summary");
+  writeFileSync(outputs, "");
+  writeFileSync(summary, "");
+  const script = join(dir, "report.sh");
+  writeFileSync(script, stepScript("Run report"));
+
+  const result = spawnSync("bash", [script], {
+    cwd: dir,
+    encoding: "utf8",
+    env: {
+      PATH: `${bin}:${process.env["PATH"] ?? ""}`,
+      HOME: dir,
+      ARGV_LOG: log,
+      GITHUB_OUTPUT: outputs,
+      GITHUB_STEP_SUMMARY: summary,
+      GITHUB_EVENT_NAME: "pull_request",
+      GITHUB_EVENT_PATH: event,
+      CLAIMS_VERSION: "0.12.0",
+      BUNDLE_INPUT: "",
+      PR_BODY_MODE: "true",
+      NULLIUS_CLAIMS_BIN: "local-checker",
+      ...env,
+    },
+  });
+
+  return {
+    status: result.status ?? -1,
+    outputs: readFileSync(outputs, "utf8"),
+    invocations: readFileSync(log, "utf8").split("\n").filter((l) => l.length > 0),
+    stderr: result.stderr,
+  };
+}
+
+describe("the Run report step", () => {
+  it("hands the pull-request description to the report as a checked document", () => {
+    const run = runReportStep();
+    expect(run.stderr).not.toContain("unbound variable");
+    expect(run.status).toBe(0);
+    expect(run.outputs).toContain("rendered=true");
+    // Both invocations: the JSON one decides whether the markdown may be
+    // posted, so a document checked by one and not the other would mean the
+    // gate and the comment disagree about what was read.
+    expect(run.invocations).toHaveLength(2);
+    for (const argv of run.invocations) {
+      expect(argv).toContain("--pr-body .nullius-pr-description.md");
+    }
+    expect(run.invocations[0]).toContain("--format json");
+    expect(run.invocations[1]).toContain("--format md");
+  });
+
+  it("passes no document when the description is empty", () => {
+    // An empty body is an absence. `--pr-body` on a file with no anchors makes
+    // the grounding row read *not recorded* for a second reason, and the
+    // report would then name the wrong one.
+    const run = runReportStep({}, "");
+    expect(run.status).toBe(0);
+    for (const argv of run.invocations) expect(argv).not.toContain("--pr-body");
+  });
+
+  it("passes no document when pr-body is off", () => {
+    const run = runReportStep({ PR_BODY_MODE: "false" });
+    expect(run.status).toBe(0);
+    expect(run.invocations).not.toHaveLength(0);
+    for (const argv of run.invocations) expect(argv).not.toContain("--pr-body");
+  });
+});
