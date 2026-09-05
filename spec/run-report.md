@@ -99,11 +99,16 @@ breakdown rendered as an absence on this repository's own pull requests — whic
 was the correct output, because a tier breakdown is a claim about attribution,
 the data carried none, and the alternative to saying so is inventing one.
 
-The floor is now crossed rather than removed: the recorder writes `0.6`, and a
-range recorded by a session at that version renders its tiers. The two
-populations sit side by side in `.nullius/runs/` — a journal written before the
-schema moved still renders the absence, and a bundle carrying one of each says
-so per journal. Nothing about the rule changed; the repository walked over it.
+The floor is now crossed rather than removed. The recorder writes the version
+the floor names:
+
+**Evidence:** `packages/kit/src/journalFile.ts:77` — `export const SCHEMA_VERSION = "0.6";`
+
+so a range recorded by a session at that version renders its tiers. Older
+journals do not disappear when the schema moves — a bundle may carry one of
+each, and the absence is then reported per journal rather than for the report.
+That is the same rule doing the same thing; the recorder walked over the floor
+it describes, and the floor is still where it was.
 
 ## Absence is rendered as *not recorded*, never as zero
 

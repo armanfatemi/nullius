@@ -131,7 +131,10 @@ runs:
           # Read the body from the event file, never via expression
           # interpolation — the description is PR-controlled content.
           jq -r '.pull_request.body // ""' "$GITHUB_EVENT_PATH" > .nullius-pr-description.md
-          if [ -s .nullius-pr-description.md ]; then
+          # `grep`, not `[ -s ]`: `jq -r` writes a newline for an empty body,
+          # so the file is one byte and every size test on it passed. The other
+          # two steps carry the same guard for the same reason.
+          if grep -q '[^[:space:]]' .nullius-pr-description.md; then
             # shellcheck disable=SC2086
             body_output=$($runner check .nullius-pr-description.md 2>&1)
             body_status=$?
@@ -434,8 +437,14 @@ runs:
       env:
         CLAIMS_VERSION: ${{ inputs.claims-version }}
         BUNDLE_INPUT: ${{ inputs.run-report-bundle }}
-        # Read below, and this step runs under `set -u`. The card step's env
-        # block carries the same line and the same reason; see it.
+        # Read below, and this step runs under `set -u`; see the card step's
+        # env block for what an undeclared reference costs.
+        #
+        # The script gates on this alone, where the two steps above also test
+        # `$GITHUB_EVENT_NAME`. Not an asymmetry: this step's own `if:` above
+        # carries `github.event_name == 'pull_request'`, so the shell never
+        # runs on any other event and a second test of it would be dead. The
+        # two steps above have no such `if:` and need theirs.
         PR_BODY_MODE: ${{ inputs.pr-body }}
       run: |
         set -uo pipefail

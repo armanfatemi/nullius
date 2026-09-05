@@ -80,7 +80,7 @@ interface Run {
  * that records its argv. `npx` is stubbed too, so "the pinned install did not
  * run" is an observation rather than an inference.
  */
-function runCheckerStep(env: Record<string, string>): Run {
+function runCheckerStep(env: Record<string, string>, body = "a description"): Run {
   const dir = mkdtempSync(join(tmpdir(), "nullius-action-"));
   temps.push(dir);
   const log = join(dir, "invocations.log");
@@ -102,8 +102,10 @@ function runCheckerStep(env: Record<string, string>): Run {
   writeFileSync(script, stepScript("Run checker"));
   const outputs = join(dir, "github_output");
   const summary = join(dir, "github_summary");
+  const event = join(dir, "event.json");
   writeFileSync(outputs, "");
   writeFileSync(summary, "");
+  writeFileSync(event, JSON.stringify({ pull_request: { body } }));
 
   const result = spawnSync("bash", [script], {
     cwd: dir,
@@ -113,6 +115,7 @@ function runCheckerStep(env: Record<string, string>): Run {
       HOME: dir,
       GITHUB_OUTPUT: outputs,
       GITHUB_STEP_SUMMARY: summary,
+      GITHUB_EVENT_PATH: event,
       GITHUB_EVENT_NAME: "push",
       CLAIMS_VERSION: "0.12.0",
       GLOBS: "spec/**/*.md",
@@ -143,6 +146,21 @@ describe("the Action's local-checker override", () => {
     const run = runCheckerStep({});
     expect(run.status).toBe(0);
     expect(run.invocations).toEqual(["npx -y @nullius-inverba/claims@0.12.0 check spec/**/*.md"]);
+  });
+
+  it("checks the description, and stops checking it when it is empty", () => {
+    // The third copy of the guard, asserted the same way as the other two.
+    // `jq -r` writes a newline for an absent body, so `[ -s ]` passed on every
+    // run and this step has always sent the checker an empty document — which
+    // it then reported on, in the comment, as a document with no markers.
+    const env = { GITHUB_EVENT_NAME: "pull_request", PR_BODY_MODE: "true" };
+    expect(runCheckerStep(env).invocations.join("\n")).toContain(".nullius-pr-description.md");
+    expect(runCheckerStep(env, "").invocations.join("\n")).not.toContain(
+      ".nullius-pr-description.md",
+    );
+    expect(runCheckerStep(env, "\n \n").invocations.join("\n")).not.toContain(
+      ".nullius-pr-description.md",
+    );
   });
 
   it("runs the named checker and does NOT install the pinned release", () => {
@@ -264,6 +282,7 @@ describe("the override is a workflow setting, and stays one", () => {
 
 /** Emits a card-shaped report, so the step gets past its version gate. */
 const CHECKER_STUB = `#!/bin/sh
+printf '%s\\n' "$*" >> "$ARGV_LOG"
 for arg in "$@"; do
   if [ "$arg" = "card" ]; then
     echo "## nullius claims check — stub card"
@@ -276,6 +295,7 @@ exit \${STUB_CARD_EXIT:-0}
 
 /** A checker too old to know the format: writes nothing, fails. */
 const SILENT_STUB = `#!/bin/sh
+printf '%s\\n' "$*" >> "$ARGV_LOG"
 for arg in "$@"; do
   if [ "$arg" = "card" ]; then echo "unknown option --format card" >&2; exit 2; fi
 done
@@ -286,17 +306,20 @@ exit 0
 function runCardStep(
   env: Record<string, string> = {},
   stub: string = CHECKER_STUB,
-): { status: number; outputs: string; summary: string; stderr: string } {
+  body = "a description",
+): { status: number; outputs: string; summary: string; stderr: string; invocations: string[] } {
   const dir = mkdtempSync(join(tmpdir(), "nullius-card-"));
   temps.push(dir);
   const bin = join(dir, "bin");
   execFileSync("mkdir", ["-p", bin]);
+  const log = join(dir, "argv.log");
+  writeFileSync(log, "");
   const stubPath = join(bin, "local-checker");
   writeFileSync(stubPath, stub);
   chmodSync(stubPath, 0o755);
 
   const event = join(dir, "event.json");
-  writeFileSync(event, JSON.stringify({ pull_request: { body: "a description" } }));
+  writeFileSync(event, JSON.stringify({ pull_request: { body } }));
   const outputs = join(dir, "github_output");
   const summary = join(dir, "github_summary");
   writeFileSync(outputs, "");
@@ -329,6 +352,7 @@ function runCardStep(
       STRICT: "false",
       PR_BODY_MODE: "true",
       NULLIUS_CLAIMS_BIN: "local-checker",
+      ARGV_LOG: log,
       ...env,
     },
   });
@@ -338,6 +362,7 @@ function runCardStep(
     outputs: readFileSync(outputs, "utf8"),
     summary: readFileSync(summary, "utf8"),
     stderr: result.stderr,
+    invocations: readFileSync(log, "utf8").split("\n").filter((l) => l.length > 0),
   };
 }
 
@@ -347,6 +372,28 @@ describe("the Grounding card step", () => {
     expect(run.stderr).not.toContain("unbound variable");
     expect(run.status).toBe(0);
     expect(run.outputs).toContain("rendered=true");
+  });
+
+  it("checks the description, and stops checking it when it is empty", () => {
+    /*
+     * The empty case is the one that was silently wrong. `jq -r` writes a
+     * newline for an absent body, so the file is one byte long and the old
+     * `[ -s ]` guard passed on every run — the step has always handed the
+     * checker a document with nothing in it, and under `require-markers` that
+     * is a document with no grounding markers.
+     *
+     * Asserted over argv rather than over the guard's text, because the guard
+     * is a shell test and the thing that matters is which targets the checker
+     * was given.
+     */
+    expect(runCardStep().invocations.join("\n")).toContain(".nullius-pr-description.md");
+    expect(runCardStep({}, CHECKER_STUB, "").invocations.join("\n")).not.toContain(
+      ".nullius-pr-description.md",
+    );
+    // Whitespace is not content either, and `[ -s ]` would have passed it too.
+    expect(runCardStep({}, CHECKER_STUB, "\n  \n").invocations.join("\n")).not.toContain(
+      ".nullius-pr-description.md",
+    );
   });
 
   it("posts the card when the check FAILS, which is when it is needed", () => {
