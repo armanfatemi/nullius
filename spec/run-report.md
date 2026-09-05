@@ -93,12 +93,22 @@ to tiers, no reading of the header's `origin`. Below the floor it says so:
 
 **Evidence:** `packages/claims/src/witnessReport.ts:1347` — `    (entry) => entry.report.provenance === null,`
 
-That is this feature's own absence rule turned on its headline section. Every
-journal in this repository today is version `0.2`, including the one that
-recorded the run which built this report — so on this repository, right now,
-the tier breakdown renders as an absence. That is the correct output. A tier
-breakdown is a claim about attribution; the data carries no attribution; the
-alternative to saying so is inventing one.
+That is this feature's own absence rule turned on its headline section. When it
+was written, every journal in this repository was version `0.2` and the tier
+breakdown rendered as an absence on this repository's own pull requests — which
+was the correct output, because a tier breakdown is a claim about attribution,
+the data carried none, and the alternative to saying so is inventing one.
+
+The floor is now crossed rather than removed. The recorder writes the version
+the floor names:
+
+**Evidence:** `packages/kit/src/journalFile.ts:77` — `export const SCHEMA_VERSION = "0.6";`
+
+so a range recorded by a session at that version renders its tiers. Older
+journals do not disappear when the schema moves — a bundle may carry one of
+each, and the absence is then reported per journal rather than for the report.
+That is the same rule doing the same thing; the recorder walked over the floor
+it describes, and the floor is still where it was.
 
 ## Absence is rendered as *not recorded*, never as zero
 
@@ -111,6 +121,27 @@ with no data has no `count` key at all.
 A zero would be a claim that the thing was counted and came to nothing. "No
 oracles are configured" and "no oracle changed" are different facts and only
 one of them is evidence.
+
+## The grounding row reads the range's documents, and the description if given
+
+The anchor section checks the range's changed files filtered by the project's
+`docs` globs — and, when the caller names one, a pull-request description
+alongside them:
+
+**Evidence:** `packages/claims/src/cli.ts:861` — `  if (prBody !== undefined) docs.push(prBody);`
+
+Without that second half the row is *not recorded* on every pull request that
+changes no document the globs name, which on a repository whose globs cover
+design documents is every code-only change. The description is the one
+claim-carrying document a pull request always has, and it is the document an
+agent writes its own summary of the change into — so a row that reads
+"cannot be answered" while CI has just verified that body anchor by anchor is
+reporting an absence that is an artefact of which file list it was handed.
+
+The flag is the caller's, not a default. `witness report` over a bare range
+knows nothing about a pull request; the Action passes `--pr-body` because it
+has the event payload, and passes it to the JSON and the markdown invocation
+alike, since the first decides whether the second may be posted.
 
 ## Selection is three-way, and inconclusive is not a synonym for excluded
 

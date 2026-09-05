@@ -113,6 +113,13 @@ Two comments, never one table. The grounding result and the process result
 answer different questions and carry different weight, and a single table would
 let a contributor-supplied count sit beside a CI-computed one as an equal.
 
+**The report checks the PR description too**, on the same `pr-body` input the
+grounding check reads. Its anchor row otherwise covers only documents in the
+range that match the project's `docs` globs — so on a repository whose globs
+name design documents, a code-only pull request rendered *not recorded* against
+a description this action had just verified anchor by anchor. Set
+`pr-body: false` and the row goes back to reading the range alone.
+
 ### What each tier is worth
 
 The report renders four tiers, in a fixed order, and the order is the point:
