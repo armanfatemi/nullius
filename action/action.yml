@@ -131,7 +131,10 @@ runs:
           # Read the body from the event file, never via expression
           # interpolation — the description is PR-controlled content.
           jq -r '.pull_request.body // ""' "$GITHUB_EVENT_PATH" > .nullius-pr-description.md
-          if [ -s .nullius-pr-description.md ]; then
+          # `grep`, not `[ -s ]`: `jq -r` writes a newline for an empty body,
+          # so the file is one byte and every size test on it passed. The other
+          # two steps carry the same guard for the same reason.
+          if grep -q '[^[:space:]]' .nullius-pr-description.md; then
             # shellcheck disable=SC2086
             body_output=$($runner check .nullius-pr-description.md 2>&1)
             body_status=$?
@@ -239,7 +242,10 @@ runs:
         targets=($GLOBS)
         if [ "$PR_BODY_MODE" = "true" ] && [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
           jq -r '.pull_request.body // ""' "$GITHUB_EVENT_PATH" > .nullius-pr-description.md
-          if [ -s .nullius-pr-description.md ]; then
+          # See the run-report step: `jq -r` writes a newline for an empty
+          # body, so `[ -s ]` here never once refused one, and a description
+          # with nothing in it was checked as a document on every run.
+          if grep -q '[^[:space:]]' .nullius-pr-description.md; then
             targets+=(.nullius-pr-description.md)
           fi
         fi
@@ -431,6 +437,15 @@ runs:
       env:
         CLAIMS_VERSION: ${{ inputs.claims-version }}
         BUNDLE_INPUT: ${{ inputs.run-report-bundle }}
+        # Read below, and this step runs under `set -u`; see the card step's
+        # env block for what an undeclared reference costs.
+        #
+        # The script gates on this alone, where the two steps above also test
+        # `$GITHUB_EVENT_NAME`. Not an asymmetry: this step's own `if:` above
+        # carries `github.event_name == 'pull_request'`, so the shell never
+        # runs on any other event and a second test of it would be dead. The
+        # two steps above have no such `if:` and need theirs.
+        PR_BODY_MODE: ${{ inputs.pr-body }}
       run: |
         set -uo pipefail
 
@@ -458,6 +473,38 @@ runs:
           bundle="nullius.runs/${slug}.json"
         fi
 
+        # The pull-request description, checked as one of the range's touched
+        # documents.
+        #
+        # Without it the report's grounding row reads *not recorded* on every
+        # pull request that changes no file matching the project's `docs`
+        # globs — which is most of them, and every code-only one. The two steps
+        # above already check this document; the row that asks whether
+        # load-bearing claims are cited was the one place that did not, so a
+        # pull request whose body had just been verified anchor by anchor still
+        # rendered "cannot be answered" against its own evidence.
+        #
+        # Written here rather than reused from the card step. That step exits
+        # early when no globs and no config are configured, and a file another
+        # step may or may not have left behind is not an input.
+        # One array for both invocations below. The JSON form is what decides
+        # whether the markdown may be posted, so an input carried by one and
+        # not the other would gate a document that is not the one posted.
+        report_args=(--bundle "$bundle")
+        if [ "$PR_BODY_MODE" = "true" ]; then
+          jq -r '.pull_request.body // ""' "$GITHUB_EVENT_PATH" > .nullius-pr-description.md
+          # Empty is an absence, not a document. `--pr-body` on a file with no
+          # anchors makes the row read *not recorded* for a second reason, and
+          # the report would name the wrong one.
+          #
+          # `grep`, not `[ -s ]`: `jq -r` emits a newline for an empty body, so
+          # the file is one byte long and every `-s` test on it passes. The
+          # guard has to be about content rather than size.
+          if grep -q '[^[:space:]]' .nullius-pr-description.md; then
+            report_args+=(--pr-body .nullius-pr-description.md)
+          fi
+        fi
+
         # The JSON form first, because its `version` decides whether the
         # markdown is safe to post at all. A newer kernel than this Action
         # understands must produce NO comment and say which version it was —
@@ -466,7 +513,7 @@ runs:
         json_status=0
         # shellcheck disable=SC2086
         $runner witness report "${base}..${head}" \
-          --bundle "$bundle" --format json > nullius-run-report.json 2> nullius-run-report.err || json_status=$?
+          "${report_args[@]}" --format json > nullius-run-report.json 2> nullius-run-report.err || json_status=$?
 
         if [ "$json_status" -ne 0 ]; then
           {
@@ -515,7 +562,7 @@ runs:
 
         # shellcheck disable=SC2086
         $runner witness report "${base}..${head}" \
-          --bundle "$bundle" --format md > nullius-run-report.md 2>/dev/null || true
+          "${report_args[@]}" --format md > nullius-run-report.md 2>/dev/null || true
 
         {
           echo '## nullius run report'
