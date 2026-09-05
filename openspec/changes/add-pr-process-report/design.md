@@ -54,9 +54,16 @@ the number it was:
 
 **Evidence:** `grep -rn '%0A' action/ packages/claims/src packages/kit/src` → 1 result
 
-**Evidence:** `grep -rn 'mermaid' action/ packages/claims/src packages/kit/src docs/ README.md .github/` → 19 results
+**Evidence:** `grep -rn 'mermaid' action/ packages/claims/src packages/kit/src docs/ README.md .github/` → 22 results
 
 **Evidence:** `grep -rn 'uses: ./action' .github/workflows/ci.yml` → 0 results
+
+(The mermaid count above was 19 when this section was written and is 22 now:
+`redesign-run-report-comment` gave `mermaidLabel` two more call sites — one per
+agent node in a review round's subgraph, where a single call site had covered
+every node kind — plus one comment naming the new `classDef` color palette.
+Restated per the repair this section itself prescribes below, rather than
+reported as a failure of this document.)
 
 The middle one is worth pausing on twice over.
 
