@@ -2,7 +2,80 @@
 
 Bare version headings are the kernel — `@nullius-inverba/claims` and its
 unscoped alias `evidence-anchors`, which ship together. Headings prefixed with
-a package name are that package's own release; the kit versions independently.
+a package name are that package's own release; the kit versions independently,
+and so does the Action, whose releases are git tags rather than npm versions
+and are headed `action vN.N.N`.
+
+## kit 0.6.0
+
+The recorder can see what a shell command changed. Until now the `PostToolUse`
+matcher covered the editing tools and not `Bash`, so a session that did its
+editing through redirections, `sed -i` and heredocs recorded **zero** mutations
+— a journal indistinguishable from one whose session changed no file at all.
+
+### Added
+
+- **`Bash` mutations are recorded.** A shell payload carries a command string
+  and never a path, so the paths come from the working tree instead:
+  `git status --porcelain` supplies candidates, and hashing them against a
+  per-session mark turns "differs from `HEAD`" into "differs from a moment
+  ago". That distinction is the mechanism — a file dirty before a command and
+  dirty after it looks identical to git while its contents changed underneath,
+  which is exactly what a shell edit does.
+
+  The claim is weaker than an editing tool's and stays legible as such. `tool`
+  is the only thing that tells them apart: an `Edit` mutation names a path the
+  harness handed over, a `Bash` mutation names a path that changed *around* the
+  command. It over-attributes and does not invent — two concurrent commands can
+  be credited with each other's writes — and that is the better failure,
+  because a missing mutation silently satisfies the verification invariant
+  while a surplus one only asks for a re-check.
+
+  Pre-existing dirt is not credited to the session's first command; an
+  uninspectable tree answers `null` rather than an empty edit, because "nothing
+  changed" and "the question could not be asked" must not render the same; and
+  a path that left the dirty set changed too, having been reverted.
+
+- **Costs no schema version.** `tool` is a field every mutation already
+  carries and no verdict reads it, so a journal carrying these records still
+  validates as `0.6`. A bump would make a session spanning the upgrade fail its
+  own validator.
+
+Why it matters beyond the record: bundle selection classifies a journal by
+whether it mutates a file in the range, so a shell-editing session was landing
+as `inconclusive` — "overlaps the range in time but mutates no file in it" —
+and the run report's bundle-derived rows read *not recorded* as a result.
+
+## action v1.2.0
+
+A fix to the Action, released as a git tag rather than an npm version. It pins
+`@nullius-inverba/claims` 0.12.0, unchanged.
+
+### Fixed
+
+- **The card step no longer dies before it renders.** It read `$PR_BODY_MODE`,
+  which its own `env:` block did not declare. Bash aborts on an unbound
+  variable under `set -u` whether or not `-e` is set, so the step died and
+  every step after it was skipped: no card, no run report, no comment, and a
+  red check — on every pull request of every consumer of `@v1`, not only on
+  unusual ones. A test now scans every step in the manifest for a variable it
+  reads and does not declare.
+
+- **An empty pull-request description is no longer checked as a document.**
+  The guard tested size and `jq -r` writes a newline for an absent body, so the
+  one-byte file passed in all three steps that write it. All three now test for
+  content, each asserted over the argv the checker received.
+
+### Added
+
+- **The run report checks the pull-request description.** Its grounding row
+  reads the range's touched documents filtered by the project's `docs` globs,
+  so on a repository whose globs name design documents it rendered *not
+  recorded* on every code-only change — including ones whose body this same
+  Action had just verified anchor by anchor in the comment above. Both the JSON
+  and the markdown invocation take the document, from one array: the first
+  decides whether the second may be posted, and a gate over a document that is
+  not the one posted is not a gate.
 
 ## kit 0.5.1
 
@@ -31,44 +104,6 @@ unfixed in the tool that records whether defects were found.
   been recorded. A list item carrying a bracketed severity word the pattern
   still declines is now reported in the plan's note, so the next unanticipated
   formatting surfaces as a diagnostic rather than as an absence.
-
-## Unreleased
-
-### Added
-
-- **`check --format card`** renders the check report as a maintainer's card —
-  documents checked, anchors split into presence and absence, a count per
-  verdict, failures, and the failing anchors with their documents. Counts come
-  from the report's `summary` rather than being recomputed, so the card cannot
-  disagree with the exit code beside it. `--link-base` turns each failing
-  location into a jump link; without it the location renders as inert text,
-  because the checker knows no repository and invents none.
-
-  The card states that a verdict certifies the citation and not the argument
-  built on it, and names `audit` as the check it did not perform. That line is
-  load-bearing rather than decorative: a tidy green table reads as a stronger
-  claim than the prose it replaces.
-
-- **The Action posts the card** on a pull request, with the unstructured report
-  collapsed beneath it, and emits workflow annotations for failing anchors —
-  `error` under `strict`, `warning` otherwise, so severity never disagrees with
-  whether the run blocks. An unrecognised report version renders no card and
-  says which version it saw.
-
-### Security
-
-- **Every value the card interpolates is escaped**, and the checked document is
-  treated as the PR-controlled input it is. Two encodings, not one: markdown
-  cells via the shared `escapeCell`, and workflow-command *property* values via
-  an encoding that also covers `:` and `,`. An earlier draft escaped only the
-  annotation message, and a newline in a document path split the annotation in
-  two — putting attacker-controlled text at the start of its own line. The CI
-  assertion over an adversarial fixture is what caught it, and that assertion
-  ships with the change.
-
-- **A registered canary is counted and never located.** `canary-present`
-  results contribute to the failure total; their document and line are not
-  printed to the comment and no annotation is emitted for them.
 
 ## 0.12.0
 
