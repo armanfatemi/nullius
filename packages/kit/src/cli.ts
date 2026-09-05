@@ -28,6 +28,7 @@
  * record it cannot stand behind.
  */
 
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   closeSync,
@@ -629,6 +630,7 @@ function runRecord(options: CliOptions): number {
   const context: RecordContext = {
     now: () => new Date().toISOString(),
     locateTarget: (path) => locateTarget(root, path),
+    observeTreeChanges: () => observeTreeChanges(root, session),
     // Read lazily: only session end asks, and only session end should pay for
     // parsing the whole journal.
     openDispatches: () =>
@@ -1286,6 +1288,116 @@ function locateTarget(root: string, path: string): { path: string; hash: string 
     path: recorded.split(sep).join("/"),
     hash: createHash("sha256").update(content).digest("hex").slice(0, 16),
   };
+}
+
+/**
+ * How many changed paths one command may be credited with before the rest are
+ * dropped. A shell command CAN touch thousands of files — a checkout, a
+ * codegen run — and hashing all of them on a synchronous hook is how a
+ * recorder gets uninstalled. The cap is visible in the note rather than
+ * silent, because a truncated set that looks complete is the failure this
+ * whole journal exists to prevent.
+ */
+const TREE_OBSERVATION_CAP = 500;
+
+/**
+ * Where a session's last look at the working tree is remembered.
+ *
+ * Derived from the journal's own path rather than from the raw session id: the
+ * id is harness-supplied, and `journalPathFor` is the function that already
+ * sanitises it. A second, independent construction is how the two drift and
+ * how one of them ends up writing outside `.nullius/runs`.
+ */
+function markPath(root: string, session: string | null): string {
+  return `${journalPathFor(root, session).replace(/\.jsonl$/, "")}.tree.json`;
+}
+
+/**
+ * Paths whose contents differ from this session's last look, and advance the
+ * mark.
+ *
+ * `git status --porcelain` supplies the CANDIDATES and never the answer. It
+ * reports difference from HEAD, so a file dirty before a command and dirty
+ * after it appears identically in both listings while its contents changed
+ * underneath — the exact case a shell edit produces. Hashing the candidates is
+ * what turns "differs from HEAD" into "differs from a moment ago".
+ *
+ * Ignored files are absent by git's default and stay absent deliberately:
+ * `dist/` is rebuilt constantly and is not a claim anybody makes about this
+ * repository.
+ *
+ * Returns null when git cannot be run or the mark cannot be written. A mark
+ * that failed to advance would re-report the same paths on every subsequent
+ * command, and a stream of duplicate mutations is worse than a stated gap.
+ */
+function observeTreeChanges(root: string, session: string | null): readonly string[] | null {
+  let listing: string;
+  try {
+    const result = spawnSync("git", ["status", "--porcelain=v1", "-z"], {
+      cwd: root,
+      encoding: "utf8",
+      maxBuffer: 8 * 1024 * 1024,
+    });
+    if (result.status !== 0 || typeof result.stdout !== "string") return null;
+    listing = result.stdout;
+  } catch {
+    return null;
+  }
+
+  const candidates: string[] = [];
+  // NUL-separated, and a rename emits its old path as a second field — which
+  // is why this is split on NUL rather than newline: a path containing a
+  // newline is legal on every filesystem this runs on, and `-z` is the only
+  // form of this command that does not corrupt one.
+  for (const entry of listing.split("\0")) {
+    if (entry.length < 4) continue;
+    const path = entry.slice(3);
+    if (path.length > 0) candidates.push(path);
+  }
+  candidates.sort();
+  const capped = candidates.slice(0, TREE_OBSERVATION_CAP);
+
+  const current = new Map<string, string>();
+  for (const path of capped) {
+    try {
+      current.set(path, createHash("sha256").update(readFileSync(join(root, path))).digest("hex").slice(0, 16));
+    } catch {
+      // A directory, a broken symlink, or a file deleted since the listing.
+      // Absent from the map means absent from both sides of the comparison.
+    }
+  }
+
+  const markFile = markPath(root, session);
+  let previous = new Map<string, string>();
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(markFile, "utf8"));
+    if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+      for (const [path, hash] of Object.entries(parsed as Record<string, unknown>)) {
+        if (typeof hash === "string") previous.set(path, hash);
+      }
+    }
+  } catch {
+    // No mark yet. The FIRST look reports nothing rather than reporting every
+    // dirty file in the tree: those changes predate this session's first
+    // command and crediting them to it would be a fabricated attribution.
+    previous = new Map(current);
+  }
+
+  const changed: string[] = [];
+  for (const [path, hash] of current) {
+    if (previous.get(path) !== hash) changed.push(path);
+  }
+  // A path that left the dirty set changed too — it was reverted to HEAD.
+  for (const path of previous.keys()) {
+    if (!current.has(path)) changed.push(path);
+  }
+
+  try {
+    writeFileSync(markFile, JSON.stringify(Object.fromEntries(current)));
+  } catch {
+    return null;
+  }
+  return changed.sort();
 }
 
 /**

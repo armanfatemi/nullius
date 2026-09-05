@@ -849,6 +849,10 @@ export function probeChecks(probeDir: string): Check[] {
   const context: RecordContext = {
     now: () => "1970-01-01T00:00:00.000Z",
     locateTarget: (path) => ({ path, hash: "0".repeat(16) }),
+    // The probes replay recorded payloads for tools that name their own path.
+    // None is a shell command, so this is never reached; an empty answer keeps
+    // the probe about payload SHAPE rather than about this machine's tree.
+    observeTreeChanges: () => [],
     openDispatches: () => [],
     // SubagentStop only produces a report when its agent id resolves to a
     // dispatch. The link is producer state held in a file; supplying it here
@@ -906,6 +910,9 @@ export function liveProof(): Check[] {
   const context: RecordContext = {
     now: () => "2026-01-01T00:00:00.000Z",
     locateTarget: (path) => ({ path, hash: "abc123abc123abc1" }),
+    // As below: the proof reads nothing off disk, so the tree is reported
+    // unchanged rather than inspected.
+    observeTreeChanges: () => [],
     openDispatches: () => [{ id: "d:proof", task: "the live proof" }],
     resolveAgent: () => "d:proof",
     hasTerminal: () => false,

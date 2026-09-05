@@ -107,6 +107,17 @@ export interface RecordContext {
    */
   locateTarget: (path: string) => { path: string; hash: string } | null;
   /**
+   * Repo-relative paths whose contents differ from the last time this session
+   * looked, for tools whose payload does not name what they wrote. Calling it
+   * ADVANCES the mark, so a path is reported once and not again on the next
+   * command that happens to run.
+   *
+   * `null` when the working tree could not be inspected at all — a distinct
+   * answer from the empty array, because "nothing changed" and "the question
+   * could not be asked" must not render the same way.
+   */
+  observeTreeChanges: () => readonly string[] | null;
+  /**
    * Dispatches with no terminal record yet. Only ever called at session end,
    * and injected rather than read here so the correlation stays testable
    * without a filesystem.
@@ -210,6 +221,24 @@ const DISPATCH_TOOLS = new Set(["Task", "Agent"]);
 
 /** Tools whose success means a file on disk is now different. */
 const EDITING_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
+
+/**
+ * Tools that change files without saying which.
+ *
+ * `Bash` writes through redirections, `sed -i`, `cp`, a python heredoc — and
+ * its payload carries a command string, never a path. Left out of the editing
+ * set, a session that does its editing through the shell records ZERO
+ * mutations, which is indistinguishable in the journal from a session that
+ * changed nothing. That is not hypothetical: it is how the journal for the run
+ * that added this code came out, seven records for a change of four files,
+ * because the harness had been told to prefer the shell over the editing
+ * tools.
+ *
+ * The paths therefore come from the working tree rather than the payload, and
+ * that difference is recorded rather than smoothed over — see
+ * `bashMutationsFor`.
+ */
+const TREE_DERIVED_TOOLS = new Set(["Bash"]);
 
 /**
  * How much of a subagent's response is copied into the journal. A cap is
@@ -367,6 +396,9 @@ export function planRecords(payload: unknown, context: RecordContext): RecordPla
         return plan(terminalForResponse(payload, context));
       }
       if (tool !== null && EDITING_TOOLS.has(tool)) return mutationFor(payload, context, plan);
+      if (tool !== null && TREE_DERIVED_TOOLS.has(tool)) {
+        return bashMutationsFor(payload, context, plan);
+      }
       return plan([], `${tool ?? "an unnamed tool"} changes nothing and dispatches nothing`);
     }
 
@@ -715,6 +747,77 @@ function mutationFor(
       at: context.now(),
     },
   ]);
+}
+
+/**
+ * Mutations for a tool whose payload does not say what it wrote.
+ *
+ * The paths come from `observeTreeChanges`, which compares the working tree
+ * against what this session last saw. That is a weaker claim than an editing
+ * tool's, and the difference is deliberately legible rather than hidden: an
+ * `Edit` mutation names a path the harness handed over, while a `Bash`
+ * mutation names a path that CHANGED AROUND the command. The two are told
+ * apart by `tool`, which every record already carries — so nothing here needs
+ * a new key, and the schema does not move.
+ *
+ * What the weaker claim can get wrong, stated so a reader does not have to
+ * infer it: two shell commands running concurrently can have one's writes
+ * attributed to the other, and an edit made outside the harness entirely will
+ * be attributed to whichever command straddles it. It over-attributes and
+ * does not invent — every path it names did change. Under-recording was the
+ * failure this replaces, and it is the worse one, because a missing mutation
+ * silently satisfies invariant 2 while a surplus one only asks for a re-check.
+ *
+ * An unreadable tree is NOT an empty edit. `null` means the question could not
+ * be asked, and it produces a note rather than a silent zero.
+ */
+function bashMutationsFor(
+  payload: JsonObject,
+  context: RecordContext,
+  plan: (records: JournalDraft[], note?: string | null) => RecordPlan,
+): RecordPlan {
+  const tool = str(payload["tool_name"]) ?? "Bash";
+  const changed = context.observeTreeChanges();
+  if (changed === null) {
+    return plan(
+      [],
+      `${tool} ran, but the working tree could not be inspected, so nothing is recorded about what it changed — this is an unanswered question rather than an unchanged tree`,
+    );
+  }
+  if (changed.length === 0) {
+    return plan([], `${tool} changed no file in the working tree`);
+  }
+
+  const { key } = joinKey(payload);
+  const records: JournalDraft[] = [];
+  const unreadable: string[] = [];
+  for (const path of changed) {
+    const target = context.locateTarget(path);
+    if (target === null) {
+      // Deleted between the diff and this read, or outside the root. Same rule
+      // as `mutationFor`: no target, no record.
+      unreadable.push(path);
+      continue;
+    }
+    records.push({
+      kind: "mutation",
+      // Keyed by PATH, not by position. One event yields several mutations and
+      // every id has to be unique or the journal validates as DUPLICATE-ID;
+      // an index would also renumber the whole set when the diff order moves.
+      id: `m:${key}:${digest(target.path).slice(0, 8)}`,
+      target,
+      tool,
+      ...promptJoin(payload),
+      at: context.now(),
+    });
+  }
+
+  return plan(
+    records,
+    unreadable.length === 0
+      ? null
+      : `${unreadable.length} path(s) changed under ${tool} but could not be read afterwards, so no mutation was recorded for them: ${unreadable.join(", ")}`,
+  );
 }
 
 /**
