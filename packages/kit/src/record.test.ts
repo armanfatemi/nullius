@@ -34,6 +34,11 @@ function context(overrides: Partial<RecordContext> = {}): RecordContext {
   return {
     now: () => "2026-08-21T12:00:00.000Z",
     locateTarget: (path) => ({ path, hash: "cafebabe0011" }),
+    // "the tree was inspected and nothing had changed" — the answer that
+    // records nothing, so a test about shell mutations has to say otherwise.
+    // Null, the other quiet answer, means the question could not be asked and
+    // reads differently on purpose.
+    observeTreeChanges: () => [],
     openDispatches: () => [],
     resolveAgent: () => null,
     hasTerminal: () => false,
@@ -289,6 +294,107 @@ describe("mutation — PostToolUse on an editing tool", () => {
 
     expect(plan.records).toEqual([]);
     expect(plan.note).toContain("/repo/gone.ts");
+  });
+});
+
+describe("mutation — PostToolUse on Bash, whose payload names no file", () => {
+  /*
+   * The gap this closes: the hook matcher covered the editing tools and not
+   * the shell, so a session told to prefer heredocs and `cat >` over Write and
+   * Edit recorded ZERO mutations — a journal that reads exactly like a session
+   * which changed nothing. The run that added this code came out that way:
+   * seven records, six of them prompts, for a change of four files.
+   */
+  const bash = (id: string) => ({
+    hook_event_name: "PostToolUse",
+    tool_name: "Bash",
+    tool_use_id: id,
+    tool_input: { command: "python3 - <<'PY'\nopen('a.ts','w')\nPY" },
+  });
+
+  it("records one mutation per path the tree says changed", () => {
+    const plan = planRecords(
+      bash("toolu_BASH1"),
+      context({
+        observeTreeChanges: () => ["src/a.ts", "src/b.ts"],
+        locateTarget: (path) => ({ path, hash: `h:${path}` }),
+      }),
+    );
+
+    expect(plan.records).toEqual([
+      {
+        kind: "mutation",
+        // Keyed by path, so one event's several mutations cannot collide into
+        // DUPLICATE-ID.
+        id: expect.stringMatching(/^m:toolu_BASH1:[0-9a-f]{8}$/) as unknown as string,
+        target: { path: "src/a.ts", hash: "h:src/a.ts" },
+        tool: "Bash",
+        at: "2026-08-21T12:00:00.000Z",
+      },
+      {
+        kind: "mutation",
+        id: expect.stringMatching(/^m:toolu_BASH1:[0-9a-f]{8}$/) as unknown as string,
+        target: { path: "src/b.ts", hash: "h:src/b.ts" },
+        tool: "Bash",
+        at: "2026-08-21T12:00:00.000Z",
+      },
+    ]);
+    // The ids differ. Asserting the shape above would pass with two identical
+    // ids, which is the failure the path key exists to prevent.
+    const ids = plan.records.map((r) => (r as { id: string }).id);
+    expect(new Set(ids).size).toBe(2);
+  });
+
+  it("says the tree is unchanged rather than recording nothing silently", () => {
+    const plan = planRecords(bash("toolu_BASH2"), context({ observeTreeChanges: () => [] }));
+    expect(plan.records).toEqual([]);
+    expect(plan.note).toContain("changed no file");
+  });
+
+  it("distinguishes an uninspectable tree from an unchanged one", () => {
+    /*
+     * The two quiet answers must not read the same. `[]` is an answer — the
+     * tree was looked at. `null` is the absence of one, and this journal's
+     * whole thesis is that those are different facts.
+     */
+    const plan = planRecords(bash("toolu_BASH3"), context({ observeTreeChanges: () => null }));
+    expect(plan.records).toEqual([]);
+    expect(plan.note).toContain("could not be inspected");
+    expect(plan.note).toContain("unanswered question rather than an unchanged tree");
+  });
+
+  it("skips a path that changed but cannot be read, and names it", () => {
+    // Same rule as an editing tool's: no target, no record. A mutation that
+    // cannot say what it changed cannot invalidate the verification it
+    // invalidated.
+    const plan = planRecords(
+      bash("toolu_BASH4"),
+      context({
+        observeTreeChanges: () => ["src/kept.ts", "src/deleted.ts"],
+        locateTarget: (path) => (path === "src/kept.ts" ? { path, hash: "abc1" } : null),
+      }),
+    );
+
+    expect(plan.records).toHaveLength(1);
+    expect((plan.records[0] as { target: { path: string } }).target.path).toBe("src/kept.ts");
+    expect(plan.note).toContain("src/deleted.ts");
+  });
+
+  it("is told apart from an editing tool by `tool`, with no new key", () => {
+    /*
+     * A `Bash` mutation names a path that changed AROUND the command; an
+     * `Edit` mutation names a path the harness handed over. The weaker claim
+     * has to stay legible, and `tool` already carries it — so the schema does
+     * not move, which matters because a bump makes a session that spans the
+     * upgrade fail its own validator.
+     */
+    const plan = planRecords(
+      bash("toolu_BASH5"),
+      context({ observeTreeChanges: () => ["a.ts"], locateTarget: (path) => ({ path, hash: "h" }) }),
+    );
+    const record = plan.records[0] as Record<string, unknown>;
+    expect(record["tool"]).toBe("Bash");
+    expect(Object.keys(record).sort()).toEqual(["at", "id", "kind", "target", "tool"]);
   });
 });
 

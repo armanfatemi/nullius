@@ -32,7 +32,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "^(Task|Agent|Edit|Write|MultiEdit|NotebookEdit)$",
+        "matcher": "^(Task|Agent|Edit|Write|MultiEdit|NotebookEdit|Bash)$",
         "hooks": [
           {
             "type": "command",

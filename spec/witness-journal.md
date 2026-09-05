@@ -59,6 +59,38 @@ Every record carries `kind`, and every record but the header carries a unique
 {"kind":"append","id":"a1","corrections_since_last_append":"None."}
 ```
 
+### Where a mutation's path comes from, and why `tool` is load-bearing
+
+Most editing tools hand the recorder a path. A shell command does not: its
+payload carries a command string, and the file it wrote is somewhere inside
+`sed -i`, a redirection, or a heredoc. A recorder that only understood the
+tools which name their own path recorded **nothing** for a session that did
+its editing through the shell — a journal indistinguishable from one whose
+session changed no file, which is the exact confusion invariant 3 exists to
+forbid.
+
+So a mutation's path may be derived from the working tree instead, by
+comparing it against what the session last saw:
+
+**Evidence:** `packages/kit/src/record.ts:241` — `const TREE_DERIVED_TOOLS = new Set(["Bash"]);`
+
+The two provenances are not equally strong and the journal does not pretend
+they are. `tool` tells them apart, and it is the only thing that does:
+
+**Evidence:** `packages/kit/src/record.ts:759` — `* mutation names a path that CHANGED AROUND the command. The two are told`
+
+A tree-derived mutation over-attributes rather than invents. Every path it
+names did change; which command changed it is inferred from what straddled
+it, so two concurrent commands can be credited with each other's writes.
+That is the weaker failure on purpose. A missing mutation silently satisfies
+invariant 2 — a verification stays valid over a file that moved underneath
+it — while a surplus one only asks for a re-check.
+
+**This costs no schema version.** `tool` is a field every mutation already
+carries, and no verdict reads it, so the set of valid records has not
+changed and none of the five triggers in "When the schema version bumps"
+fires.
+
 ### The run ledger — five more kinds, v0.3
 
 The kinds above record *that* work happened. They cannot record what an agent
