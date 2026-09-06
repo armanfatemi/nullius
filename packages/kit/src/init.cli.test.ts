@@ -457,3 +457,106 @@ suite("init — the pointer survives a markdown formatter", () => {
     expect(readFileSync(join(root, "CLAUDE.md"), "utf8")).toContain("nullius.authoring.md");
   });
 });
+
+suite("init --interactive — the flag is the only trigger, and never hangs", () => {
+  it("falls back to flagless defaults with no TTY attached, and says so", () => {
+    const root = scratch();
+    // `run()`'s stdio is `["ignore", "pipe", "pipe"]` — no TTY is ever attached,
+    // which is the ordinary case for a spawned process and exactly what this
+    // scenario is about: the flag was passed, but there is nothing to prompt.
+    const result = run("init", "--root", root, "--profile", "plans", "--interactive");
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("no input TTY is attached");
+    expect(existsSync(join(root, "nullius.config.json"))).toBe(true);
+  });
+
+  it("without --interactive, behaves exactly as a flagless run — --oracle and --action still answer directly", () => {
+    const root = scratch();
+    const result = run(
+      "init",
+      "--root",
+      root,
+      "--profile",
+      "specs",
+      "--oracle",
+      "packages/*/src/**/*.test.ts, spec/fixtures/**/*.jsonl",
+    );
+
+    expect(result.code).toBe(0);
+    const config = JSON.parse(readFileSync(join(root, "nullius.config.json"), "utf8"));
+    expect(config.oracles).toEqual([
+      { glob: "packages/*/src/**/*.test.ts" },
+      { glob: "spec/fixtures/**/*.jsonl" },
+    ]);
+  });
+
+  it("rejects a blank --oracle rather than silently declaring nothing", () => {
+    const result = run("init", "--root", scratch(), "--profile", "specs", "--oracle", "");
+
+    expect(result.code).toBe(2);
+    expect(result.output).toContain("--oracle needs");
+  });
+
+  it("--suggest-oracle prints candidates and writes nothing", () => {
+    const root = scratch();
+    writeFileSync(join(root, "vitest.config.ts"), "export default {}");
+
+    const result = run("init", "--root", root, "--suggest-oracle");
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("**/*.test.ts");
+    expect(existsSync(join(root, "nullius.config.json"))).toBe(false);
+  });
+
+  it("--suggest-oracle says so when nothing is detected", () => {
+    const result = run("init", "--root", scratch(), "--suggest-oracle");
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("No test configuration detected");
+  });
+
+  it("a re-run with no --oracle leaves a previously declared value untouched", () => {
+    const root = scratch();
+    run("init", "--root", root, "--profile", "specs", "--oracle", "**/*.test.ts");
+    run("init", "--root", root, "--profile", "specs");
+
+    const config = JSON.parse(readFileSync(join(root, "nullius.config.json"), "utf8"));
+    expect(config.oracles).toEqual([{ glob: "**/*.test.ts" }]);
+  });
+});
+
+suite("init --action — reuses the profile's own workflow artifact", () => {
+  it("adds .github/workflows/claims.yml to a profile that omits it", () => {
+    const root = scratch();
+    const result = run("init", "--root", root, "--profile", "plans", "--action");
+
+    expect(result.code).toBe(0);
+    expect(existsSync(join(root, ".github", "workflows", "claims.yml"))).toBe(true);
+  });
+
+  it("is a no-op for a profile that already includes the workflow", () => {
+    const root = scratch();
+    const withFlag = run("init", "--root", root, "--profile", "specs", "--action");
+    const workflowAfterFirst = readFileSync(join(root, ".github", "workflows", "claims.yml"), "utf8");
+
+    const secondRoot = scratch();
+    const withoutFlag = run("init", "--root", secondRoot, "--profile", "specs");
+    const workflowWithoutFlag = readFileSync(
+      join(secondRoot, ".github", "workflows", "claims.yml"),
+      "utf8",
+    );
+
+    expect(withFlag.code).toBe(0);
+    expect(withoutFlag.code).toBe(0);
+    // `specs` already renders this file; the flag adds nothing further to it.
+    expect(workflowAfterFirst).toBe(workflowWithoutFlag);
+  });
+
+  it("without --action, a profile that omits the workflow still omits it", () => {
+    const root = scratch();
+    run("init", "--root", root, "--profile", "plans");
+
+    expect(existsSync(join(root, ".github", "workflows", "claims.yml"))).toBe(false);
+  });
+});

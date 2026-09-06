@@ -114,7 +114,7 @@ export {
   DEFAULT_GIT_TIMEOUT_MS,
   type Containment,
 } from "./runners";
-export { parseConfig, type ClaimsConfig } from "./config";
+export { parseConfig, type ClaimsConfig, type OracleGlob } from "./config";
 export {
   checkWiring,
   hookTarget,

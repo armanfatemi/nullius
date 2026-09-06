@@ -25,6 +25,7 @@ import { isAbsolute, join } from "node:path";
 
 import { isJournalFailure, parseConfig, validateJournal } from "@nullius-inverba/claims";
 
+import { detectHarness } from "./detect";
 import { SCHEMA_VERSION } from "./journalFile";
 import { planRecords, type RecordContext } from "./record";
 
@@ -100,6 +101,17 @@ const RECORDED_EVENTS: ReadonlySet<string> = new Set([
 
 /** Events whose hook validates the journal rather than appending to it. */
 const CHECKING_EVENTS: ReadonlySet<string> = new Set(["Stop"]);
+
+/**
+ * Every event the plugin's own `plugin/hooks/hooks.json` wires up.
+ *
+ * Identical to `RECORDED_EVENTS` union `CHECKING_EVENTS` by construction: both
+ * describe the same hook pack from two sides, this build's dispatch table and
+ * the plugin manifest it is delivered alongside. Named separately anyway,
+ * because the duplicate-delivery check below is about the plugin's coverage
+ * specifically — if the two ever diverge, this is the set that should move.
+ */
+const PLUGIN_HOOK_EVENTS: ReadonlySet<string> = new Set([...RECORDED_EVENTS, ...CHECKING_EVENTS]);
 
 function readManagedHooks(root: string): { entries: HookEntry[]; unreadable: boolean } {
   const settingsPath = join(root, ".claude", "settings.json");
@@ -1030,7 +1042,22 @@ export function runChecks(options: DoctorOptions): DoctorReport {
         "none in .claude/settings.json — expected, since the plugin delivers them and init writes none",
     });
   } else {
+    // Resolved once per report, not per entry: it is one filesystem read and
+    // the answer cannot change between entries in the same run.
+    const pluginEnabled = detectHarness(root).pluginEnabled;
     for (const entry of entries) {
+      if (pluginEnabled && PLUGIN_HOOK_EVENTS.has(entry.event)) {
+        // A resolvable command is not a pass here: the plugin already delivers
+        // this event, so a second, working copy in .claude/settings.json is
+        // the exact ambiguity `doctor` exists to make loud, not a healthier
+        // installation than having none.
+        checks.push({
+          name: `${entry.event} hook: duplicate delivery`,
+          status: "fail",
+          detail: `.claude/settings.json still carries a managed hook for ${entry.event} (\`${entry.command}\`), and the nullius plugin is enabled and delivers that event itself — one delivery mechanism per artefact; remove this entry from .claude/settings.json`,
+        });
+        continue;
+      }
       const result = resolveHookCommand(root, entry.command);
       checks.push({
         ...result,

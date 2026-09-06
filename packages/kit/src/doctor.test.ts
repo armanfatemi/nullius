@@ -138,6 +138,91 @@ describe("doctor — a dead hook is loud", () => {
   });
 });
 
+describe("doctor — a duplicated plugin hook fails, regardless of who wrote it", () => {
+  it("fails a resolvable managed hook when the plugin also delivers that event", () => {
+    const root = scratch();
+    mkdirSync(join(root, ".claude"));
+    // The exact command shape an agent driving `witness-record.sh` by hand
+    // would plausibly reach for, per `isManagedHookCommand`'s own precedent —
+    // not a synthetic placeholder.
+    writeFileSync(
+      join(root, ".claude", "settings.json"),
+      JSON.stringify({
+        enabledPlugins: { "nullius@nullius": true },
+        hooks: {
+          SessionStart: [
+            {
+              hooks: [
+                { type: "command", command: "node packages/kit/dist/cli.js witness record" },
+              ],
+            },
+          ],
+        },
+      }),
+    );
+
+    const report = check(root);
+    const hook = find(report.checks, "duplicate delivery");
+
+    expect(hook?.status).toBe("fail");
+    expect(hook?.name).toContain("SessionStart");
+    expect(hook?.detail).toContain("nullius plugin is enabled");
+    expect(report.failed).toBe(true);
+  });
+
+  it("does not fail the same entry when the plugin is not enabled", () => {
+    const root = scratch();
+    mkdirSync(join(root, ".claude"));
+    // Made resolvable on purpose: this test is about the duplicate-delivery
+    // branch not firing, not about resolvability, so the script must actually
+    // exist or a dead-hook failure would be indistinguishable from the one
+    // this test is trying to rule out.
+    mkdirSync(join(root, "packages", "kit", "dist"), { recursive: true });
+    writeFileSync(join(root, "packages", "kit", "dist", "cli.js"), "");
+    writeFileSync(
+      join(root, ".claude", "settings.json"),
+      JSON.stringify({
+        hooks: {
+          SessionStart: [
+            {
+              hooks: [
+                { type: "command", command: "node packages/kit/dist/cli.js witness record" },
+              ],
+            },
+          ],
+        },
+      }),
+    );
+
+    // Same command, same event, no plugin — a legitimate non-plugin managed
+    // hook, so this is the ordinary resolvability check, not a duplicate.
+    expect(find(check(root).checks, "duplicate delivery")).toBeUndefined();
+    expect(find(check(root).checks, "SessionStart")?.status).toBe("pass");
+  });
+
+  it("leaves an unrelated, non-managed-convention hook alone even with the plugin enabled", () => {
+    const root = scratch();
+    mkdirSync(join(root, ".claude"));
+    writeFileSync(
+      join(root, ".claude", "settings.json"),
+      JSON.stringify({
+        enabledPlugins: { "nullius@nullius": true },
+        hooks: {
+          SessionStart: [
+            { hooks: [{ type: "command", command: "./scripts/unrelated.sh" }] },
+          ],
+        },
+      }),
+    );
+
+    // `doctor` does not adjudicate hooks it did not deliver, so a command
+    // outside the managed-convention is invisible to this check too.
+    const report = check(root);
+    expect(find(report.checks, "duplicate delivery")).toBeUndefined();
+    expect(find(report.checks, "managed hooks")?.status).toBe("fact");
+  });
+});
+
 describe("doctor — absence of evidence is labelled, not inferred", () => {
   it("calls an empty journal directory a fact about the directory", () => {
     const root = scratch();
