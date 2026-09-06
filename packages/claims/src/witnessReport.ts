@@ -2095,22 +2095,25 @@ function sectionNeedsAttention(section: ReportSection, disclosures: Disclosures)
   return section.failing !== undefined && section.failing > 0;
 }
 
-/** The `<summary>` line's own text — short enough to read without expanding. */
 /**
- * "All clear" is this document's word for a check that ran and passed. A
- * tier where every non-attention section is a repeat of a reason disclosed
- * elsewhere is not that — it is unanswered, same as the section that DID
- * disclose it, just not new information *here*. Borrowing "all clear" for it
- * tells a reader who trusts the collapsed banner that this tier's data was
- * fine, when it was never read at all — the same false-pass shape the rest
- * of this report goes out of its way to refuse.
+ * The `<summary>` line's own text — short enough to read without expanding.
+ *
+ * "All clear" is this document's word for a check that ran and passed, and
+ * "X of N need a look" implies the other N-X are that. Neither is true of a
+ * tier with no genuinely clear content in it at all — one where every
+ * section is `not-recorded`, whether it happens to be the one that states
+ * the shared cause in full or a repeat of it. "Hook-attested — 1 of 9 needs
+ * a look" read as "8 are fine"; all 9 were unread. `allNotRecorded` catches
+ * that shape regardless of which section happens to carry the disclosure,
+ * rather than keying off the word "repeat" and missing the tier the
+ * disclosure itself lives in.
  */
-function tierStatus(total: number, attention: number, repeats: number): string {
+function tierStatus(total: number, attention: number, allNotRecorded: boolean): string {
+  if (allNotRecorded) {
+    return `${String(total)} ${plural(total, "check")}, none recorded`;
+  }
   if (attention > 0) {
     return `${String(attention)} of ${String(total)} need${attention === 1 ? "s" : ""} a look`;
-  }
-  if (repeats > 0) {
-    return `${String(total)} ${plural(total, "check")}, same cause as above`;
   }
   return `${String(total)} ${plural(total, "check")}, all clear`;
 }
@@ -2273,6 +2276,20 @@ export function renderCard(report: RunReport): string[] {
     for (const [reason, n] of shared) {
       out.push(`- **${String(n)} rows, one cause:** ${escapeCell(reason)}`);
     }
+    // The unanswerable count above this list and the row count this list
+    // explains can differ by design — a row whose own detail cell already
+    // states a distinct (if related) reason is never folded into someone
+    // else's shared-cause bullet, on purpose (`cardDetail`'s whole point is
+    // that a unique reason gets said once, in its own cell, rather than
+    // reduced to a duplicate of the shared line). Left unbridged, that gap
+    // reads as arithmetic the reader has to explain to themselves; said once
+    // here, it is a fact instead of a puzzle.
+    const leftover = card.rows.filter((row) => row.mark === "not-recorded" && !sharedReasons.has(row.reason ?? ""));
+    if (leftover.length > 0) {
+      out.push(
+        `- **${String(leftover.length)} more ${plural(leftover.length, "row")}, each for its own reason:** see its own detail cell above.`,
+      );
+    }
   }
 
   out.push("");
@@ -2364,12 +2381,10 @@ export function renderMarkdown(
     // rendered comment top to bottom answers "what should I actually read"
     // without opening anything.
     const attention = tier.sections.filter((section) => sectionNeedsAttention(section, disclosures)).length;
-    const repeats = tier.sections.filter(
-      (section) => section.status === "not-recorded" && !disclosures.first.has(section.id),
-    ).length;
+    const allNotRecorded = tier.sections.every((section) => section.status === "not-recorded");
     out.push(`<details${attention > 0 ? " open" : ""}>`);
     out.push(
-      `<summary><strong>${escapeCell(tier.title)}</strong> — ${escapeCell(tierStatus(tier.sections.length, attention, repeats))}</summary>`,
+      `<summary><strong>${escapeCell(tier.title)}</strong> — ${escapeCell(tierStatus(tier.sections.length, attention, allNotRecorded))}</summary>`,
     );
     out.push("");
     out.push(`## ${tier.title}`);

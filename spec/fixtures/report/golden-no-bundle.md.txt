@@ -7,6 +7,7 @@
 **5 of 7** checks could not be answered — the sections they read recorded nothing. A row with a hollow mark is a question this run cannot answer, which is not the same as a clean result.
 
 - **3 rows, one cause:** no bundle at nullius.runs/feat-add-canary-status-redaction.json
+- **2 more rows, each for its own reason:** see its own detail cell above.
 
 _A `code-verified` row was re-computed here by re-reading the repository. A `hook-attested` row comes from records the harness wrote, which the agent had no opportunity to decline. A `self-reported` row is the coordinator's own account of its run, and is the weakest of the three._
 
@@ -129,7 +130,7 @@ No canary is registered for this repository.
 </details>
 
 <details open>
-<summary><strong>Hook-attested</strong> — 1 of 9 needs a look</summary>
+<summary><strong>Hook-attested</strong> — 9 checks, none recorded</summary>
 
 ## Hook-attested
 
@@ -237,7 +238,7 @@ Read from the bundled journals.
 </details>
 
 <details>
-<summary><strong>Self-reported</strong> — 5 checks, same cause as above</summary>
+<summary><strong>Self-reported</strong> — 5 checks, none recorded</summary>
 
 ## Self-reported
 
@@ -301,7 +302,7 @@ How many records the coordinator reported about itself, across this entire worki
 </details>
 
 <details>
-<summary><strong>Unattributed</strong> — 1 check, same cause as above</summary>
+<summary><strong>Unattributed</strong> — 1 check, none recorded</summary>
 
 ## Unattributed
 

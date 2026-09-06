@@ -276,7 +276,7 @@ Token usage the harness recorded for each dispatched agent, summed. Informationa
 </details>
 
 <details>
-<summary><strong>Self-reported</strong> — 5 checks, same cause as above</summary>
+<summary><strong>Self-reported</strong> — 5 checks, none recorded</summary>
 
 ## Self-reported
 
@@ -340,7 +340,7 @@ How many records the coordinator reported about itself, across this entire worki
 </details>
 
 <details>
-<summary><strong>Unattributed</strong> — 1 check, same cause as above</summary>
+<summary><strong>Unattributed</strong> — 1 check, none recorded</summary>
 
 ## Unattributed
 
