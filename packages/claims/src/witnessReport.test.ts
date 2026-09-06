@@ -262,6 +262,51 @@ describe("the flowchart", () => {
       expect(line).toMatch(linePattern);
     }
   });
+
+  it("draws a commit's node as a stadium when its trailer names Claude, a rectangle otherwise", () => {
+    // The one signal a run with no recorded bundle has to draw an "agent was
+    // here" cue from: a `Co-authored-by` trailer, not a verified dispatch.
+    const report = buildRunReport(
+      baseInput({
+        bundle: null,
+        journalReports: [],
+        changedFiles: [],
+        commits: [
+          { sha: "aaaaaaa", at: "2026-01-01T00:00:00Z", message: "human-only commit" },
+          {
+            sha: "bbbbbbb",
+            at: "2026-01-01T00:01:00Z",
+            message: "agent-assisted commit",
+            coAuthor: "Claude Sonnet 5 <noreply@anthropic.com>",
+          },
+        ],
+      }),
+    );
+    const mermaid = report.flowchart?.mermaid ?? "";
+    expect(mermaid).toMatch(/n0\["aaaaaaa human-only commit"\]/);
+    expect(mermaid).toMatch(/n1\(\["bbbbbbb agent-assisted commit"\]\)/);
+  });
+
+  it("does not treat an arbitrary co-author as an agent", () => {
+    const report = buildRunReport(
+      baseInput({
+        bundle: null,
+        journalReports: [],
+        changedFiles: [],
+        commits: [
+          {
+            sha: "ccccccc",
+            at: "2026-01-01T00:00:00Z",
+            message: "pair-programmed commit",
+            coAuthor: "A Human <human@example.com>",
+          },
+        ],
+      }),
+    );
+    const mermaid = report.flowchart?.mermaid ?? "";
+    expect(mermaid).toMatch(/n0\["ccccccc pair-programmed commit"\]/);
+    expect(mermaid).not.toContain("(["); // no stadium shape anywhere
+  });
 });
 
 /* -------------------------------------------------------------------------

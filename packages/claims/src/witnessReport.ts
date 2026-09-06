@@ -91,6 +91,12 @@ export interface BundleCommit {
    * only the live git read `witness report` actually renders from does.
    */
   message?: string;
+  /**
+   * The value of a `Co-authored-by` trailer, if the commit has one. Same
+   * optionality reasoning as `message`. See `isAgentCoAuthored` for what this
+   * is (and is not) used to claim.
+   */
+  coAuthor?: string;
 }
 
 export type BundleClassification = "included" | "inconclusive" | "excluded";
@@ -1846,6 +1852,20 @@ function isHarnessWakeup(text: string): boolean {
   return text.includes("<task-notification>");
 }
 
+/**
+ * True when a commit's `Co-authored-by` trailer names Claude — the one
+ * agent-authorship convention this repo's own CLAUDE.md prescribes for every
+ * commit an agent makes here. This is a string match against trailer text,
+ * not a verified identity: a human could type the same trailer by hand, and
+ * an agent that skips this exact wording will not match. It exists to give a
+ * run with no recorded bundle *some* honest signal to draw a diagram from —
+ * a git-only fallback, not a claim nullius could stand behind the way a
+ * bundled run's own dispatch records let it.
+ */
+function isAgentCoAuthored(coAuthor: string | undefined): boolean {
+  return coAuthor !== undefined && /claude/i.test(coAuthor);
+}
+
 function buildFlowchart(
   rounds: readonly Round[],
   bursts: readonly EditBurst[],
@@ -1863,6 +1883,9 @@ function buildFlowchart(
     /** Only for `system`: how many consecutive harness-wakeup events this
      *  node stands in for, after coalescing. Absent means 1. */
     count?: number;
+    /** Only for `commit`: draw this node with rounded ends, the same shape a
+     *  round's agent boxes use — see `isAgentCoAuthored`. */
+    agentCoAuthored?: boolean;
   }
   const events: Event[] = [];
 
@@ -1898,6 +1921,7 @@ function buildFlowchart(
         commit.message === undefined || commit.message.length === 0
           ? `commit ${shortSha(commit.sha)}`
           : `${shortSha(commit.sha)} ${commit.message}`,
+      agentCoAuthored: isAgentCoAuthored(commit.coAuthor),
     });
   }
   for (const record of prompts) {
@@ -1972,7 +1996,15 @@ function buildFlowchart(
       const id = `n${String(index)}`;
       // Node ids are generated, never derived from content: an id is the one
       // position in the grammar quoting cannot protect.
-      lines.push(`  ${id}[${mermaidLabel(event.label)}]`);
+      // The same stadium shape as a round's agent boxes, reused here so a
+      // commit an agent co-authored carries the one visual cue this diagram
+      // already has for "agent", even on a run with no bundle to draw a real
+      // round from.
+      lines.push(
+        event.agentCoAuthored === true
+          ? `  ${id}([${mermaidLabel(event.label)}])`
+          : `  ${id}[${mermaidLabel(event.label)}]`,
+      );
       anchors.push([id]);
       renderedNodes += 1;
     }
@@ -2467,7 +2499,7 @@ export function renderMarkdown(
       // starts it, edits and a commit follow, then a round of agents, then
       // their reports back — rather than the classDef declaration order,
       // which a reader has no reason to already know.
-      "**Legend:** 🟦 human prompt · 🟧 edit burst · 🟪 commit · 🟩 agent (grouped by round) · 🔳 agent reported back",
+      "**Legend:** 🟦 human prompt · 🟧 edit burst · 🟪 commit (rounded ends: co-authored by an agent, per its trailer) · 🟩 agent (grouped by round) · 🔳 agent reported back",
     );
     out.push("");
     out.push(

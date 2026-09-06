@@ -118,7 +118,7 @@ flowchart LR
   class n2,n5,n7,n9,n11,n14,n16,n18,n20,n21,n23,n25,n26 commit
 ```
 
-**Legend:** 🟦 human prompt · 🟧 edit burst · 🟪 commit · 🟩 agent (grouped by round) · 🔳 agent reported back
+**Legend:** 🟦 human prompt · 🟧 edit burst · 🟪 commit (rounded ends: co-authored by an agent, per its trailer) · 🟩 agent (grouped by round) · 🔳 agent reported back
 
 Rounds group dispatches starting within 2 minutes (120000 ms) of the first.
 

@@ -7,6 +7,7 @@ import {
   gitOracleDeps,
   parseNameStatus,
   parseRange,
+  readRangeCommits,
   type GitResult,
   type ParsedRange,
 } from "./oracleGit";
@@ -274,5 +275,39 @@ describe("the range separator reaches git", () => {
     const range = parseRange("main...HEAD") as ParsedRange;
     const read = gitOracleDeps(range, ".", null, 1000, run).readAt("a.ts", "base");
     expect(read.status).toBe("unreadable");
+  });
+});
+
+describe("readRangeCommits", () => {
+  function fakeRun(stdout: string): (args: string[], root: string, timeoutMs: number) => GitResult {
+    return () => ({ status: "ok", stdout });
+  }
+
+  it("reads a Co-authored-by trailer onto the commit it belongs to", () => {
+    const stdout =
+      "aaa\x002026-01-01T00:00:00Z\x00human commit\x00\n" +
+      "bbb\x002026-01-01T00:01:00Z\x00agent commit\x00Claude Sonnet 5 <noreply@anthropic.com>\n";
+    const range = parseRange("main..HEAD") as ParsedRange;
+    const commits = readRangeCommits(range, ".", 1000, fakeRun(stdout));
+    expect(commits).toEqual([
+      { sha: "aaa", at: "2026-01-01T00:00:00Z", message: "human commit" },
+      {
+        sha: "bbb",
+        at: "2026-01-01T00:01:00Z",
+        message: "agent commit",
+        coAuthor: "Claude Sonnet 5 <noreply@anthropic.com>",
+      },
+    ]);
+  });
+
+  // The field is absent, not `""` — the same "absence is not a zero" rule
+  // this codebase applies to counts applies here to a missing trailer.
+  it("omits coAuthor entirely rather than storing an empty string", () => {
+    const stdout = "aaa\x002026-01-01T00:00:00Z\x00no trailer\x00\n";
+    const range = parseRange("main..HEAD") as ParsedRange;
+    const commits = readRangeCommits(range, ".", 1000, fakeRun(stdout));
+    if (!Array.isArray(commits)) throw new Error("expected an array of commits");
+    expect(commits).toEqual([{ sha: "aaa", at: "2026-01-01T00:00:00Z", message: "no trailer" }]);
+    expect(Object.hasOwn(commits[0] ?? {}, "coAuthor")).toBe(false);
   });
 });

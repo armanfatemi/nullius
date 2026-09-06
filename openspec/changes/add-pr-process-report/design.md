@@ -54,17 +54,19 @@ the number it was:
 
 **Evidence:** `grep -rn '%0A' action/ packages/claims/src packages/kit/src` → 1 result
 
-**Evidence:** `grep -rn 'mermaid' action/ packages/claims/src packages/kit/src docs/ README.md .github/` → 23 results
+**Evidence:** `grep -rn 'mermaid' action/ packages/claims/src packages/kit/src docs/ README.md .github/` → 30 results
 
 **Evidence:** `grep -rn 'uses: ./action' .github/workflows/ci.yml` → 0 results
 
-(The mermaid count above was 19 when this section was written and is 23 now:
-`redesign-run-report-comment` gave `mermaidLabel` two more call sites — one per
-agent node in a review round's subgraph, where a single call site had covered
-every node kind — plus two comments, one naming the new `classDef` color
-palette and one on the commit label now carrying the commit's message.
-Restated per the repair this section itself prescribes below, rather than
-reported as a failure of this document.)
+(The mermaid count above was 19 when this section was written, 23 after
+`redesign-run-report-comment`'s agent-subgraph and commit-message work, and is
+30 now: the same branch's follow-up gave commit nodes a git-only "was an agent
+co-author involved" signal — a new helper (`isAgentCoAuthored`), a doc comment
+on it, a field and comment on `Event`/`BundleCommit`/`RangeCommit`, the branch
+that renders the stadium shape, an updated legend line, and four new tests
+across two files that each name "mermaid" or its label helpers in a comment or
+string. Restated per the repair this section itself prescribes below, rather
+than reported as a failure of this document.)
 
 The middle one is worth pausing on twice over.
 
