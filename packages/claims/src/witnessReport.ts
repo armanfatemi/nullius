@@ -2047,9 +2047,52 @@ function formatDuration(ms: number): string {
   return `${String(ms)} ms`;
 }
 
-/** Whether a section is the reason its tier should default to expanded. */
-function sectionNeedsAttention(section: ReportSection): boolean {
-  return section.status === "not-recorded" || (section.failing !== undefined && section.failing > 0);
+/**
+ * Which not-recorded section states its reason in full, per reason — the
+ * first one encountered in render order — and which titles a later,
+ * same-reason section should point back at.
+ *
+ * A tier blocked by one shared cause (no bundle, an unreadable journal) used
+ * to open and expand every section in it: nine "not recorded" leaves, each
+ * one restating "as above, under X" as if it were nine separate facts a
+ * reader had to individually confirm. Only the first section carries new
+ * information; the rest are a pointer, and a pointer does not need to
+ * default open to be read.
+ */
+interface Disclosures {
+  /** Section ids that state a not-recorded reason for the first time. */
+  first: ReadonlySet<string>;
+  /** reason -> the title of the section that first stated it. */
+  titleByReason: ReadonlyMap<string, string>;
+}
+
+function computeDisclosures(tiers: readonly ReportTier[]): Disclosures {
+  const titleByReason = new Map<string, string>();
+  const first = new Set<string>();
+  for (const tier of tiers) {
+    for (const section of tier.sections) {
+      if (section.status !== "not-recorded") continue;
+      const reason = section.reason ?? "";
+      if (!titleByReason.has(reason)) {
+        titleByReason.set(reason, section.title);
+        first.add(section.id);
+      }
+    }
+  }
+  return { first, titleByReason };
+}
+
+/**
+ * Whether a section is the reason its tier should default to expanded.
+ *
+ * A `not-recorded` section counts only when it is the first to state its
+ * reason — see `computeDisclosures`. A `data` section counts on its own
+ * `failing` figure exactly as before; that half never had a restatement
+ * problem, because a failing count is never shared prose two sections deep.
+ */
+function sectionNeedsAttention(section: ReportSection, disclosures: Disclosures): boolean {
+  if (section.status === "not-recorded") return disclosures.first.has(section.id);
+  return section.failing !== undefined && section.failing > 0;
 }
 
 /** The `<summary>` line's own text — short enough to read without expanding. */
@@ -2253,8 +2296,7 @@ export function renderMarkdown(
   options: { budgetBytes?: number } = {},
 ): string {
   const out: string[] = [];
-  /** Reason text -> the section title that stated it in full. */
-  const reasonFirstStated = new Map<string, string>();
+  const disclosures = computeDisclosures(report.tiers);
   // A title's job is letting someone triaging ten open PRs decide, from
   // notification text alone, whether to click in. A commit range — two
   // 40-character hashes — answers a question nobody asked at that moment;
@@ -2308,7 +2350,7 @@ export function renderMarkdown(
     // exactly when something inside it does need a look, so scanning the
     // rendered comment top to bottom answers "what should I actually read"
     // without opening anything.
-    const attention = tier.sections.filter(sectionNeedsAttention).length;
+    const attention = tier.sections.filter((section) => sectionNeedsAttention(section, disclosures)).length;
     out.push(`<details${attention > 0 ? " open" : ""}>`);
     out.push(`<summary><strong>${escapeCell(tier.title)}</strong> — ${escapeCell(tierStatus(tier.sections.length, attention))}</summary>`);
     out.push("");
@@ -2322,7 +2364,7 @@ export function renderMarkdown(
       // still had to wade past four clean subsections to find the two that
       // mattered. Per-section collapsing puts the same judgment one level
       // deeper: only the sections actually worth reading default open.
-      const sectionAttention = sectionNeedsAttention(section);
+      const sectionAttention = sectionNeedsAttention(section, disclosures);
       out.push(`<details${sectionAttention ? " open" : ""}>`);
       const countSuffix = section.count === undefined ? "" : ` — ${formatCount(section.count)}`;
       out.push(`<summary><strong>${escapeCell(`${section.title}${countSuffix}`)}</strong></summary>`);
@@ -2332,16 +2374,14 @@ export function renderMarkdown(
       out.push(section.statement);
       if (section.status === "not-recorded") {
         out.push("");
-        const reason = section.reason ?? "";
-        const first = reasonFirstStated.get(reason);
-        if (first === undefined) {
-          reasonFirstStated.set(reason, section.title);
-          out.push(`**Not recorded:** ${escapeCell(reason)}`);
+        if (disclosures.first.has(section.id)) {
+          out.push(`**Not recorded:** ${escapeCell(section.reason ?? "")}`);
         } else {
           // One cause blocking fourteen sections is one fact. Restating it
           // under each of them is how a 21 KB comment spent 6 KB saying the
           // same sentence thirty times, and buried the one section that could
           // be acted on. The JSON form still carries every reason in full.
+          const first = disclosures.titleByReason.get(section.reason ?? "") ?? "";
           out.push(`**Not recorded:** as above, under "${escapeCell(first)}".`);
         }
       } else {

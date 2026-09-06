@@ -129,7 +129,7 @@ No canary is registered for this repository.
 </details>
 
 <details open>
-<summary><strong>Hook-attested</strong> — 4 of 9 need a look</summary>
+<summary><strong>Hook-attested</strong> — 3 of 9 need a look</summary>
 
 ## Hook-attested
 
@@ -251,7 +251,7 @@ How many findings agents raised during review, read from each dispatch's final r
 
 </details>
 
-<details open>
+<details>
 <summary><strong>Operator turns</strong></summary>
 
 ### Operator turns
@@ -275,14 +275,14 @@ Token usage the harness recorded for each dispatched agent, summed. Informationa
 
 </details>
 
-<details open>
-<summary><strong>Self-reported</strong> — 5 of 5 need a look</summary>
+<details>
+<summary><strong>Self-reported</strong> — 5 checks, all clear</summary>
 
 ## Self-reported
 
 _Written by a coordinator about its own run. Internally consistent; not evidence the run went this way._
 
-<details open>
+<details>
 <summary><strong>Records the coordinator claimed</strong></summary>
 
 ### Records the coordinator claimed
@@ -293,7 +293,7 @@ How many records the coordinator reported about itself, across this entire worki
 
 </details>
 
-<details open>
+<details>
 <summary><strong>Stages</strong></summary>
 
 ### Stages
@@ -304,7 +304,7 @@ How many records the coordinator reported about itself, across this entire worki
 
 </details>
 
-<details open>
+<details>
 <summary><strong>Resolutions</strong></summary>
 
 ### Resolutions
@@ -315,7 +315,7 @@ How many records the coordinator reported about itself, across this entire worki
 
 </details>
 
-<details open>
+<details>
 <summary><strong>Decisions</strong></summary>
 
 ### Decisions
@@ -326,7 +326,7 @@ How many records the coordinator reported about itself, across this entire worki
 
 </details>
 
-<details open>
+<details>
 <summary><strong>Checks</strong></summary>
 
 ### Checks
@@ -339,14 +339,14 @@ How many records the coordinator reported about itself, across this entire worki
 
 </details>
 
-<details open>
-<summary><strong>Unattributed</strong> — 1 of 1 needs a look</summary>
+<details>
+<summary><strong>Unattributed</strong> — 1 check, all clear</summary>
 
 ## Unattributed
 
 _Records with no origin of their own, filed under a header that names none either. Counting these as harness-verified would be a guess this report refuses to make._
 
-<details open>
+<details>
 <summary><strong>Records that belong to nobody</strong></summary>
 
 ### Records that belong to nobody
