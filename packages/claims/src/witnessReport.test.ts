@@ -197,7 +197,21 @@ describe("escapeMermaidLabel", () => {
     expect(escapeMermaidLabel("a|b")).toBe("a·b");
     expect(escapeMermaidLabel("a\nb")).toBe("a·b");
     expect(escapeMermaidLabel("a`b")).toBe("a·b");
-    expect(escapeMermaidLabel("emoji \u{1F600}")).toBe("emoji ··");
+    // A surrogate pair is two disallowed UTF-16 code units in a row — one
+    // run, one dot, not two. See the adjacent-run test below for why this
+    // collapsing matters beyond emoji.
+    expect(escapeMermaidLabel("emoji \u{1F600}")).toBe("emoji ·");
+  });
+
+  it("collapses a run of adjacent disallowed characters to one dot, not one per character", () => {
+    // The exact shape that broke in production: a commit subject with a
+    // quote directly followed by a comma. Per-character replacement made
+    // this render as `·stale··`, which reads as corrupted text rather than
+    // punctuation standing in for itself.
+    expect(escapeMermaidLabel('gloss "stale", stop calling it "x"')).toBe(
+      "gloss ·stale· stop calling it ·x·",
+    );
+    expect(escapeMermaidLabel("a??!!b")).toBe("a·b");
   });
 
   it("is a QUOTING case, not an escaping case, for `::`", () => {
@@ -216,6 +230,30 @@ describe("escapeMermaidLabel", () => {
     expect(label).not.toContain("…");
   });
 
+  it("truncates real commit-message prose at a word boundary, not mid-word", () => {
+    // The exact shape that broke in production: a fixed-offset cut landed
+    // inside "assertions", and separately stranded a substituted `·` right
+    // against the ellipsis. Both read as corrupted text, not a shortened one.
+    expect(
+      escapeMermaidLabel(
+        "3f5055c fix(ci): update the grounding-card shape assertions for the new card",
+      ),
+    ).toBe("3f5055c fix(ci): update the grounding-card shape...");
+    expect(
+      escapeMermaidLabel(
+        "2319cff feat(report): act on direct maintainer feedback — cut redundancy, add flags/models, lead with the diagram",
+      ),
+    ).toBe("2319cff feat(report): act on direct maintainer feedback...");
+  });
+
+  it("falls back to a hard cut when there is no good word boundary", () => {
+    // A single word with no spaces at all: breaking "at the last space" would
+    // mean breaking nowhere, so the fallback keeps the label from collapsing
+    // to just "...".
+    const label = escapeMermaidLabel("x".repeat(200));
+    expect(label).toBe(`${"x".repeat(57)}...`);
+  });
+
   it("quotes the label, and a quote inside it cannot escape the quoting", () => {
     expect(mermaidLabel('a"b')).toBe('"a·b"');
   });
@@ -229,10 +267,193 @@ describe("the flowchart", () => {
     const mermaid = report.flowchart?.mermaid ?? "";
     expect(mermaid.startsWith("flowchart LR\n")).toBe(true);
     // Node ids are generated, never derived from content: an id is the one
-    // position in the grammar quoting cannot protect.
+    // position in the grammar quoting cannot protect. `s\d+` (a subgraph per
+    // round) and `n\d+_\d+` (one agent node per member of that round) extend
+    // the id grammar without weakening it — both are still purely positional,
+    // never a slice of an agent name or a round label.
+    const id = "n\\d+(?:_\\d+)?";
+    const lineShapes = [
+      `${id}\\[".*"\\]`, // a plain event node
+      `${id}\\(\\[".*"\\]\\)`, // a stadium-shaped agent node, inside a round's subgraph
+      `${id} --> ${id}`, // an edge, including a round's fan-out/fan-in
+      `subgraph s\\d+\\[".*"\\]`, // a round's subgraph opening
+      "end", // a subgraph's closing line
+      `classDef \\w+ fill:#[0-9a-fA-F]{6},color:#[0-9a-fA-F]{6},stroke:#[0-9a-fA-F]{6},stroke-width:1px`,
+      `class (?:${id})(?:,${id})* \\w+`, // one event kind's nodes assigned its color
+    ];
+    const linePattern = new RegExp(`^ {2}(?:${lineShapes.join("|")})$`);
     for (const line of mermaid.split("\n").slice(1)) {
-      expect(line).toMatch(/^ {2}(n\d+\[".*"\]|n\d+ --> n\d+)$/);
+      expect(line).toMatch(linePattern);
     }
+  });
+
+  it("draws a commit's node as a stadium when its trailer names Claude, a rectangle otherwise", () => {
+    // The one signal a run with no recorded bundle has to draw an "agent was
+    // here" cue from: a `Co-authored-by` trailer, not a verified dispatch.
+    const report = buildRunReport(
+      baseInput({
+        bundle: null,
+        journalReports: [],
+        changedFiles: [],
+        commits: [
+          { sha: "aaaaaaa", at: "2026-01-01T00:00:00Z", message: "human-only commit" },
+          {
+            sha: "bbbbbbb",
+            at: "2026-01-01T00:01:00Z",
+            message: "agent-assisted commit",
+            coAuthor: "Claude Sonnet 5 <noreply@anthropic.com>",
+          },
+        ],
+      }),
+    );
+    const mermaid = report.flowchart?.mermaid ?? "";
+    expect(mermaid).toMatch(/n0\["aaaaaaa human-only commit"\]/);
+    expect(mermaid).toMatch(/n1\(\["bbbbbbb agent-assisted commit"\]\)/);
+  });
+
+  it("does not treat an arbitrary co-author as an agent", () => {
+    const report = buildRunReport(
+      baseInput({
+        bundle: null,
+        journalReports: [],
+        changedFiles: [],
+        commits: [
+          {
+            sha: "ccccccc",
+            at: "2026-01-01T00:00:00Z",
+            message: "pair-programmed commit",
+            coAuthor: "A Human <human@example.com>",
+          },
+        ],
+      }),
+    );
+    const mermaid = report.flowchart?.mermaid ?? "";
+    expect(mermaid).toMatch(/n0\["ccccccc pair-programmed commit"\]/);
+    expect(mermaid).not.toContain("(["); // no stadium shape anywhere
+  });
+
+  it("counts commits shown and how many are agent co-authored", () => {
+    const report = buildRunReport(
+      baseInput({
+        bundle: null,
+        journalReports: [],
+        changedFiles: [],
+        commits: [
+          { sha: "aaaaaaa", at: "2026-01-01T00:00:00Z", message: "human-only commit" },
+          {
+            sha: "bbbbbbb",
+            at: "2026-01-01T00:01:00Z",
+            message: "agent-assisted commit",
+            coAuthor: "Claude Sonnet 5 <noreply@anthropic.com>",
+          },
+        ],
+      }),
+    );
+    expect(report.flowchart?.totalCommits).toBe(2);
+    expect(report.flowchart?.agentCommits).toBe(1);
+  });
+
+  it("states in prose that every commit shown is agent co-authored, only when that is true", () => {
+    // A mixed diagram: shape contrast already carries the information, no
+    // extra sentence needed.
+    const mixed = renderMarkdown(
+      buildRunReport(
+        baseInput({
+          bundle: null,
+          journalReports: [],
+          changedFiles: [],
+          commits: [
+            { sha: "aaaaaaa", at: "2026-01-01T00:00:00Z", message: "human-only commit" },
+            {
+              sha: "bbbbbbb",
+              at: "2026-01-01T00:01:00Z",
+              message: "agent-assisted commit",
+              coAuthor: "Claude Sonnet 5 <noreply@anthropic.com>",
+            },
+          ],
+        }),
+      ),
+    );
+    expect(mixed).not.toContain("carry a Claude co-author trailer");
+
+    // Uniformly agent co-authored: the stadium shape draws no contrast on its
+    // own, so the fact is stated once in prose.
+    const uniform = renderMarkdown(
+      buildRunReport(
+        baseInput({
+          bundle: null,
+          journalReports: [],
+          changedFiles: [],
+          commits: [
+            {
+              sha: "bbbbbbb",
+              at: "2026-01-01T00:01:00Z",
+              message: "agent-assisted commit",
+              coAuthor: "Claude Sonnet 5 <noreply@anthropic.com>",
+            },
+            {
+              sha: "ccccccc",
+              at: "2026-01-01T00:02:00Z",
+              message: "another agent commit",
+              coAuthor: "Claude Sonnet 5 <noreply@anthropic.com>",
+            },
+          ],
+        }),
+      ),
+    );
+    expect(uniform).toContain(
+      "All 2 commits shown carry a Claude co-author trailer — the stadium shape above is real signal, not a rendering default.",
+    );
+
+    // Uniformly NOT agent co-authored: the mirror case of "uniform" — stated
+    // in prose too, so an all-rectangle chain does not read as "the tool
+    // never checked" once a reader has seen the all-stadium sentence exist.
+    const none = renderMarkdown(
+      buildRunReport(
+        baseInput({
+          bundle: null,
+          journalReports: [],
+          changedFiles: [],
+          commits: [{ sha: "aaaaaaa", at: "2026-01-01T00:00:00Z", message: "human-only commit" }],
+        }),
+      ),
+    );
+    expect(none).toContain(
+      "None of the 1 commit shown carries a Claude co-author trailer — the plain rectangle above is the whole set, not a partial render.",
+    );
+  });
+
+  it("explains the rounds-grouping window only when the diagram actually has a round", () => {
+    const withRounds = renderMarkdown(buildRunReport(baseInput()));
+    expect(withRounds).toContain("Rounds group dispatches starting within");
+
+    // A commit-only fallback (no bundle) has no round to group — nothing to
+    // explain a grouping rule for.
+    const commitOnly = renderMarkdown(
+      buildRunReport(
+        baseInput({
+          bundle: null,
+          journalReports: [],
+          changedFiles: [],
+          commits: [{ sha: "aaaaaaa", at: "2026-01-01T00:00:00Z", message: "solo commit" }],
+        }),
+      ),
+    );
+    expect(commitOnly).not.toContain("Rounds group dispatches starting within");
+  });
+});
+
+describe("a detail long enough to derail a table row", () => {
+  it("is truncated in the table but not in the Flags list", () => {
+    // The pr58 fixture's own "oracle conservation" reason is over 64
+    // characters — exactly the case that used to get cut in both places.
+    const md = renderMarkdown(buildRunReport(baseInput()));
+    expect(md).toContain(
+      '⚪ **oracle conservation** — not configured — this project declares no "oracles" key in nullius.config.json, so this run checked nothing. An unconfigured project and a project whose oracle held still are different facts; declare the glob that grades this project to tell them apart.',
+    );
+    expect(md).toContain(
+      'not configured — this project declares no "oracles" key in null… | code-verified |',
+    );
   });
 });
 
@@ -350,7 +571,7 @@ describe("range scoping", () => {
     const paths = (mutations.table?.rows ?? []).map((row) => row[0]);
     for (const path of OUT_OF_RANGE) expect(paths).not.toContain(path);
     expect(mutations.count).toBe(33);
-    expect(mutations.notes.join(" ")).toContain("4 mutation record(s)");
+    expect(mutations.notes.join(" ")).toContain("4 mutation records");
   });
 
   it("never reaches the tier counts, which stay journal-wide", () => {
@@ -360,7 +581,7 @@ describe("range scoping", () => {
     // which is the one thing Decision 1 forbids.
     const attribution = section(report, "hook-attested", "hook-attribution");
     expect(attribution.reason).not.toContain("range");
-    expect(attribution.statement).toContain("Journal-wide");
+    expect(attribution.statement).toContain("working session");
   });
 
   it("leaves the tier counts of a 0.6 journal at their whole-journal figures", () => {
@@ -380,12 +601,16 @@ describe("range scoping", () => {
     // ...while the mutation-derived table is empty and says so.
     const mutations = section(rendered, "hook-attested", "mutations");
     expect(mutations.count).toBe(0);
-    expect(mutations.notes.join(" ")).toContain("1 mutation record(s)");
+    expect(mutations.notes.join(" ")).toContain("1 mutation record");
   });
 
   it("counts kinds that carry no path in full, and the report says so", () => {
+    // "Says so" no longer means "explains why in mechanism terms" — a
+    // dispatch record carrying no path is the reason this count is
+    // whole-session rather than range-scoped, but a reader needs the fact
+    // (not scoped to just this PR), not the internal reason for it.
     expect(section(report, "hook-attested", "dispatches").statement).toContain(
-      "carries no path to scope by",
+      "working session",
     );
   });
 });
@@ -529,7 +754,10 @@ describe("no bundle on the branch", () => {
 
   it("still renders the code-verified tier", () => {
     expect(section(report, "code-verified", "anchors").status).toBe("data");
-    expect(section(report, "code-verified", "commits").count).toBe(13);
+    // "Commits in range" was removed as its own section (GitHub's own
+    // Commits tab already shows this) — the count itself still comes from a
+    // live `git log`, not the bundle, and survives on `report.range`.
+    expect(report.range.commits).toBe(13);
   });
 
   it("renders the three bundle tiers as not recorded, naming the path", () => {
@@ -782,7 +1010,7 @@ describe("the failing figure on a section", () => {
     // Absence is what makes a row unanswerable rather than clear, so it must
     // not be defaulted to zero across the board.
     const report = buildRunReport(baseInput());
-    expect(Object.hasOwn(section(report, "code-verified", "commits"), "failing")).toBe(false);
+    expect(Object.hasOwn(section(report, "hook-attested", "hook-attribution"), "failing")).toBe(false);
   });
 
   it("never carries `failing` on a not-recorded section", () => {
@@ -1190,8 +1418,16 @@ describe("the rendered card", () => {
     // The shared reason appears, with how many rows it accounts for.
     expect(card).toMatch(/no bundle at/);
     expect(card).toMatch(/3 rows?/);
-    // And it is said ONCE, not once per row it explains.
-    expect(card.split("no bundle at").length - 1).toBe(1);
+    // And the summary line that states it is said ONCE, not once per row —
+    // checked by the exact sentence rather than the bare substring "no bundle
+    // at", because a *different*, correctly-unique reason two rows down
+    // (`record`'s "no journal to validate — no bundle at ...") legitimately
+    // contains that same substring without being a repeat of this cause.
+    expect(card.split("**3 rows, one cause:**").length - 1).toBe(1);
+    // The three rows this cause actually explains print the generic word,
+    // not the reason text — the reason lives in the summary line above them.
+    const genericDetailCells = card.split("\n").filter((line) => line.includes("| not recorded |"));
+    expect(genericDetailCells).toHaveLength(3);
   });
 
   it("does not invent a shared cause when the rows are unanswerable separately", () => {
@@ -1279,16 +1515,21 @@ describe("the rendered card", () => {
     expect(report.card.rows).toEqual(buildCard(report).rows);
   });
 
-  it("survives truncation, because it is emitted first", () => {
+  it("survives truncation, because it is emitted before the tiers", () => {
+    // The Timeline now leads the card (a reader sees what happened before a
+    // table of check marks), so the region worth protecting from truncation
+    // grew to match: everything through the card, not the card alone. 5,000
+    // bytes clears that whole prefix on this fixture (it ends at 4,408) while
+    // staying well under the full render (15,515), so the tier bodies below
+    // it are still the part that gets cut.
     const full = renderMarkdown(report);
-    const cardOf = (text: string): string =>
-      text.slice(text.indexOf("## How this run was produced"), text.indexOf("## Code-verified"));
-    const truncated = renderMarkdown(report, { budgetBytes: 2_000 });
+    const leadOf = (text: string): string => text.slice(0, text.indexOf("## Code-verified"));
+    const truncated = renderMarkdown(report, { budgetBytes: 5_000 });
 
     expect(truncated).toContain("**Truncated**");
-    // Byte-identical, not merely present: a partially truncated card is a
+    // Byte-identical, not merely present: a partially truncated lead is a
     // summary a reader would trust and should not.
-    expect(cardOf(truncated)).toBe(cardOf(full));
+    expect(leadOf(truncated)).toBe(leadOf(full));
   });
 });
 
@@ -1301,9 +1542,10 @@ describe("the JSON form", () => {
     const document = JSON.parse(renderJson(buildRunReport(baseInput()))) as RunReport;
     expect(document.kind).toBe("run-report");
     expect(document.version).toBe(RUN_REPORT_VERSION);
-    // Raised when the card was added: a consumer that reads version 1 must not
-    // be handed a document whose top level grew a key.
-    expect(document.version).toBe(2);
+    // Raised when `flowchart` grew `totalCommits`/`agentCommits`: a consumer
+    // that reads version 2 must not be handed a nested object whose shape
+    // grew a key it does not expect.
+    expect(document.version).toBe(3);
   });
 
   it("carries the card under its own key, leaving the tiers as the source", () => {
@@ -1686,7 +1928,21 @@ describe("a journal whose header names an older schema than its records", () => 
     // instead of fifteen copies of one refusal — the document grew because it
     // says more, which is the opposite of the restatement this bound guards
     // against. It was 15,676 before the collapse and 21,254 in the wild.
-    expect(markdown.length).toBeLessThan(10_500);
+    //
+    // Raised again to 12,500 for the `<details>`/`<summary>` wrapper around
+    // each of the four tiers (a fixed handful of bytes per tier, independent
+    // of section count) and the card's `reads` column becoming `detail` — a
+    // few words of computed figure in place of a backtick-quoted section id,
+    // which is usually longer, not shorter. Both are deliberate additions the
+    // same way the card itself was; this is not restatement coming back.
+    //
+    // Raised again to 14,500 for a second `<details>` layer, nested one per
+    // SECTION inside each tier's own: fifteen bundle sections in this fixture
+    // each gained an open/close tag pair and a one-line summary, so a tier
+    // that used to dump six subsections flat now lets a reader open only the
+    // ones that need a look. More scannable, not more restated — the added
+    // bytes are per-section chrome, not a sentence said twice.
+    expect(markdown.length).toBeLessThan(14_500);
   });
 });
 
@@ -1718,7 +1974,7 @@ describe("summariseJournalFindings", () => {
     );
     const summary = summariseJournalFindings(many);
     expect((summary.match(/MALFORMED/g) ?? []).length).toBe(VALIDATION_GROUP_CAP);
-    expect(summary).toContain("+3 further distinct finding(s)");
+    expect(summary).toContain("+3 further distinct findings");
     expect(summary).toContain("the JSON form carries them all");
   });
 });

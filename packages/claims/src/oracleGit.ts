@@ -219,6 +219,10 @@ export interface RangeCommit {
   sha: string;
   /** Author time, ISO 8601. The side of a commit that survives a rebase. */
   at: string;
+  /** The commit's subject line — `%s`, never the full body. */
+  message: string;
+  /** A `Co-authored-by` trailer's value, if the commit has one. */
+  coAuthor?: string;
 }
 
 /**
@@ -256,7 +260,20 @@ export function readRangeCommits(
     base = merged.stdout.trim();
   }
   const spec = `${base}..${range.head}`;
-  const result = run(["log", "--reverse", "--format=%H%x00%aI", spec], root, timeoutMs);
+  // The trailer field uses `%x1c` (ASCII FS) as its separator rather than the
+  // placeholder's own newline default: multiple `Co-authored-by` trailers on
+  // one commit would otherwise put a second commit's worth of fields on a
+  // line this parser never reads, silently dropping that commit.
+  const result = run(
+    [
+      "log",
+      "--reverse",
+      "--format=%H%x00%aI%x00%s%x00%(trailers:key=Co-authored-by,valueonly,unfold,separator=%x1c)",
+      spec,
+    ],
+    root,
+    timeoutMs,
+  );
   if (result.status === "failed") {
     return { error: `could not read the commits of ${spec}: ${result.reason}` };
   }
@@ -264,9 +281,14 @@ export function readRangeCommits(
   for (const line of result.stdout.split("\n")) {
     const trimmed = line.trim();
     if (trimmed === "") continue;
-    const [sha, at] = trimmed.split("\0");
+    const [sha, at, message, coAuthor] = trimmed.split("\0");
     if (sha === undefined || at === undefined) continue;
-    commits.push({ sha, at });
+    commits.push({
+      sha,
+      at,
+      message: message ?? "",
+      ...(coAuthor !== undefined && coAuthor !== "" ? { coAuthor } : {}),
+    });
   }
   return commits;
 }

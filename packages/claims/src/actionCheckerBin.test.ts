@@ -258,9 +258,22 @@ describe("the override is a workflow setting, and stays one", () => {
   it("keeps the marker first, so the label cannot break the upsert", () => {
     // Both comments are found by `startswith(marker)`. A label placed above
     // the marker would post a second comment on every open pull request.
-    const headers = ACTION.match(/header=\$\(printf '%s\\n%s' "\$marker" "\$LABEL"\)/g) ?? [];
-    expect(headers.length).toBe(2);
+    //
+    // The grounding-card comment's header is still `marker` then `LABEL`
+    // verbatim. The run-report comment splices `LABEL` in after its own
+    // title line instead (so the disclaimer does not lead the document),
+    // but `marker` is still the first argument passed to `printf` there too
+    // — the property this test exists to protect is about argument order,
+    // not about the two steps sharing one literal shell pattern.
+    const checkHeaders = ACTION.match(/header=\$\(printf '%s\\n%s' "\$marker" "\$LABEL"\)/g) ?? [];
+    expect(checkHeaders.length).toBe(1);
+    const runReportBodies =
+      ACTION.match(
+        /body=\$\(printf '%s\\n%s\\n%s\\n%s\\n' "\$marker" "\$title" "\$LABEL" "\$rest"\)/g,
+      ) ?? [];
+    expect(runReportBodies.length).toBe(1);
     expect(ACTION).not.toMatch(/printf '%s\\n%s' "\$LABEL"/);
+    expect(ACTION).not.toMatch(/printf '%s\\n%s\\n%s\\n%s\\n' "\$LABEL"/);
   });
 });
 

@@ -534,12 +534,13 @@ runs:
         # equality: the action re-invokes a pinned `claims-version`, so a caller
         # holding an older pin produces an older document, and an equality here
         # would stop posting for every one of them the day this action learned a
-        # newer one. Version 2 added the `card` key and changed nothing the
-        # renderer below depends on, so both are renderable.
+        # newer one. Version 2 added the `card` key; version 3 added
+        # `totalCommits`/`agentCommits` under `flowchart`. Neither changed
+        # anything the renderer below depends on, so all three are renderable.
         #
         # A version outside the set is still refused rather than guessed at. The
         # cost of guessing is a comment that looks complete and is not.
-        ACCEPTED_REPORT_VERSIONS='1 2'
+        ACCEPTED_REPORT_VERSIONS='1 2 3'
 
         version=$(jq -r '.version // "absent"' nullius-run-report.json)
         kind=$(jq -r '.kind // "absent"' nullius-run-report.json)
@@ -604,11 +605,21 @@ runs:
         # sharper reason: this is the comment that has already been reported
         # working from a working tree while showing a reviewer three
         # unanswered rows.
-        header="$marker"
+        #
+        # Spliced after the report's own title line, not prepended before it.
+        # `renderMarkdown` always pushes the `# ... Nullius Report` heading
+        # first — nothing precedes it — so the marker (invisible) leads,
+        # then the title, then this dev-binary disclaimer, then the rest of
+        # the report. A reader, or anything that surfaces just a document's
+        # opening line (a digest, a notification preview), sees the headline
+        # before a runner path and an env var name.
+        title=$(head -n1 nullius-run-report.md)
+        rest=$(tail -n +2 nullius-run-report.md)
         if [ -n "${LABEL:-}" ]; then
-          header=$(printf '%s\n%s' "$marker" "$LABEL")
+          body=$(printf '%s\n%s\n%s\n%s\n' "$marker" "$title" "$LABEL" "$rest")
+        else
+          body=$(printf '%s\n%s\n%s\n' "$marker" "$title" "$rest")
         fi
-        body=$(printf '%s\n%s\n' "$header" "$(cat nullius-run-report.md)")
 
         existing=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" --paginate \
           | jq -r --arg m "$marker" '[.[] | select(.body | startswith($m)) | .id][0] // empty') || existing=''

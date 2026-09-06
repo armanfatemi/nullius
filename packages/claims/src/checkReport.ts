@@ -17,7 +17,7 @@
 
 import { isFailure, type ClaimResult, type Verdict } from "./checkClaims";
 import type { Claim, PresenceClaim } from "./parseClaims";
-import { escapeCell } from "./markdown";
+import { escapeCell, plural } from "./markdown";
 import type { Rewrite, RewritePlan, Skipped } from "./rewrite";
 
 /** One matched document, as `check` read and verified it. */
@@ -403,32 +403,55 @@ function failingSubject(result: ReportResult, options: CardOptions): string {
 export function renderCard(report: CheckReport, options: CardOptions = {}): string {
   const s = report.summary;
   const out: string[] = [];
+  const totalChecked = s.presenceAnchors + s.absenceAnchors;
 
   const headline =
     s.failures > 0
-      ? `${String(s.failures)} unverified claim(s)`
-      : s.presenceAnchors + s.absenceAnchors === 0
+      ? `${String(s.failures)} unverified ${plural(s.failures, "claim")}`
+      : totalChecked === 0
         ? "no anchors to verify"
         : "all grounding markers verified";
-  out.push(`## nullius claims check — ${headline}`);
+  out.push(`# Nullius Claims Check — ${headline}`);
   out.push("");
-
-  out.push("| | |");
-  out.push("| --- | --- |");
-  out.push(`| documents checked | ${String(s.documents)}, of which ${String(s.anchoredDocuments)} carry markers |`);
-  out.push(
-    `| anchors checked | ${String(s.presenceAnchors)} presence, ${String(s.absenceAnchors)} absence |`,
-  );
+  // A glyph is a skim aid, never a substitute for the figure it stands for —
+  // "10 anchors passed" answers a different question than "was I supposed to
+  // see 10". Two rows, each with the specific number a reader would otherwise
+  // have to compute from the raw verdict counts below.
+  out.push("| | check | detail |");
+  out.push("| --- | --- | --- |");
+  if (s.markerFloorFailed) {
+    out.push(
+      `| ⚠️ look | Do all matched documents carry grounding markers? | ${String(s.anchoredDocuments)}/${String(s.documents)} carry markers (required) |`,
+    );
+  } else if (s.unanchored.length > 0) {
+    out.push(
+      `| ⚪ advisory | Do all matched documents carry grounding markers? | ${String(s.anchoredDocuments)}/${String(s.documents)} carry markers |`,
+    );
+  } else {
+    out.push(
+      `| ✅ clear | Do all matched documents carry grounding markers? | ${String(s.documents)}/${String(s.documents)} carry markers |`,
+    );
+  }
+  if (totalChecked === 0) {
+    out.push("| ⚪ not recorded | Are all cited claims verified? | nothing checked |");
+  } else if (s.failures > 0) {
+    out.push(
+      `| ⚠️ look | Are all cited claims verified? | ${String(s.failures)} failing of ${String(totalChecked)} |`,
+    );
+  } else {
+    out.push(`| ✅ clear | Are all cited claims verified? | 0 failing of ${String(totalChecked)} |`);
+  }
+  out.push("");
   const verdicts = Object.entries(s.verdicts).sort((a, b) => a[0].localeCompare(b[0]));
   out.push(
-    `| verdicts | ${verdicts.length === 0 ? "none" : verdicts.map(([v, n]) => `${escapeCell(v)} ${String(n)}`).join(", ")} |`,
+    `${String(s.presenceAnchors)} presence, ${String(s.absenceAnchors)} absence ${plural(totalChecked, "anchor")} checked. ` +
+      `Verdicts: ${verdicts.length === 0 ? "none" : verdicts.map(([v, n]) => `${escapeCell(v)} ${String(n)}`).join(", ")}.`,
   );
-  out.push(`| failures | ${String(s.failures)} |`);
 
   if (s.unanchored.length > 0) {
     out.push("");
     out.push(
-      `${String(s.unanchored.length)} matched document(s) carry no grounding markers: ` +
+      `${String(s.unanchored.length)} matched ${plural(s.unanchored.length, "document")} ${plural(s.unanchored.length, "carries", "carry")} no grounding markers: ` +
         `${s.unanchored.map((entry) => escapeCell(entry.doc)).join(", ")}.`,
     );
     // Said explicitly, because "All 0 grounding marker(s) verified." is

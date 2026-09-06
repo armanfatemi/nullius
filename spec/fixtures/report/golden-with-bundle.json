@@ -1,6 +1,6 @@
 {
   "kind": "run-report",
-  "version": 2,
+  "version": 3,
   "range": {
     "spec": "8211685..f431193",
     "base": "8211685",
@@ -15,88 +15,13 @@
       "provenance": "Re-computed by this command from the repository and its history. Nothing here came from the bundle, so nothing here depends on the contributor.",
       "sections": [
         {
-          "id": "commits",
-          "title": "Commits in range",
-          "statement": "Read from `git log` over the range.",
-          "status": "data",
-          "notes": [],
-          "count": 13,
-          "table": {
-            "columns": [
-              "commit",
-              "authored"
-            ],
-            "rows": [
-              [
-                "43651d6",
-                "2026-08-30T14:23:33-06:00"
-              ],
-              [
-                "50f6c14",
-                "2026-08-30T18:10:08-06:00"
-              ],
-              [
-                "df9a0cb",
-                "2026-08-30T18:15:29-06:00"
-              ],
-              [
-                "d4a4527",
-                "2026-08-30T18:38:25-06:00"
-              ],
-              [
-                "3b547b4",
-                "2026-08-30T18:38:45-06:00"
-              ],
-              [
-                "3db711a",
-                "2026-08-30T18:45:08-06:00"
-              ],
-              [
-                "abef156",
-                "2026-08-30T18:51:18-06:00"
-              ],
-              [
-                "6586401",
-                "2026-08-30T19:15:23-06:00"
-              ],
-              [
-                "2bb5b55",
-                "2026-08-30T19:23:02-06:00"
-              ],
-              [
-                "7b1527b",
-                "2026-08-30T19:23:44-06:00"
-              ],
-              [
-                "bbaa23a",
-                "2026-08-30T19:30:06-06:00"
-              ],
-              [
-                "c8305b1",
-                "2026-08-30T20:09:02-06:00"
-              ],
-              [
-                "f431193",
-                "2026-08-30T22:17:39-06:00"
-              ]
-            ]
-          }
-        },
-        {
-          "id": "changed-files",
-          "title": "Files changed",
-          "statement": "Read from `git diff --name-status` over the range. This is the set the mutation-derived tables below are scoped by.",
-          "status": "data",
-          "notes": [],
-          "count": 13
-        },
-        {
           "id": "anchors",
           "title": "Evidence Anchors re-checked",
           "statement": "Every anchor in the range's touched documents, re-verified by re-reading the cited file. A failure here is rendered, not gated: the gate is `nullius check`, which runs on its own.",
           "status": "data",
           "notes": [
-            "0 failing, over 10 document(s)."
+            "0 failing, over 10 documents.",
+            "\"stale\" is not a failure: the quoted text was real at the commit it names, and only the line number has moved since."
           ],
           "count": 39,
           "failing": 0,
@@ -170,7 +95,7 @@
         {
           "id": "hook-attribution",
           "title": "Records attributed to the harness",
-          "statement": "How many records the validator's provenance partition put in this tier. Journal-wide: `provenance` has no path predicate, so scoping it by the range would mean re-partitioning records here, which is the one thing this renderer does not do.",
+          "statement": "How many records the harness attributed to this tier, across this entire working session rather than just this PR.",
           "status": "not-recorded",
           "reason": "tier breakdown not recorded — 'pr58-session' is version 0.2, and per-record attribution arrived at 0.6",
           "notes": []
@@ -178,7 +103,7 @@
         {
           "id": "dispatches",
           "title": "Dispatches",
-          "statement": "One row per agent. Journal-wide, not scoped by the range: a `dispatch` record carries no path to scope by.",
+          "statement": "One row per agent, across this entire working session rather than just this PR.",
           "status": "data",
           "notes": [],
           "count": 20,
@@ -214,7 +139,7 @@
         {
           "id": "outcomes",
           "title": "Dispatch outcomes",
-          "statement": "The validator's three terminal states, counted apart. `never reported` is the one a summary cannot surface on its own, because the missing record is missing.",
+          "statement": "The three ways a dispatch can end, counted apart. `never reported` is the one that can only show up here — there's no record anywhere else for a summary to surface.",
           "status": "data",
           "notes": [],
           "count": 20,
@@ -247,7 +172,7 @@
         {
           "id": "rounds",
           "title": "Review rounds",
-          "statement": "A round is a maximal set of dispatches starting within 120000 ms of the first, with at least two members. A lone dispatch is not a round.",
+          "statement": "A round is a maximal set of dispatches starting within 2 minutes (120000 ms) of the first, with at least two members. A lone dispatch is not a round.",
           "status": "data",
           "notes": [],
           "count": 6,
@@ -301,10 +226,11 @@
         {
           "id": "mutations",
           "title": "Files mutated in the range",
-          "statement": "Scoped by the range: this is a mutation-derived table, and mutation-derived tables and the flowchart are the only places scoping applies. The tier counts above are journal-wide.",
+          "statement": "Scoped to this PR's changed files — unlike the tier counts above, which span the whole session.",
           "status": "data",
           "notes": [
-            "4 mutation record(s) are present in the bundle and excluded here: their path is outside the range's changed files."
+            "4 mutation records are present in the bundle and excluded here: their path is outside the range's changed files.",
+            "6 changed files carry no recorded edit at all — .claude/skills/proposal-to-pr/SKILL.md, CHANGELOG.md, openspec/changes/add-canary-status-redaction/progress.md, openspec/changes/add-canary-status-redaction/review-evidence.md, packages/claims/src/cli.ts, spec/canary.md. Not necessarily a gap: a generated file, a rename, or an edit made outside a hooked tool would all look like this too."
           ],
           "count": 33,
           "table": {
@@ -413,7 +339,7 @@
         {
           "id": "findings",
           "title": "Findings raised",
-          "statement": "`finding` records, counted by the validator. A finding carries no per-record origin: the recorder extracts it from the harness payload at the dispatch's terminal event, so the header's `hooks` is true of it.",
+          "statement": "How many findings agents raised during review, read from each dispatch's final report — a moment the harness itself captures, which is why these count as hook-attested even though a finding carries no origin of its own.",
           "status": "not-recorded",
           "reason": "ledger counts not recorded — 'pr58-session' is version 0.2, and the run ledger's counters arrived at 0.6",
           "notes": []
@@ -421,7 +347,7 @@
         {
           "id": "prompts",
           "title": "Operator turns",
-          "statement": "`prompt` records — what the operator asked for. The one record in the journal the agent did not cause.",
+          "statement": "`prompt` records — what the operator asked for. The one record kind in the journal the agent did not cause.",
           "status": "not-recorded",
           "reason": "ledger counts not recorded — 'pr58-session' is version 0.2, and the run ledger's counters arrived at 0.6",
           "notes": []
@@ -429,9 +355,9 @@
         {
           "id": "usage",
           "title": "Model and tokens",
-          "statement": "Token usage the harness resolved for each dispatched agent, summed. Additive metadata no verdict reads.",
+          "statement": "Token usage the harness recorded for each dispatched agent, summed. Informational only — no check in this report depends on it.",
           "status": "not-recorded",
-          "reason": "no report record in the bundled journal(s) carries usage — the recorder writes token counts at journal version 0.6",
+          "reason": "no report record in the bundled journals carries usage — the recorder writes token counts at journal version 0.6",
           "notes": []
         }
       ]
@@ -444,7 +370,7 @@
         {
           "id": "self-attribution",
           "title": "Records the coordinator claimed",
-          "statement": "How many records carried `origin: \"self-reported\"` of their own, or none under a self-reported header. Journal-wide.",
+          "statement": "How many records the coordinator reported about itself, across this entire working session.",
           "status": "not-recorded",
           "reason": "tier breakdown not recorded — 'pr58-session' is version 0.2, and per-record attribution arrived at 0.6",
           "notes": []
@@ -460,7 +386,7 @@
         {
           "id": "resolutions",
           "title": "Resolutions",
-          "statement": "`resolution` records — what happened to each finding.",
+          "statement": "`resolution` records — what the coordinator says happened to a finding. Not one-to-one with findings raised: several can share a single resolution.",
           "status": "not-recorded",
           "reason": "ledger counts not recorded — 'pr58-session' is version 0.2, and the run ledger's counters arrived at 0.6",
           "notes": []
@@ -486,12 +412,12 @@
     {
       "id": "unattributed",
       "title": "Unattributed",
-      "provenance": "Records that belong to nobody: no origin of their own, under a header that claims none. Counting these as hook-attested would be the flattering default the field exists to remove.",
+      "provenance": "Records with no origin of their own, filed under a header that names none either. Counting these as hook-attested would be a guess this report refuses to make.",
       "sections": [
         {
           "id": "unattributed",
           "title": "Records that belong to nobody",
-          "statement": "The validator's third partition: records with no origin of their own under a header whose origin is null or absent, plus any record whose origin this schema cannot read. Journal-wide.",
+          "statement": "What's described above, plus any record whose origin this report simply can't read at all. Counted across this entire working session.",
           "status": "not-recorded",
           "reason": "tier breakdown not recorded — 'pr58-session' is version 0.2, and per-record attribution arrived at 0.6",
           "notes": []
@@ -500,8 +426,10 @@
     }
   ],
   "flowchart": {
-    "mermaid": "flowchart LR\n  n0[\"Round 1 (3 dispatches)\"]\n  n1[\"11 edits / 4 file(s)\"]\n  n2[\"commit 43651d6\"]\n  n3[\"Round 2 (3 dispatches)\"]\n  n4[\"7 edits / 3 file(s)\"]\n  n5[\"commit 50f6c14\"]\n  n6[\"Round 3 (3 dispatches)\"]\n  n7[\"commit df9a0cb\"]\n  n8[\"5 edits / 2 file(s)\"]\n  n9[\"commit d4a4527\"]\n  n10[\"1 edits / 1 file(s)\"]\n  n11[\"commit 3b547b4\"]\n  n12[\"Round 4 (3 dispatches)\"]\n  n13[\"2 edits / 1 file(s)\"]\n  n14[\"commit 3db711a\"]\n  n15[\"Round 5 (3 dispatches)\"]\n  n16[\"commit abef156\"]\n  n17[\"1 edits / 1 file(s)\"]\n  n18[\"commit 6586401\"]\n  n19[\"5 edits / 1 file(s)\"]\n  n20[\"commit 2bb5b55\"]\n  n21[\"commit 7b1527b\"]\n  n22[\"Round 6 (3 dispatches)\"]\n  n23[\"commit bbaa23a\"]\n  n24[\"1 edits / 1 file(s)\"]\n  n25[\"commit c8305b1\"]\n  n26[\"commit f431193\"]\n  n0 --> n1\n  n1 --> n2\n  n2 --> n3\n  n3 --> n4\n  n4 --> n5\n  n5 --> n6\n  n6 --> n7\n  n7 --> n8\n  n8 --> n9\n  n9 --> n10\n  n10 --> n11\n  n11 --> n12\n  n12 --> n13\n  n13 --> n14\n  n14 --> n15\n  n15 --> n16\n  n16 --> n17\n  n17 --> n18\n  n18 --> n19\n  n19 --> n20\n  n20 --> n21\n  n21 --> n22\n  n22 --> n23\n  n23 --> n24\n  n24 --> n25\n  n25 --> n26",
-    "nodes": 27,
+    "mermaid": "flowchart LR\n  subgraph s0[\"Round 1 (3 dispatches)\"]\n  n0_0([\"architecture-reviewer\"])\n  n0_1([\"rule-auditor\"])\n  n0_2([\"test-engineer\"])\n  end\n  n1[\"11 edits / 4 files\"]\n  n2[\"commit 43651d6\"]\n  subgraph s3[\"Round 2 (3 dispatches)\"]\n  n3_0([\"architecture-reviewer\"])\n  n3_1([\"rule-auditor\"])\n  n3_2([\"test-engineer\"])\n  end\n  n4[\"7 edits / 3 files\"]\n  n5[\"commit 50f6c14\"]\n  subgraph s6[\"Round 3 (3 dispatches)\"]\n  n6_0([\"architecture-reviewer\"])\n  n6_1([\"rule-auditor\"])\n  n6_2([\"test-engineer\"])\n  end\n  n7[\"commit df9a0cb\"]\n  n8[\"5 edits / 2 files\"]\n  n9[\"commit d4a4527\"]\n  n10[\"1 edits / 1 file\"]\n  n11[\"commit 3b547b4\"]\n  subgraph s12[\"Round 4 (3 dispatches)\"]\n  n12_0([\"architecture-reviewer\"])\n  n12_1([\"rule-auditor\"])\n  n12_2([\"test-engineer\"])\n  end\n  n13[\"2 edits / 1 file\"]\n  n14[\"commit 3db711a\"]\n  subgraph s15[\"Round 5 (3 dispatches)\"]\n  n15_0([\"architecture-reviewer\"])\n  n15_1([\"rule-auditor\"])\n  n15_2([\"test-engineer\"])\n  end\n  n16[\"commit abef156\"]\n  n17[\"1 edits / 1 file\"]\n  n18[\"commit 6586401\"]\n  n19[\"5 edits / 1 file\"]\n  n20[\"commit 2bb5b55\"]\n  n21[\"commit 7b1527b\"]\n  subgraph s22[\"Round 6 (3 dispatches)\"]\n  n22_0([\"architecture-reviewer\"])\n  n22_1([\"rule-auditor\"])\n  n22_2([\"test-engineer\"])\n  end\n  n23[\"commit bbaa23a\"]\n  n24[\"1 edits / 1 file\"]\n  n25[\"commit c8305b1\"]\n  n26[\"commit f431193\"]\n  n0_0 --> n1\n  n0_1 --> n1\n  n0_2 --> n1\n  n1 --> n2\n  n2 --> n3_0\n  n2 --> n3_1\n  n2 --> n3_2\n  n3_0 --> n4\n  n3_1 --> n4\n  n3_2 --> n4\n  n4 --> n5\n  n5 --> n6_0\n  n5 --> n6_1\n  n5 --> n6_2\n  n6_0 --> n7\n  n6_1 --> n7\n  n6_2 --> n7\n  n7 --> n8\n  n8 --> n9\n  n9 --> n10\n  n10 --> n11\n  n11 --> n12_0\n  n11 --> n12_1\n  n11 --> n12_2\n  n12_0 --> n13\n  n12_1 --> n13\n  n12_2 --> n13\n  n13 --> n14\n  n14 --> n15_0\n  n14 --> n15_1\n  n14 --> n15_2\n  n15_0 --> n16\n  n15_1 --> n16\n  n15_2 --> n16\n  n16 --> n17\n  n17 --> n18\n  n18 --> n19\n  n19 --> n20\n  n20 --> n21\n  n21 --> n22_0\n  n21 --> n22_1\n  n21 --> n22_2\n  n22_0 --> n23\n  n22_1 --> n23\n  n22_2 --> n23\n  n23 --> n24\n  n24 --> n25\n  n25 --> n26\n  classDef human fill:#4C6EF5,color:#ffffff,stroke:#364FC7,stroke-width:1px\n  classDef system fill:#adb5bd,color:#212529,stroke:#868e96,stroke-width:1px\n  classDef round fill:#2F9E44,color:#ffffff,stroke:#2B8A3E,stroke-width:1px\n  classDef burst fill:#F59F00,color:#212529,stroke:#E67700,stroke-width:1px\n  classDef commit fill:#7048E8,color:#ffffff,stroke:#5F3DC4,stroke-width:1px\n  class n0_0,n0_1,n0_2,n3_0,n3_1,n3_2,n6_0,n6_1,n6_2,n12_0,n12_1,n12_2,n15_0,n15_1,n15_2,n22_0,n22_1,n22_2 round\n  class n1,n4,n8,n10,n13,n17,n19,n24 burst\n  class n2,n5,n7,n9,n11,n14,n16,n18,n20,n21,n23,n25,n26 commit",
+    "totalCommits": 13,
+    "agentCommits": 0,
+    "nodes": 39,
     "windowMs": 120000,
     "dropped": 0
   },
@@ -529,7 +457,7 @@
     {
       "tier": "hook-attested",
       "section": "Model and tokens",
-      "reason": "no report record in the bundled journal(s) carries usage — the recorder writes token counts at journal version 0.6"
+      "reason": "no report record in the bundled journals carries usage — the recorder writes token counts at journal version 0.6"
     },
     {
       "tier": "self-reported",

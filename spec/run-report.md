@@ -250,14 +250,18 @@ Every bundle- or document-derived string passes through a **markdown-cell**
 escaper; every flowchart label passes through a **mermaid-label** escaper. The
 mermaid grammar is an allow-list, not a deny-list:
 
-**Evidence:** `packages/claims/src/witnessReport.ts:370` — `const MERMAID_ALLOWED = /[^A-Za-z0-9 ._:/x()-]/g;`
+**Evidence:** `packages/claims/src/witnessReport.ts:359` — `const MERMAID_ALLOWED = /[^A-Za-z0-9 ._:/x()-]+/g;`
 
 The `x` is ASCII, not `×` (U+00D7), which the label grammar has no need of.
-Everything outside the list becomes `·`. Quoting is the second half of the
-grammar and answers a different question: `:` is *inside* the allow-list, so
-`a::b` survives replacement untouched and is made inert by the quotes alone.
-Node ids are generated (`n0`, `n1`, …) and never derived from content — an id
-is the one position in the grammar quoting cannot protect.
+A *run* of characters outside the list becomes one `·`, not one per
+character — a commit subject like `gloss "stale", stop` has a quote directly
+followed by a comma, and per-character replacement rendered that pair as
+`··`, which reads as corrupted text rather than punctuation. Quoting is the
+second half of the grammar and answers a different question: `:` is *inside*
+the allow-list, so `a::b` survives replacement untouched and is made inert by
+the quotes alone. Node ids are generated (`n0`, `n1`, …) and never derived
+from content — an id is the one position in the grammar quoting cannot
+protect.
 
 ## Canary locations are never rendered
 
@@ -279,7 +283,7 @@ moment they were taken.
 
 The JSON form carries a discriminator and its own version:
 
-**Evidence:** `packages/claims/src/witnessReport.ts:41` — `export const RUN_REPORT_VERSION = 2;`
+**Evidence:** `packages/claims/src/witnessReport.ts:44` — `export const RUN_REPORT_VERSION = 3;`
 
 It embeds the `check --format json` document under its own key, **carrying that
 document's own `version`**, rather than restating it. Two documents numbered
@@ -288,10 +292,12 @@ them, is a consumer bug waiting for the first tool that reads a file it did not
 invoke. The outer number reaching 2 while the inner stays 1 is the first time
 that separation is visible rather than merely intended.
 
-Version 2 added the `card` key. The number moved for a purely additive change
-because compatibility is decided by the reading end's accepted **set**, not by
-the writer's optimism: a consumer that recognises only 1 must refuse the
-document rather than read the fields it happens to know.
+Version 2 added the `card` key; version 3 added `totalCommits` and
+`agentCommits` under `flowchart`. The number moved both times for a purely
+additive change, because compatibility is decided by the reading end's
+accepted **set**, not by the writer's optimism: a consumer that recognises
+only an older version must refuse the document rather than read the fields it
+happens to know.
 
 ## Fixtures
 

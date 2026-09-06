@@ -54,9 +54,19 @@ the number it was:
 
 **Evidence:** `grep -rn '%0A' action/ packages/claims/src packages/kit/src` → 1 result
 
-**Evidence:** `grep -rn 'mermaid' action/ packages/claims/src packages/kit/src docs/ README.md .github/` → 19 results
+**Evidence:** `grep -rn 'mermaid' action/ packages/claims/src packages/kit/src docs/ README.md .github/` → 32 results
 
 **Evidence:** `grep -rn 'uses: ./action' .github/workflows/ci.yml` → 0 results
+
+(The mermaid count above was 19 when this section was written, 23 after
+`redesign-run-report-comment`'s agent-subgraph and commit-message work, 30
+after that branch's follow-up gave commit nodes a git-only "was an agent
+co-author involved" signal, 31 after the prose sentence for the all-agent
+case, and is 32 now: a third pass made that sentence symmetric (also stating
+the all-human case) and gated the "Rounds group dispatches" sentence on a
+round actually being present in the diagram, adding one more comment that
+names "mermaid" in the process. Restated per the repair this section itself
+prescribes below, rather than reported as a failure of this document.)
 
 The middle one is worth pausing on twice over.
 
