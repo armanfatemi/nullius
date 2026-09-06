@@ -1,0 +1,3 @@
+{"kind":"journal","version":"0.6","origin":"hooks","session":"295ed1a3-0c2c-49a8-b705-750dbb25c3e8","branch":"docs/readme-adoption-funnel","head":"91f2dc25c2594a74f0000ca8664e4d979d9cad15","worktree":"c86e286a9c25b860","user":{"name":"Arman Fatemi"}}
+{"kind":"mutation","id":"m:toolu_01LSArPx1RhentEzBeMQqVYg:f27ac6f3","target":{"path":".claude/settings.json","hash":"fce5975e7a43538a"},"tool":"Bash","prompt":"p:924bfec7-d66b-48eb-9bc5-0cae86a6ad0f","at":"2026-09-06T23:14:38.372Z"}
+{"kind":"mutation","id":"m:toolu_01LSArPx1RhentEzBeMQqVYg:bc37d034","target":{"path":".gitignore","hash":"18c543fa977c3b02"},"tool":"Bash","prompt":"p:924bfec7-d66b-48eb-9bc5-0cae86a6ad0f","at":"2026-09-06T23:14:38.372Z"}

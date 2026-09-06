@@ -1,0 +1,2 @@
+{"kind":"journal","version":"0.2","origin":"hooks","session":"5959f4f3-39f8-46d0-ad20-6852f72fe82c","source":"startup","branch":"feat/add-canary-status-redaction","head":"50f6c148371c69cd916255592799bce0da84c6bf","worktree":"c86e286a9c25b860"}
+{"kind":"mutation","id":"m:toolu_01S9GwdwQKbXWJJuMnBXsWmJ","target":{"path":"docs/icon.svg","hash":"ceff601d9ca065e7"},"tool":"Write","at":"2026-08-31T00:37:49.448Z"}
