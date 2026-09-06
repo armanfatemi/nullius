@@ -291,8 +291,9 @@ jobs:
           fixtures=spec/fixtures/card
 
           node packages/claims/dist/cli.js check 'openspec/**/*.md' --format card > /tmp/card.md || true
-          grep -q '^## nullius claims check' /tmp/card.md
-          grep -q '| anchors checked |' /tmp/card.md
+          grep -q '^# Nullius Claims Check' /tmp/card.md
+          grep -q '| check | detail |' /tmp/card.md
+          grep -q 'Are all cited claims verified?' /tmp/card.md
           # The modesty line is load-bearing: a tidy green table reads as a
           # stronger claim than the prose it replaces.
           grep -q 'certifies the citation and not the argument' /tmp/card.md
@@ -302,8 +303,9 @@ jobs:
           # is renamed, which is the failure verdict-needs-fixture-and-test
           # describes.
           node packages/claims/dist/cli.js check 'README.md' --format card > /tmp/card-zero.md || true
-          grep -q '| anchors checked | 0 presence' /tmp/card-zero.md
-          ! grep -qE '^\| failures \| [1-9]' /tmp/card-zero.md
+          grep -q '0 presence, 0 absence anchors checked' /tmp/card-zero.md
+          grep -q '⚪ not recorded | Are all cited claims verified?' /tmp/card-zero.md
+          ! grep -qE '⚠️' /tmp/card-zero.md
 
           # --- The workflow-command escaper -----------------------------------
           #
