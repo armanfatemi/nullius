@@ -29,6 +29,8 @@
 - [ ] Anchors in `openspec/changes/**` are rev-stamped
 - [ ] No line number was repointed while keeping an old `@rev` stamp
 
-<!-- Merge with a merge commit. Never squash: it orphans the commits that
-     rev-stamped anchors name, and the checker then fails open — a disarmed
-     gate and a satisfied one produce the same green check. -->
+<!-- Merge with a merge commit. Never squash and never rebase-merge: both
+     orphan the commits that rev-stamped anchors name, and on CI's full
+     checkout an honest anchor whose code has since moved then reports a hard
+     FABRICATED instead of the advisory STALE it was entitled to. If one is
+     squashed or rebased anyway, re-pin its anchors to the new commit. -->

@@ -1,7 +1,7 @@
 {
   "name": "nullius-monorepo",
   "private": true,
-  "description": "nullius \u2014 epistemic discipline for agent systems, mechanically enforced. Monorepo for the @nullius-inverba/* packages.",
+  "description": "nullius \u2014 check how your agent got to the code, not just the code. Monorepo for the @nullius-inverba/* packages.",
   "license": "MIT",
   "packageManager": "pnpm@11.5.1",
   "engines": {

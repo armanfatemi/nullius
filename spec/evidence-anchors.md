@@ -156,9 +156,9 @@ document can influence:
 
 A passing working-tree verdict is unaffected in every row: a stamp can win an
 anchor the permanent gate, and it can never lose it the ordinary one. That is
-what keeps a squash-merged proposal honest rather than red — and where a squash
-does orphan a stamp on a full clone, the remedy is the documented one, re-pin
-the anchors to the squash commit.
+what keeps a rewritten proposal honest rather than red — and where a squash or
+rebase does orphan a stamp on a full clone, the remedy is the documented one:
+re-pin the anchors to the new commit.
 
 **Quote something that could be wrong, and that occurs once.** Matching is
 substring-based, so a one-character quote is trivially true and establishes
@@ -514,13 +514,13 @@ ADR, an ephemeral plan-mode plan (the anchor gates the approval moment, not
 the archive), or a PR description, which is the one claim-carrying document
 every workflow has. Pick whichever artifact your workflow already produces.
 
-1. **See it fire first**: `npx @nullius-inverba/claims demo` builds a sandbox
+1. **See it fire first**: `npx -y @nullius-inverba/claims demo` builds a sandbox
    fixture — one claim per verdict class — and checks it. No adoption
    required; ten seconds.
 2. **Author-side**: teach your agents (or your team) the convention — the
    [plugin](../plugin/) ships a skill for Claude Code, and the skill text is
    plain markdown you can paste into any harness's instructions file.
-3. **Check locally**: `npx @nullius-inverba/claims check "docs/rfcs/**/*.md"` from the
+3. **Check locally**: `npx -y @nullius-inverba/claims check "docs/rfcs/**/*.md"` from the
    repo root.
 4. **Check in CI**: start **advisory** (report, never block). Let the team see
    verdicts on PRs for a few weeks before making the check `strict` — a red

@@ -84,7 +84,7 @@ built on a doc nobody actually opened.
    - An OpenSpec requirement body whose SHALL/MUST wraps to the second line instead of opening the first → `openspec-shall-first-line.md`
    - An Evidence Anchor inside `openspec/changes/**` with no `@hash` stamp, or one added at review time instead of when the file was read → `rev-stamp-change-anchors.md`
    - A stamped anchor whose line number moved while its `@hash` stayed the same, instead of re-reading and re-stamping both → `never-repoint-under-old-stamp.md`
-   - A squash-merged PR whose anchors were not re-pinned to the squash commit → `merge-never-squash.md`
+   - A squash- or rebase-merged PR whose anchors were not re-pinned to the new commit → `merge-never-squash.md`
    - A new verdict added to `packages/claims/src/**/*.ts` with a tripping fixture but no unit test asserting it fires by name → `verdict-needs-fixture-and-test.md`
    - **In proposal mode:** a claim about existing code with no `**Evidence:**` anchor; an `**Evidence:**` line whose cited file/line does not say what the doc claims; a `**Binds at:**` value outside the closed list in `spec/binding-moments.md` → `plugin/reviewers/false-premise.md`. You are already reading the in-scope files, so verifying a citation costs you almost nothing — check the ones a decision rests on.
 

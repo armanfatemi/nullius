@@ -5,8 +5,8 @@ Same checker, same version, named after the thing it checks rather than after a
 Latin motto.
 
 ```sh
-npx evidence-anchors check "docs/rfcs/**/*.md"
-npx evidence-anchors demo
+npx -y evidence-anchors check "docs/rfcs/**/*.md"
+npx -y evidence-anchors demo
 ```
 
 Everything else — the CLI flags, the config file, the library API, the verdicts

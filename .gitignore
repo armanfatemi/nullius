@@ -3,9 +3,14 @@ dist/
 coverage/
 *.tgz
 .DS_Store
-# Run journals and harness probes are per-machine artefacts. Fixtures that are
-# meant to be read live under spec/fixtures/ and are committed deliberately.
-.nullius/runs/
+# Harness probes are per-machine canary state and stay local. Run journals are
+# committed: this repository records its own runs, and a journal nobody can read
+# is evidence nobody can check. Prompt text is kept OUT of them by
+# NULLIUS_WITNESS_PROMPTS=0 in .claude/settings.json — a prompt record carries
+# its length and hash, which proves a turn happened without publishing what was
+# typed. If that setting is ever removed, journals start carrying verbatim
+# prompts into a public repository and nothing will say so.
+# Fixtures meant to be read live under spec/fixtures/ and are committed too.
 .nullius/probes/
 
 # Retrospectives are candid internal records of how a run actually went.

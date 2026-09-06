@@ -32,7 +32,7 @@ not assert it — move it to `## Open questions` instead.
 ## Check before you hand it over
 
 ```sh
-npx @nullius-inverba/claims check "openspec/**/*.md"
+npx -y @nullius-inverba/claims check "openspec/**/*.md"
 ```
 
 Full spec:

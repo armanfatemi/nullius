@@ -2592,9 +2592,17 @@ export function renderMarkdown(
     // exactly when something inside it does need a look, so scanning the
     // rendered comment top to bottom answers "what should I actually read"
     // without opening anything.
+    //
+    // A tier where NOTHING was recorded is the exception, and it opens
+    // collapsed however many first-disclosures it contains. Its summary
+    // already says "9 checks, none recorded" — the whole message, in the one
+    // line a reader sees without expanding — so opening it spends nine
+    // subsections restating a shared cause the summary stated once. That is
+    // the shape a reader learns to scroll past, which is how the expansion
+    // signal stops meaning anything on the tiers that do need it.
     const attention = tier.sections.filter((section) => sectionNeedsAttention(section, disclosures)).length;
     const allNotRecorded = tier.sections.every((section) => section.status === "not-recorded");
-    out.push(`<details${attention > 0 ? " open" : ""}>`);
+    out.push(`<details${attention > 0 && !allNotRecorded ? " open" : ""}>`);
     out.push(
       // `<h3>`, not `<strong>` — the same size jump `###` headings get inside
       // an open tier. Without it, a tier's own summary and the section

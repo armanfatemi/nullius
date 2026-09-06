@@ -202,7 +202,7 @@ skip the calls on the assumption that they would have failed.
 
 1. **Never merge.** The terminal state is *PR open and retro written*. Merge is
    the human's decision, and every anchor stamp in the change depends on how it
-   is made — a squash orphans the commits those stamps name.
+   is made — a squash or rebase orphans the commits those stamps name.
 2. **Never bypass a pause gate.** An unchecked `## Human Approval Required`
    block halts the pipeline. Save state, surface the gate, stop.
 3. **Never run a blocked command.** `blocked-commands` names them; they are
@@ -1378,10 +1378,11 @@ Template:
 <from state.human_commands, with the file:line where each appears>
 
 ## Merge instruction
-Merge with a **merge commit**. A squash leaves every anchor this change stamped
-pointing at a commit unreachable from `main`, and the checker then fails open
-with the advisory UNVERIFIABLE-REV — CI stays green while the hard gate silently
-stops existing.
+Merge with a **merge commit**. A squash or rebase-merge leaves every anchor this
+change stamped pointing at a commit unreachable from `main`. On CI's full
+checkout the working-tree verdict then stands, so an honest anchor whose cited
+code has since moved reports a hard FABRICATED instead of the advisory STALE it
+was entitled to. Re-pin to the new commit if one is squashed or rebased anyway.
 
 Generated with [Claude Code](https://claude.com/claude-code)
 ```

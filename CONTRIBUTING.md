@@ -93,13 +93,22 @@ The full set lives in `.claude/rules/`.
 
 ## Merging
 
-**Pull requests land as merge commits. Never squash.** A squash rewrites the
-branch into one new commit and leaves the originals unreachable, so every anchor
-stamped against a branch commit names a hash the clone cannot resolve. The
-checker then fails open — which is correct behaviour, and exactly why this
-matters: a disarmed gate and a satisfied one produce the same green check.
+**Pull requests land as merge commits. Never squash, and never rebase-merge.**
+Both rewrite the branch into new objects and leave the originals unreachable,
+so every anchor stamped against a branch commit names a hash that is no longer
+on `main`.
 
-If a PR gets squashed anyway, re-pin its anchors to the squash commit.
+On a full-history clone — which is what CI uses — that does not quietly disarm
+anything: the working-tree verdict stands. The cost is the other way round. An
+honest anchor whose cited code has legitimately moved since loses the advisory
+`STALE` it deserved and reports a hard `FABRICATED`, which is the verdict that
+means *the author did not open the file*. Keeping merge commits is how we avoid
+spending that verdict on people who did.
+
+If a PR gets squashed or rebased anyway, re-pin its anchors to the new commit.
+
+**This is our policy, not a requirement of nullius.** Stamping is opt-in, and a
+project that never stamps has no dependency on commit reachability at all.
 
 ## Larger changes
 

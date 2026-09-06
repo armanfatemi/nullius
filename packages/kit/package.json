@@ -1,7 +1,7 @@
 {
   "name": "@nullius-inverba/kit",
   "version": "0.7.0",
-  "description": "Witness recording for agent runs \u2014 harness hooks emit a journal the agent cannot decline to write, and `nullius witness validate` judges it.",
+  "description": "The producer half of nullius \u2014 init and doctor for setup, plus harness hooks that emit a run journal the agent cannot decline to write.",
   "license": "MIT",
   "author": "Arman Fatemi",
   "repository": {

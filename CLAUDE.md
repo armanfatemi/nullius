@@ -44,11 +44,20 @@ stays a hard gate and only the line number goes advisory (`STALE`).
 Never repoint a line number while keeping an old stamp: that turns an advisory
 `STALE` into a hard `FABRICATED`, because the text was not there at that commit.
 
-**Squash-merge destroys the commit a stamp names.** This repo merges PRs with
-merge commits for that reason — a squash leaves every anchor stamped against a
-branch commit unreachable from `main`, and the checker then fails open with the
-advisory `UNVERIFIABLE-REV`: CI stays green while the hard gate silently stops
-existing. If a PR is squashed anyway, re-pin its anchors to the squash commit.
+**Squash *and rebase* destroy the commit a stamp names.** Both rewrite the
+branch into new objects, so every anchor stamped against a branch commit names
+a hash unreachable from `main`. This repo merges PRs with merge commits for
+that reason. On the full-history clone CI uses, the consequence is not a
+silent pass — the working-tree verdict stands, so an honest anchor whose cited
+code has since moved reports a hard `FABRICATED` instead of the advisory
+`STALE` it was entitled to. (The advisory `UNVERIFIABLE-REV` fail-open is a
+property of a *shallow* clone, not of the merge button.) If a PR is squashed
+or rebased anyway, re-pin its anchors to the new commit.
+
+This is our policy, not a requirement of the tool: `@rev` stamping is opt-in,
+and a project that never stamps has no dependency on commit reachability at
+all. Don't carry it into advice about someone else's repo — see
+`.claude/rules/merge-never-squash.md`.
 
 Verify with the tool, never by hand — a line-by-line script only knows "does
 line N match" and misses `FABRICATED` / `WEAK-ANCHOR` / `UNPINNED` / `DRIFT`:
