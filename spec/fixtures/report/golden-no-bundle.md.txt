@@ -237,7 +237,7 @@ Read from the bundled journals.
 </details>
 
 <details>
-<summary><strong>Self-reported</strong> — 5 checks, all clear</summary>
+<summary><strong>Self-reported</strong> — 5 checks, same cause as above</summary>
 
 ## Self-reported
 
@@ -301,7 +301,7 @@ How many records the coordinator reported about itself, across this entire worki
 </details>
 
 <details>
-<summary><strong>Unattributed</strong> — 1 check, all clear</summary>
+<summary><strong>Unattributed</strong> — 1 check, same cause as above</summary>
 
 ## Unattributed
 

@@ -2096,10 +2096,23 @@ function sectionNeedsAttention(section: ReportSection, disclosures: Disclosures)
 }
 
 /** The `<summary>` line's own text — short enough to read without expanding. */
-function tierStatus(total: number, attention: number): string {
-  return attention === 0
-    ? `${String(total)} ${plural(total, "check")}, all clear`
-    : `${String(attention)} of ${String(total)} need${attention === 1 ? "s" : ""} a look`;
+/**
+ * "All clear" is this document's word for a check that ran and passed. A
+ * tier where every non-attention section is a repeat of a reason disclosed
+ * elsewhere is not that — it is unanswered, same as the section that DID
+ * disclose it, just not new information *here*. Borrowing "all clear" for it
+ * tells a reader who trusts the collapsed banner that this tier's data was
+ * fine, when it was never read at all — the same false-pass shape the rest
+ * of this report goes out of its way to refuse.
+ */
+function tierStatus(total: number, attention: number, repeats: number): string {
+  if (attention > 0) {
+    return `${String(attention)} of ${String(total)} need${attention === 1 ? "s" : ""} a look`;
+  }
+  if (repeats > 0) {
+    return `${String(total)} ${plural(total, "check")}, same cause as above`;
+  }
+  return `${String(total)} ${plural(total, "check")}, all clear`;
 }
 
 function renderTable(table: ReportTable): string[] {
@@ -2351,8 +2364,13 @@ export function renderMarkdown(
     // rendered comment top to bottom answers "what should I actually read"
     // without opening anything.
     const attention = tier.sections.filter((section) => sectionNeedsAttention(section, disclosures)).length;
+    const repeats = tier.sections.filter(
+      (section) => section.status === "not-recorded" && !disclosures.first.has(section.id),
+    ).length;
     out.push(`<details${attention > 0 ? " open" : ""}>`);
-    out.push(`<summary><strong>${escapeCell(tier.title)}</strong> — ${escapeCell(tierStatus(tier.sections.length, attention))}</summary>`);
+    out.push(
+      `<summary><strong>${escapeCell(tier.title)}</strong> — ${escapeCell(tierStatus(tier.sections.length, attention, repeats))}</summary>`,
+    );
     out.push("");
     out.push(`## ${tier.title}`);
     out.push("");
