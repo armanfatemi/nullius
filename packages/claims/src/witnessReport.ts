@@ -2293,7 +2293,10 @@ export function renderCard(report: RunReport): string[] {
         // "no journal to validate — no bundle at …" is the shared "no bundle
         // at …" plus a clause). Claiming independence a reader can disprove
         // by opening the cell reads as more wrong than the gap it replaces.
-        `- **${String(leftover.length)} more ${plural(leftover.length, "row")}** ${plural(leftover.length, "is", "are")} also unanswered — see ${plural(leftover.length, "its", "their")} own detail ${plural(leftover.length, "cell", "cells")} above.`,
+        // "below", not "above": this bullet sits above the table its cells
+        // are in. A reader who follows a wrong direction on the one sentence
+        // written to be followed does not trust the next one either.
+        `- **${String(leftover.length)} more ${plural(leftover.length, "row")}** ${plural(leftover.length, "is", "are")} also unanswered — see ${plural(leftover.length, "its", "their")} own detail ${plural(leftover.length, "cell", "cells")} below.`,
       );
     }
   }
