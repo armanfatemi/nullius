@@ -34,11 +34,21 @@ driven by a model routes around a client-side-only step it cannot execute.
   authoring of the declaration.
 - `--interactive` adds a GitHub Action opt-in step that, on acceptance, adds
   the kit's existing `.github/workflows/claims.yml` artifact to the plan when
-  the chosen profile does not already include it (`prs` and `specs` already
-  do; only `plans` omits it). This reuses the existing workflow renderer
-  rather than scaffolding a second, overlapping CI file — a repository
-  discovered mid-implementation to already have exactly this artifact for two
-  of the three profiles, which the original draft of this proposal missed.
+  the chosen profile does not already include it — `prs` and `specs` already
+  declare `WORKFLOW` in their `artifacts` list, and only `plans` omits it:
+
+  **Evidence:** `packages/kit/src/profiles.ts:113@b5639a9` — `artifacts: [CONFIG, KIT_CONFIG, AUTHORING_POINTER],`
+
+  **Evidence:** `packages/kit/src/profiles.ts:120@b5639a9` — `name: "prs",`
+
+  Three lines below that, `prs`'s own `artifacts` list already includes
+  `WORKFLOW` (`specs`'s profile, a few lines further down, repeats the
+  identical list).
+
+  This reuses the existing workflow renderer rather than scaffolding a second,
+  overlapping CI file — a fact discovered mid-implementation, after an
+  earlier draft of this proposal assumed no such artifact existed and specced
+  a brand-new `.github/workflows/nullius.yml` instead.
 - `doctor` gains a check that reports a hard failure when a hook entry in
   `.claude/settings.json` duplicates a command the plugin would itself
   install for the same event — scoped specifically to plugin-equivalent
