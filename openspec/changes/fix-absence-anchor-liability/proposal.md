@@ -40,6 +40,19 @@ which a rule audit correctly called "the only one available, not one the rules
 bless". An unrelated change rewriting another change's frozen design record is a
 poor outcome however carefully it is worded.
 
+**It has now happened a second time, to the same document.** A change that
+removed `.nullius/runs/` from `.gitignore` — so this repository could commit the
+journals it records — turned `add-pr-process-report`'s `→ 1 result` anchor red,
+for a rule whose removal was the point of the change and about which that
+proposal had no opinion. The count is now 0 and the document has been amended
+again, by an author with no stake in it, for the second time.
+
+Two instances, both landing on the same frozen document, from unrelated changes
+eight days apart, is the pattern rather than the coincidence: the exposure is
+proportional to how *interesting* a document's absences were, so the documents
+that did the most careful work attract the most unrelated failures. That is the
+incentive backwards.
+
 ## Why now
 
 The cost scales with the number of merged documents carrying absence anchors,

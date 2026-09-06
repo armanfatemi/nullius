@@ -10,12 +10,21 @@ review rounds happened, what was caught and what was dropped, whether a test
 was weakened on the way, what the human said to steer the run. Every one of
 those facts is recorded or re-derivable, and none of it reaches the PR.
 
-The run journals that hold most of it are per-machine and gitignored, so no
-CI job can read them:
+The run journals that hold most of it are per-machine, and when this was
+written this repository gitignored them, so no CI job could read them:
 
 **Evidence:** `packages/kit/src/journalFile.ts:44@c8305b1` — `export const RUNS_DIR = join(".nullius", "runs");`
 
-**Evidence:** `grep -rn '^\.nullius/runs/$' .gitignore` → 1 result
+> **Amended after this change shipped.** The ignore rule was this repository's
+> own choice — `init` writes none, so an adopting project never had it — and it
+> was removed once the journals were made committable. The absence anchor below
+> therefore reads 0 today and read 1 when the problem above was written. Nothing
+> in this proposal's reasoning depended on the rule being permanent: what the
+> bundle solves is *selection by commit range* and *redaction*, and both outlive
+> the ignore rule. This edit exists only because an absence anchor cannot be
+> pinned to a commit, which is the subject of `fix-absence-anchor-liability`.
+
+**Evidence:** `grep -rn '^\.nullius/runs/$' .gitignore` → 0 results
 
 Nothing selects journals by a commit range. The kit's one enumeration of the
 runs directory is `doctor`'s count, and the kernel's `witness survey` walks
