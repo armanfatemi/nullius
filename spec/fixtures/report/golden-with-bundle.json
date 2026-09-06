@@ -142,7 +142,8 @@
           "statement": "Every anchor in the range's touched documents, re-verified by re-reading the cited file. A failure here is rendered, not gated: the gate is `nullius check`, which runs on its own.",
           "status": "data",
           "notes": [
-            "0 failing, over 10 documents."
+            "0 failing, over 10 documents.",
+            "\"stale\" is not a failure: the quoted text was real at the commit it names, and only the line number has moved since."
           ],
           "count": 39,
           "failing": 0,
@@ -533,7 +534,7 @@
     {
       "id": "unattributed",
       "title": "Unattributed",
-      "provenance": "Records with no origin of their own, filed under a header that names none either. Counting these as harness-verified would be a guess this report refuses to make.",
+      "provenance": "Records with no origin of their own, filed under a header that names none either. Counting these as hook-attested would be a guess this report refuses to make.",
       "sections": [
         {
           "id": "unattributed",

@@ -791,7 +791,7 @@ const TIER_PROVENANCE: Record<TierId, string> = {
   "self-reported":
     "Written by a coordinator about its own run. Internally consistent; not evidence the run went this way.",
   unattributed:
-    "Records with no origin of their own, filed under a header that names none either. Counting these as harness-verified would be a guess this report refuses to make.",
+    "Records with no origin of their own, filed under a header that names none either. Counting these as hook-attested would be a guess this report refuses to make.",
 };
 
 const TIER_TITLES: Record<TierId, string> = {
@@ -1199,6 +1199,17 @@ function codeVerifiedSections(input: RunReportInput): ReportSection[] {
     const notes = [
       `${String(check.summary.failures)} failing, over ${String(check.summary.documents)} ${plural(check.summary.documents, "document")}.`,
     ];
+    // The verdict table below names "stale" as its own bucket with no gloss,
+    // sitting one row under a card mark that already said "clear" — a reader
+    // who opens this section to see what's behind that glyph finds a bucket
+    // the lede's own ⚪/✅ vocabulary never covers. `stale` is advisory, not a
+    // failure: the quote was real at the stamped commit, only the line
+    // number needs a re-read.
+    if ((check.summary.verdicts["stale"] ?? 0) > 0) {
+      notes.push(
+        `"stale" is not a failure: the quoted text was real at the commit it names, and only the line number has moved since.`,
+      );
+    }
     if (failing.length > 0) {
       notes.push("Failing anchors:");
       for (const result of failing) notes.push(`- ${anchorSubject(result)}`);

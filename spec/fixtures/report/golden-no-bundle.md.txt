@@ -92,6 +92,8 @@ Every anchor in the range's touched documents, re-verified by re-reading the cit
 
 0 failing, over 10 documents.
 
+"stale" is not a failure: the quoted text was real at the commit it names, and only the line number has moved since.
+
 </details>
 
 <details open>
@@ -306,7 +308,7 @@ How many records the coordinator reported about itself, across this entire worki
 
 ## Unattributed
 
-_Records with no origin of their own, filed under a header that names none either. Counting these as harness-verified would be a guess this report refuses to make._
+_Records with no origin of their own, filed under a header that names none either. Counting these as hook-attested would be a guess this report refuses to make._
 
 <details>
 <summary><strong>Records that belong to nobody</strong></summary>
