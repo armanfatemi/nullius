@@ -45,16 +45,20 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import {
   isJournalFailure,
+  parseConfig,
   validateJournal,
   CHECK_OUTCOMES,
   RESOLUTION_OUTCOMES,
   SEVERITIES,
   type JournalOrigin,
+  type OracleGlob,
 } from "@nullius-inverba/claims";
 
 import { detect, mayWriteHooks } from "./detect";
+import { detectOracleCandidates } from "./detectOracle";
 import { formatReport, runChecks } from "./doctor";
 import { findProfile, PROFILE_NAMES, PROFILES } from "./profiles";
+import { runInteractivePrompts } from "./prompts";
 import { applyPlan, buildPlan, formatPlan } from "./render";
 import {
   appendRecords,
@@ -134,6 +138,8 @@ const USAGE = `nullius-kit — witness recording for agent runs
 
 usage:
   nullius-kit init   [--profile <name>] [--run-report] [--dry-run] [--yes] [--root <dir>]
+                     [--interactive] [--oracle <glob>[,<glob>...]] [--action]
+                     [--suggest-oracle]
   nullius-kit doctor [--fix] [--root <dir>]
   nullius-kit pipeline <command> [<change>] [--root <dir>]
   nullius-kit witness record [--origin hooks|self-reported] [--root <dir>]
@@ -142,6 +148,15 @@ usage:
   nullius-kit witness bundle <base>..<head> [--out <path>] [--include <session>]
                              [--exclude <session>] [--no-prompts]
                              [--slack <minutes>] [--root <dir>]
+
+init's --interactive prompts for Oracle globs and a GitHub Action opt-in; it
+is the only trigger for prompting, and falls back to non-interactive defaults
+when no TTY is attached. --oracle and --action pre-answer those same two
+questions non-interactively (with or without --interactive) — the flag
+surface an agent-driven setup drives directly, since it has no TTY to prompt.
+--suggest-oracle prints detected Oracle candidates and exits, writing
+nothing — the read-only counterpart to --oracle for a caller with no TTY to
+show a prompt in.
 
 record and check read one harness hook payload as JSON on stdin and write to
 .nullius/runs/<session_id>.jsonl under an advisory lock. ledger takes flags.
@@ -195,7 +210,7 @@ interface CliOptions {
   root: string | null;
 }
 
-function main(): number {
+function main(): number | Promise<number> {
   const argv = process.argv.slice(2);
   if (argv.length === 0 || argv.includes("--help") || argv.includes("-h")) {
     console.log(USAGE);
@@ -203,7 +218,9 @@ function main(): number {
   }
 
   // `init`, `doctor`, and `pipeline` own their own flags; the witness options
-  // parser would reject them.
+  // parser would reject them. `init` is the only async command — only its
+  // `--interactive` path awaits a human — so it is the only one returning a
+  // promise here.
   if (argv[0] === "init") return runInit(argv.slice(1));
   if (argv[0] === "doctor") return runDoctor(argv.slice(1));
   if (argv[0] === "pipeline") return runPipeline(argv.slice(1));
@@ -273,6 +290,19 @@ interface InitOptions {
   dryRun: boolean;
   root: string;
   runReport: boolean;
+  /** The only trigger for prompting — never ambient TTY state. */
+  interactive: boolean;
+  /** Pre-answers the Oracle prompt; `null` means "not supplied on the flag line." */
+  oracleGlobs: string[] | null;
+  /** Pre-answers the GitHub Action opt-in prompt. */
+  action: boolean;
+  /**
+   * Print detected Oracle candidates and exit — no plan, no write, no
+   * profile lookup. The read-only counterpart to `--oracle`, for a caller
+   * with no TTY to show a prompt in (the `nullius:setup` skill) that still
+   * needs to see what `init --interactive` would have proposed.
+   */
+  suggestOracle: boolean;
 }
 
 function parseInit(argv: readonly string[]): InitOptions | null {
@@ -281,6 +311,10 @@ function parseInit(argv: readonly string[]): InitOptions | null {
     dryRun: false,
     root: process.cwd(),
     runReport: false,
+    interactive: false,
+    oracleGlobs: null,
+    action: false,
+    suggestOracle: false,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -289,11 +323,32 @@ function parseInit(argv: readonly string[]): InitOptions | null {
       options.dryRun = true;
     } else if (arg === "--run-report") {
       options.runReport = true;
+    } else if (arg === "--interactive") {
+      options.interactive = true;
+    } else if (arg === "--action") {
+      options.action = true;
+    } else if (arg === "--suggest-oracle") {
+      options.suggestOracle = true;
+    } else if (arg === "--oracle") {
+      const value = argv[(index += 1)];
+      if (value === undefined || value.trim() === "") {
+        console.error("--oracle needs a comma-separated list of globs");
+        return null;
+      }
+      const globs = value
+        .split(",")
+        .map((glob) => glob.trim())
+        .filter((glob) => glob.length > 0);
+      if (globs.length === 0) {
+        console.error("--oracle needs at least one non-empty glob");
+        return null;
+      }
+      options.oracleGlobs = globs;
     } else if (arg === "--yes" || arg === "-y") {
-      // Accepted and inert: init never prompts, so there is nothing to confirm.
-      // Refusing the flag would break the copy-pasteable line in the README
-      // for no gain; silently accepting it is honest because the promise it
-      // asks for is one init already keeps.
+      // Accepted and inert: without --interactive, init never prompts, so
+      // there is nothing to confirm. Refusing the flag would break the
+      // copy-pasteable line in the README for no gain; silently accepting it
+      // is honest because the promise it asks for is one init already keeps.
       continue;
     } else if (arg === "--profile") {
       const value = argv[(index += 1)];
@@ -324,7 +379,20 @@ function parseInit(argv: readonly string[]): InitOptions | null {
   return options;
 }
 
-function runInit(argv: readonly string[]): number {
+/** The `oracles` value already on disk, read only to prefill a prompt default. */
+function readExistingOracles(root: string): OracleGlob[] | undefined {
+  const path = join(root, "nullius.config.json");
+  if (!existsSync(path)) return undefined;
+  try {
+    return parseConfig(JSON.parse(readFileSync(path, "utf8")), path).oracles;
+  } catch {
+    // Unparseable or invalid: `checkConfigs` in `doctor` is where that gets
+    // reported as a failure. Here it just means there is nothing to prefill.
+    return undefined;
+  }
+}
+
+async function runInit(argv: readonly string[]): Promise<number> {
   const options = parseInit(argv);
   if (options === null) return 2;
 
@@ -338,6 +406,18 @@ function runInit(argv: readonly string[]): number {
     // creates before mkdir died on it.
     console.error(`not a directory: ${root}`);
     return 2;
+  }
+
+  if (options.suggestOracle) {
+    const candidates = detectOracleCandidates(root);
+    if (candidates.length === 0) {
+      console.log("No test configuration detected — nothing to propose.");
+    } else {
+      for (const candidate of candidates) {
+        console.log(`${candidate.glob}\t${candidate.reason}`);
+      }
+    }
+    return 0;
   }
 
   const detection = detect(root);
@@ -356,6 +436,36 @@ function runInit(argv: readonly string[]): number {
     console.log("");
   }
 
+  // Flags answer first; `--interactive` only fills in whichever of these two
+  // questions a flag did not already answer. This is the real interface —
+  // the prompts below are a convenience layer over it, not a second one: an
+  // agent driving this command through a tool call has no TTY and must be
+  // able to reach the same outcome through flags alone.
+  let oracles: OracleGlob[] | undefined =
+    options.oracleGlobs === null ? undefined : options.oracleGlobs.map((glob) => ({ glob }));
+  let includeWorkflow = options.action;
+
+  if (options.interactive) {
+    const existingOracles = readExistingOracles(root);
+    const interactive = await runInteractivePrompts({
+      root,
+      profile,
+      detection,
+      oracleAnswered: options.oracleGlobs !== null,
+      actionAnswered: options.action,
+      ...(existingOracles === undefined ? {} : { existingOracles }),
+    });
+    if (interactive.fellBackNoTTY) {
+      console.log(
+        "--interactive was passed, but no input TTY is attached — applying the same defaults a flagless run would.",
+      );
+      console.log("");
+    } else {
+      if (interactive.answers.oracles !== undefined) oracles = interactive.answers.oracles;
+      if (interactive.answers.includeWorkflow) includeWorkflow = true;
+    }
+  }
+
   const plan = buildPlan({
     root,
     profile,
@@ -363,6 +473,8 @@ function runInit(argv: readonly string[]): number {
     actionRef: ACTION_REF,
     hookPolicy: mayWriteHooks(detection.harness),
     runReport: options.runReport,
+    includeWorkflow,
+    ...(oracles === undefined ? {} : { oracles }),
   });
 
   console.log(formatPlan(plan, options.dryRun));
@@ -1590,4 +1702,9 @@ function note(message: string): void {
   console.error(`nullius witness: ${message}`);
 }
 
-process.exit(main());
+const outcome = main();
+if (outcome instanceof Promise) {
+  outcome.then((code) => process.exit(code));
+} else {
+  process.exit(outcome);
+}

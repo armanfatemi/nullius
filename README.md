@@ -74,18 +74,32 @@ you can read one and stop.
 
 ---
 
+<a id="quickstart"></a>
+
 ## ⚡ Quickstart
 
 **1. Wire it into your repo.**
 
 ```sh
-npx @nullius-inverba/kit init            # detects your repo, prints every file it writes
-npx @nullius-inverba/kit init --dry-run  # or see the plan first, and write nothing
+npx @nullius-inverba/kit init                 # detects your repo, prints every file it writes
+npx @nullius-inverba/kit init --dry-run       # or see the plan first, and write nothing
+npx @nullius-inverba/kit init --interactive   # or be walked through it — Oracle detection, CI opt-in
 ```
 
 `init` picks a profile from what is actually on disk — `openspec/` means the
 specs profile, `docs/` means prs, neither means plans — and tells you which
 and why. Override with `--profile plans|prs|specs`.
+
+`--interactive` is the only thing that ever prompts — every other form above
+is exactly as scriptable as it has always been. It proposes Oracle globs
+detected from your test framework config (never inferred silently — you
+accept, edit, or skip each one) and offers to add the CI workflow if your
+profile doesn't already include it. Running it with no terminal attached
+(a CI job, an agent's tool call) falls back to the same defaults a flagless
+run applies, and says so. If you're driving `init` from a script or an agent
+rather than a keyboard, `--oracle <glob>[,...]`, `--action`, and the
+read-only `--suggest-oracle` answer the same two questions directly — see
+`nullius-kit init --help`.
 
 Two things it deliberately **will not** do, and prints instead of doing:
 
@@ -459,6 +473,10 @@ npx @nullius-inverba/claims oracle main...HEAD --journal .nullius/runs/latest.js
 { "oracles": [{ "glob": "test/**/*.test.ts", "weakening": "\\bexpect\\(" }] }
 ```
 
+Don't want to hand-write that block? `npx @nullius-inverba/kit init --interactive`
+detects your test framework and proposes it for you — you still accept, edit,
+or skip it, never a silent guess. See [Quickstart](#quickstart).
+
 #### Two honest limits
 
 `weakened` is a declared pattern's match count compared across two revisions,
@@ -610,6 +628,7 @@ Both lines are needed: `install` resolves `nullius@nullius` as
 | Authoring skill | The agent writes anchors in the first place |
 | Witness recording hooks | The journal [`witness`](#witness) validates — see the `.nullius` opt-in |
 | `/ground`, `/audit` | Check or audit any file on demand |
+| `nullius:setup` skill | Walks through Oracle detection and the CI opt-in conversationally — everything `init --interactive` does, for whoever already has the plugin and would rather ask than type flags |
 | `[false-premise]` reviewer block | A severity your reviewer agents can raise |
 
 Details: [plugin/](plugin/).

@@ -10,6 +10,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
+import type { OracleGlob } from "@nullius-inverba/claims";
+
 import type { Profile } from "./profiles";
 
 export type Disposition =
@@ -75,7 +77,7 @@ function planFile(
  */
 const KIT_OWNED_CONFIG_KEYS = new Set(["docs"]);
 
-export function renderConfig(profile: Profile, existing?: string): string {
+export function renderConfig(profile: Profile, existing?: string, oracles?: OracleGlob[]): string {
   // `configVersion` is deliberately NOT written yet.
   //
   // The kernel reserves it, but that reservation is unreleased: every
@@ -109,6 +111,12 @@ export function renderConfig(profile: Profile, existing?: string): string {
   }
 
   const config: Record<string, unknown> = { docs: profile.docs, ...preserved };
+  // `oracles` is a kernel-owned key, not a kit-owned one — passed only when an
+  // operator just confirmed a value through `init --interactive`, and never
+  // added to `KIT_OWNED_CONFIG_KEYS` above. Absent this argument, an existing
+  // `oracles` value already survives via `preserved`, exactly like any other
+  // hand-authored key this tool does not own.
+  if (oracles !== undefined) config["oracles"] = oracles;
   return `${JSON.stringify(config, null, 2)}\n`;
 }
 
@@ -318,6 +326,18 @@ export interface PlanOptions {
    * wants: a report with no bundle renders one tier and three absences.
    */
   runReport?: boolean;
+  /**
+   * A freshly operator-confirmed Oracle declaration from `init --interactive`.
+   * Absent means "leave whatever is already in the file alone" — never "clear
+   * it" — which `renderConfig` gets for free by not owning the key.
+   */
+  oracles?: OracleGlob[];
+  /**
+   * The interactive GitHub Action opt-in, accepted for a profile whose
+   * artifact list does not already carry the CI workflow. Ignored when the
+   * profile already includes it, since there is nothing to add.
+   */
+  includeWorkflow?: boolean;
 }
 
 export function buildPlan(options: PlanOptions): Plan {
@@ -327,7 +347,22 @@ export function buildPlan(options: PlanOptions): Plan {
   const files: PlannedFile[] = [];
   const notes: string[] = [];
 
-  for (const artifact of profile.artifacts) {
+  const hasWorkflow = profile.artifacts.some(
+    (artifact) => artifact.path === ".github/workflows/claims.yml",
+  );
+  const artifacts =
+    options.includeWorkflow === true && !hasWorkflow
+      ? [
+          ...profile.artifacts,
+          {
+            path: ".github/workflows/claims.yml",
+            ownership: "kit-owned" as const,
+            reason: "CI gate — accepted via the interactive GitHub Action opt-in",
+          },
+        ]
+      : profile.artifacts;
+
+  for (const artifact of artifacts) {
     if (artifact.path === "nullius.config.json") {
       const configPath = join(root, artifact.path);
       const existing = existsSync(configPath)
@@ -340,7 +375,7 @@ export function buildPlan(options: PlanOptions): Plan {
           })()
         : undefined;
       files.push(
-        planFile(root, artifact.path, renderConfig(profile, existing), artifact.reason),
+        planFile(root, artifact.path, renderConfig(profile, existing, options.oracles), artifact.reason),
       );
     } else if (artifact.path === "nullius.kit.json") {
       files.push(
