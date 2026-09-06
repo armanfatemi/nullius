@@ -534,12 +534,13 @@ runs:
         # equality: the action re-invokes a pinned `claims-version`, so a caller
         # holding an older pin produces an older document, and an equality here
         # would stop posting for every one of them the day this action learned a
-        # newer one. Version 2 added the `card` key and changed nothing the
-        # renderer below depends on, so both are renderable.
+        # newer one. Version 2 added the `card` key; version 3 added
+        # `totalCommits`/`agentCommits` under `flowchart`. Neither changed
+        # anything the renderer below depends on, so all three are renderable.
         #
         # A version outside the set is still refused rather than guessed at. The
         # cost of guessing is a comment that looks complete and is not.
-        ACCEPTED_REPORT_VERSIONS='1 2'
+        ACCEPTED_REPORT_VERSIONS='1 2 3'
 
         version=$(jq -r '.version // "absent"' nullius-run-report.json)
         kind=$(jq -r '.kind // "absent"' nullius-run-report.json)

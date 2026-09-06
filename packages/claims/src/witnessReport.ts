@@ -35,11 +35,13 @@ import { isJournalFailure, type JournalFinding, type JournalReport } from "./wit
  *  (`check --format json`) and of the envelope's `version`: three documents on
  *  one CLI that break on different events, told apart by `kind`.
  *
- *  2 adds the `card` key at the top level. A consumer that recognises only 1
- *  must refuse this document rather than read the fields it knows, which is why
- *  the number moves for an additive change: the Action's accepted set is the
- *  thing that decides compatibility, not this file's optimism. */
-export const RUN_REPORT_VERSION = 2;
+ *  2 adds the `card` key at the top level. 3 adds `totalCommits` and
+ *  `agentCommits` to `flowchart`. A consumer that recognises only an older
+ *  version must refuse this document rather than read the fields it knows,
+ *  which is why the number moves for an additive change: the Action's
+ *  accepted set is the thing that decides compatibility, not this file's
+ *  optimism. */
+export const RUN_REPORT_VERSION = 3;
 
 /**
  * A *round* is a maximal set of dispatches whose start times fall within this
@@ -447,6 +449,14 @@ export interface Flowchart {
   windowMs: number;
   /** Nodes dropped at `FLOWCHART_NODE_CAP`. */
   dropped: number;
+  /** Commit nodes actually drawn (after the `FLOWCHART_NODE_CAP`), and how
+   *  many of those carry a Claude co-author trailer — see
+   *  `isAgentCoAuthored`. A uniform 0 or a uniform match against
+   *  `totalCommits` is exactly the case where the stadium-shape convention
+   *  draws no contrast, which is why a renderer needs the raw counts rather
+   *  than re-deriving them by parsing `mermaid` back out. */
+  totalCommits: number;
+  agentCommits: number;
 }
 
 export interface NotRecordedEntry {
@@ -2034,8 +2044,12 @@ function buildFlowchart(
     if (ids.length > 0) lines.push(`  class ${ids.join(",")} ${kind}`);
   }
 
+  const shownCommits = shown.filter((event) => event.type === "commit");
+
   return {
     mermaid: lines.join("\n"),
+    totalCommits: shownCommits.length,
+    agentCommits: shownCommits.filter((event) => event.agentCoAuthored === true).length,
     nodes: renderedNodes,
     windowMs: ROUND_WINDOW_MS,
     dropped,
@@ -2508,6 +2522,22 @@ export function renderMarkdown(
           ? ` ${String(report.flowchart.dropped)} later ${plural(report.flowchart.dropped, "node")} ${plural(report.flowchart.dropped, "is", "are")} not shown; the JSON form carries them all.`
           : ""),
     );
+    // Every commit shown is the one case where the stadium shape draws no
+    // contrast against a rectangle — nothing in the diagram distinguishes
+    // "uniformly agent co-authored" from "the tool always draws it this way".
+    // State the fact once in prose rather than leaving a reader to notice a
+    // shape that never varies and wonder whether it means anything. A mix of
+    // shapes, or none at all, needs no such line: the contrast (or its
+    // ordinary absence) already carries the information.
+    if (
+      report.flowchart.totalCommits > 0 &&
+      report.flowchart.agentCommits === report.flowchart.totalCommits
+    ) {
+      out.push(
+        `All ${String(report.flowchart.totalCommits)} ${plural(report.flowchart.totalCommits, "commit")} shown ` +
+          `${plural(report.flowchart.totalCommits, "carries", "carry")} a Claude co-author trailer — the stadium shape above is real signal, not a rendering default.`,
+      );
+    }
   }
 
   // Rebuilt from `report.tiers` rather than read from `report.card`, and the

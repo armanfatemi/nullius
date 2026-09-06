@@ -119,12 +119,14 @@ describe("witness report — the exit-code contract", () => {
       check: { version: number; summary: { failures: number } } | null;
     };
     expect(document.kind).toBe("run-report");
-    expect(document.version).toBe(2);
+    expect(document.version).toBe(3);
     // The embedded check document carries ITS version, not the outer one's —
     // which is the whole point of the separate key, and is now visible because
     // the two numbers differ. Before the card raised the outer one to 2 they
     // were both 1, and this assertion could have passed while reading the
-    // wrong field.
+    // wrong field. Raised again to 3 when `flowchart` grew
+    // `totalCommits`/`agentCommits`; the inner document is untouched by that
+    // change and stays 1.
     expect(document.check?.version).toBe(1);
     expect(document.check?.summary.failures).toBe(1);
   });

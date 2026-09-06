@@ -307,6 +307,94 @@ describe("the flowchart", () => {
     expect(mermaid).toMatch(/n0\["ccccccc pair-programmed commit"\]/);
     expect(mermaid).not.toContain("(["); // no stadium shape anywhere
   });
+
+  it("counts commits shown and how many are agent co-authored", () => {
+    const report = buildRunReport(
+      baseInput({
+        bundle: null,
+        journalReports: [],
+        changedFiles: [],
+        commits: [
+          { sha: "aaaaaaa", at: "2026-01-01T00:00:00Z", message: "human-only commit" },
+          {
+            sha: "bbbbbbb",
+            at: "2026-01-01T00:01:00Z",
+            message: "agent-assisted commit",
+            coAuthor: "Claude Sonnet 5 <noreply@anthropic.com>",
+          },
+        ],
+      }),
+    );
+    expect(report.flowchart?.totalCommits).toBe(2);
+    expect(report.flowchart?.agentCommits).toBe(1);
+  });
+
+  it("states in prose that every commit shown is agent co-authored, only when that is true", () => {
+    // A mixed diagram: shape contrast already carries the information, no
+    // extra sentence needed.
+    const mixed = renderMarkdown(
+      buildRunReport(
+        baseInput({
+          bundle: null,
+          journalReports: [],
+          changedFiles: [],
+          commits: [
+            { sha: "aaaaaaa", at: "2026-01-01T00:00:00Z", message: "human-only commit" },
+            {
+              sha: "bbbbbbb",
+              at: "2026-01-01T00:01:00Z",
+              message: "agent-assisted commit",
+              coAuthor: "Claude Sonnet 5 <noreply@anthropic.com>",
+            },
+          ],
+        }),
+      ),
+    );
+    expect(mixed).not.toContain("carry a Claude co-author trailer");
+
+    // Uniformly agent co-authored: the stadium shape draws no contrast on its
+    // own, so the fact is stated once in prose.
+    const uniform = renderMarkdown(
+      buildRunReport(
+        baseInput({
+          bundle: null,
+          journalReports: [],
+          changedFiles: [],
+          commits: [
+            {
+              sha: "bbbbbbb",
+              at: "2026-01-01T00:01:00Z",
+              message: "agent-assisted commit",
+              coAuthor: "Claude Sonnet 5 <noreply@anthropic.com>",
+            },
+            {
+              sha: "ccccccc",
+              at: "2026-01-01T00:02:00Z",
+              message: "another agent commit",
+              coAuthor: "Claude Sonnet 5 <noreply@anthropic.com>",
+            },
+          ],
+        }),
+      ),
+    );
+    expect(uniform).toContain(
+      "All 2 commits shown carry a Claude co-author trailer — the stadium shape above is real signal, not a rendering default.",
+    );
+
+    // Uniformly NOT agent co-authored: the default, unremarkable case — no
+    // sentence needed, a rectangle chain has always looked like this.
+    const none = renderMarkdown(
+      buildRunReport(
+        baseInput({
+          bundle: null,
+          journalReports: [],
+          changedFiles: [],
+          commits: [{ sha: "aaaaaaa", at: "2026-01-01T00:00:00Z", message: "human-only commit" }],
+        }),
+      ),
+    );
+    expect(none).not.toContain("carry a Claude co-author trailer");
+  });
 });
 
 /* -------------------------------------------------------------------------
@@ -1394,9 +1482,10 @@ describe("the JSON form", () => {
     const document = JSON.parse(renderJson(buildRunReport(baseInput()))) as RunReport;
     expect(document.kind).toBe("run-report");
     expect(document.version).toBe(RUN_REPORT_VERSION);
-    // Raised when the card was added: a consumer that reads version 1 must not
-    // be handed a document whose top level grew a key.
-    expect(document.version).toBe(2);
+    // Raised when `flowchart` grew `totalCommits`/`agentCommits`: a consumer
+    // that reads version 2 must not be handed a nested object whose shape
+    // grew a key it does not expect.
+    expect(document.version).toBe(3);
   });
 
   it("carries the card under its own key, leaving the tiers as the source", () => {

@@ -283,7 +283,7 @@ moment they were taken.
 
 The JSON form carries a discriminator and its own version:
 
-**Evidence:** `packages/claims/src/witnessReport.ts:41` — `export const RUN_REPORT_VERSION = 2;`
+**Evidence:** `packages/claims/src/witnessReport.ts:44` — `export const RUN_REPORT_VERSION = 3;`
 
 It embeds the `check --format json` document under its own key, **carrying that
 document's own `version`**, rather than restating it. Two documents numbered
@@ -292,10 +292,12 @@ them, is a consumer bug waiting for the first tool that reads a file it did not
 invoke. The outer number reaching 2 while the inner stays 1 is the first time
 that separation is visible rather than merely intended.
 
-Version 2 added the `card` key. The number moved for a purely additive change
-because compatibility is decided by the reading end's accepted **set**, not by
-the writer's optimism: a consumer that recognises only 1 must refuse the
-document rather than read the fields it happens to know.
+Version 2 added the `card` key; version 3 added `totalCommits` and
+`agentCommits` under `flowchart`. The number moved both times for a purely
+additive change, because compatibility is decided by the reading end's
+accepted **set**, not by the writer's optimism: a consumer that recognises
+only an older version must refuse the document rather than read the fields it
+happens to know.
 
 ## Fixtures
 

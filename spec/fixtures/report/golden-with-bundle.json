@@ -1,6 +1,6 @@
 {
   "kind": "run-report",
-  "version": 2,
+  "version": 3,
   "range": {
     "spec": "8211685..f431193",
     "base": "8211685",
@@ -427,6 +427,8 @@
   ],
   "flowchart": {
     "mermaid": "flowchart LR\n  subgraph s0[\"Round 1 (3 dispatches)\"]\n  n0_0([\"architecture-reviewer\"])\n  n0_1([\"rule-auditor\"])\n  n0_2([\"test-engineer\"])\n  end\n  n1[\"11 edits / 4 files\"]\n  n2[\"commit 43651d6\"]\n  subgraph s3[\"Round 2 (3 dispatches)\"]\n  n3_0([\"architecture-reviewer\"])\n  n3_1([\"rule-auditor\"])\n  n3_2([\"test-engineer\"])\n  end\n  n4[\"7 edits / 3 files\"]\n  n5[\"commit 50f6c14\"]\n  subgraph s6[\"Round 3 (3 dispatches)\"]\n  n6_0([\"architecture-reviewer\"])\n  n6_1([\"rule-auditor\"])\n  n6_2([\"test-engineer\"])\n  end\n  n7[\"commit df9a0cb\"]\n  n8[\"5 edits / 2 files\"]\n  n9[\"commit d4a4527\"]\n  n10[\"1 edits / 1 file\"]\n  n11[\"commit 3b547b4\"]\n  subgraph s12[\"Round 4 (3 dispatches)\"]\n  n12_0([\"architecture-reviewer\"])\n  n12_1([\"rule-auditor\"])\n  n12_2([\"test-engineer\"])\n  end\n  n13[\"2 edits / 1 file\"]\n  n14[\"commit 3db711a\"]\n  subgraph s15[\"Round 5 (3 dispatches)\"]\n  n15_0([\"architecture-reviewer\"])\n  n15_1([\"rule-auditor\"])\n  n15_2([\"test-engineer\"])\n  end\n  n16[\"commit abef156\"]\n  n17[\"1 edits / 1 file\"]\n  n18[\"commit 6586401\"]\n  n19[\"5 edits / 1 file\"]\n  n20[\"commit 2bb5b55\"]\n  n21[\"commit 7b1527b\"]\n  subgraph s22[\"Round 6 (3 dispatches)\"]\n  n22_0([\"architecture-reviewer\"])\n  n22_1([\"rule-auditor\"])\n  n22_2([\"test-engineer\"])\n  end\n  n23[\"commit bbaa23a\"]\n  n24[\"1 edits / 1 file\"]\n  n25[\"commit c8305b1\"]\n  n26[\"commit f431193\"]\n  n0_0 --> n1\n  n0_1 --> n1\n  n0_2 --> n1\n  n1 --> n2\n  n2 --> n3_0\n  n2 --> n3_1\n  n2 --> n3_2\n  n3_0 --> n4\n  n3_1 --> n4\n  n3_2 --> n4\n  n4 --> n5\n  n5 --> n6_0\n  n5 --> n6_1\n  n5 --> n6_2\n  n6_0 --> n7\n  n6_1 --> n7\n  n6_2 --> n7\n  n7 --> n8\n  n8 --> n9\n  n9 --> n10\n  n10 --> n11\n  n11 --> n12_0\n  n11 --> n12_1\n  n11 --> n12_2\n  n12_0 --> n13\n  n12_1 --> n13\n  n12_2 --> n13\n  n13 --> n14\n  n14 --> n15_0\n  n14 --> n15_1\n  n14 --> n15_2\n  n15_0 --> n16\n  n15_1 --> n16\n  n15_2 --> n16\n  n16 --> n17\n  n17 --> n18\n  n18 --> n19\n  n19 --> n20\n  n20 --> n21\n  n21 --> n22_0\n  n21 --> n22_1\n  n21 --> n22_2\n  n22_0 --> n23\n  n22_1 --> n23\n  n22_2 --> n23\n  n23 --> n24\n  n24 --> n25\n  n25 --> n26\n  classDef human fill:#4C6EF5,color:#ffffff,stroke:#364FC7,stroke-width:1px\n  classDef system fill:#adb5bd,color:#212529,stroke:#868e96,stroke-width:1px\n  classDef round fill:#2F9E44,color:#ffffff,stroke:#2B8A3E,stroke-width:1px\n  classDef burst fill:#F59F00,color:#212529,stroke:#E67700,stroke-width:1px\n  classDef commit fill:#7048E8,color:#ffffff,stroke:#5F3DC4,stroke-width:1px\n  class n0_0,n0_1,n0_2,n3_0,n3_1,n3_2,n6_0,n6_1,n6_2,n12_0,n12_1,n12_2,n15_0,n15_1,n15_2,n22_0,n22_1,n22_2 round\n  class n1,n4,n8,n10,n13,n17,n19,n24 burst\n  class n2,n5,n7,n9,n11,n14,n16,n18,n20,n21,n23,n25,n26 commit",
+    "totalCommits": 13,
+    "agentCommits": 0,
     "nodes": 39,
     "windowMs": 120000,
     "dropped": 0
