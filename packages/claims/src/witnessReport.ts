@@ -348,8 +348,15 @@ export { escapeCell, formatCount, plural } from "./markdown";
  * The label is also quoted by the caller. Quoting and replacement answer
  * different questions: `:` is *inside* the allow-list, so `a::b` survives
  * replacement untouched and is made inert by the quotes alone.
+ *
+ * A *run* of disallowed characters collapses to one `·`, not one per
+ * character — the `+` below. A commit subject like `gloss "stale", stop`
+ * has a quote directly followed by a comma; without the `+` that pair
+ * becomes `··`, which reads as corruption rather than punctuation. The
+ * one-run-one-dot rule is what keeps a quoted, comma-adjacent word looking
+ * like `·stale·` instead.
  */
-const MERMAID_ALLOWED = /[^A-Za-z0-9 ._:/x()-]/g;
+const MERMAID_ALLOWED = /[^A-Za-z0-9 ._:/x()-]+/g;
 
 export function escapeMermaidLabel(value: string): string {
   const replaced = value.replace(MERMAID_ALLOWED, "·");

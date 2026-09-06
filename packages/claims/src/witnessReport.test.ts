@@ -197,7 +197,21 @@ describe("escapeMermaidLabel", () => {
     expect(escapeMermaidLabel("a|b")).toBe("a·b");
     expect(escapeMermaidLabel("a\nb")).toBe("a·b");
     expect(escapeMermaidLabel("a`b")).toBe("a·b");
-    expect(escapeMermaidLabel("emoji \u{1F600}")).toBe("emoji ··");
+    // A surrogate pair is two disallowed UTF-16 code units in a row — one
+    // run, one dot, not two. See the adjacent-run test below for why this
+    // collapsing matters beyond emoji.
+    expect(escapeMermaidLabel("emoji \u{1F600}")).toBe("emoji ·");
+  });
+
+  it("collapses a run of adjacent disallowed characters to one dot, not one per character", () => {
+    // The exact shape that broke in production: a commit subject with a
+    // quote directly followed by a comma. Per-character replacement made
+    // this render as `·stale··`, which reads as corrupted text rather than
+    // punctuation standing in for itself.
+    expect(escapeMermaidLabel('gloss "stale", stop calling it "x"')).toBe(
+      "gloss ·stale· stop calling it ·x·",
+    );
+    expect(escapeMermaidLabel("a??!!b")).toBe("a·b");
   });
 
   it("is a QUOTING case, not an escaping case, for `::`", () => {

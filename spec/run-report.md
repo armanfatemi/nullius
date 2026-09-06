@@ -250,14 +250,18 @@ Every bundle- or document-derived string passes through a **markdown-cell**
 escaper; every flowchart label passes through a **mermaid-label** escaper. The
 mermaid grammar is an allow-list, not a deny-list:
 
-**Evidence:** `packages/claims/src/witnessReport.ts:370` — `const MERMAID_ALLOWED = /[^A-Za-z0-9 ._:/x()-]/g;`
+**Evidence:** `packages/claims/src/witnessReport.ts:359` — `const MERMAID_ALLOWED = /[^A-Za-z0-9 ._:/x()-]+/g;`
 
 The `x` is ASCII, not `×` (U+00D7), which the label grammar has no need of.
-Everything outside the list becomes `·`. Quoting is the second half of the
-grammar and answers a different question: `:` is *inside* the allow-list, so
-`a::b` survives replacement untouched and is made inert by the quotes alone.
-Node ids are generated (`n0`, `n1`, …) and never derived from content — an id
-is the one position in the grammar quoting cannot protect.
+A *run* of characters outside the list becomes one `·`, not one per
+character — a commit subject like `gloss "stale", stop` has a quote directly
+followed by a comma, and per-character replacement rendered that pair as
+`··`, which reads as corrupted text rather than punctuation. Quoting is the
+second half of the grammar and answers a different question: `:` is *inside*
+the allow-list, so `a::b` survives replacement untouched and is made inert by
+the quotes alone. Node ids are generated (`n0`, `n1`, …) and never derived
+from content — an id is the one position in the grammar quoting cannot
+protect.
 
 ## Canary locations are never rendered
 
