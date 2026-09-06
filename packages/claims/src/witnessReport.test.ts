@@ -398,6 +398,39 @@ describe("the flowchart", () => {
       "None of the 1 commit shown carries a Claude co-author trailer — the plain rectangle above is the whole set, not a partial render.",
     );
   });
+
+  it("explains the rounds-grouping window only when the diagram actually has a round", () => {
+    const withRounds = renderMarkdown(buildRunReport(baseInput()));
+    expect(withRounds).toContain("Rounds group dispatches starting within");
+
+    // A commit-only fallback (no bundle) has no round to group — nothing to
+    // explain a grouping rule for.
+    const commitOnly = renderMarkdown(
+      buildRunReport(
+        baseInput({
+          bundle: null,
+          journalReports: [],
+          changedFiles: [],
+          commits: [{ sha: "aaaaaaa", at: "2026-01-01T00:00:00Z", message: "solo commit" }],
+        }),
+      ),
+    );
+    expect(commitOnly).not.toContain("Rounds group dispatches starting within");
+  });
+});
+
+describe("a detail long enough to derail a table row", () => {
+  it("is truncated in the table but not in the Flags list", () => {
+    // The pr58 fixture's own "oracle conservation" reason is over 64
+    // characters — exactly the case that used to get cut in both places.
+    const md = renderMarkdown(buildRunReport(baseInput()));
+    expect(md).toContain(
+      '⚪ **oracle conservation** — not configured — this project declares no "oracles" key in nullius.config.json, so this run checked nothing. An unconfigured project and a project whose oracle held still are different facts; declare the glob that grades this project to tell them apart.',
+    );
+    expect(md).toContain(
+      'not configured — this project declares no "oracles" key in null… | code-verified |',
+    );
+  });
 });
 
 /* -------------------------------------------------------------------------

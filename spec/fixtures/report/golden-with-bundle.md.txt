@@ -3,7 +3,7 @@
 This report renders what happened; it does not gate. Every section shows its data or says why it has none.
 
 **Flags:**
-- ⚪ **oracle conservation** — not configured — this project declares no "oracles" key in null…
+- ⚪ **oracle conservation** — not configured — this project declares no "oracles" key in nullius.config.json, so this run checked nothing. An unconfigured project and a project whose oracle held still are different facts; declare the glob that grades this project to tell them apart.
 
 ## Timeline
 

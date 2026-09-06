@@ -3,8 +3,8 @@
 This report renders what happened; it does not gate. Every section shows its data or says why it has none.
 
 **Flags:**
-- ⚪ **oracle conservation** — not configured — this project declares no "oracles" key in null…
-- ⚪ **this run's own record** — no journal to validate — no bundle at nullius.runs/feat-add-can…
+- ⚪ **oracle conservation** — not configured — this project declares no "oracles" key in nullius.config.json, so this run checked nothing. An unconfigured project and a project whose oracle held still are different facts; declare the glob that grades this project to tell them apart.
+- ⚪ **this run's own record** — no journal to validate — no bundle at nullius.runs/feat-add-canary-status-redaction.json
 - ⚪ **agent review** — not recorded
 - ⚪ **review round** — not recorded
 - ⚪ **review outcomes** — not recorded
@@ -48,7 +48,6 @@ flowchart LR
 
 **Legend:** 🟦 human prompt · 🟧 edit burst · 🟪 commit (rounded ends: co-authored by an agent, per its trailer) · 🟩 agent (grouped by round) · 🔳 agent reported back
 
-Rounds group dispatches starting within 2 minutes (120000 ms) of the first.
 None of the 13 commits shown carry a Claude co-author trailer — the plain rectangle above is the whole set, not a partial render.
 
 ## How this run was produced

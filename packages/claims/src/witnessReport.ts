@@ -2287,7 +2287,7 @@ function cardDetail(
     // of cause is the tautology a maintainer actually called out: it never
     // told a reader why, even when the document already knew.
     if (row.reason !== undefined && !sharedReasons.has(row.reason)) {
-      return truncateForCell(row.reason);
+      return row.reason;
     }
     return "not recorded";
   }
@@ -2417,7 +2417,12 @@ export function renderCard(report: RunReport): string[] {
   out.push("| | check | detail | tier |");
   out.push("| --- | --- | --- | --- |");
   for (const row of card.rows) {
-    const detail = cardDetail(row, sections.get(row.section), sharedReasons);
+    // Truncated here, at the table, and nowhere else: a long detail derails
+    // a one-line row in a fixed-width column, which is a table's problem,
+    // not the underlying fact's. `buildFlags` reads the same `cardDetail`
+    // for a plain bullet list, where a bundle path has nothing to derail and
+    // truncating it would only make an already-short list less useful.
+    const detail = truncateForCell(cardDetail(row, sections.get(row.section), sharedReasons));
     out.push(
       `| ${MARK_GLYPH[row.mark]} ${MARK_WORD[row.mark]} | ${escapeCell(row.question)} | ${escapeCell(detail)} | ${escapeCell(row.tier)} |`,
     );
@@ -2516,12 +2521,26 @@ export function renderMarkdown(
       "**Legend:** 🟦 human prompt · 🟧 edit burst · 🟪 commit (rounded ends: co-authored by an agent, per its trailer) · 🟩 agent (grouped by round) · 🔳 agent reported back",
     );
     out.push("");
-    out.push(
-      `Rounds group dispatches starting within ${formatDuration(report.flowchart.windowMs)} of the first.` +
-        (report.flowchart.dropped > 0
-          ? ` ${String(report.flowchart.dropped)} later ${plural(report.flowchart.dropped, "node")} ${plural(report.flowchart.dropped, "is", "are")} not shown; the JSON form carries them all.`
-          : ""),
-    );
+    // Rounds only exist in the diagram when a bundle recorded dispatches to
+    // group into one — a commit-only fallback (no bundle) has none, and the
+    // grouping-window sentence would be explaining a rule for a node kind
+    // that is not in the picture. `subgraph s` is the one string only a
+    // round ever emits (see `buildFlowchart`'s subgraph branch) — commit,
+    // burst, and prompt nodes are never grouped — so its presence is a
+    // precise, already-computed signal, not a reason for a new field.
+    const hasRounds = report.flowchart.mermaid.includes("\n  subgraph s");
+    const timelineNotes: string[] = [];
+    if (hasRounds) {
+      timelineNotes.push(
+        `Rounds group dispatches starting within ${formatDuration(report.flowchart.windowMs)} of the first.`,
+      );
+    }
+    if (report.flowchart.dropped > 0) {
+      timelineNotes.push(
+        `${String(report.flowchart.dropped)} later ${plural(report.flowchart.dropped, "node")} ${plural(report.flowchart.dropped, "is", "are")} not shown; the JSON form carries them all.`,
+      );
+    }
+    if (timelineNotes.length > 0) out.push(timelineNotes.join(" "));
     // A uniform diagram — every commit the same shape, in either direction —
     // is the one case where shape draws no contrast to read: nothing
     // distinguishes "uniformly agent co-authored" from "the tool always
