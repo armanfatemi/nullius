@@ -6,6 +6,106 @@ a package name are that package's own release; the kit versions independently,
 and so does the Action, whose releases are git tags rather than npm versions
 and are headed `action vN.N.N`.
 
+## 0.13.0
+
+### The run-report comment, redesigned
+
+The comment nullius posts on its own PRs describing how they were made had
+accumulated real UX problems: a vague commit-range title, no collapsibility,
+a card whose detail column was a bare section id, and a flat, uncolored
+Mermaid timeline with no notion of which agent did what.
+
+- **New title, two-level collapsible disclosure, Timeline leading the
+  document.** `<details>` nests tier inside section, each defaulting open
+  only when something inside it needs a look, so a clean run collapses to a
+  handful of one-line summaries. The diagram of what happened now precedes
+  the table of check marks, not the other way around.
+- **A Models line and a Flags list** under the title — flags are every
+  non-clear card row, already computed, surfaced as a bulleted headline
+  instead of requiring a table scan to notice. "Commits in range" and "Files
+  changed" dropped as their own sections; both restated what GitHub's native
+  tabs on the same page already show.
+- **The Mermaid timeline gets `classDef` colors, a `subgraph` per review
+  round, and commit subjects instead of bare hashes.** Harness wakeup events
+  coalesce into one "N agents reported back" node instead of raw escaped
+  task-notification XML.
+- **A git-only commit (no recorded bundle) signals which commits are
+  agent-authored**, via the same stadium shape a round's agent boxes use,
+  read from the commit's `Co-authored-by` trailer. States the uniform-all
+  and uniform-none cases in prose, since a shape carries no information
+  without something to contrast against. `RUN_REPORT_VERSION` 2 → 3 for the
+  two new `Flowchart` keys this needed — a JSON consumer pinned to 2 refuses
+  rather than silently missing them.
+- **Mermaid label robustness:** a run of disallowed characters collapses to
+  one `·` instead of one per character; long labels truncate at a word
+  boundary instead of mid-word.
+- **Fixed:** a tier where every section shares one not-recorded cause (no
+  bundle, an unreadable journal) now states the reason once instead of once
+  per section, and stops calling itself "all clear" when it means "same
+  cause as above" or "none recorded" — the exact wall-of-text regression
+  this redesign set out to fix, previously just relocated to the no-bundle
+  path no local fixture exercised. The leftover-row bullet points at the
+  card below it (not "above"), and no longer over-claims a leftover row's
+  cause is unrelated to the shared one. "Stale" is glossed inline. The tier
+  previously named "harness-verified" is now "Unattributed", matching the
+  three canonical tier names used everywhere else in the document. The
+  dev-binary disclaimer no longer renders above the report's own H1 title.
+
+### The claims-check card gets the same treatment
+
+The other comment nullius posts on its own PRs — anchors and grounding,
+separate from the run-report — had never gone through the redesign pass: a
+generic title, a header-less two-column table of raw verdict counts. Now a
+clearer title and a glyph + question + detail table with two real status
+rows ("Do all matched documents carry grounding markers?", "Are all cited
+claims verified?"). A marker gap that isn't enforced reads ⚪ advisory rather
+than a flat count; zero anchors checked reads ⚪ not recorded rather than a
+bare "0 failing" that would otherwise pass on a document nothing examined.
+
+### Added
+
+- **`OracleGlob` re-exported from `config`.** Plumbing for kit's Oracle
+  detection (see `kit 0.7.0` below), not a new capability of its own.
+
+## kit 0.7.0
+
+`init` gains an explicit `--interactive` flag — never TTY-ambient — that
+proposes Oracle globs detected from your test framework config and offers
+the existing CI workflow artifact for profiles that omit it. Both are
+propose-only: nothing is written without explicit confirmation.
+
+### Added
+
+- **`init --interactive`.** Detects your test framework and proposes an
+  Oracle glob (you accept, edit, or skip each one); offers to add the CI
+  workflow if your profile doesn't already include it. With no terminal
+  attached (a CI job, an agent's tool call) it falls back to the same
+  defaults a flagless run applies, and says so.
+- **`--oracle <glob>[,...]`, `--action`, `--suggest-oracle`.** The same two
+  answers `--interactive` asks for, given directly — for scripts and the new
+  `nullius:setup` skill, neither of which has a TTY to prompt through.
+- **`nullius:setup` skill**, scoped to the kit CLI only in its
+  `allowed-tools` frontmatter, so it structurally cannot write hooks itself.
+
+### Fixed
+
+- **`doctor` now hard-fails on a hook that duplicates plugin-delivered event
+  coverage.** A resolvable duplicate previously read as passing — see
+  `.claude/rules/one-delivery-mechanism.md`.
+
+### Changed
+
+- **Depends on `@nullius-inverba/claims` `^0.13.0`**, for the new
+  `OracleGlob` export `init --interactive` reads to check existing Oracle
+  config.
+
+## action v1.3.0
+
+Pins `@nullius-inverba/claims` `0.13.0` — the run-report redesign and the
+claims-check card treatment above render nothing on this action until this
+tag reaches a consumer's `claims-version`. No new inputs; `run-report` and
+`run-report-bundle` already shipped in `v1.2.0`.
+
 ## kit 0.6.0
 
 The recorder can see what a shell command changed. Until now the `PostToolUse`
