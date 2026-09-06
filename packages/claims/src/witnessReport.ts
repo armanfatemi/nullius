@@ -85,6 +85,12 @@ export interface BundleCommit {
   sha: string;
   /** Author time, ISO 8601, as git printed it. */
   at: string;
+  /**
+   * The commit's subject line. Optional: the bundle's own embedded
+   * `range.commits` (parsed below) predates this field and never carries it —
+   * only the live git read `witness report` actually renders from does.
+   */
+  message?: string;
 }
 
 export type BundleClassification = "included" | "inconclusive" | "excluded";
@@ -811,23 +817,6 @@ function shortSha(sha: string): string {
 }
 
 /**
- * Shortens a ref for display, but only when shortening it is safe.
- *
- * `range.base`/`range.head` are full 40-character SHAs in every real
- * invocation (the Action passes `github.event.pull_request.base.sha` and
- * `github.sha`), but this module has no way to enforce that a caller of
- * `buildRunReport` supplied one. A symbolic ref — a branch name, `HEAD~3` —
- * sliced to seven characters would not be shortened, it would be silently
- * corrupted into a different, shorter string. `shortSha` stays the primitive
- * that always truncates; this is the one call site that first checks whether
- * truncating is the right thing to do.
- */
-function shortRef(ref: string): string {
-  return /^[0-9a-f]{40}$/i.test(ref) ? shortSha(ref) : ref;
-}
-
-
-/**
  * The card: one row per question a reviewer asks, projected from the report.
  *
  * Takes a built `RunReport` and nothing else. It has no `RunReportInput`
@@ -1137,47 +1126,14 @@ export function summariseJournalFindings(findings: readonly JournalFinding[]): s
 function codeVerifiedSections(input: RunReportInput): ReportSection[] {
   const sections: ReportSection[] = [];
 
-  if (input.commitsUnreadable !== undefined) {
-    sections.push(
-      absentSection(
-        "commits",
-        "Commits in range",
-        "Read from `git log` over the range.",
-        input.commitsUnreadable,
-      ),
-    );
-  } else {
-    sections.push(
-      dataSection("commits", "Commits in range", "Read from `git log` over the range.", {
-        count: input.commits.length,
-        table: {
-          columns: ["commit", "authored"],
-          rows: input.commits.map((commit) => [shortSha(commit.sha), commit.at]),
-        },
-      }),
-    );
-  }
-
-  sections.push(
-    dataSection(
-      "changed-files",
-      "Files changed",
-      "Read from `git diff --name-status` over the range. The counts and tables below that are scoped to this PR are limited to these files.",
-      {
-        count: input.changedFiles.length,
-        // Its sibling above, "Commits in range", lists what it counts; this
-        // section used to be the one bare-count heading that didn't, leaving
-        // the actual file list reconstructable only by cross-referencing a
-        // different table roughly a hundred lines away. Sorted rather than
-        // left in `git diff`'s own order — deterministic regardless of which
-        // order the working tree happened to stage changes in.
-        table: {
-          columns: ["path"],
-          rows: [...input.changedFiles].sort((a, b) => a.localeCompare(b)).map((path) => [path]),
-        },
-      },
-    ),
-  );
+  // Deliberately not rendered as their own sections: which commits and which
+  // files are in range is exactly what GitHub's own Commits and Files-changed
+  // tabs already show, natively, on the same PR — restating a `git log` or
+  // `git diff --name-status` listing here is not "how this run was
+  // produced," it's the one fact a reader is least likely to need explained
+  // again. The counts still drive the subtitle, the mutation-scoping tables
+  // below, and the diagram's commit nodes; only the standalone tables are
+  // gone.
 
   // --- Anchors
   if (input.checkRun === null) {
@@ -1924,7 +1880,18 @@ function buildFlowchart(
   for (const commit of commits) {
     const at = Date.parse(commit.at);
     if (!Number.isFinite(at)) continue;
-    events.push({ atMs: at, type: "commit", key: commit.sha, label: `commit ${shortSha(commit.sha)}` });
+    events.push({
+      atMs: at,
+      type: "commit",
+      key: commit.sha,
+      // The message, not just the hash: a hash tells a reader which commit,
+      // never what it did. `mermaidLabel`'s own cap truncates a long subject
+      // the same way it already truncates every other label.
+      label:
+        commit.message === undefined || commit.message.length === 0
+          ? `commit ${shortSha(commit.sha)}`
+          : `${shortSha(commit.sha)} ${commit.message}`,
+    });
   }
   for (const record of prompts) {
     if (record.atMs === null) continue;
@@ -2166,6 +2133,78 @@ function indexSections(tiers: readonly ReportTier[]): Map<string, ReportSection>
 }
 
 /**
+ * Reasons shared by more than one card row — the ones `renderCard` states
+ * once, above the table, rather than once per row. Extracted so the flags
+ * list (below) can apply the identical dedup rule instead of re-deciding it,
+ * which is exactly the kind of second copy that drifted from the first one
+ * three times over in this file's own history.
+ */
+function sharedReasonsOf(card: Card): ReadonlySet<string> {
+  const byReason = new Map<string, number>();
+  for (const row of card.rows) {
+    if (row.reason === undefined) continue;
+    byReason.set(row.reason, (byReason.get(row.reason) ?? 0) + 1);
+  }
+  return new Set([...byReason.entries()].filter(([, n]) => n > 1).map(([reason]) => reason));
+}
+
+/** A short label for a card row, standing alone in a bulleted flags list
+ *  rather than beside a `tier` column — the row's own question is written to
+ *  read in a table, not as a flag. Falls back to the question itself for any
+ *  row id this map does not name, so a new card row is never silently
+ *  omitted from the list for lacking a bespoke phrase. */
+const FLAG_LABEL: Readonly<Record<string, string>> = {
+  grounded: "evidence anchors",
+  graders: "oracle conservation",
+  record: "this run's own record",
+  probe: "review probe",
+  reviewed: "agent review",
+  concurrent: "review round",
+  reported: "review outcomes",
+};
+
+/**
+ * The flags list: every card row that is not clear, as one short line each.
+ * Deliberately not a new judgment — every flag here is a row `buildCard`
+ * already computed and this file's own tests already cover; this only
+ * chooses shorter words for the same fact, for a reader who wants the
+ * headline before the table.
+ */
+function buildFlags(report: RunReport): string[] {
+  const card = buildCard(report);
+  const sections = indexSections(report.tiers);
+  const shared = sharedReasonsOf(card);
+  return card.rows
+    .filter((row) => row.mark !== "clear")
+    .map((row) => {
+      const label = FLAG_LABEL[row.id] ?? row.question;
+      const detail = cardDetail(row, sections.get(row.section), shared);
+      const glyph = row.mark === "attention" ? "⚠️" : "⚪";
+      return `${glyph} **${escapeCell(label)}** — ${escapeCell(detail)}`;
+    });
+}
+
+/**
+ * The distinct model names a run used, read back out of the "usage" section
+ * `hookAttestedSections` already built — not recomputed from raw records,
+ * which this renderer never sees. A light regex over that section's own
+ * generated note rather than a new structured field on `ReportSection` for
+ * one caller: the note's shape ("Over N report record(s). Models: a, b.") is
+ * this file's own format, produced two dozen lines away, not contributor
+ * text — parsing it back is safe for the same reason escaping it would be
+ * unnecessary work.
+ */
+function extractModels(report: RunReport): string[] | null {
+  const usage = indexSections(report.tiers).get("usage");
+  if (usage === undefined || usage.status !== "data") return null;
+  const note = usage.notes.find((line) => line.startsWith("Over "));
+  const match = note === undefined ? null : /Models: (.+)\.$/.exec(note);
+  if (match === null) return null;
+  const list = match[1];
+  return list === undefined ? null : list.split(", ");
+}
+
+/**
  * The figure that belongs next to a card row's glyph — "10 anchors passed" is
  * a process log, not a status. A reader should not have to open the tiered
  * document below to learn that six of them failed; the row should say so.
@@ -2281,7 +2320,7 @@ export function renderCard(report: RunReport): string[] {
     byReason.set(row.reason, (byReason.get(row.reason) ?? 0) + 1);
   }
   const shared = [...byReason.entries()].filter(([, n]) => n > 1);
-  const sharedReasons = new Set(shared.map(([reason]) => reason));
+  const sharedReasons = sharedReasonsOf(card);
   if (shared.length > 0) {
     out.push("");
     for (const [reason, n] of shared) {
@@ -2373,15 +2412,65 @@ export function renderMarkdown(
       : "";
   out.push(`# ${needsLookRows > 0 ? "⚠️ " : ""}Nullius Report — How this PR was made${suffix}`);
   out.push("");
+  // No commit range, no counts: GitHub's own PR page already states both
+  // (the Commits and Files-changed tabs, the compare header) on the same
+  // page this comment sits on. Restating them here was never information —
+  // it was the same fact told twice, and it was told first.
   out.push(
-    `\`${escapeCell(shortRef(report.range.base))}..${escapeCell(shortRef(report.range.head))}\` — ` +
-      `${String(report.range.commits)} ${plural(report.range.commits, "commit")}, ${String(report.range.changedFiles)} ${plural(report.range.changedFiles, "file")} changed. ` +
-      "This report renders what happened; it does not gate. Every section shows its data or says why it has none.",
+    "This report renders what happened; it does not gate. Every section shows its data or says why it has none.",
   );
 
-  // Ahead of the tiers, and therefore ahead of anything the budget can cut:
-  // truncation slices from the end, so the summary is the last thing lost.
-  //
+  const models = extractModels(report);
+  if (models !== null && models.length > 0) {
+    out.push("");
+    // Backticked, not `escapeCell`-escaped: a code span is already inert to
+    // markdown, and `escapeCell` is table-cell escaping — it would print a
+    // literal backslash in front of the bracket in a name like
+    // `claude-opus-5[1m]`, which is a display bug, not safety. The deep
+    // "Model and tokens" note this is pulled from renders the same names the
+    // same way, unescaped.
+    out.push(`**Models:** ${models.map((model) => `\`${model}\``).join(", ")}`);
+  }
+
+  const flags = buildFlags(report);
+  if (flags.length > 0) {
+    out.push("");
+    out.push("**Flags:**");
+    for (const flag of flags) out.push(`- ${flag}`);
+  }
+
+  // Moved ahead of the card, at the top of the document rather than the
+  // bottom: a diagram that shows what actually happened — who did what, when
+  // — is the thing worth seeing before a table of check marks, not after
+  // twenty sections of it.
+  if (report.flowchart !== null) {
+    out.push("");
+    out.push("## Timeline");
+    out.push("");
+    out.push("```mermaid");
+    out.push(report.flowchart.mermaid);
+    out.push("```");
+    out.push("");
+    // A color has no meaning without a key — the classDefs above are legible
+    // once rendered, but nothing in the fence itself tells a reader which
+    // color is which actor. Order matches the classDefs: human, system,
+    // round, burst, commit.
+    out.push(
+      // Ordered to match the diagram's own left-to-right flow — a prompt
+      // starts it, edits and a commit follow, then a round of agents, then
+      // their reports back — rather than the classDef declaration order,
+      // which a reader has no reason to already know.
+      "**Legend:** 🟦 human prompt · 🟧 edit burst · 🟪 commit · 🟩 agent (grouped by round) · 🔳 agent reported back",
+    );
+    out.push("");
+    out.push(
+      `Rounds group dispatches starting within ${formatDuration(report.flowchart.windowMs)} of the first.` +
+        (report.flowchart.dropped > 0
+          ? ` ${String(report.flowchart.dropped)} later ${plural(report.flowchart.dropped, "node")} ${plural(report.flowchart.dropped, "is", "are")} not shown; the JSON form carries them all.`
+          : ""),
+    );
+  }
+
   // Rebuilt from `report.tiers` rather than read from `report.card`, and the
   // difference matters. The tiers are the source; a `card` handed in by a
   // caller is a claim about them. Deriving here means the rendered card cannot
@@ -2404,7 +2493,12 @@ export function renderMarkdown(
     const allNotRecorded = tier.sections.every((section) => section.status === "not-recorded");
     out.push(`<details${attention > 0 ? " open" : ""}>`);
     out.push(
-      `<summary><strong>${escapeCell(tier.title)}</strong> — ${escapeCell(tierStatus(tier.sections.length, attention, allNotRecorded))}</summary>`,
+      // `<h3>`, not `<strong>` — the same size jump `###` headings get inside
+      // an open tier. Without it, a tier's own summary and the section
+      // summaries nested inside it render as identical bold text, and the
+      // one visual cue that distinguishes "this collapses a whole tier" from
+      // "this collapses one subsection" is gone the moment either is closed.
+      `<summary><h3>${escapeCell(tier.title)} — ${escapeCell(tierStatus(tier.sections.length, attention, allNotRecorded))}</h3></summary>`,
     );
     out.push("");
     out.push(`## ${tier.title}`);
@@ -2452,34 +2546,6 @@ export function renderMarkdown(
     }
     out.push("");
     out.push("</details>");
-  }
-
-  if (report.flowchart !== null) {
-    out.push("");
-    out.push("## Timeline");
-    out.push("");
-    out.push("```mermaid");
-    out.push(report.flowchart.mermaid);
-    out.push("```");
-    out.push("");
-    // A color has no meaning without a key — the classDefs above are legible
-    // once rendered, but nothing in the fence itself tells a reader which
-    // color is which actor. Order matches the classDefs: human, system,
-    // round, burst, commit.
-    out.push(
-      // Ordered to match the diagram's own left-to-right flow — a prompt
-      // starts it, edits and a commit follow, then a round of agents, then
-      // their reports back — rather than the classDef declaration order,
-      // which a reader has no reason to already know.
-      "**Legend:** 🟦 human prompt · 🟧 edit burst · 🟪 commit · 🟩 agent (grouped by round) · 🔳 agent reported back",
-    );
-    out.push("");
-    out.push(
-      `Rounds group dispatches starting within ${formatDuration(report.flowchart.windowMs)} of the first.` +
-        (report.flowchart.dropped > 0
-          ? ` ${String(report.flowchart.dropped)} later ${plural(report.flowchart.dropped, "node")} ${plural(report.flowchart.dropped, "is", "are")} not shown; the JSON form carries them all.`
-          : ""),
-    );
   }
 
   out.push("");

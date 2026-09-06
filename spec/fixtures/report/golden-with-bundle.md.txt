@@ -1,6 +1,126 @@
 # ⚠️ Nullius Report — How this PR was made (1 check needs a look)
 
-`8211685..f431193` — 13 commits, 13 files changed. This report renders what happened; it does not gate. Every section shows its data or says why it has none.
+This report renders what happened; it does not gate. Every section shows its data or says why it has none.
+
+**Flags:**
+- ⚪ **oracle conservation** — not configured — this project declares no "oracles" key in null…
+
+## Timeline
+
+```mermaid
+flowchart LR
+  subgraph s0["Round 1 (3 dispatches)"]
+  n0_0(["architecture-reviewer"])
+  n0_1(["rule-auditor"])
+  n0_2(["test-engineer"])
+  end
+  n1["11 edits / 4 files"]
+  n2["commit 43651d6"]
+  subgraph s3["Round 2 (3 dispatches)"]
+  n3_0(["architecture-reviewer"])
+  n3_1(["rule-auditor"])
+  n3_2(["test-engineer"])
+  end
+  n4["7 edits / 3 files"]
+  n5["commit 50f6c14"]
+  subgraph s6["Round 3 (3 dispatches)"]
+  n6_0(["architecture-reviewer"])
+  n6_1(["rule-auditor"])
+  n6_2(["test-engineer"])
+  end
+  n7["commit df9a0cb"]
+  n8["5 edits / 2 files"]
+  n9["commit d4a4527"]
+  n10["1 edits / 1 file"]
+  n11["commit 3b547b4"]
+  subgraph s12["Round 4 (3 dispatches)"]
+  n12_0(["architecture-reviewer"])
+  n12_1(["rule-auditor"])
+  n12_2(["test-engineer"])
+  end
+  n13["2 edits / 1 file"]
+  n14["commit 3db711a"]
+  subgraph s15["Round 5 (3 dispatches)"]
+  n15_0(["architecture-reviewer"])
+  n15_1(["rule-auditor"])
+  n15_2(["test-engineer"])
+  end
+  n16["commit abef156"]
+  n17["1 edits / 1 file"]
+  n18["commit 6586401"]
+  n19["5 edits / 1 file"]
+  n20["commit 2bb5b55"]
+  n21["commit 7b1527b"]
+  subgraph s22["Round 6 (3 dispatches)"]
+  n22_0(["architecture-reviewer"])
+  n22_1(["rule-auditor"])
+  n22_2(["test-engineer"])
+  end
+  n23["commit bbaa23a"]
+  n24["1 edits / 1 file"]
+  n25["commit c8305b1"]
+  n26["commit f431193"]
+  n0_0 --> n1
+  n0_1 --> n1
+  n0_2 --> n1
+  n1 --> n2
+  n2 --> n3_0
+  n2 --> n3_1
+  n2 --> n3_2
+  n3_0 --> n4
+  n3_1 --> n4
+  n3_2 --> n4
+  n4 --> n5
+  n5 --> n6_0
+  n5 --> n6_1
+  n5 --> n6_2
+  n6_0 --> n7
+  n6_1 --> n7
+  n6_2 --> n7
+  n7 --> n8
+  n8 --> n9
+  n9 --> n10
+  n10 --> n11
+  n11 --> n12_0
+  n11 --> n12_1
+  n11 --> n12_2
+  n12_0 --> n13
+  n12_1 --> n13
+  n12_2 --> n13
+  n13 --> n14
+  n14 --> n15_0
+  n14 --> n15_1
+  n14 --> n15_2
+  n15_0 --> n16
+  n15_1 --> n16
+  n15_2 --> n16
+  n16 --> n17
+  n17 --> n18
+  n18 --> n19
+  n19 --> n20
+  n20 --> n21
+  n21 --> n22_0
+  n21 --> n22_1
+  n21 --> n22_2
+  n22_0 --> n23
+  n22_1 --> n23
+  n22_2 --> n23
+  n23 --> n24
+  n24 --> n25
+  n25 --> n26
+  classDef human fill:#4C6EF5,color:#ffffff,stroke:#364FC7,stroke-width:1px
+  classDef system fill:#adb5bd,color:#212529,stroke:#868e96,stroke-width:1px
+  classDef round fill:#2F9E44,color:#ffffff,stroke:#2B8A3E,stroke-width:1px
+  classDef burst fill:#F59F00,color:#212529,stroke:#E67700,stroke-width:1px
+  classDef commit fill:#7048E8,color:#ffffff,stroke:#5F3DC4,stroke-width:1px
+  class n0_0,n0_1,n0_2,n3_0,n3_1,n3_2,n6_0,n6_1,n6_2,n12_0,n12_1,n12_2,n15_0,n15_1,n15_2,n22_0,n22_1,n22_2 round
+  class n1,n4,n8,n10,n13,n17,n19,n24 burst
+  class n2,n5,n7,n9,n11,n14,n16,n18,n20,n21,n23,n25,n26 commit
+```
+
+**Legend:** 🟦 human prompt · 🟧 edit burst · 🟪 commit · 🟩 agent (grouped by round) · 🔳 agent reported back
+
+Rounds group dispatches starting within 2 minutes (120000 ms) of the first.
 
 ## How this run was produced
 
@@ -19,61 +139,11 @@ _A `code-verified` row was re-computed here by re-reading the repository. A `hoo
 | ✅ clear | Did every review report back? | 20/20 reported | hook-attested |
 
 <details open>
-<summary><strong>Code-verified</strong> — 1 of 6 needs a look</summary>
+<summary><h3>Code-verified — 1 of 4 needs a look</h3></summary>
 
 ## Code-verified
 
 _Re-computed by this command from the repository and its history. Nothing here came from the bundle, so nothing here depends on the contributor._
-
-<details>
-<summary><strong>Commits in range — 13</strong></summary>
-
-### Commits in range — 13
-
-Read from `git log` over the range.
-
-| commit | authored |
-| --- | --- |
-| 43651d6 | 2026-08-30T14:23:33-06:00 |
-| 50f6c14 | 2026-08-30T18:10:08-06:00 |
-| df9a0cb | 2026-08-30T18:15:29-06:00 |
-| d4a4527 | 2026-08-30T18:38:25-06:00 |
-| 3b547b4 | 2026-08-30T18:38:45-06:00 |
-| 3db711a | 2026-08-30T18:45:08-06:00 |
-| abef156 | 2026-08-30T18:51:18-06:00 |
-| 6586401 | 2026-08-30T19:15:23-06:00 |
-| 2bb5b55 | 2026-08-30T19:23:02-06:00 |
-| 7b1527b | 2026-08-30T19:23:44-06:00 |
-| bbaa23a | 2026-08-30T19:30:06-06:00 |
-| c8305b1 | 2026-08-30T20:09:02-06:00 |
-| f431193 | 2026-08-30T22:17:39-06:00 |
-
-</details>
-
-<details>
-<summary><strong>Files changed — 13</strong></summary>
-
-### Files changed — 13
-
-Read from `git diff --name-status` over the range. The counts and tables below that are scoped to this PR are limited to these files.
-
-| path |
-| --- |
-| .claude/retrospectives/2026-08-31-proposal-to-pr-add-canary-status-redaction.md |
-| .claude/skills/proposal-to-pr/SKILL.md |
-| CHANGELOG.md |
-| openspec/changes/add-canary-status-redaction/design.md |
-| openspec/changes/add-canary-status-redaction/progress.md |
-| openspec/changes/add-canary-status-redaction/proposal.md |
-| openspec/changes/add-canary-status-redaction/review-evidence.md |
-| openspec/changes/add-canary-status-redaction/specs/canary/spec.md |
-| openspec/changes/add-canary-status-redaction/tasks.md |
-| packages/claims/src/canary.test.ts |
-| packages/claims/src/canary.ts |
-| packages/claims/src/cli.ts |
-| spec/canary.md |
-
-</details>
 
 <details>
 <summary><strong>Evidence Anchors re-checked — 39</strong></summary>
@@ -131,7 +201,7 @@ No canary is registered for this repository.
 </details>
 
 <details open>
-<summary><strong>Hook-attested</strong> — 3 of 9 need a look</summary>
+<summary><h3>Hook-attested — 3 of 9 need a look</h3></summary>
 
 ## Hook-attested
 
@@ -278,7 +348,7 @@ Token usage the harness recorded for each dispatched agent, summed. Informationa
 </details>
 
 <details>
-<summary><strong>Self-reported</strong> — 5 checks, none recorded</summary>
+<summary><h3>Self-reported — 5 checks, none recorded</h3></summary>
 
 ## Self-reported
 
@@ -342,7 +412,7 @@ How many records the coordinator reported about itself, across this entire worki
 </details>
 
 <details>
-<summary><strong>Unattributed</strong> — 1 check, none recorded</summary>
+<summary><h3>Unattributed — 1 check, none recorded</h3></summary>
 
 ## Unattributed
 
@@ -360,123 +430,6 @@ What's described above, plus any record whose origin this report simply can't re
 </details>
 
 </details>
-
-## Timeline
-
-```mermaid
-flowchart LR
-  subgraph s0["Round 1 (3 dispatches)"]
-  n0_0(["architecture-reviewer"])
-  n0_1(["rule-auditor"])
-  n0_2(["test-engineer"])
-  end
-  n1["11 edits / 4 files"]
-  n2["commit 43651d6"]
-  subgraph s3["Round 2 (3 dispatches)"]
-  n3_0(["architecture-reviewer"])
-  n3_1(["rule-auditor"])
-  n3_2(["test-engineer"])
-  end
-  n4["7 edits / 3 files"]
-  n5["commit 50f6c14"]
-  subgraph s6["Round 3 (3 dispatches)"]
-  n6_0(["architecture-reviewer"])
-  n6_1(["rule-auditor"])
-  n6_2(["test-engineer"])
-  end
-  n7["commit df9a0cb"]
-  n8["5 edits / 2 files"]
-  n9["commit d4a4527"]
-  n10["1 edits / 1 file"]
-  n11["commit 3b547b4"]
-  subgraph s12["Round 4 (3 dispatches)"]
-  n12_0(["architecture-reviewer"])
-  n12_1(["rule-auditor"])
-  n12_2(["test-engineer"])
-  end
-  n13["2 edits / 1 file"]
-  n14["commit 3db711a"]
-  subgraph s15["Round 5 (3 dispatches)"]
-  n15_0(["architecture-reviewer"])
-  n15_1(["rule-auditor"])
-  n15_2(["test-engineer"])
-  end
-  n16["commit abef156"]
-  n17["1 edits / 1 file"]
-  n18["commit 6586401"]
-  n19["5 edits / 1 file"]
-  n20["commit 2bb5b55"]
-  n21["commit 7b1527b"]
-  subgraph s22["Round 6 (3 dispatches)"]
-  n22_0(["architecture-reviewer"])
-  n22_1(["rule-auditor"])
-  n22_2(["test-engineer"])
-  end
-  n23["commit bbaa23a"]
-  n24["1 edits / 1 file"]
-  n25["commit c8305b1"]
-  n26["commit f431193"]
-  n0_0 --> n1
-  n0_1 --> n1
-  n0_2 --> n1
-  n1 --> n2
-  n2 --> n3_0
-  n2 --> n3_1
-  n2 --> n3_2
-  n3_0 --> n4
-  n3_1 --> n4
-  n3_2 --> n4
-  n4 --> n5
-  n5 --> n6_0
-  n5 --> n6_1
-  n5 --> n6_2
-  n6_0 --> n7
-  n6_1 --> n7
-  n6_2 --> n7
-  n7 --> n8
-  n8 --> n9
-  n9 --> n10
-  n10 --> n11
-  n11 --> n12_0
-  n11 --> n12_1
-  n11 --> n12_2
-  n12_0 --> n13
-  n12_1 --> n13
-  n12_2 --> n13
-  n13 --> n14
-  n14 --> n15_0
-  n14 --> n15_1
-  n14 --> n15_2
-  n15_0 --> n16
-  n15_1 --> n16
-  n15_2 --> n16
-  n16 --> n17
-  n17 --> n18
-  n18 --> n19
-  n19 --> n20
-  n20 --> n21
-  n21 --> n22_0
-  n21 --> n22_1
-  n21 --> n22_2
-  n22_0 --> n23
-  n22_1 --> n23
-  n22_2 --> n23
-  n23 --> n24
-  n24 --> n25
-  n25 --> n26
-  classDef human fill:#4C6EF5,color:#ffffff,stroke:#364FC7,stroke-width:1px
-  classDef system fill:#adb5bd,color:#212529,stroke:#868e96,stroke-width:1px
-  classDef round fill:#2F9E44,color:#ffffff,stroke:#2B8A3E,stroke-width:1px
-  classDef burst fill:#F59F00,color:#212529,stroke:#E67700,stroke-width:1px
-  classDef commit fill:#7048E8,color:#ffffff,stroke:#5F3DC4,stroke-width:1px
-  class n0_0,n0_1,n0_2,n3_0,n3_1,n3_2,n6_0,n6_1,n6_2,n12_0,n12_1,n12_2,n15_0,n15_1,n15_2,n22_0,n22_1,n22_2 round
-  class n1,n4,n8,n10,n13,n17,n19,n24 burst
-  class n2,n5,n7,n9,n11,n14,n16,n18,n20,n21,n23,n25,n26 commit
-```
-
-**Legend:** 🟦 human prompt · 🟧 edit burst · 🟪 commit · 🟩 agent (grouped by round) · 🔳 agent reported back
-
-Rounds group dispatches starting within 2 minutes (120000 ms) of the first.
 
 ## Not recorded
 

@@ -547,7 +547,10 @@ describe("no bundle on the branch", () => {
 
   it("still renders the code-verified tier", () => {
     expect(section(report, "code-verified", "anchors").status).toBe("data");
-    expect(section(report, "code-verified", "commits").count).toBe(13);
+    // "Commits in range" was removed as its own section (GitHub's own
+    // Commits tab already shows this) — the count itself still comes from a
+    // live `git log`, not the bundle, and survives on `report.range`.
+    expect(report.range.commits).toBe(13);
   });
 
   it("renders the three bundle tiers as not recorded, naming the path", () => {
@@ -800,7 +803,7 @@ describe("the failing figure on a section", () => {
     // Absence is what makes a row unanswerable rather than clear, so it must
     // not be defaulted to zero across the board.
     const report = buildRunReport(baseInput());
-    expect(Object.hasOwn(section(report, "code-verified", "commits"), "failing")).toBe(false);
+    expect(Object.hasOwn(section(report, "hook-attested", "hook-attribution"), "failing")).toBe(false);
   });
 
   it("never carries `failing` on a not-recorded section", () => {
@@ -1305,16 +1308,21 @@ describe("the rendered card", () => {
     expect(report.card.rows).toEqual(buildCard(report).rows);
   });
 
-  it("survives truncation, because it is emitted first", () => {
+  it("survives truncation, because it is emitted before the tiers", () => {
+    // The Timeline now leads the card (a reader sees what happened before a
+    // table of check marks), so the region worth protecting from truncation
+    // grew to match: everything through the card, not the card alone. 5,000
+    // bytes clears that whole prefix on this fixture (it ends at 4,408) while
+    // staying well under the full render (15,515), so the tier bodies below
+    // it are still the part that gets cut.
     const full = renderMarkdown(report);
-    const cardOf = (text: string): string =>
-      text.slice(text.indexOf("## How this run was produced"), text.indexOf("## Code-verified"));
-    const truncated = renderMarkdown(report, { budgetBytes: 2_000 });
+    const leadOf = (text: string): string => text.slice(0, text.indexOf("## Code-verified"));
+    const truncated = renderMarkdown(report, { budgetBytes: 5_000 });
 
     expect(truncated).toContain("**Truncated**");
-    // Byte-identical, not merely present: a partially truncated card is a
+    // Byte-identical, not merely present: a partially truncated lead is a
     // summary a reader would trust and should not.
-    expect(cardOf(truncated)).toBe(cardOf(full));
+    expect(leadOf(truncated)).toBe(leadOf(full));
   });
 });
 

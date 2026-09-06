@@ -1,6 +1,54 @@
 # ⚠️ Nullius Report — How this PR was made (5 checks need a look)
 
-`8211685..f431193` — 13 commits, 13 files changed. This report renders what happened; it does not gate. Every section shows its data or says why it has none.
+This report renders what happened; it does not gate. Every section shows its data or says why it has none.
+
+**Flags:**
+- ⚪ **oracle conservation** — not configured — this project declares no "oracles" key in null…
+- ⚪ **this run's own record** — no journal to validate — no bundle at nullius.runs/feat-add-can…
+- ⚪ **agent review** — not recorded
+- ⚪ **review round** — not recorded
+- ⚪ **review outcomes** — not recorded
+
+## Timeline
+
+```mermaid
+flowchart LR
+  n0["commit 43651d6"]
+  n1["commit 50f6c14"]
+  n2["commit df9a0cb"]
+  n3["commit d4a4527"]
+  n4["commit 3b547b4"]
+  n5["commit 3db711a"]
+  n6["commit abef156"]
+  n7["commit 6586401"]
+  n8["commit 2bb5b55"]
+  n9["commit 7b1527b"]
+  n10["commit bbaa23a"]
+  n11["commit c8305b1"]
+  n12["commit f431193"]
+  n0 --> n1
+  n1 --> n2
+  n2 --> n3
+  n3 --> n4
+  n4 --> n5
+  n5 --> n6
+  n6 --> n7
+  n7 --> n8
+  n8 --> n9
+  n9 --> n10
+  n10 --> n11
+  n11 --> n12
+  classDef human fill:#4C6EF5,color:#ffffff,stroke:#364FC7,stroke-width:1px
+  classDef system fill:#adb5bd,color:#212529,stroke:#868e96,stroke-width:1px
+  classDef round fill:#2F9E44,color:#ffffff,stroke:#2B8A3E,stroke-width:1px
+  classDef burst fill:#F59F00,color:#212529,stroke:#E67700,stroke-width:1px
+  classDef commit fill:#7048E8,color:#ffffff,stroke:#5F3DC4,stroke-width:1px
+  class n0,n1,n2,n3,n4,n5,n6,n7,n8,n9,n10,n11,n12 commit
+```
+
+**Legend:** 🟦 human prompt · 🟧 edit burst · 🟪 commit · 🟩 agent (grouped by round) · 🔳 agent reported back
+
+Rounds group dispatches starting within 2 minutes (120000 ms) of the first.
 
 ## How this run was produced
 
@@ -22,61 +70,11 @@ _A `code-verified` row was re-computed here by re-reading the repository. A `hoo
 | ⚪ not recorded | Did every review report back? | not recorded | hook-attested |
 
 <details open>
-<summary><strong>Code-verified</strong> — 2 of 6 need a look</summary>
+<summary><h3>Code-verified — 2 of 4 need a look</h3></summary>
 
 ## Code-verified
 
 _Re-computed by this command from the repository and its history. Nothing here came from the bundle, so nothing here depends on the contributor._
-
-<details>
-<summary><strong>Commits in range — 13</strong></summary>
-
-### Commits in range — 13
-
-Read from `git log` over the range.
-
-| commit | authored |
-| --- | --- |
-| 43651d6 | 2026-08-30T14:23:33-06:00 |
-| 50f6c14 | 2026-08-30T18:10:08-06:00 |
-| df9a0cb | 2026-08-30T18:15:29-06:00 |
-| d4a4527 | 2026-08-30T18:38:25-06:00 |
-| 3b547b4 | 2026-08-30T18:38:45-06:00 |
-| 3db711a | 2026-08-30T18:45:08-06:00 |
-| abef156 | 2026-08-30T18:51:18-06:00 |
-| 6586401 | 2026-08-30T19:15:23-06:00 |
-| 2bb5b55 | 2026-08-30T19:23:02-06:00 |
-| 7b1527b | 2026-08-30T19:23:44-06:00 |
-| bbaa23a | 2026-08-30T19:30:06-06:00 |
-| c8305b1 | 2026-08-30T20:09:02-06:00 |
-| f431193 | 2026-08-30T22:17:39-06:00 |
-
-</details>
-
-<details>
-<summary><strong>Files changed — 13</strong></summary>
-
-### Files changed — 13
-
-Read from `git diff --name-status` over the range. The counts and tables below that are scoped to this PR are limited to these files.
-
-| path |
-| --- |
-| .claude/retrospectives/2026-08-31-proposal-to-pr-add-canary-status-redaction.md |
-| .claude/skills/proposal-to-pr/SKILL.md |
-| CHANGELOG.md |
-| openspec/changes/add-canary-status-redaction/design.md |
-| openspec/changes/add-canary-status-redaction/progress.md |
-| openspec/changes/add-canary-status-redaction/proposal.md |
-| openspec/changes/add-canary-status-redaction/review-evidence.md |
-| openspec/changes/add-canary-status-redaction/specs/canary/spec.md |
-| openspec/changes/add-canary-status-redaction/tasks.md |
-| packages/claims/src/canary.test.ts |
-| packages/claims/src/canary.ts |
-| packages/claims/src/cli.ts |
-| spec/canary.md |
-
-</details>
 
 <details>
 <summary><strong>Evidence Anchors re-checked — 39</strong></summary>
@@ -132,7 +130,7 @@ No canary is registered for this repository.
 </details>
 
 <details open>
-<summary><strong>Hook-attested</strong> — 9 checks, none recorded</summary>
+<summary><h3>Hook-attested — 9 checks, none recorded</h3></summary>
 
 ## Hook-attested
 
@@ -240,7 +238,7 @@ Read from the bundled journals.
 </details>
 
 <details>
-<summary><strong>Self-reported</strong> — 5 checks, none recorded</summary>
+<summary><h3>Self-reported — 5 checks, none recorded</h3></summary>
 
 ## Self-reported
 
@@ -304,7 +302,7 @@ How many records the coordinator reported about itself, across this entire worki
 </details>
 
 <details>
-<summary><strong>Unattributed</strong> — 1 check, none recorded</summary>
+<summary><h3>Unattributed — 1 check, none recorded</h3></summary>
 
 ## Unattributed
 
@@ -322,47 +320,6 @@ What's described above, plus any record whose origin this report simply can't re
 </details>
 
 </details>
-
-## Timeline
-
-```mermaid
-flowchart LR
-  n0["commit 43651d6"]
-  n1["commit 50f6c14"]
-  n2["commit df9a0cb"]
-  n3["commit d4a4527"]
-  n4["commit 3b547b4"]
-  n5["commit 3db711a"]
-  n6["commit abef156"]
-  n7["commit 6586401"]
-  n8["commit 2bb5b55"]
-  n9["commit 7b1527b"]
-  n10["commit bbaa23a"]
-  n11["commit c8305b1"]
-  n12["commit f431193"]
-  n0 --> n1
-  n1 --> n2
-  n2 --> n3
-  n3 --> n4
-  n4 --> n5
-  n5 --> n6
-  n6 --> n7
-  n7 --> n8
-  n8 --> n9
-  n9 --> n10
-  n10 --> n11
-  n11 --> n12
-  classDef human fill:#4C6EF5,color:#ffffff,stroke:#364FC7,stroke-width:1px
-  classDef system fill:#adb5bd,color:#212529,stroke:#868e96,stroke-width:1px
-  classDef round fill:#2F9E44,color:#ffffff,stroke:#2B8A3E,stroke-width:1px
-  classDef burst fill:#F59F00,color:#212529,stroke:#E67700,stroke-width:1px
-  classDef commit fill:#7048E8,color:#ffffff,stroke:#5F3DC4,stroke-width:1px
-  class n0,n1,n2,n3,n4,n5,n6,n7,n8,n9,n10,n11,n12 commit
-```
-
-**Legend:** 🟦 human prompt · 🟧 edit burst · 🟪 commit · 🟩 agent (grouped by round) · 🔳 agent reported back
-
-Rounds group dispatches starting within 2 minutes (120000 ms) of the first.
 
 ## Not recorded
 

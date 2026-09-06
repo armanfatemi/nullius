@@ -219,6 +219,8 @@ export interface RangeCommit {
   sha: string;
   /** Author time, ISO 8601. The side of a commit that survives a rebase. */
   at: string;
+  /** The commit's subject line — `%s`, never the full body. */
+  message: string;
 }
 
 /**
@@ -256,7 +258,7 @@ export function readRangeCommits(
     base = merged.stdout.trim();
   }
   const spec = `${base}..${range.head}`;
-  const result = run(["log", "--reverse", "--format=%H%x00%aI", spec], root, timeoutMs);
+  const result = run(["log", "--reverse", "--format=%H%x00%aI%x00%s", spec], root, timeoutMs);
   if (result.status === "failed") {
     return { error: `could not read the commits of ${spec}: ${result.reason}` };
   }
@@ -264,9 +266,9 @@ export function readRangeCommits(
   for (const line of result.stdout.split("\n")) {
     const trimmed = line.trim();
     if (trimmed === "") continue;
-    const [sha, at] = trimmed.split("\0");
+    const [sha, at, message] = trimmed.split("\0");
     if (sha === undefined || at === undefined) continue;
-    commits.push({ sha, at });
+    commits.push({ sha, at, message: message ?? "" });
   }
   return commits;
 }
