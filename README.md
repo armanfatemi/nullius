@@ -665,6 +665,8 @@ set `strict: true`.
 | `require-markers` | `false` | Fail when any matched document carries no anchors |
 | `comment` | `true` | Upsert a PR comment with the report |
 | `claims-version` | pinned | Pinning the action without pinning its checker is not a pin |
+| `run-report` | `false` | Post a second comment on how the PR was produced — needs a committed `nullius.runs/` envelope, see [action/](action/) |
+| `run-report-bundle` | *(conventional path)* | Path to that envelope; empty means `nullius.runs/<branch-slug>.json` |
 
 ### Configuration
 
