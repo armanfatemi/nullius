@@ -381,8 +381,9 @@ describe("the flowchart", () => {
       "All 2 commits shown carry a Claude co-author trailer — the stadium shape above is real signal, not a rendering default.",
     );
 
-    // Uniformly NOT agent co-authored: the default, unremarkable case — no
-    // sentence needed, a rectangle chain has always looked like this.
+    // Uniformly NOT agent co-authored: the mirror case of "uniform" — stated
+    // in prose too, so an all-rectangle chain does not read as "the tool
+    // never checked" once a reader has seen the all-stadium sentence exist.
     const none = renderMarkdown(
       buildRunReport(
         baseInput({
@@ -393,7 +394,9 @@ describe("the flowchart", () => {
         }),
       ),
     );
-    expect(none).not.toContain("carry a Claude co-author trailer");
+    expect(none).toContain(
+      "None of the 1 commit shown carries a Claude co-author trailer — the plain rectangle above is the whole set, not a partial render.",
+    );
   });
 });
 

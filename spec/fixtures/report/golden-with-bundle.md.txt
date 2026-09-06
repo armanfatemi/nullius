@@ -121,6 +121,7 @@ flowchart LR
 **Legend:** 🟦 human prompt · 🟧 edit burst · 🟪 commit (rounded ends: co-authored by an agent, per its trailer) · 🟩 agent (grouped by round) · 🔳 agent reported back
 
 Rounds group dispatches starting within 2 minutes (120000 ms) of the first.
+None of the 13 commits shown carry a Claude co-author trailer — the plain rectangle above is the whole set, not a partial render.
 
 ## How this run was produced
 

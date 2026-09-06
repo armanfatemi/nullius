@@ -2522,21 +2522,24 @@ export function renderMarkdown(
           ? ` ${String(report.flowchart.dropped)} later ${plural(report.flowchart.dropped, "node")} ${plural(report.flowchart.dropped, "is", "are")} not shown; the JSON form carries them all.`
           : ""),
     );
-    // Every commit shown is the one case where the stadium shape draws no
-    // contrast against a rectangle — nothing in the diagram distinguishes
-    // "uniformly agent co-authored" from "the tool always draws it this way".
-    // State the fact once in prose rather than leaving a reader to notice a
-    // shape that never varies and wonder whether it means anything. A mix of
-    // shapes, or none at all, needs no such line: the contrast (or its
-    // ordinary absence) already carries the information.
-    if (
-      report.flowchart.totalCommits > 0 &&
-      report.flowchart.agentCommits === report.flowchart.totalCommits
-    ) {
-      out.push(
-        `All ${String(report.flowchart.totalCommits)} ${plural(report.flowchart.totalCommits, "commit")} shown ` +
-          `${plural(report.flowchart.totalCommits, "carries", "carry")} a Claude co-author trailer — the stadium shape above is real signal, not a rendering default.`,
-      );
+    // A uniform diagram — every commit the same shape, in either direction —
+    // is the one case where shape draws no contrast to read: nothing
+    // distinguishes "uniformly agent co-authored" from "the tool always
+    // draws it this way", and the mirror case has the same problem in the
+    // other direction. State the fact once in prose. An actual mix needs no
+    // such line: the contrast itself already carries the information.
+    if (report.flowchart.totalCommits > 0) {
+      if (report.flowchart.agentCommits === report.flowchart.totalCommits) {
+        out.push(
+          `All ${String(report.flowchart.totalCommits)} ${plural(report.flowchart.totalCommits, "commit")} shown ` +
+            `${plural(report.flowchart.totalCommits, "carries", "carry")} a Claude co-author trailer — the stadium shape above is real signal, not a rendering default.`,
+        );
+      } else if (report.flowchart.agentCommits === 0) {
+        out.push(
+          `None of the ${String(report.flowchart.totalCommits)} ${plural(report.flowchart.totalCommits, "commit")} shown ` +
+            `${plural(report.flowchart.totalCommits, "carries", "carry")} a Claude co-author trailer — the plain rectangle above is the whole set, not a partial render.`,
+        );
+      }
     }
   }
 
