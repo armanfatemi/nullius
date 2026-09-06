@@ -368,12 +368,24 @@ const MERMAID_ALLOWED = /[^A-Za-z0-9 ._:/x()-]+/g;
 
 export function escapeMermaidLabel(value: string): string {
   const replaced = value.replace(MERMAID_ALLOWED, "·");
+  if (replaced.length <= MERMAID_LABEL_CAP) return replaced;
   // The ellipsis is three ASCII dots rather than `…`: `.` is inside the
   // allow-list and `…` is not, so a one-character ellipsis would be replaced
   // by `·` and the truncation would stop being legible as a truncation.
-  return replaced.length > MERMAID_LABEL_CAP
-    ? `${replaced.slice(0, MERMAID_LABEL_CAP - 3)}...`
-    : replaced;
+  const budget = MERMAID_LABEL_CAP - 3;
+  const hardCut = replaced.slice(0, budget);
+  // Break at the last word boundary inside the budget, not mid-word — a
+  // fixed-offset cut on real commit-message text produces `...shape
+  // assertio...` and, worse, a truncated single-character substitution
+  // stranded right against the ellipsis (`...feedback ·...`), both of which
+  // read as corrupted text rather than an intentionally shortened sentence.
+  // Only trusted when the boundary is not so early it would throw away most
+  // of the label — no real word in commit-message prose runs anywhere near
+  // the cap, so a very early (or absent) space means there is no good
+  // boundary to break at, and the hard cut is the honest fallback.
+  const lastSpace = hardCut.lastIndexOf(" ");
+  const cut = lastSpace > budget * 0.4 ? hardCut.slice(0, lastSpace) : hardCut;
+  return `${cut}...`;
 }
 
 /** A quoted mermaid label. The quotes are the second half of the grammar. */

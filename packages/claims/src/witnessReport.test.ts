@@ -230,6 +230,30 @@ describe("escapeMermaidLabel", () => {
     expect(label).not.toContain("…");
   });
 
+  it("truncates real commit-message prose at a word boundary, not mid-word", () => {
+    // The exact shape that broke in production: a fixed-offset cut landed
+    // inside "assertions", and separately stranded a substituted `·` right
+    // against the ellipsis. Both read as corrupted text, not a shortened one.
+    expect(
+      escapeMermaidLabel(
+        "3f5055c fix(ci): update the grounding-card shape assertions for the new card",
+      ),
+    ).toBe("3f5055c fix(ci): update the grounding-card shape...");
+    expect(
+      escapeMermaidLabel(
+        "2319cff feat(report): act on direct maintainer feedback — cut redundancy, add flags/models, lead with the diagram",
+      ),
+    ).toBe("2319cff feat(report): act on direct maintainer feedback...");
+  });
+
+  it("falls back to a hard cut when there is no good word boundary", () => {
+    // A single word with no spaces at all: breaking "at the last space" would
+    // mean breaking nowhere, so the fallback keeps the label from collapsing
+    // to just "...".
+    const label = escapeMermaidLabel("x".repeat(200));
+    expect(label).toBe(`${"x".repeat(57)}...`);
+  });
+
   it("quotes the label, and a quote inside it cannot escape the quoting", () => {
     expect(mermaidLabel('a"b')).toBe('"a·b"');
   });
