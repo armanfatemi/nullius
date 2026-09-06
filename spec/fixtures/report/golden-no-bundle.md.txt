@@ -129,7 +129,7 @@ No canary is registered for this repository.
 
 </details>
 
-<details open>
+<details>
 <summary><h3>Hook-attested — 9 checks, none recorded</h3></summary>
 
 ## Hook-attested

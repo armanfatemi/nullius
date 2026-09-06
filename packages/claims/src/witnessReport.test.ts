@@ -1946,6 +1946,37 @@ describe("a journal whose header names an older schema than its records", () => 
   });
 });
 
+describe("a tier that recorded nothing opens collapsed", () => {
+  /** The `<details ...>` line immediately preceding a tier's `<summary><h3>`. */
+  function tierDetailsTag(markdown: string, title: string): string {
+    const lines = markdown.split("\n");
+    const index = lines.findIndex((line) => line.startsWith(`<summary><h3>${title} —`));
+    if (index < 1) throw new Error(`no tier summary for ${title} in:\n${markdown.slice(0, 400)}`);
+    return lines[index - 1] ?? "";
+  }
+
+  it("collapses a tier whose every section is not-recorded, however many disclose it first", () => {
+    // No bundle: every hook-attested section has nothing to read, and the
+    // summary line already carries the whole message.
+    const markdown = renderMarkdown(
+      buildRunReport(baseInput({ bundle: null, journalReports: [], changedFiles: [], commits: [] })),
+    );
+    expect(markdown).toContain("<summary><h3>Hook-attested — 9 checks, none recorded</h3></summary>");
+    expect(tierDetailsTag(markdown, "Hook-attested")).toBe("<details>");
+  });
+
+  it("still opens a tier that has genuinely clear content plus something to look at", () => {
+    // The other arm. Without it this suite would pass on a renderer that
+    // collapsed every tier unconditionally, which is the regression the
+    // expansion signal exists to prevent.
+    const markdown = renderMarkdown(buildRunReport(baseInput()));
+    const openTiers = markdown
+      .split("\n")
+      .filter((line, index, lines) => line === "<details open>" && (lines[index + 1] ?? "").startsWith("<summary><h3>"));
+    expect(openTiers.length).toBeGreaterThan(0);
+  });
+});
+
 describe("summariseJournalFindings", () => {
   function finding(line: number, detail: string): JournalFinding {
     return { line, verdict: "malformed", subject: `r${String(line)}`, detail };
