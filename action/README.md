@@ -162,7 +162,7 @@ in the step summary.
 ## Notes
 
 - The action runs `npx -y @nullius-inverba/claims`, so it always uses the latest
-  published checker; pin a version with your own `npx @nullius-inverba/claims@x.y.z`
+  published checker; pin a version with your own `npx -y @nullius-inverba/claims@x.y.z`
   step if you need reproducibility.
 - Absence citations execute `grep`/`rg` pipelines from the checked-out repo
   root; the checker's sandbox rejects anything else without executing it (see

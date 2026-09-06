@@ -4,6 +4,13 @@ Deterministic checker for **[Evidence Anchors](https://github.com/armanfatemi/nu
 machine-verifiable claims about a codebase in design docs, RFCs, ADRs, and
 agent-written proposals.
 
+One binary, seven verbs. `check` is the one below; the rest ask the other
+deterministic questions about how a change got made — `audit` (is the claim
+true?), `witness` (did the checking actually happen?), `oracle` (did the tests
+that grade the work get weaker?), `wiring`, `rules`, `canary`. No model is in
+the verification path of any of them. See the
+[project README](https://github.com/armanfatemi/nullius#verbs).
+
 A document asserts things about your code:
 
 ```markdown
@@ -42,7 +49,7 @@ First touch — watch every verdict fire against a sandbox fixture, no adoption
 required:
 
 ```sh
-npx @nullius-inverba/claims demo
+npx -y @nullius-inverba/claims demo
 ```
 
 The checker verifies a convention, so real adoption starts on the authoring
@@ -62,13 +69,13 @@ mode), or a formal doc.
 Run from the repo root (citations are repo-relative):
 
 ```sh
-npx @nullius-inverba/claims check "docs/rfcs/**/*.md"
+npx -y @nullius-inverba/claims check "docs/rfcs/**/*.md"
 
 # multiple globs
-npx @nullius-inverba/claims check "docs/rfcs/**/*.md" "docs/adr/*.md"
+npx -y @nullius-inverba/claims check "docs/rfcs/**/*.md" "docs/adr/*.md"
 
 # fail when no grounding markers are found at all
-npx @nullius-inverba/claims check "openspec/changes/my-change/**/*.md" --require-markers
+npx -y @nullius-inverba/claims check "openspec/changes/my-change/**/*.md" --require-markers
 ```
 
 Exit codes: `0` all claims verified (or none present), `1` at least one

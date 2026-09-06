@@ -1,6 +1,6 @@
 ---
 name: evidence-anchors
-description: Ground documents in verifiable citations. Use whenever writing or editing ANY document a human will approve or review that asserts something about the EXISTING codebase — a design doc, proposal, RFC, ADR, risk assessment, a PLAN (including plan mode), or a PR DESCRIPTION. Load-bearing claims must carry Evidence Anchors that the deterministic checker (npx @nullius-inverba/claims) can re-verify; a claim you cannot cite goes to "Open questions" instead.
+description: Ground documents in verifiable citations. Use whenever writing or editing ANY document a human will approve or review that asserts something about the EXISTING codebase — a design doc, proposal, RFC, ADR, risk assessment, a PLAN (including plan mode), or a PR DESCRIPTION. Load-bearing claims must carry Evidence Anchors that the deterministic checker (npx -y @nullius-inverba/claims) can re-verify; a claim you cannot cite goes to "Open questions" instead.
 ---
 
 # Evidence Anchors — grounding claims about existing code
@@ -138,7 +138,7 @@ Spec: https://github.com/armanfatemi/nullius/blob/main/spec/binding-moments.md
 Run the checker from the repo root and fix every failure:
 
 ```sh
-npx @nullius-inverba/claims check "<glob for your docs>"
+npx -y @nullius-inverba/claims check "<glob for your docs>"
 ```
 
 A `FABRICATED` or `COUNT-MISMATCH` verdict is not a citation typo — re-examine

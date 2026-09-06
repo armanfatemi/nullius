@@ -5,7 +5,7 @@
 <h1 align="center">nullius</h1>
 
 <p align="center">
-  <strong>Epistemic discipline for agent systems — mechanically enforced.</strong>
+  <strong>Your agent wrote the code. nullius checks how it got there.</strong>
 </p>
 
 <p align="center">
@@ -19,42 +19,48 @@
   <a href="#roadmap"><img src="https://img.shields.io/badge/status-work%20in%20progress-orange" alt="status: work in progress"></a>
 </p>
 
+<p align="center">
+  <a href="#quickstart"><strong>Quickstart</strong></a> ·
+  <a href="#who">Who it's for</a> ·
+  <a href="#verbs">The seven commands</a> ·
+  <a href="#plugin">Claude Code plugin</a> ·
+  <a href="#action">GitHub Action</a> ·
+  <a href="#configuration">Config</a> ·
+  <a href="#why">Why it's built this way</a>
+</p>
+
 > [!NOTE]
-> **This project is a work in progress.** The conventions here are in daily
-> use by the pipeline they came from, and still moving. Both releases so far
-> carried breaking changes — read [the changelog](CHANGELOG.md) before
-> upgrading. Issues and pushback welcome.
+> Work in progress — read [the changelog](CHANGELOG.md) before upgrading.
 
 ---
 
 ## 🧭 What it does
 
-An agent's claim about your code is not knowledge. It is text.
+You have an agent writing code in your repo. It also writes *sentences about*
+your code — plans, PR descriptions, design docs — and some of them are wrong in
+ways nobody catches, because every reviewer checks whether the plan is good, not
+whether its premises are true.
 
-nullius makes that text refusable. A load-bearing claim carries a citation —
-an **Evidence Anchor** — in a fixed grammar:
+**Most tools review the code your agent produced. nullius reviews how it got
+there.** It is a **CLI**, a **Claude Code plugin**, and a **GitHub Action** that:
 
-```markdown
-**Evidence:** `k8s/base/settings/deployment.yaml:12` — `  replicas: 2`
+- **re-open every file your agent cited** and confirm the quoted line is really
+  there — in CI, and before you approve a plan;
+- **record what a session actually dispatched**, from harness hooks the agent
+  cannot decline, as JSONL in your own repo — nothing leaves your machine;
+- **flag tests and graders that got weaker** across a branch, and make somebody
+  say why.
+
+No model grades any of it. Every verdict is code re-reading the file, so you can
+re-run it and get the same answer.
+
+```sh
+npx -y @nullius-inverba/claims demo   # watch it catch a fabricated citation, ~10 seconds
 ```
-
-A checker then opens the file and re-verifies it. Every time. Forever.
-
-```
-OK          design.md:7   src/app.ts:1
-FABRICATED  design.md:15  src/app.ts:2
-          ! text does not appear anywhere in src/app.ts
-```
-
-That is the entire mechanism. Everything below is what gets built on top of it:
-seven commands that ask seven different deterministic questions, and three
-places to plug them in.
-
-**The boundary that defines this project:** a model may propose, argue, draft,
-and extract. Nothing a model returns is ever trusted as a result. Every verdict
-that decides an outcome is produced by code re-reading the artifact.
 
 ---
+
+<a id="who"></a>
 
 ## 👥 Who it's for
 
@@ -63,14 +69,14 @@ you can read one and stop.
 
 | If you… | You get | Start with |
 | --- | --- | --- |
+| ✅ worry your **tests are being edited to pass** | Weakened graders raised as an obligation someone has to discharge | [`oracle`](#oracle) |
+| 🔀 have agents write **PR descriptions** | "Safe — nothing else reads this field" becomes a checkable claim | [GitHub Action](#action) |
+| 💬 **just ask the agent to do things** | A retrofit lane — no doc culture required | [`audit`](#audit) |
 | 📝 use **plan mode** (Claude Code) | Plans verified *before* you hit approve | [plugin](#plugin) → [`check`](#check) |
 | 🤖 run **multi-agent sessions** | A journal of what the harness actually did, not what it says it did | [plugin](#plugin) → [`witness`](#witness) |
-| 🔀 have agents write **PR descriptions** | "Safe — nothing else reads this field" becomes a checkable claim | [GitHub Action](#action) |
 | 📐 have a **spec / RFC / ADR culture** | Fabricated premises die at authoring time; CI becomes a drift alarm | [`check`](#check) + [Action](#action) |
-| 💬 **just ask the agent to do things** | A retrofit lane — no doc culture required | [`audit`](#audit) |
 | 🧩 maintain **agent harness config** (skills, subagents, hooks) | Dangling references caught before they silently no-op | [`wiring`](#wiring) |
 | 🧪 run **agent code review** | Proof the review pipeline is alive, rather than the assumption | [`canary`](#canary) |
-| ✅ worry your **tests are being edited to pass** | Weakened graders raised as an obligation someone has to discharge | [`oracle`](#oracle) |
 
 ---
 
@@ -78,17 +84,60 @@ you can read one and stop.
 
 ## ⚡ Quickstart
 
+<details open>
+<summary><strong>⚡ Just set it up for me</strong></summary>
+
+<br>
+
+There is no single command, and that is deliberate: `init` will not create the
+recording opt-in for you and will not install hooks. Three lines, then two in
+Claude Code.
+
+```sh
+mkdir -p .nullius                          # opt in to session recording — a human decides this, not init
+npx -y @nullius-inverba/kit init --action  # config + authoring docs + the CI workflow
+npx -y @nullius-inverba/kit doctor         # what's live, what isn't, and why
+```
+
+Then, in Claude Code — hooks are delivered only by the plugin, and nothing else
+can install them for you:
+
+```
+/plugin marketplace add armanfatemi/nullius
+/plugin install nullius@nullius
+```
+
+**Rather have an agent do it?** With the plugin installed, ask it *"set up
+nullius in this repo"* — the `nullius:setup` skill drives the same flow and
+proposes Oracle globs detected from your test config instead of guessing.
+Without the plugin, paste this:
+
+```
+Set up nullius in this repo. First run `npx -y @nullius-inverba/kit doctor` and tell
+me the current state. Then `npx -y @nullius-inverba/kit init --root . --dry-run` and
+show me the plan before writing anything. Run `--suggest-oracle` to propose test globs
+— do not invent one if it detects nothing. Then run init for real with `--action` plus
+any globs I accept, and report its write-log verbatim. Ask before creating `.nullius/`.
+```
+
+</details>
+
 **1. Wire it into your repo.**
 
 ```sh
-npx @nullius-inverba/kit init                 # detects your repo, prints every file it writes
-npx @nullius-inverba/kit init --dry-run       # or see the plan first, and write nothing
-npx @nullius-inverba/kit init --interactive   # or be walked through it — Oracle detection, CI opt-in
+npx -y @nullius-inverba/kit init                 # detects your repo, prints every file it writes
+npx -y @nullius-inverba/kit init --dry-run       # or see the plan first, and write nothing
+npx -y @nullius-inverba/kit init --interactive   # or be walked through it — Oracle detection, CI opt-in
 ```
 
 `init` picks a profile from what is actually on disk — `openspec/` means the
 specs profile, `docs/` means prs, neither means plans — and tells you which
 and why. Override with `--profile plans|prs|specs`.
+
+<details>
+<summary>⚙️ <strong>What <code>init</code> decides, and the two things it refuses to do</strong></summary>
+
+<br>
 
 `--interactive` is the only thing that ever prompts — every other form above
 is exactly as scriptable as it has always been. It proposes Oracle globs
@@ -110,10 +159,12 @@ Two things it deliberately **will not** do, and prints instead of doing:
   in a kit-owned file under `.nullius/`; your CLAUDE.md gets a pointer at it,
   so upgrades never need merging.
 
+</details>
+
 **2. See it work — no adoption required.**
 
 ```sh
-npx @nullius-inverba/claims demo
+npx -y @nullius-inverba/claims demo
 ```
 
 This builds a sandbox document plus a sandbox source file, then checks one
@@ -153,13 +204,13 @@ FABRICATED    design.md:57  src/legacy.ts:1@782d707
 **3. Check something of your own.**
 
 ```sh
-npx @nullius-inverba/claims check 'docs/**/*.md'
+npx -y @nullius-inverba/claims check 'docs/**/*.md'
 ```
 
 **4. When something stops working.**
 
 ```sh
-npx @nullius-inverba/kit doctor          # and `--fix` to re-render what it manages
+npx -y @nullius-inverba/kit doctor          # and `--fix` to re-render what it manages
 ```
 
 Every mechanism here fails open — a hook that cannot run must never break your
@@ -199,6 +250,12 @@ It also runs *absence* claims — a declared `grep` whose result count the
 document asserts — so "nothing else consumes this event" becomes falsifiable
 too.
 
+One looks like this:
+
+```markdown
+**Evidence:** `k8s/base/settings/deployment.yaml:12` — `  replicas: 2`
+```
+
 **Why it matters.** The value lands at a moment the checker never sees: **to
 write a citation that will survive `check`, the agent has to open the file.**
 Fabrication dies at authoring time, before any reviewer reads a word. This is
@@ -211,7 +268,7 @@ The checker is the ratchet; the authoring behavior is the product.
 want a CI gate that cannot be argued with.
 
 ```sh
-npx @nullius-inverba/claims check 'docs/**/*.md' --require-markers
+npx -y @nullius-inverba/claims check 'docs/**/*.md' --require-markers
 ```
 
 ```
@@ -310,6 +367,11 @@ location. It deliberately never certifies **entailment**: a real line, quoted
 accurately, sitting under a sentence it does not support, passes. `audit` is
 that second half.
 
+<details>
+<summary>🧠 <strong>Why each claim is dispatched alone</strong></summary>
+
+<br>
+
 The design detail that makes it work is *starvation*. Each claim goes to its
 own agent, alone — no title, no surrounding paragraph, no sibling claims — and
 is told to refute it. Claims presented together imply a narrative, and a model
@@ -317,13 +379,15 @@ handed a narrative argues for it. One starved sentence has nothing to be loyal
 to. And because refutations return as anchors that `check` re-runs, **no model
 is ever in the verification path.**
 
+</details>
+
 **Useful if you** inherited documents that were never anchored · want a second
 pass on claims that already verify · are retrofitting a repo with no doc
 culture at all.
 
 ```sh
-npx @nullius-inverba/claims audit design.md                  # the claims, one dispatch each
-npx @nullius-inverba/claims audit design.md --emit-brief c1  # the starved brief for one claim
+npx -y @nullius-inverba/claims audit design.md                  # the claims, one dispatch each
+npx -y @nullius-inverba/claims audit design.md --emit-brief c1  # the starved brief for one claim
 ```
 
 #### The retrofit lane
@@ -333,7 +397,7 @@ and the model hunts evidence **for** it, proposing anchors the checker then
 verifies.
 
 ```sh
-claude -p "$(npx @nullius-inverba/claims audit design.md --propose)"
+claude -p "$(npx -y @nullius-inverba/claims audit design.md --propose)"
 ```
 
 Or `/audit <doc>` with the plugin installed. `REFUTED` claims come back with
@@ -377,8 +441,8 @@ whether a "review" actually dispatched anything · want retros grounded in
 dispatch counts rather than recollection.
 
 ```sh
-npx @nullius-inverba/claims witness validate .nullius/runs/<session>.jsonl
-npx @nullius-inverba/claims witness survey '.nullius/runs/*.jsonl'
+npx -y @nullius-inverba/claims witness validate .nullius/runs/<session>.jsonl
+npx -y @nullius-inverba/claims witness survey '.nullius/runs/*.jsonl'
 ```
 
 `survey` validates every matched journal **independently** and adds up the
@@ -466,14 +530,14 @@ record — and deletion is the highest-risk edit there is.
 have ever merged a green PR that got green by deleting an assertion.
 
 ```sh
-npx @nullius-inverba/claims oracle main...HEAD --journal .nullius/runs/latest.jsonl
+npx -y @nullius-inverba/claims oracle main...HEAD --journal .nullius/runs/latest.jsonl
 ```
 
 ```json
 { "oracles": [{ "glob": "test/**/*.test.ts", "weakening": "\\bexpect\\(" }] }
 ```
 
-Don't want to hand-write that block? `npx @nullius-inverba/kit init --interactive`
+Don't want to hand-write that block? `npx -y @nullius-inverba/kit init --interactive`
 detects your test framework and proposes it for you — you still accept, edit,
 or skip it, never a silent guess. See [Quickstart](#quickstart).
 
@@ -521,19 +585,22 @@ with its own configuration, rather than just checking documents.
 
 ### 🔌 `wiring` — do the references resolve?
 
+<details>
+<summary>A dispatch naming a subagent with no definition file does not error — <strong>it no-ops</strong>, and reports a completed review.</summary>
+
+<br>
+
 **What it does.** Verifies that harness artifacts point at things that exist —
 subagents, skills, read paths, `applies_to` globs, hook commands.
 
-**Why it matters.** A dispatch naming a subagent with no definition file does
-not error at runtime. **It no-ops.** The orchestration reports a completed
-review and nothing reviewed anything, which looks exactly like the review that
-found no problems.
+**Why it matters.** The orchestration reports a completed review and nothing
+reviewed anything, which looks exactly like the review that found no problems.
 
 **Useful if you** maintain `.claude/` config, custom subagents, or skills that
 reference each other.
 
 ```sh
-npx @nullius-inverba/claims wiring .
+npx -y @nullius-inverba/claims wiring .
 ```
 
 ```
@@ -541,9 +608,16 @@ LOOSE-REFERENCE  .claude/skills/openspec-explore/SKILL.md:106  openspec/changes/
                  ~ looks like a repo path but does not resolve — an example, or a pointer that moved
 ```
 
+</details>
+
 <a id="rules"></a>
 
 ### 📋 `rules` — which rules apply, and are they grounded?
+
+<details>
+<summary>A rule that was never selected and a rule that was selected and satisfied produce the same silence. This prints what it <strong>excluded</strong>.</summary>
+
+<br>
 
 **What it does.** Two subcommands. `select` emits the id of every rule under
 `.claude/rules/` whose `applies_to` matches at least one given path, in a
@@ -552,9 +626,7 @@ rule's frontmatter and its incident anchor, the same way [`check`](#check)
 verifies any other document.
 
 **Why it matters.** Rule selection is the step most often handed to a model,
-and it is the step where a quiet miss is invisible — a rule that was never
-selected and a rule that was selected and satisfied produce the same silence.
-`select` is glob matching, no model involved, and it prints what it **excluded**
+and it is the step where a quiet miss is invisible. `select` is glob matching, no model involved, and it prints what it **excluded**
 so a selection that silently narrows is visible. `rules check` then asks
 whether each rule is grounded at all: a rule with no anchor anywhere in its
 body is folklore.
@@ -563,8 +635,8 @@ body is folklore.
 follow, and want to know they were actually consulted.
 
 ```sh
-npx @nullius-inverba/claims rules select --paths packages/claims/src/cli.ts
-npx @nullius-inverba/claims rules check .
+npx -y @nullius-inverba/claims rules select --paths packages/claims/src/cli.ts
+npx -y @nullius-inverba/claims rules check .
 ```
 
 ```
@@ -578,9 +650,16 @@ verdict-needs-fixture-and-test
 Pair it with [`witness validate --expect-rules`](#witness) to fail a run where
 a selected rule never reached a delivered verdict.
 
+</details>
+
 <a id="canary"></a>
 
 ### 🐤 `canary` — is the review pipeline alive?
+
+<details>
+<summary>A review pipeline that has silently stopped reviewing produces the same output as one that found nothing wrong. This tells them apart.</summary>
+
+<br>
 
 **What it does.** `plant` inserts a registered, plausibly-false claim into a
 document. You then run your review against it. `verify` reads the review's
@@ -588,23 +667,23 @@ report and exits `0` **CANARY-CAUGHT**, `1` **CANARY-MISSED**, or `3`
 **CANARY-TAINTED** — the report named the probe machinery, so the probe is
 invalid rather than passed.
 
-**Why it matters.** A review pipeline that has silently stopped reviewing
-produces the same output as one that found nothing wrong. A pipeline that flags
-the plant is **demonstrably** alive; one that misses it has been *measured*
-dead rather than *assumed* alive.
+**Why it matters.** A pipeline that flags the plant is **demonstrably** alive;
+one that misses it has been *measured* dead rather than *assumed* alive.
 
 **Useful if you** run automated review as a gate and have no independent
 evidence it still works.
 
 ```sh
-npx @nullius-inverba/claims canary plant docs/design.md
+npx -y @nullius-inverba/claims canary plant docs/design.md
 # ... run your review, capture its report ...
-npx @nullius-inverba/claims canary verify report.md
-npx @nullius-inverba/claims canary clear
+npx -y @nullius-inverba/claims canary verify report.md
+npx -y @nullius-inverba/claims canary clear
 ```
 
 `status` shows the active canary and exits 1 while one is planted, so a planted
 document cannot be merged by accident.
+
+</details>
 
 ---
 
@@ -637,6 +716,25 @@ Details: [plugin/](plugin/).
 
 ### GitHub Action
 
+It upserts one comment on the PR. This is a real one, rendered by this repo's
+own CI against its own change proposals:
+
+> ### Nullius Claims Check — all grounding markers verified
+>
+> | | check | detail |
+> | --- | --- | --- |
+> | ✅ clear | Do all matched documents carry grounding markers? | 26/26 carry markers |
+> | ✅ clear | Are all cited claims verified? | 0 failing of 163 |
+>
+> 151 presence, 12 absence anchors checked. Verdicts: ok 62, stale 105.
+>
+> _A verdict certifies the citation and not the argument built on it: a real
+> line, quoted accurately, can still support a false conclusion. Reasoning is
+> what `nullius audit` examines, and it did not run here._
+
+A failing run names each unverified claim, with the file, the line, and what
+the checker found instead. Wiring it up:
+
 ```yaml
 # .github/workflows/claims.yml
 on: pull_request
@@ -667,6 +765,8 @@ set `strict: true`.
 | `claims-version` | pinned | Pinning the action without pinning its checker is not a pin |
 | `run-report` | `false` | Post a second comment on how the PR was produced — needs a committed `nullius.runs/` envelope, see [action/](action/) |
 | `run-report-bundle` | *(conventional path)* | Path to that envelope; empty means `nullius.runs/<branch-slug>.json` |
+
+<a id="configuration"></a>
 
 ### Configuration
 
@@ -735,6 +835,33 @@ extracted from. The incident is told in full in
 
 The fix is not a smarter reviewer. It is a citation convention plus a
 deterministic checker that re-executes every citation, forever.
+
+#### The mechanism, in full
+
+An agent's claim about your code is not knowledge. It is text.
+
+nullius makes that text refusable. A load-bearing claim carries a citation —
+an **Evidence Anchor** — in a fixed grammar:
+
+```markdown
+**Evidence:** `k8s/base/settings/deployment.yaml:12` — `  replicas: 2`
+```
+
+A checker then opens the file and re-verifies it. Every time. Forever.
+
+```
+OK          design.md:7   src/app.ts:1
+FABRICATED  design.md:15  src/app.ts:2
+          ! text does not appear anywhere in src/app.ts
+```
+
+That is the entire mechanism. Everything in the first half of this README is
+what gets built on top of it: seven commands that ask seven different
+deterministic questions, and three places to plug them in.
+
+**The boundary that defines this project:** a model may propose, argue, draft,
+and extract. Nothing a model returns is ever trusted as a result. Every verdict
+that decides an outcome is produced by code re-reading the artifact.
 
 **At length:**
 [Nobody Opposed the Delay](https://armanfatemi.substack.com/p/nobody-opposed-the-delay)
@@ -806,6 +933,10 @@ format is shaped this way; the linter is what you install.
 <a id="roadmap"></a>
 
 ## 🗺️ Roadmap
+
+**Status.** The conventions here are in daily use by the pipeline they came
+from, and still moving. Both releases so far carried breaking changes — read
+[the changelog](CHANGELOG.md) before upgrading. Issues and pushback welcome.
 
 - **`witness harvest`** — the other half of the retro kit: a bounded
   PR-evidence harvester plus the "bad witness" retro-agent conventions. The
