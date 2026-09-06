@@ -156,9 +156,9 @@ document can influence:
 
 A passing working-tree verdict is unaffected in every row: a stamp can win an
 anchor the permanent gate, and it can never lose it the ordinary one. That is
-what keeps a squash-merged proposal honest rather than red — and where a squash
-does orphan a stamp on a full clone, the remedy is the documented one, re-pin
-the anchors to the squash commit.
+what keeps a rewritten proposal honest rather than red — and where a squash or
+rebase does orphan a stamp on a full clone, the remedy is the documented one:
+re-pin the anchors to the new commit.
 
 **Quote something that could be wrong, and that occurs once.** Matching is
 substring-based, so a one-character quote is trivially true and establishes

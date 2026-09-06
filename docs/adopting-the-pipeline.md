@@ -158,7 +158,7 @@ kernel, never the reverse.
 Five, not the eight this document first listed. The six that left — model
 proposes and code verifies, one delivery mechanism per artifact, anchors
 rev-stamped and never repointed under an old stamp, merge commits never
-squash, a new verdict requiring both a fixture and a unit test, and build
+squash or rebase, a new verdict requiring both a fixture and a unit test, and build
 before any CLI use — are all mechanical and glob-scopable, so they land in
 `.claude/rules/` and belong to `rule-auditor`. That split is the point rather
 than an accident of drafting: an invariant with a home in both places is one
@@ -298,7 +298,7 @@ After roughly five runs, `retro-rollup` decides what has earned promotion into
 | review reports success having reviewed nothing | `nullius wiring`, Phase 0 |
 | `retro-writer` exhausts its context | reads the validator summary and the bounded manifest, never raw sources |
 | verify loop chases environmental test failures | the ugrep baseline is encoded in the verify stage |
-| a squash merge orphans every anchor stamp | the PR stage encodes merge-commit-only; this gate otherwise fails open |
+| a squash or rebase merge orphans every anchor stamp | the PR stage encodes merge-commit-only; otherwise honest anchors go `FABRICATED` on a full clone, or fail open on a shallow one |
 | two process stacks compete | the change folder is the discriminator |
 | scaffolding never becomes product | the Phase 4 promotion gate |
 

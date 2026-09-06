@@ -293,9 +293,17 @@ Adding the commit you read at — `src/app.ts:12@a1b2c3d` — splits them:
 So a document cannot be turned red by someone else's refactor, and a
 fabrication cannot be excused by one. Get the hash with
 `git rev-parse --short HEAD` when you read the file, and check out with
-`fetch-depth: 0` in CI so the history an anchor names is actually present. A
-commit the clone does not have is never held against the author — the verdict
-fails open as the advisory `UNVERIFIABLE-REV`, with the remedy in the message.
+`fetch-depth: 0` in CI so the history an anchor names is actually present.
+
+**Stamping is opt-in, and it is the only thing here that cares how you merge.**
+Squash and rebase-merge both rewrite the branch into new objects, so a stamp
+written on the branch names a commit `main` no longer has. On a full checkout
+the working-tree verdict then stands, which means an honest anchor whose code
+has since moved reports `FABRICATED` rather than `STALE` — re-pin it, or don't
+stamp. On a shallow checkout it fails open to the advisory `UNVERIFIABLE-REV`
+instead, with the remedy in the message. An unstamped anchor is checked purely
+against the working tree and does not care about your history at all; every
+other verb in this README ignores git history entirely.
 
 #### Coverage: the problem `check` cannot solve alone
 
@@ -978,9 +986,15 @@ Issues and pushback are welcome — including on the conventions themselves.
   never in a public issue.
 - **[Code of conduct](CODE_OF_CONDUCT.md)** — criticise work, not people.
 
-PRs land as **merge commits, never squashed**: a squash orphans the commits that
-rev-stamped anchors name, and the checker then fails open — a disarmed gate and
-a satisfied one produce the same green check.
+PRs land as **merge commits — never squashed, never rebase-merged**: both
+rewrite the branch into new objects, orphaning the commits that rev-stamped
+anchors name, and an honest anchor whose code has since moved then reports a
+hard `FABRICATED` instead of the advisory `STALE` it was entitled to.
+
+**That is this repo's policy, not something nullius requires of yours.**
+Stamping is opt-in; a project that never stamps has no dependency on commit
+reachability, and can squash and rebase freely. See [`check`](#check) for what
+the stamp buys and what it costs.
 
 ---
 

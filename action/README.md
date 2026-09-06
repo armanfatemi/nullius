@@ -167,9 +167,24 @@ in the step summary.
 - Absence citations execute `grep`/`rg` pipelines from the checked-out repo
   root; the checker's sandbox rejects anything else without executing it (see
   the [security model](../spec/evidence-anchors.md#security-model)).
-- **Squash-merge destroys the commits stamped anchors name.** A document merged
-  that way points at an object the default branch no longer has, and its
-  stamped anchors report `UNVERIFIABLE-REV` from then on — advisory, never a
-  failure. Repositories that keep merge commits, or that re-stamp on merge,
-  keep the hard gate; either way the checker never turns an unreachable commit
-  into an accusation.
+- **Your merge strategy is your business, with one caveat.** Squash and
+  rebase-merge both rewrite the branch into new objects, so a document merged
+  either way carries stamps naming commits the default branch no longer has.
+  What happens then depends on the checkout depth, not the merge button:
+
+  | Checkout | Unresolvable stamp, failing working-tree verdict |
+  | --- | --- |
+  | `fetch-depth: 0` (recommended) | the working-tree verdict stands, failures included |
+  | Shallow — `actions/checkout`'s default | `UNVERIFIABLE-REV`, advisory |
+
+  So on the full checkout this Action's sample uses, a rewrite can turn an
+  *honest* anchor red: one whose cited code has legitimately moved since gets a
+  hard `FABRICATED` rather than the advisory `STALE` it was entitled to. Re-pin
+  those anchors to the new commit, or don't stamp.
+
+  **Stamping is opt-in.** No config key requires it, and an unstamped anchor is
+  checked entirely against the working tree — so a project that never stamps
+  has no dependency on commit reachability at all, and can squash, rebase and
+  force-push freely. What it forgoes is the two-axis split: without a stamp the
+  checker cannot tell *this was never true* from *this was true and the code
+  was deleted afterwards*, so honest documents go red on unrelated refactors.
