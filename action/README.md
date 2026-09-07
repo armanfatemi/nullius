@@ -61,6 +61,17 @@ your agent to anchor it and the description becomes verifiable. The body is
 read from the event payload, never interpolated into shell — it is
 PR-controlled content.
 
+**"Teach your agent" has a place to happen.** `nullius-kit init` appends a
+one-line pointer to your pull request template — `.github/PULL_REQUEST_TEMPLATE.md`
+or `.github/pull_request_template.md`, whichever you have — because that is the
+surface a contributor's coding agent reads before writing a PR body. `init`
+never creates the template and never rewrites the rest of it; if you have none,
+it prints the line for you to place yourself.
+
+Without that, this check runs on every pull request, finds zero grounding
+markers, and reports so truthfully — a green step that means "nobody was asked"
+and reads as "nothing was wrong".
+
 The comment is upserted by a hidden marker, so re-runs edit one comment
 instead of stacking new ones.
 

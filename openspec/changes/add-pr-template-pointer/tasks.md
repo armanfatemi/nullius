@@ -46,7 +46,7 @@ Settled in `design.md` Decision 4. Do not re-decide any of this at the keyboard.
 - [x] Absent PR template → not-found note, exit unchanged, no file created.
 - [x] Present but unreadable → `skip` with the existing "left alone rather than clobbered" reason.
 - [x] Pointer already present → `unchanged`, and running `init` twice is byte-identical.
-- [ ] `--dry-run` prints the same plan it would apply and writes nothing.
+- [x] `--dry-run` prints the same plan it would apply and writes nothing.
 
 ## 4. Tests
 
@@ -104,9 +104,9 @@ Settled in `design.md` Decision 4. Do not re-decide any of this at the keyboard.
 - [x] **Neither spelling present → the note fires.** Both hosts absent is the
       only condition that may emit the template group's not-found note; assert it
       does not fire when either one is present.
-- [ ] `packages/kit/src/init.cli.test.ts` — the write-log names the PR template.
+- [x] `packages/kit/src/init.cli.test.ts` — the write-log names the PR template.
 
-- [ ] **Document the case-insensitive caveat where a reader will hit it.** On a
+- [x] **Document the case-insensitive caveat where a reader will hit it.** On a
       case-insensitive filesystem a repository whose template is
       `.github/pull_request_template.md` matches at the uppercase entry, so the
       pointer lands correctly but `PlannedFile.path` — and therefore the
@@ -116,19 +116,19 @@ Settled in `design.md` Decision 4. Do not re-decide any of this at the keyboard.
 
 ## 5. Documentation
 
-- [ ] `openspec/changes/add-pr-template-pointer/specs/installer/spec.md` delta,
+- [x] `openspec/changes/add-pr-template-pointer/specs/installer/spec.md` delta,
       re-derived after Decision 4: the "exactly one appended line" scenario is
       about the template's own bytes, not about the run as a whole.
-- [ ] Append the pointer to this repository's **existing**
+- [x] Append the pointer to this repository's **existing**
       `.github/PULL_REQUEST_TEMPLATE.md` (dogfood). It already exists and
       already carries a checklist — append one line, do not rewrite the file.
-- [ ] `action/README.md` — cross-reference, since the PR-body check is what the pointer feeds.
-- [ ] CHANGELOG entry.
-- [ ] Rev-stamp every Evidence Anchor written into this change folder at
+- [x] `action/README.md` — cross-reference, since the PR-body check is what the pointer feeds.
+- [x] CHANGELOG entry.
+- [x] Rev-stamp every Evidence Anchor written into this change folder at
       authoring time (`git rev-parse --short HEAD` when the cited file is read).
       Do not repoint an existing line number under an old stamp; re-stamp both
       halves or leave the citation alone.
-- [ ] `node packages/claims/dist/cli.js check 'openspec/**/*.md'` passes.
+- [x] `node packages/claims/dist/cli.js check 'openspec/**/*.md'` passes.
 
 ## 6. Follow-ups (explicitly out of scope, tracked here)
 

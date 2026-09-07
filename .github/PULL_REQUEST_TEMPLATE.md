@@ -34,3 +34,5 @@
      checkout an honest anchor whose code has since moved then reports a hard
      FABRICATED instead of the advisory STALE it was entitled to. If one is
      squashed or rebased anyway, re-pin its anchors to the new commit. -->
+
+Load-bearing claims this description makes about existing code carry an Evidence Anchor — see `nullius.authoring.md`.
