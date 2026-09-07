@@ -432,17 +432,37 @@ function checkStamped(
     // The rev axis could not be settled. The working tree still gets checked,
     // and a PASSING verdict is simply borrowed.
     const fallback = checkUnstamped(claim, deps, driftWindow, minAnchorChars);
-    if (!isFailure(fallback.verdict)) {
-      // The verdict is borrowed; the repoint target is not. A stamped anchor
-      // never carries `foundLine`, even when the commit could not be read —
-      // `--fix` must have nothing to act on under an old stamp.
-      return { claim, verdict: fallback.verdict, detail: fallback.detail, stampUnhonoured: true };
-    }
 
     const why =
       atRev.status === "unknown-rev"
         ? `commit ${rev} is not in this clone`
         : atRev.reason;
+
+    if (!isFailure(fallback.verdict)) {
+      // The verdict is borrowed; the repoint target is not. A stamped anchor
+      // never carries `foundLine`, even when the commit could not be read —
+      // `--fix` must have nothing to act on under an old stamp.
+      //
+      // Neither is the borrowed PROSE safe as written. `checkUnstamped` can
+      // return `drift` or `wrong-line`, whose details end "update the
+      // citation" — advice that is correct for an unstamped anchor and is the
+      // one edit `never-repoint-under-old-stamp.md` says is never correct for
+      // a stamped one. An honoured stamp can never reach those verdicts: the
+      // post-gate path converts them to `advisory` or `stale` further down. So
+      // this branch was the only place in the kernel that told a reader to
+      // repoint under a hash, and it did it while silently skipping the gate
+      // that would have caught the repoint. The reason is appended here for
+      // the same purpose the two failing returns below append it.
+      return {
+        claim,
+        verdict: fallback.verdict,
+        detail:
+          fallback.detail === ""
+            ? `${why}, so only the working tree was checked`
+            : `${fallback.detail} — but ${why}, so the stamped half was never settled: re-stamp both halves rather than moving the line under the old hash`,
+        stampUnhonoured: true,
+      };
+    }
 
     // A FAILING verdict is a different question, because the rev is part of the
     // document and the document is untrusted. Softening on the strength of the

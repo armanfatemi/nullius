@@ -55,7 +55,15 @@ Its implementing task is recorded as complete:
 
 **Evidence:** `openspec/changes/archive/2026-09-01-add-stamp-failopen-control/tasks.md:34@0c52173` — `- [x] 2.2 Count stamps that could not be honoured and surface the total in the`
 
-**Evidence:** `grep -rn 'could not honour' packages/claims/src/` → 0 results
+No implementation existed. That claim is about the tree *before* this change, and
+it deliberately carries **no absence anchor**. An absence anchor cannot be pinned
+to a commit, so one written here would be re-run against the tree this proposal
+creates — and would return 0 only because the shipped wording is "could not *be*
+honoured" rather than "could not honour". It would pass for the wrong reason and
+certify "no implementation exists" about a tree where one does, which is the
+liability `fix-absence-anchor-liability` exists to describe. Check it at the
+parent commit instead: `git grep -n 'stampsUnhonoured' 0c52173 -- packages/claims/src/`
+returns nothing.
 
 So this is not a new capability being argued for. It is a requirement that
 shipped its verdict-semantics half and lost its reporting half, and a checked

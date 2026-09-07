@@ -154,7 +154,13 @@ document can influence:
 | Shallowness undeterminable (no git) | `UNVERIFIABLE-REV`, advisory — it could not be asked |
 | Full history | the working-tree verdict stands, failures included |
 
-Every row is **counted and reported**, whatever verdict came out of it. A run
+The table above is about a *failing* working-tree verdict. The case that made
+this reporting necessary is the row it does not have: the working-tree verdict
+**passes**, so no verdict changes and nothing above applies — and the stamped
+half was still never settled.
+
+Every unreadable commit is therefore **counted and reported**, whatever verdict
+came out of it. A run
 states how many rev-stamped anchors it could not honour and names the remedy
 that fits the clone — a deeper checkout where it is shallow, re-pinning where it
 is not, and neither where the question could not be put. The count is advisory

@@ -249,10 +249,10 @@ describe("renderJson — the Decision 5 schema", () => {
       verdicts: { ok: 2, drift: 1, fabricated: 1, "canary-present": 1 },
       failures: 2,
       // Nothing in this fixture is stamped, so the count is 0 and the clone was
-      // never asked — `unknown` is the honest answer to a question not put, and
-      // is deliberately not collapsed into "full".
+      // never asked. `not-asked` is deliberately distinct from `unknown` (the
+      // probe ran and could not answer) and from `full`.
       stampsUnhonoured: 0,
-      cloneHistory: "unknown",
+      cloneHistory: "not-asked",
       markerFloorFailed: true,
       next: null,
     });
@@ -486,6 +486,50 @@ describe("unhonoured stamps are reported, and never change the exit code", () =>
     const parsed = JSON.parse(renderJson(summarize([withUnhonoured(3)], false, "shallow"))) as CheckReport;
     expect(parsed.summary.stampsUnhonoured).toBe(3);
     expect(parsed.summary.cloneHistory).toBe("shallow");
+  });
+
+  it("does not headline a card as fully verified when a stamp went unhonoured", () => {
+    // The card headline is computed separately from the body line, so it could
+    // — and did — print "all grounding markers verified" three lines above the
+    // sentence saying one was not. Both arms: the false headline is gone, and
+    // an ordinary clean run still gets it.
+    const card = renderCard(buildReport(summarize([withUnhonoured(1)], false, "full")));
+    expect(card).not.toContain("all grounding markers verified");
+    expect(card).toContain("grounding markers fully verified");
+
+    // A genuinely clean document — `anchored()` carries a FABRICATED result, so
+    // it never reaches the all-clear headline and would prove nothing here.
+    const clean: CheckedDocument = {
+      doc: DOC,
+      lines: 24,
+      claims: [presence(5, "ok", "").claim],
+      results: [presence(5, "ok", "")],
+      guard: null,
+      plan: null,
+    };
+    expect(renderCard(buildReport(summarize([clean], false)))).toContain(
+      "all grounding markers verified",
+    );
+  });
+
+  it("keeps `not-asked` distinct from `unknown`", () => {
+    // The probe is skipped when nothing went unhonoured, and reporting that as
+    // `unknown` would tell a consumer the clone could not be inspected when in
+    // fact nobody had reason to. Both are also distinct from `full`.
+    expect(summarize([anchored()], false).cloneHistory).toBe("not-asked");
+    expect(summarize([withUnhonoured(1)], false, "unknown").cloneHistory).toBe("unknown");
+    expect(summarize([withUnhonoured(1)], false, "full").cloneHistory).toBe("full");
+  });
+
+  it("renders a summary parsed from a document written before this field existed", () => {
+    // The backward-compat branch `unhonouredStampsLine` guards for. Its comment
+    // claimed a JSON document lacking the field must not throw or coerce; this
+    // is the assertion that makes the claim checkable rather than asserted.
+    const legacy = buildReport(summarize([anchored()], false)).summary;
+    const stripped = { ...legacy } as Record<string, unknown>;
+    delete stripped["stampsUnhonoured"];
+    delete stripped["cloneHistory"];
+    expect(unhonouredStampsLine(stripped as unknown as typeof legacy)).toBeNull();
   });
 });
 

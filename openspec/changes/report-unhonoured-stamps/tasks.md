@@ -48,6 +48,8 @@
       about stamps, so the spec and the output agree.
 - [x] 4.2 Note the reported total in `action/README.md`, next to the checkout-depth
       guidance it makes actionable — a shallow adopter now has a way to notice.
-- [x] 4.3 Re-run every dogfooding gate. The repo's own `openspec/**` check
-      carries 105 `stale` verdicts today; confirm the new line reports 0
-      unhonoured stamps there, since those commits all resolve.
+- [x] 4.3 Re-run every dogfooding gate. Confirm the new line reports 0
+      unhonoured stamps on the repo's own `openspec/**` check, since those
+      commits all resolve. (The `stale` count is deliberately not quoted here:
+      it moves with every change, including this one's own documents, so a
+      number written down is a number that will be wrong when it is read.)

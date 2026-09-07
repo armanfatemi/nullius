@@ -589,3 +589,62 @@ describe("an unhonoured stamp is counted even when the fallback passes", () => {
     expect(unstampedResult?.stampUnhonoured).toBeUndefined();
   });
 });
+
+describe("a borrowed verdict never inherits repoint advice", () => {
+  /**
+   * `checkUnstamped` returns `drift` / `wrong-line` with details ending
+   * "update the citation". An HONOURED stamped anchor can never reach those —
+   * the post-gate path converts them to `advisory` or `stale`. The borrowed
+   * path is the only route by which that sentence can land on a stamped
+   * anchor, and following it is the one edit `never-repoint-under-old-stamp.md`
+   * says is never correct: the gate that would have caught the repoint is
+   * exactly the gate that did not run.
+   */
+  /** Within the drift window of the cited line 2. */
+  const MOVED = ["", "", "", "", "  const attempts = 5;"];
+  /** Far outside it — the `wrong-line` arm of the same family. */
+  const MOVED_FAR = [...Array<string>(19).fill(""), "  const attempts = 5;"];
+
+  it.each([
+    ["drift", MOVED],
+    ["wrong-line", MOVED_FAR],
+  ])("warns against repointing when it borrows a %s verdict", (verdict, current) => {
+    const [result] = checkClaims(
+      [stamped(2, "  const attempts = 5;")],
+      deps(current, { status: "unknown-rev" }, false),
+    );
+
+    expect(result?.verdict).toBe(verdict);
+    expect(isFailure(result?.verdict ?? "ok")).toBe(false);
+    expect(result?.stampUnhonoured).toBe(true);
+    // The inherited half still says "update the citation"; what follows it is
+    // the correction that stops a reader acting on that under an old hash.
+    expect(result?.detail).toContain("update the citation");
+    expect(result?.detail).toContain("the stamped half was never settled");
+    expect(result?.detail).toContain("re-stamp both halves");
+  });
+
+  it("still explains itself when the borrowed verdict has no detail of its own", () => {
+    // The `ok` case: nothing to append to, so the sentence stands alone rather
+    // than leaving the anchor indistinguishable from one that verified.
+    const [result] = checkClaims(
+      [stamped(2, "  const attempts = 5;")],
+      deps(AT_REV, { status: "unknown-rev" }, false),
+    );
+
+    expect(result?.verdict).toBe("ok");
+    expect(result?.detail).toContain("only the working tree was checked");
+  });
+
+  it("leaves an honoured stamped anchor's prose alone", () => {
+    // The other arm: a stamp that WAS read must not gain any of this wording.
+    const [result] = checkClaims(
+      [stamped(2, "  const attempts = 5;")],
+      deps(MOVED, { status: "ok", lines: AT_REV }, false),
+    );
+
+    expect(result?.stampUnhonoured).toBeUndefined();
+    expect(result?.detail).not.toContain("re-stamp both halves");
+    expect(result?.detail).not.toContain("only the working tree was checked");
+  });
+});

@@ -324,6 +324,14 @@ function report(results: readonly ClaimResult[]): void {
 
     if (result.verdict === "ok") {
       console.log(`${label(result).padEnd(13)} ${where}  ${what}`);
+      // An `ok` normally has nothing to add, and prints none. The exception is
+      // an `ok` the stamp did not earn: the run's summary line says "re-pin
+      // those anchors", and without this the anchors it means are the ones
+      // rendered identically to every anchor that verified properly. A remedy
+      // naming a set the output does not identify is not a remedy.
+      if (result.stampUnhonoured === true && result.detail.length > 0) {
+        console.log(`              ~ ${result.detail}`);
+      }
       continue;
     }
 
@@ -1510,9 +1518,11 @@ function collectCheck(
   const anyUnhonoured = documents.some((document) =>
     allResults(document).some((result) => result.stampUnhonoured === true),
   );
-  const shallow = anyUnhonoured ? (deps.isShallowRepository?.() ?? null) : null;
-  const cloneHistory: CloneHistory =
-    shallow === true ? "shallow" : shallow === false ? "full" : "unknown";
+  const cloneHistory: CloneHistory = !anyUnhonoured
+    ? "not-asked"
+    : ((shallow) => (shallow === true ? "shallow" : shallow === false ? "full" : "unknown"))(
+        deps.isShallowRepository?.() ?? null,
+      );
 
   return summarize(documents, args.requireMarkers, cloneHistory);
 }
