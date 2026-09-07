@@ -87,6 +87,24 @@ export interface ClaimResult {
    * read, but a stamped anchor never carries a line `--fix` could act on.
    */
   foundLine?: number;
+  /**
+   * Set on a STAMPED result whose commit could not be read, whatever verdict
+   * the working-tree fallback then produced.
+   *
+   * The failing path already says so in its `detail`, because a reader is
+   * looking at that verdict anyway. The passing path said nothing at all, and
+   * that is the case this field exists for: the anchor's hard gate — "this text
+   * was in this file at that commit" — did not run, the working tree happened
+   * to agree, and the run went on to report `ok` and "All N grounding marker(s)
+   * verified." A verification that did not happen, reported as one that did.
+   *
+   * It is deliberately NOT a verdict. The verdict answers a question about the
+   * claim, and the claim is fine — the quote is where the author said it was.
+   * What could not be answered is a question about the *clone*, and putting
+   * that in the column readers use to judge authors is the confusion the
+   * shallow-clone discriminator below exists to avoid.
+   */
+  stampUnhonoured?: true;
 }
 
 export type SearchOutcome =
@@ -414,17 +432,37 @@ function checkStamped(
     // The rev axis could not be settled. The working tree still gets checked,
     // and a PASSING verdict is simply borrowed.
     const fallback = checkUnstamped(claim, deps, driftWindow, minAnchorChars);
-    if (!isFailure(fallback.verdict)) {
-      // The verdict is borrowed; the repoint target is not. A stamped anchor
-      // never carries `foundLine`, even when the commit could not be read —
-      // `--fix` must have nothing to act on under an old stamp.
-      return { claim, verdict: fallback.verdict, detail: fallback.detail };
-    }
 
     const why =
       atRev.status === "unknown-rev"
         ? `commit ${rev} is not in this clone`
         : atRev.reason;
+
+    if (!isFailure(fallback.verdict)) {
+      // The verdict is borrowed; the repoint target is not. A stamped anchor
+      // never carries `foundLine`, even when the commit could not be read —
+      // `--fix` must have nothing to act on under an old stamp.
+      //
+      // Neither is the borrowed PROSE safe as written. `checkUnstamped` can
+      // return `drift` or `wrong-line`, whose details end "update the
+      // citation" — advice that is correct for an unstamped anchor and is the
+      // one edit `never-repoint-under-old-stamp.md` says is never correct for
+      // a stamped one. An honoured stamp can never reach those verdicts: the
+      // post-gate path converts them to `advisory` or `stale` further down. So
+      // this branch was the only place in the kernel that told a reader to
+      // repoint under a hash, and it did it while silently skipping the gate
+      // that would have caught the repoint. The reason is appended here for
+      // the same purpose the two failing returns below append it.
+      return {
+        claim,
+        verdict: fallback.verdict,
+        detail:
+          fallback.detail === ""
+            ? `${why}, so only the working tree was checked`
+            : `${fallback.detail} — but ${why}, so the stamped half was never settled: re-stamp both halves rather than moving the line under the old hash`,
+        stampUnhonoured: true,
+      };
+    }
 
     // A FAILING verdict is a different question, because the rev is part of the
     // document and the document is untrusted. Softening on the strength of the
@@ -442,6 +480,7 @@ function checkStamped(
         claim,
         verdict: fallback.verdict,
         detail: `${fallback.detail} — and ${why}, though this clone has full history, so the stamp could not be honoured and cannot excuse it (if the branch was squash-merged, re-pin the anchor to the squash commit)`,
+        stampUnhonoured: true,
       };
     }
 
@@ -449,6 +488,7 @@ function checkStamped(
       claim,
       verdict: "unverifiable-rev",
       detail: `${fallback.detail} — and ${why}, so this could not be settled against the commit it names (a shallow clone cannot check history: fetch the full one, e.g. actions/checkout with fetch-depth: 0)`,
+      stampUnhonoured: true,
     };
   }
 

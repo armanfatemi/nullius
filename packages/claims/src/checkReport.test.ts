@@ -15,6 +15,8 @@ import {
   type CheckReport,
   renderCard,
   REPORT_VERSION,
+  buildReport,
+  unhonouredStampsLine,
 } from "./checkReport";
 import type { RewritePlan } from "./rewrite";
 
@@ -246,6 +248,11 @@ describe("renderJson — the Decision 5 schema", () => {
       absenceAnchors: 1,
       verdicts: { ok: 2, drift: 1, fabricated: 1, "canary-present": 1 },
       failures: 2,
+      // Nothing in this fixture is stamped, so the count is 0 and the clone was
+      // never asked. `not-asked` is deliberately distinct from `unknown` (the
+      // probe ran and could not answer) and from `full`.
+      stampsUnhonoured: 0,
+      cloneHistory: "not-asked",
       markerFloorFailed: true,
       next: null,
     });
@@ -428,3 +435,101 @@ describe("renderCard", () => {
     expect(actual).toBe(readFileSync(path, "utf8"));
   });
 });
+
+describe("unhonoured stamps are reported, and never change the exit code", () => {
+  /** One document, one passing anchor whose stamp could not be read. */
+  function withUnhonoured(count: number): CheckedDocument {
+    const results: ClaimResult[] = Array.from({ length: count }, (_unused, index) => ({
+      ...presence(5 + index, "ok", "", { rev: "a1b2c3d" }),
+      stampUnhonoured: true as const,
+    }));
+    return { doc: DOC, lines: 24, claims: results.map((r) => r.claim), results, guard: null, plan: null };
+  }
+
+  it("counts a stamp that went unread even though its verdict passed", () => {
+    const run = summarize([withUnhonoured(1)], false, "full");
+    expect(run.stampsUnhonoured).toBe(1);
+    expect(run.failures).toBe(0);
+    // The whole point: advisory. A run that could not read a commit is not a
+    // run that caught anybody at anything.
+    expect(exitCode(run)).toBe(0);
+  });
+
+  it("names re-pinning on a full clone and a deeper checkout on a shallow one", () => {
+    const full = unhonouredStampsLine(buildReport(summarize([withUnhonoured(2)], false, "full")).summary);
+    expect(full).toContain("2 rev-stamped anchors could not be honoured");
+    expect(full).toContain("re-pin");
+    expect(full).not.toContain("fetch-depth");
+
+    const shallow = unhonouredStampsLine(buildReport(summarize([withUnhonoured(1)], false, "shallow")).summary);
+    expect(shallow).toContain("fetch-depth: 0");
+    expect(shallow).not.toContain("re-pin");
+  });
+
+  it("offers neither remedy when the clone could not be asked", () => {
+    const unknown = unhonouredStampsLine(buildReport(summarize([withUnhonoured(1)], false, "unknown")).summary);
+    expect(unknown).toContain("could not be determined");
+    expect(unknown).not.toContain("re-pin");
+    expect(unknown).not.toContain("fetch-depth");
+  });
+
+  it("says nothing at all when every stamp was honoured", () => {
+    // The arm that stops this becoming a line on every run. `anchored()` carries
+    // no unhonoured stamp, so the report must gain no sentence about them.
+    const run = summarize([anchored()], false, "full");
+    expect(run.stampsUnhonoured).toBe(0);
+    expect(unhonouredStampsLine(buildReport(run).summary)).toBeNull();
+    expect(renderCard(buildReport(run))).not.toContain("could not be honoured");
+  });
+
+  it("carries the count and the clone state into the JSON summary", () => {
+    const parsed = JSON.parse(renderJson(summarize([withUnhonoured(3)], false, "shallow"))) as CheckReport;
+    expect(parsed.summary.stampsUnhonoured).toBe(3);
+    expect(parsed.summary.cloneHistory).toBe("shallow");
+  });
+
+  it("does not headline a card as fully verified when a stamp went unhonoured", () => {
+    // The card headline is computed separately from the body line, so it could
+    // — and did — print "all grounding markers verified" three lines above the
+    // sentence saying one was not. Both arms: the false headline is gone, and
+    // an ordinary clean run still gets it.
+    const card = renderCard(buildReport(summarize([withUnhonoured(1)], false, "full")));
+    expect(card).not.toContain("all grounding markers verified");
+    expect(card).toContain("grounding markers fully verified");
+
+    // A genuinely clean document — `anchored()` carries a FABRICATED result, so
+    // it never reaches the all-clear headline and would prove nothing here.
+    const clean: CheckedDocument = {
+      doc: DOC,
+      lines: 24,
+      claims: [presence(5, "ok", "").claim],
+      results: [presence(5, "ok", "")],
+      guard: null,
+      plan: null,
+    };
+    expect(renderCard(buildReport(summarize([clean], false)))).toContain(
+      "all grounding markers verified",
+    );
+  });
+
+  it("keeps `not-asked` distinct from `unknown`", () => {
+    // The probe is skipped when nothing went unhonoured, and reporting that as
+    // `unknown` would tell a consumer the clone could not be inspected when in
+    // fact nobody had reason to. Both are also distinct from `full`.
+    expect(summarize([anchored()], false).cloneHistory).toBe("not-asked");
+    expect(summarize([withUnhonoured(1)], false, "unknown").cloneHistory).toBe("unknown");
+    expect(summarize([withUnhonoured(1)], false, "full").cloneHistory).toBe("full");
+  });
+
+  it("renders a summary parsed from a document written before this field existed", () => {
+    // The backward-compat branch `unhonouredStampsLine` guards for. Its comment
+    // claimed a JSON document lacking the field must not throw or coerce; this
+    // is the assertion that makes the claim checkable rather than asserted.
+    const legacy = buildReport(summarize([anchored()], false)).summary;
+    const stripped = { ...legacy } as Record<string, unknown>;
+    delete stripped["stampsUnhonoured"];
+    delete stripped["cloneHistory"];
+    expect(unhonouredStampsLine(stripped as unknown as typeof legacy)).toBeNull();
+  });
+});
+

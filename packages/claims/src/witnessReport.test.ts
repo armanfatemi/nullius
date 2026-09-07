@@ -900,6 +900,8 @@ describe("canary redaction", () => {
         absenceAnchors: 0,
         verdicts: { "canary-present": 1 },
         failures: 1,
+        stampsUnhonoured: 0,
+        cloneHistory: "unknown" as const,
         markerFloorFailed: false,
         next: null,
       },
