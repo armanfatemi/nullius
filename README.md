@@ -121,16 +121,15 @@ their PR description without them learning a tool. Point at it from
 `CONTRIBUTING.md` and the CI gate becomes the thing that enforces it rather than
 a reviewer's patience.
 
+`init` also appends a pointer to your pull request template
+(`.github/PULL_REQUEST_TEMPLATE.md`, either casing) if you have one — the surface
+a contributor's agent reads before writing the PR body the Action checks. As with
+`CLAUDE.md`, it never creates the file and never rewrites the rest of it.
+
 **Start advisory.** `strict` is `false` by default, so the Action comments and
 never blocks. Run it that way until you trust the verdicts on your own
 repository — the [design principles](#design-principles) argue why that ordering
 matters, and turning it into a hard gate later is one input.
-
-> [!NOTE]
-> Not yet built: nullius does not write or update a pull-request template. That
-> is [an open proposal](openspec/changes/add-pr-template-pointer/), not a
-> feature — the contributor-facing convention today is `nullius.authoring.md`
-> plus whatever your `CONTRIBUTING.md` says about it.
 
 ---
 
