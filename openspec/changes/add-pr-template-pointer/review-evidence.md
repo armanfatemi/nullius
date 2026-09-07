@@ -1040,3 +1040,162 @@ anchors, 0 search anchors, all verified.
   because the narrowed design is better on every axis the review raised, and my
   instinct was to fix the six-path version rather than ask whether it should
   exist.
+
+## Stage 5 — Verify chunk 1 (grouped pointer hosts)
+
+build: pass
+type-check: pass
+test: pass (1252 + 477 tests; exactly 6 failures, all in flagConformance.test.ts — the ugrep baseline. Verified as one file and exactly six, not eyeballed.)
+dogfood gates: pass, both polarities — valid-run 0, broken-run still 1, wiring-valid 0, wiring-broken still 1, wiring . 0, check openspec 0
+
+Note on one gate: the skill's Stage 5 list runs
+`check 'README.md' 'spec/**/*.md' --require-markers`, which fails. CI runs
+`check 'spec/**/*.md' --require-markers` (ci.yml:265), without README.md, and
+that exits 0. Confirmed the failure is pre-existing and unrelated by running the
+skill's form against a pristine `origin/main` worktree, where it reproduces byte
+for byte. README.md is checked separately at ci.yml:305 with `--format card` and
+`|| true`. The skill's command is stricter than the gate it stands in for;
+recorded rather than "fixed" by editing a README this change does not touch.
+
+## Stage 6 — Post-review (routed on the diff)
+
+Reviewer set re-derived from `git diff --name-only origin/main...HEAD | route-paths`,
+not re-used from Stage 2. **checker-engineer was dispatched for the first time**:
+at pre-review no code existed and its justification would have been generic; the
+diff now contains a real contract change in `render.ts`. All four dispatched.
+
+**Zero `[blocker]` labels across all four reports.** One item is treated as
+blocking anyway, under the cross-reviewer convergence rule — see B10. Because no
+reviewer used the `[blocker]` tag, the recorder extracted no findings this round,
+and `findings --open` is empty for that reason rather than because nothing was
+found. Recording that here so an empty list is not read as a clean sweep.
+
+## Treated as blocking by convergence
+
+### B10 — an unreadable first host shadows the second, and nobody had written it down
+
+**checker-engineer** (Q3) and **architecture-reviewer** (concern 2),
+independently. `planGroup` returns on the first host that *exists*, and an
+unreadable file exists — so an unreadable `.github/PULL_REQUEST_TEMPLATE.md`
+yields a skip and `.github/pull_request_template.md` is never probed.
+
+Both reviewers concluded the behaviour is right, and so do I: `existsSync` has
+already elected that host, and members of a group are spellings of ONE document,
+so falling through would annotate a second copy of something the reader may only
+ever see one of. checker-engineer noted it is unchanged behaviour; architecture-
+reviewer noted it is newly *reachable*, because this is the first group whose two
+members plausibly coexist. Both are true and the second is why it needed writing
+down.
+
+Fixed by documenting it — in the code at the branch itself, and in Decision 5 —
+not by changing it.
+
+## Fixed, though filed as concerns
+
+### C16 — the CHANGELOG asserted a release nobody published
+
+**architecture-reviewer.** I wrote `## kit 0.8.0` while
+`packages/kit/package.json` is `0.7.0`. This repository's feature commits write
+`## Unreleased`, and the release commit mints the version name — `1b822a7` did
+exactly that, renaming `## Unreleased` into `## 0.13.0`, `## kit 0.7.0` and
+`## action v1.3.0` in one commit. Verified the convention in git history rather
+than taking the reviewer's word. Corrected to `## Unreleased` with a `### kit`
+subsection.
+
+Fixed rather than deferred because it is a false statement in a committed
+document, and the fix is a heading.
+
+### C17 — a test comment that overstated what the test guards [corrected-coordinator]
+
+**test-engineer**, and this one is worth more than its size. I wrote that the
+within-group exclusivity test exists to catch "the exact flat-list collapse".
+test-engineer traced the mutation and found it does not: flattening the two
+groups into one four-host list still resolves `CLAUDE.md` first and never touches
+`AGENTS.md`, so the test stays green. What actually catches the flat-list
+collapse is the sibling "visits every group" test. This one catches the opposite
+mutation — splitting the pair into two single-host groups.
+
+The test is fine. The comment above it was false, and a comment that misstates
+what a test protects is worse than no comment, because the next person to weaken
+that test will read it and be reassured. Corrected to say what it guards.
+
+### C18 — two near-identical anchor instructions in this repo's own template
+
+**architecture-reviewer.** The dogfooded pointer landed after a checklist whose
+item already read "Load-bearing claims about existing code carry Evidence
+Anchors". A contributor saw two similar instructions with different subjects.
+Scoped the checklist item to "the files you changed", leaving the description to
+the appended pointer.
+
+The reviewer called this "Open question 1 arriving early" — whether a template
+sentence reads as instruction or noise. It is, and it is worth noting that the
+first evidence on that question came from this change's own dogfooding.
+
+That edit changed text `proposal.md` cites. The anchor correctly degraded to the
+advisory `STALE` ("verified at 78c13a0; that text is no longer in the file"), and
+was then re-stamped on **both halves** against the commit that contains the new
+text. Not repointed under the old hash.
+
+## Carried to the PR body, not fixed
+
+- **[checker-engineer]** The `skip` branch emits no note, while the not-found
+  branch hands the user the sentence to paste. A repo whose `CLAUDE.md` is
+  unreadable gets "could not be read" and no line to add. Newly *visible* because
+  notes became a group-level mechanism; the behaviour itself is unchanged by this
+  diff. Small ergonomic gap, deferred rather than fixed, because widening the
+  note surface is a separate decision from placing the pointer.
+
+## Verified clean
+
+- **rule-auditor** returned no blockers, no concerns and no false premises. It
+  confirmed the anchor re-stamp was both-halves against `git show 78c13a0`,
+  verified the PR-template append is byte-identical to `render.ts`'s mechanism
+  using `od -c`, confirmed `.claude/settings.json` is untouched, and checked all
+  three commits for sweep contamination.
+- **test-engineer** traced both post-hoc CLI tests against the pre-diff
+  `planPointer` and confirmed neither would pass — they regress-test real
+  behaviour rather than being shaped to pass. It also confirmed the CI
+  case-sensitivity guard fires in the environment it protects rather than being
+  inverted.
+- **architecture-reviewer** re-derived every row of the compatibility table from
+  the shipped code, including row 5, and confirmed the agent-instructions
+  not-found note is byte-identical to its pre-change form — which was the
+  compatibility promise.
+- **checker-engineer** declined to manufacture a kernel finding, saying plainly
+  that nothing here touches the kernel. It verified empirically that neither
+  pointer sentence contains the other under whitespace collapsing, which was the
+  real risk in moving the idempotence check per-group. Independently reproduced.
+
+## Coordinator corrections since last append
+
+- **A comment I wrote claimed a test caught a bug it does not catch.** C17. Not
+  found by any gate — the test passes, the code is right, and only a reviewer
+  tracing the mutation by hand could have found it. This is the second time this
+  run that something true-sounding and unverifiable-by-machine got past me, after
+  the directory-form mechanism at iteration 4.
+- **I asserted a version number instead of reading one.** C16. `## kit 0.8.0` was
+  invented; `package.json` says `0.7.0` and the repository has a convention for
+  exactly this situation that I did not check for.
+- **A stray non-English word reached a commit message** (`следующий` for "next")
+  and was amended out before push. Trivial, and recorded because the alternative
+  is a silent amend.
+- **I put a wrong commit hash in `progress.md`** — `2a0e5ca` for what is actually
+  `6d1d60a` — and caught it by listing the log rather than by any check. A
+  committed document naming a commit that does not exist is the same class of
+  defect this repository builds tooling against, in a file no tooling reads.
+
+## Stage 5 — Verify chunk 2 (post-review fixes)
+
+build: pass
+type-check: pass
+test: pass (exactly 6 failures, all in flagConformance.test.ts — the ugrep baseline)
+dogfood gates: pass, both polarities
+openspec validate: clean
+check openspec: pass — 5 advisory STALE in this change folder, 0 hard failures
+
+On those five STALE: they are caused by this change's own implementation moving
+the `render.ts` lines the proposal cited. That is the rev-stamp design working —
+the change cited code it was about to modify, the modification happened, and
+because the anchors carry a stamp the immutable half held while only the line
+numbers degraded to advisory. Unstamped, the same five would now report hard
+FABRICATED. They are left exactly as written, per never-repoint-under-old-stamp.

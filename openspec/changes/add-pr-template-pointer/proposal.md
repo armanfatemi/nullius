@@ -20,7 +20,7 @@ pull request template, and `init` does not touch it.
 This repository is the illustration rather than the counterexample. It *does*
 have a pull request template, and that template already asks for anchors —
 
-**Evidence:** `.github/PULL_REQUEST_TEMPLATE.md:27@78c13a0` — `- [ ] Load-bearing claims about existing code carry Evidence Anchors, verified`
+**Evidence:** `.github/PULL_REQUEST_TEMPLATE.md:27@87872c2` — `- [ ] Load-bearing claims **in the files you changed** carry Evidence Anchors, verified`
 
 — but that checklist item was written by hand, is about the code the diff
 touches, and says nothing about the PR description the Action actually reads.
