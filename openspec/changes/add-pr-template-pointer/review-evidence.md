@@ -1199,3 +1199,56 @@ the change cited code it was about to modify, the modification happened, and
 because the anchors carry a stamp the immutable half held while only the line
 numbers degraded to advisory. Unstamped, the same five would now report hard
 FABRICATED. They are left exactly as written, per never-repoint-under-old-stamp.
+
+## Stage 8 — PR opened, and the body failed its own check first
+
+PR: https://github.com/armanfatemi/nullius/pull/102 — base `main`, not stacked.
+CI: `claims` and `verify` both pass on the real GNU grep and ripgrep, confirming
+the six local `flagConformance` failures were the ugrep baseline.
+
+**The first CI run caught that this PR's own description carried no Evidence
+Anchors.** The claims comment reported `1 matched document carries no grounding
+markers: .nullius-pr-description.md`. The change whose entire purpose is to get
+anchors into pull request descriptions had opened with a description containing
+none.
+
+Four anchors added and verified with `check` before re-publishing: `action.yml:21`
+for the claim about what the PR-body check is, and `render.ts:331/302/69` for the
+three load-bearing statements the summary makes about the loop, the constant, and
+the disposition at line 69. All `OK` at `@85a859f`.
+
+Worth recording as more than an embarrassment: it is the first end-to-end
+demonstration that the Action's PR-body check works on the surface this change
+exists to feed, and it was produced by the gate rather than by anyone noticing.
+
+**No run envelope committed.** The bundle failed the mandatory pre-commit leak
+scan — 5 `CANARY-` verdicts and 6 copies of the planted sentence in
+`.journals[].lines[]`, with operator home paths correctly scrubbed at 0. Three
+previously-committed bundles carry the same leak, so the redaction was fixed for
+`$HOME` and never extended to probe content. User decision: open without it and
+say so, rather than publish the plant a fourth time.
+
+**`witness validate` exits 1** on 7 `DUPLICATE-ID` records, all of them `p:`
+prompt records — the harness reuses the human turn's prompt id when a background
+agent wakes the session, and this run made 15 dispatches. Zero
+`SUPPRESSED-FINDING`.
+
+## Coordinator corrections since last append
+
+- **I opened a PR about anchoring PR descriptions with a PR description that had
+  no anchors.** Caught by the repository's own CI on the first run, not by me,
+  and not by any of the four Stage 8 pre-flight checks I ran — none of which
+  looks at the body being composed. If there is one finding from this run worth
+  keeping, it is that the Stage 8 template says the anchor convention applies to
+  the PR body and nothing verifies it before publishing.
+- **I read a pipeline's exit code as the command's, twice.** Once as `head`'s
+  when checking whether a fixture contained `retry`, and once as `tail`'s when
+  checking `witness validate`, where it turned a real exit 1 into a reported
+  exit 0. Both caught within the same message by noticing the output contradicted
+  the code. The second one matters more: it briefly reported a failing validate
+  as passing, which is the precise shape of the failure this repository exists to
+  prevent.
+- **Two figures in the PR body were stale when written** — 314 code lines and
+  1900+ total, against an actual 326 and 2125 — because the README commit landed
+  after I drafted the body. Corrected by re-measuring before publishing rather
+  than after.
