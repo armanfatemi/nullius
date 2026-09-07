@@ -182,6 +182,13 @@ in the step summary.
   hard `FABRICATED` rather than the advisory `STALE` it was entitled to. Re-pin
   those anchors to the new commit, or don't stamp.
 
+  **Either way the run says so.** A check that could not read a stamped commit
+  reports how many stamps went unhonoured and which remedy applies, and stops
+  claiming every marker was verified. That line is how you notice a shallow
+  checkout: on `fetch-depth: 1` every stamp older than the tip is unreadable, the
+  working tree usually agrees anyway, and without the count the run looks
+  identical to one that genuinely verified them.
+
   **Stamping is opt-in.** No config key requires it, and an unstamped anchor is
   checked entirely against the working tree — so a project that never stamps
   has no dependency on commit reachability at all, and can squash, rebase and

@@ -23,6 +23,8 @@ import {
   exitCode,
   label,
   buildReport,
+  unhonouredStampsLine,
+  type CloneHistory,
   renderCard,
   renderJson,
   summarize,
@@ -1500,7 +1502,19 @@ function collectCheck(
     documents.push({ doc, lines, claims, results, guard, plan });
   }
 
-  return summarize(documents, args.requireMarkers);
+  // Asked only when something went unhonoured, and memoised by `onceShallow`
+  // either way — so a run with no stamps, or one whose every stamp was read,
+  // still never spawns git for this. The probe answers three ways and all
+  // three are kept: `null` is "could not ask", which is not the same as
+  // "full" and must not be reported as either remedy.
+  const anyUnhonoured = documents.some((document) =>
+    allResults(document).some((result) => result.stampUnhonoured === true),
+  );
+  const shallow = anyUnhonoured ? (deps.isShallowRepository?.() ?? null) : null;
+  const cloneHistory: CloneHistory =
+    shallow === true ? "shallow" : shallow === false ? "full" : "unknown";
+
+  return summarize(documents, args.requireMarkers, cloneHistory);
 }
 
 /** Human renderer, first half: one block per document that had anything to say. */
@@ -1576,11 +1590,27 @@ function renderHumanSummary(run: CheckRun): void {
   // a repository the tool has not examined. It prints on stdout whatever the
   // exit code — under --require-markers the floor's stderr block above says
   // why the run failed; this says what to do about it.
+  // A stamp the run could not read means the anchor's hard gate — "this text
+  // was in this file at that commit" — did not run. Saying "all verified"
+  // after that asserts more than the run established, so the sentence changes
+  // rather than gaining a caveat: appending the count after the word
+  // `verified` leaves the false claim standing and asks the reader to subtract.
+  const unhonoured = unhonouredStampsLine(buildReport(run).summary);
+
   if (run.next !== null) {
     console.log(`next: ${run.next}`);
   } else if (exitCode(run) === 0) {
-    console.log(`All ${run.checked} grounding marker(s) verified.`);
+    console.log(
+      unhonoured === null
+        ? `All ${run.checked} grounding marker(s) verified.`
+        : `${String(run.checked - run.stampsUnhonoured)} of ${String(run.checked)} grounding marker(s) fully verified.`,
+    );
   }
+
+  // Printed whatever the exit code and whatever the funnel did: the fact that a
+  // stamp went unread is true of the run either way, and is exactly the fact a
+  // reader of a green run has no other way to learn.
+  if (unhonoured !== null) console.log(unhonoured);
 }
 
 /**

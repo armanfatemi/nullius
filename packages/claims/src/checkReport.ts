@@ -44,6 +44,9 @@ export interface UnanchoredDocument {
 }
 
 /** Everything a renderer needs, and everything the exit code is computed from. */
+/** Whether the clone can see its own history: the question `git rev-parse --is-shallow-repository` answers, plus the case where it could not be put. */
+export type CloneHistory = "full" | "shallow" | "unknown";
+
 export interface CheckRun {
   documents: CheckedDocument[];
   /** Documents whose PARSED results are empty — a guard alone does not anchor a document. */
@@ -57,6 +60,23 @@ export interface CheckRun {
   /** `--require-markers` was set and at least one document carried no marker. */
   markerFloorFailed: boolean;
   guardFired: boolean;
+  /**
+   * Rev-stamped anchors whose commit this run could not read, counted whatever
+   * verdict the working-tree fallback then produced.
+   *
+   * Advisory by construction: an unreadable commit is not evidence about the
+   * author, and this count does not reach `failures`. It exists because the
+   * PASSING case was otherwise silent — the hard gate did not run, the working
+   * tree agreed, and the report said every marker was verified.
+   */
+  stampsUnhonoured: number;
+  /**
+   * What the clone could tell us about its own history. Decides which remedy
+   * the report names for `stampsUnhonoured`, because the two are opposite:
+   * `shallow` wants a deeper checkout, `full` wants the anchors re-pinned, and
+   * `unknown` is not entitled to advise either.
+   */
+  cloneHistory: CloneHistory;
   /**
    * The funnel command (`nullius audit <doc> --propose`) when the run matched
    * documents but found no grounding markers; null otherwise. Both renderers
@@ -78,13 +98,18 @@ export function countFailures(results: readonly ClaimResult[]): number {
  * Derives every count from the collected documents. Pure, so a fixed result
  * set can pin the failure count and the marker-floor flag without spawning.
  */
-export function summarize(documents: CheckedDocument[], requireMarkers: boolean): CheckRun {
+export function summarize(
+  documents: CheckedDocument[],
+  requireMarkers: boolean,
+  cloneHistory: CloneHistory = "unknown",
+): CheckRun {
   const unanchored: UnanchoredDocument[] = [];
   let checked = 0;
   let presenceAnchors = 0;
   let absenceAnchors = 0;
   let failures = 0;
   let guardFired = false;
+  let stampsUnhonoured = 0;
 
   for (const document of documents) {
     // The guard is not a grounding marker: density reports what the AUTHOR
@@ -97,6 +122,7 @@ export function summarize(documents: CheckedDocument[], requireMarkers: boolean)
     presenceAnchors += document.claims.filter((claim) => claim.kind === "presence").length;
     absenceAnchors += document.claims.filter((claim) => claim.kind === "absence").length;
     failures += countFailures(allResults(document));
+    stampsUnhonoured += allResults(document).filter((result) => result.stampUnhonoured === true).length;
   }
 
   return {
@@ -110,6 +136,8 @@ export function summarize(documents: CheckedDocument[], requireMarkers: boolean)
     // license every other document in the glob to carry none.
     markerFloorFailed: requireMarkers && unanchored.length > 0,
     guardFired,
+    stampsUnhonoured,
+    cloneHistory,
     next: checked === 0 ? funnel(documents) : null,
   };
 }
@@ -216,6 +244,10 @@ export interface ReportSummary {
   /** Count per verdict, over every result in `documents` (guard included). */
   verdicts: Partial<Record<Verdict, number>>;
   failures: number;
+  /** Rev-stamped anchors whose commit could not be read. Advisory; never in `failures`. */
+  stampsUnhonoured: number;
+  /** Which remedy applies to `stampsUnhonoured`; see `CloneHistory`. */
+  cloneHistory: CloneHistory;
   markerFloorFailed: boolean;
   next: string | null;
 }
@@ -278,6 +310,37 @@ function reportResult(result: ClaimResult): ReportResult {
   return entry;
 }
 
+/**
+ * The one sentence both renderers use for unhonoured stamps, so the card and
+ * the plain report cannot drift into saying different things about the same
+ * run. Returns null when there is nothing to say — a project with no stamps,
+ * or one whose every stamp was read, gains no line.
+ *
+ * The remedy is chosen from the clone rather than offered as a menu. Shallow
+ * and full want opposite actions, and printing both every time is how a line
+ * stops being read. Where the question could not be put at all, neither remedy
+ * is asserted: `unknown` means the checker does not know which situation it is
+ * in, and guessing here would be the same error the verdict path refuses to
+ * make.
+ */
+export function unhonouredStampsLine(s: ReportSummary): string | null {
+  // `> 0` rather than `!== 0`, because this also renders reports PARSED from a
+  // JSON document — including one written before this field existed, where it
+  // is absent. The schema's own compatibility policy says adding a field is not
+  // a breaking change, which is only true if every reader treats it as optional.
+  const count = s.stampsUnhonoured;
+  if (!(typeof count === "number" && count > 0)) return null;
+  const n = String(count);
+  const head = `${n} rev-stamped ${plural(count, "anchor")} could not be honoured: the commit could not be read, so the quote was checked against the working tree only.`;
+  if (s.cloneHistory === "shallow") {
+    return `${head} This clone is shallow — check out full history (actions/checkout with fetch-depth: 0) to settle them.`;
+  }
+  if (s.cloneHistory === "full") {
+    return `${head} This clone has full history, so the commits are genuinely gone — re-pin those anchors to a commit that is present.`;
+  }
+  return `${head} Whether this clone can read history could not be determined, so neither remedy is offered here.`;
+}
+
 export function buildReport(run: CheckRun): CheckReport {
   const documents = run.documents.map(
     (document): ReportDocument => ({
@@ -305,6 +368,8 @@ export function buildReport(run: CheckRun): CheckReport {
       absenceAnchors: run.absenceAnchors,
       verdicts,
       failures: run.failures,
+      stampsUnhonoured: run.stampsUnhonoured,
+      cloneHistory: run.cloneHistory,
       markerFloorFailed: run.markerFloorFailed,
       next: run.next,
     },
@@ -447,6 +512,12 @@ export function renderCard(report: CheckReport, options: CardOptions = {}): stri
     `${String(s.presenceAnchors)} presence, ${String(s.absenceAnchors)} absence ${plural(totalChecked, "anchor")} checked. ` +
       `Verdicts: ${verdicts.length === 0 ? "none" : verdicts.map(([v, n]) => `${escapeCell(v)} ${String(n)}`).join(", ")}.`,
   );
+
+  const unhonoured = unhonouredStampsLine(s);
+  if (unhonoured !== null) {
+    out.push("");
+    out.push(escapeCell(unhonoured));
+  }
 
   if (s.unanchored.length > 0) {
     out.push("");

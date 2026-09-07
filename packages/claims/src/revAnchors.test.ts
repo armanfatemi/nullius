@@ -532,3 +532,60 @@ describe("rev-stamped anchors — an unresolvable stamp cannot rescue a failure"
     expect(asked).toBe(0);
   });
 });
+
+describe("an unhonoured stamp is counted even when the fallback passes", () => {
+  /**
+   * The case no exit code can see. The commit is unreadable, so the gate — "this
+   * text was in this file at that commit" — did not run; the working tree
+   * happens to agree, so the verdict is `ok` and the run exits 0. Before this
+   * was counted, that run was indistinguishable from one whose stamp was read
+   * and honoured, and it closed by saying every marker was verified.
+   */
+  it("marks a passing borrowed verdict, so the silent case can be reported", () => {
+    const [result] = checkClaims(
+      [stamped(2, "  const attempts = 5;")],
+      deps(AT_REV, { status: "unknown-rev" }, false),
+    );
+
+    expect(result?.verdict).toBe("ok");
+    expect(isFailure(result?.verdict ?? "ok")).toBe(false);
+    expect(result?.stampUnhonoured).toBe(true);
+  });
+
+  it("marks the failing full-history path too", () => {
+    const [result] = checkClaims(
+      [stamped(2, "  const attempts = 500;")],
+      deps(AT_REV, { status: "unknown-rev" }, false),
+    );
+
+    expect(result?.verdict).toBe("fabricated");
+    expect(result?.stampUnhonoured).toBe(true);
+  });
+
+  it("marks the shallow fail-open path too", () => {
+    const [result] = checkClaims(
+      [stamped(2, "  const attempts = 500;")],
+      deps(AT_REV, { status: "unknown-rev" }, true),
+    );
+
+    expect(result?.verdict).toBe("unverifiable-rev");
+    expect(result?.stampUnhonoured).toBe(true);
+  });
+
+  /**
+   * The other arm. Without it every assertion above is satisfied by a checker
+   * that sets the flag unconditionally, which would report an unhonoured stamp
+   * on every honest run and teach readers to ignore the line.
+   */
+  it("does NOT mark an anchor whose commit was read", () => {
+    const [honoured] = checkClaims(
+      [stamped(2, "  const attempts = 5;")],
+      deps(AT_REV, { status: "ok", lines: AT_REV }, false),
+    );
+    expect(honoured?.verdict).toBe("ok");
+    expect(honoured?.stampUnhonoured).toBeUndefined();
+
+    const [unstampedResult] = checkClaims([unstamped(2, "  const attempts = 5;")], deps(AT_REV, { status: "no-file" }));
+    expect(unstampedResult?.stampUnhonoured).toBeUndefined();
+  });
+});

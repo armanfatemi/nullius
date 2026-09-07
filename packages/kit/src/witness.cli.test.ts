@@ -210,7 +210,13 @@ describe("recording the operator's prompt", () => {
   };
 
   it("records the prompt text by default", () => {
-    expect(record(SUBMIT).code).toBe(0);
+    // The default is ESTABLISHED, not inherited. This repository sets
+    // NULLIUS_WITNESS_PROMPTS=0 in `.claude/settings.json` so its own committed
+    // journals carry no prompt text, and that value reaches every subprocess an
+    // agent session spawns — including this one. Inheriting the ambient
+    // environment made this test assert whatever the operator happened to have
+    // configured, which is the opposite of what "by default" means.
+    expect(record(SUBMIT, { NULLIUS_WITNESS_PROMPTS: undefined }).code).toBe(0);
 
     const [prompt] = ofKind("prompt");
     expect(prompt?.["id"]).toBe("p:prm_01");

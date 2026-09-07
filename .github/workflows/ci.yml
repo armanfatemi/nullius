@@ -490,10 +490,25 @@ jobs:
       # Both must pass: the short one alone would survive a fix that accused
       # only long hashes, the long one alone would survive a checker that
       # verified nothing. The pair is the assertion.
+      #
+      # These two exit 0 by design: the quote IS at LICENSE:1, so the
+      # working-tree fallback passes. That is exactly why the exit code cannot
+      # be the whole assertion here — it stayed 0 for the entire period in which
+      # this step printed "All 1 grounding marker(s) verified." about a commit
+      # that exists in no repository. So the OUTPUT is asserted too, both arms:
+      # that the run reports the unhonoured stamp, and that it no longer claims
+      # everything was verified (verdict-needs-fixture-and-test.md).
       - name: nullius check (absent commit, hash length invariance)
         run: |
-          node packages/claims/dist/cli.js check spec/fixtures/.rev-lane/short-sha.md
-          node packages/claims/dist/cli.js check spec/fixtures/.rev-lane/long-sha.md
+          set -euo pipefail
+          for fixture in short-sha long-sha; do
+            out=$(node packages/claims/dist/cli.js check "spec/fixtures/.rev-lane/$fixture.md")
+            echo "$out"
+            echo "$out" | grep -q '1 rev-stamped anchor could not be honoured'
+            echo "$out" | grep -q 're-pin those anchors'
+            echo "$out" | grep -q '0 of 1 grounding marker(s) fully verified'
+            ! echo "$out" | grep -q 'All 1 grounding marker'
+          done
 
       # The git lane must answer to the same root as the working-tree lane
       # (#71). Built inline rather than committed, because the defect is about
