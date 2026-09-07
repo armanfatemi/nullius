@@ -560,3 +560,31 @@ suite("init --action — reuses the profile's own workflow artifact", () => {
     expect(existsSync(join(root, ".github", "workflows", "claims.yml"))).toBe(false);
   });
 });
+
+suite("init — the pull request template host", () => {
+  it("names the PR template in the write-log when it appends the pointer", () => {
+    const root = scratch();
+    mkdirSync(join(root, ".github"), { recursive: true });
+    writeFileSync(join(root, ".github/PULL_REQUEST_TEMPLATE.md"), "## What changed\n");
+
+    const result = run("init", "--root", root, "--profile", "specs");
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain(".github/PULL_REQUEST_TEMPLATE.md");
+    expect(readFileSync(join(root, ".github/PULL_REQUEST_TEMPLATE.md"), "utf8")).toContain(
+      "Evidence Anchor",
+    );
+  });
+
+  it("names the PR template in the not-found note when there is none", () => {
+    const root = scratch();
+    const result = run("init", "--root", root, "--profile", "specs");
+
+    expect(result.code).toBe(0);
+    // The note must name the host that is missing, even though a different
+    // group may have matched. A run that says nothing is indistinguishable
+    // from one where the host was never looked for.
+    expect(result.stdout).toContain("pull request template");
+    expect(result.stdout).toContain(".github/PULL_REQUEST_TEMPLATE.md");
+  });
+});

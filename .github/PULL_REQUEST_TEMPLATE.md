@@ -24,7 +24,7 @@
       `flagConformance` failures if you are on macOS with ugrep installed
 - [ ] New verdict? It has a fixture that trips it **and** a unit test that
       asserts it fires by name
-- [ ] Load-bearing claims about existing code carry Evidence Anchors, verified
+- [ ] Load-bearing claims **in the files you changed** carry Evidence Anchors, verified
       with `check` rather than by eye
 - [ ] Anchors in `openspec/changes/**` are rev-stamped
 - [ ] No line number was repointed while keeping an old `@rev` stamp
@@ -34,3 +34,5 @@
      checkout an honest anchor whose code has since moved then reports a hard
      FABRICATED instead of the advisory STALE it was entitled to. If one is
      squashed or rebased anyway, re-pin its anchors to the new commit. -->
+
+Load-bearing claims this description makes about existing code carry an Evidence Anchor — see `nullius.authoring.md`.
