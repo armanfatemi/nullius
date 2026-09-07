@@ -24,7 +24,7 @@
       `flagConformance` failures if you are on macOS with ugrep installed
 - [ ] New verdict? It has a fixture that trips it **and** a unit test that
       asserts it fires by name
-- [ ] Load-bearing claims about existing code carry Evidence Anchors, verified
+- [ ] Load-bearing claims **in the files you changed** carry Evidence Anchors, verified
       with `check` rather than by eye
 - [ ] Anchors in `openspec/changes/**` are rev-stamped
 - [ ] No line number was repointed while keeping an old `@rev` stamp

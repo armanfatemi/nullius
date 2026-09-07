@@ -6,6 +6,54 @@ a package name are that package's own release; the kit versions independently,
 and so does the Action, whose releases are git tags rather than npm versions
 and are headed `action vN.N.N`.
 
+## Unreleased
+
+### kit
+
+`init` places its authoring pointer in your pull request template, so the
+Action's PR-body check has something to find. Pointer hosts become groups, which
+is what makes that reachable at all.
+
+#### Added
+
+- **`.github/PULL_REQUEST_TEMPLATE.md` is a pointer host.** `init` appends one
+  sentence directing the author to cite Evidence Anchors in the pull request
+  description — the one claim-carrying document every workflow has, and the
+  surface a contributor's coding agent reads before writing a PR body. Both
+  `.github/` spellings are looked for, uppercase first. As with `CLAUDE.md`,
+  `init` never creates the file and never rewrites the rest of it; if you have
+  no template, the not-found note prints the line for you to place by hand.
+
+#### Changed
+
+- **Pointer hosts are now groups, and every group is visited.** Previously
+  `POINTER_HOSTS` was a flat preference list and `planPointer` returned on the
+  first host that existed, so any host after the first was unreachable in a
+  repository that had the first. Adding the PR template to that list would have
+  been a no-op in every repository containing a `CLAUDE.md`. `CLAUDE.md` and
+  `AGENTS.md` remain one group and behave exactly as before — a repository with
+  both still receives exactly one pointer. The idempotence check is now made
+  against each group's own sentence, so one group's pointer cannot suppress
+  another's.
+- **The not-found note is emitted per group.** A repository with a `CLAUDE.md`
+  and no pull request template now gets a note about the template, where
+  previously the loop had already returned and said nothing. Every repository
+  will see at least one line of output it did not see before.
+
+#### Known limitations
+
+- **Only the two `.github/` spellings are looked for.** GitHub also honours a
+  root-level template, `docs/`, and a `.github/PULL_REQUEST_TEMPLATE/` directory
+  of named templates, but publishes no precedence across those locations — and
+  an uncitable ordering baked into behaviour is worse than a limitation written
+  down. A repository using one of those is treated as having no template and
+  receives the note, which carries the line to add by hand.
+- **On a case-insensitive filesystem** (macOS APFS by default) the two spellings
+  are the same file, so a repository whose template is
+  `.github/pull_request_template.md` matches at the uppercase entry. The pointer
+  lands in the right file; the reported path names a spelling that is not in
+  git.
+
 ## 0.13.0
 
 ### The run-report comment, redesigned
@@ -66,52 +114,6 @@ bare "0 failing" that would otherwise pass on a document nothing examined.
 
 - **`OracleGlob` re-exported from `config`.** Plumbing for kit's Oracle
   detection (see `kit 0.7.0` below), not a new capability of its own.
-
-## kit 0.8.0
-
-`init` places its authoring pointer in your pull request template, so the
-Action's PR-body check has something to find. Pointer hosts become groups, which
-is what makes that reachable at all.
-
-### Added
-
-- **`.github/PULL_REQUEST_TEMPLATE.md` is a pointer host.** `init` appends one
-  sentence directing the author to cite Evidence Anchors in the pull request
-  description — the one claim-carrying document every workflow has, and the
-  surface a contributor's coding agent reads before writing a PR body. Both
-  `.github/` spellings are looked for, uppercase first. As with `CLAUDE.md`,
-  `init` never creates the file and never rewrites the rest of it; if you have
-  no template, the not-found note prints the line for you to place by hand.
-
-### Changed
-
-- **Pointer hosts are now groups, and every group is visited.** Previously
-  `POINTER_HOSTS` was a flat preference list and `planPointer` returned on the
-  first host that existed, so any host after the first was unreachable in a
-  repository that had the first. Adding the PR template to that list would have
-  been a no-op in every repository containing a `CLAUDE.md`. `CLAUDE.md` and
-  `AGENTS.md` remain one group and behave exactly as before — a repository with
-  both still receives exactly one pointer. The idempotence check is now made
-  against each group's own sentence, so one group's pointer cannot suppress
-  another's.
-- **The not-found note is emitted per group.** A repository with a `CLAUDE.md`
-  and no pull request template now gets a note about the template, where
-  previously the loop had already returned and said nothing. Every repository
-  will see at least one line of output it did not see before.
-
-### Known limitations
-
-- **Only the two `.github/` spellings are looked for.** GitHub also honours a
-  root-level template, `docs/`, and a `.github/PULL_REQUEST_TEMPLATE/` directory
-  of named templates, but publishes no precedence across those locations — and
-  an uncitable ordering baked into behaviour is worse than a limitation written
-  down. A repository using one of those is treated as having no template and
-  receives the note, which carries the line to add by hand.
-- **On a case-insensitive filesystem** (macOS APFS by default) the two spellings
-  are the same file, so a repository whose template is
-  `.github/pull_request_template.md` matches at the uppercase entry. The pointer
-  lands in the right file; the reported path names a spelling that is not in
-  git.
 
 ## kit 0.7.0
 

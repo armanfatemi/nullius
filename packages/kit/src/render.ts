@@ -334,6 +334,14 @@ function planGroup(root: string, group: PointerGroup): PlannedFile | null {
     try {
       existing = readFileSync(absolute, "utf8");
     } catch {
+      // Returns rather than continuing to the next host in the group, so an
+      // unreadable first host shadows a readable second one. Deliberate:
+      // existsSync already elected this host, and the alternatives within a
+      // group are spellings of ONE document — falling through would place the
+      // pointer in a second copy of something the reader may only ever see one
+      // of. A repository that hits this gets the skip and its reason, and is
+      // expected to fix the unreadable file rather than acquire a second
+      // annotated one.
       return {
         path: host,
         disposition: "skip",

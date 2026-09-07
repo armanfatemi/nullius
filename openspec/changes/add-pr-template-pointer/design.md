@@ -216,6 +216,16 @@ as the root and `docs/` cases, reached by the same route, and not a mechanism
 that quietly handles itself. Choosing which of several named templates to
 annotate remains a decision the kit has no standing to make.
 
+**An unreadable first spelling shadows the second, and that is intended.** The
+group loop returns on the first host that *exists*, and an unreadable file
+exists. So a `.github/PULL_REQUEST_TEMPLATE.md` that cannot be read yields the
+skip and its reason, and `.github/pull_request_template.md` is never probed. The
+alternatives within a group are spellings of one document; falling through would
+annotate a second copy of something the reader may only ever see one of, which is
+worse than reporting the file that needs fixing. This was invisible before
+grouping because the only group had members that rarely coexist; it is the first
+group whose two members plausibly both exist, so it is written down here.
+
 **Evidence:** `packages/kit/src/render.ts:253@78c13a0` — `/** Where a pointer would go, in preference order. Never created if absent. */`
 
 That docstring describes a flat preference list and becomes wrong at group level,

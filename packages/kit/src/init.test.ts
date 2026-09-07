@@ -452,8 +452,12 @@ describe("pointer host groups", () => {
     applyPlan(plan(root));
 
     expect(readFileSync(join(root, "CLAUDE.md"), "utf8")).toContain(POINTER_LINE);
-    // The load-bearing assertion. Checking CLAUDE.md alone stays true under the
-    // exact flat-list collapse this test exists to catch.
+    // The load-bearing assertion, though be precise about what it guards.
+    // Flattening the two groups into one four-host list would NOT trip this:
+    // that still resolves CLAUDE.md first and never touches AGENTS.md. The
+    // sibling "visits every group" test is what catches that. This one catches
+    // the opposite mutation — splitting CLAUDE.md and AGENTS.md into separate
+    // single-host groups, which would annotate both.
     expect(readFileSync(join(root, "AGENTS.md"), "utf8")).not.toContain(POINTER_LINE);
     expect(pointerFiles(root).map((f) => f.path)).not.toContain("AGENTS.md");
   });
