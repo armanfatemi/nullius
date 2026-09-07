@@ -2,34 +2,34 @@
 
 ## 0. Prerequisites / setup
 
-- [ ] `pnpm build` — the CLIs run from `dist/`, so verification before this is meaningless.
+- [x] `pnpm build` — the CLIs run from `dist/`, so verification before this is meaningless.
 
 ## 1. `planPointer` visits every host group
 
 Settled in `design.md` Decision 4. Do not re-decide any of this at the keyboard.
 
-- [ ] Restructure `POINTER_HOSTS` into groups. Group one is `CLAUDE.md`,
+- [x] Restructure `POINTER_HOSTS` into groups. Group one is `CLAUDE.md`,
       `AGENTS.md` with the existing `POINTER_LINE`. Group two carries the new
       PR-description sentence and exactly two hosts (Decision 5):
       `.github/PULL_REQUEST_TEMPLATE.md` then
       `.github/pull_request_template.md`. Do not add root-level or `docs/`
       spellings — their precedence relative to `.github/` could not be cited,
       and they are an accepted, documented limitation.
-- [ ] Rewrite the constant's docstring. It currently reads "Where a pointer would
+- [x] Rewrite the constant's docstring. It currently reads "Where a pointer would
       go, in preference order", which describes a flat list; preference now
       operates within a group and not across groups.
-- [ ] Add the PR-description pointer constant beside `POINTER_LINE`, exported,
+- [x] Add the PR-description pointer constant beside `POINTER_LINE`, exported,
       addressed to the pull request description rather than to the codebase.
-- [ ] Change `planPointer`'s return type to `PlannedFile[]`. Visit every group;
+- [x] Change `planPointer`'s return type to `PlannedFile[]`. Visit every group;
       within a group keep the existing first-match-wins early exit unchanged, so
       a repo with both `CLAUDE.md` and `AGENTS.md` still gets exactly one
       pointer.
-- [ ] Run the whitespace-collapsed idempotence check against the *group's own*
+- [x] Run the whitespace-collapsed idempotence check against the *group's own*
       sentence, not a global one.
-- [ ] Update `buildPlan`'s single call site to push every returned file rather
+- [x] Update `buildPlan`'s single call site to push every returned file rather
       than one-or-note. It is the only caller of `planPointer`; find it by
       searching for the name rather than by line number, which drifts.
-- [ ] Make the not-found note per-group, emitted once per group that matched no
+- [x] Make the not-found note per-group, emitted once per group that matched no
       host. Keep the existing note's *wording* within a group — an `" or "` join
       over that group's own hosts, plus the trailing copyable sentence — because
       first-match-wins still holds inside a group. Note the existing expression
@@ -38,24 +38,24 @@ Settled in `design.md` Decision 4. Do not re-decide any of this at the keyboard.
 
 ## 2. Hook wiring
 
-- [ ] None. `init` is invoked directly; no harness hook delivers this.
+- [x] None. `init` is invoked directly; no harness hook delivers this.
       Confirmed in Stage 2 review — `planPointer` is called only from `buildPlan`.
 
 ## 3. Fail-open behaviour + local checks
 
-- [ ] Absent PR template → not-found note, exit unchanged, no file created.
-- [ ] Present but unreadable → `skip` with the existing "left alone rather than clobbered" reason.
-- [ ] Pointer already present → `unchanged`, and running `init` twice is byte-identical.
+- [x] Absent PR template → not-found note, exit unchanged, no file created.
+- [x] Present but unreadable → `skip` with the existing "left alone rather than clobbered" reason.
+- [x] Pointer already present → `unchanged`, and running `init` twice is byte-identical.
 - [ ] `--dry-run` prints the same plan it would apply and writes nothing.
 
 ## 4. Tests
 
-- [ ] `packages/kit/src/init.test.ts` — pointer appended to an existing PR template.
-- [ ] **Cross-group coexistence:** a repository with BOTH `CLAUDE.md` and a PR
+- [x] `packages/kit/src/init.test.ts` — pointer appended to an existing PR template.
+- [x] **Cross-group coexistence:** a repository with BOTH `CLAUDE.md` and a PR
       template gets a pointer in each, with the correct per-group sentence. This
       is the test that fails against the pre-change code; without it the feature
       can ship as a no-op. Watch it fail first.
-- [ ] **Within-group exclusivity, the regression guard for grouping.** Fixture
+- [x] **Within-group exclusivity, the regression guard for grouping.** Fixture
       has BOTH `CLAUDE.md` and `AGENTS.md`. The load-bearing assertion is the
       **negative** one — asserting `CLAUDE.md` got the pointer stays true under
       exactly the flat-list collapse this test exists to catch, so it proves
@@ -69,21 +69,21 @@ Settled in `design.md` Decision 4. Do not re-decide any of this at the keyboard.
       green before and after the change; it earns its place because it is the
       only thing in the suite guarding the collapse of groups back into a flat
       visit-everything list.
-- [ ] Idempotence: second `init` leaves both files byte-identical. Note this
+- [x] Idempotence: second `init` leaves both files byte-identical. Note this
       also catches a global-instead-of-per-group check: the PR sentence would
       never register as present and would be appended again on the second run.
-- [ ] **Missing group reported even when another group matched:** fixture has
+- [x] **Missing group reported even when another group matched:** fixture has
       `CLAUDE.md` present and NO PR template. Assert `CLAUDE.md` gets its
       pointer AND `plan(root).notes` carries a not-found note naming the PR
       template. The `CLAUDE.md`-present half is the whole point — a fixture with
       neither host is red pre-change for the wrong reason (the template is not a
       known host yet) and would stay green under a reintroduced first-match-wins
       suppression, which is the defect this change has already had named twice.
-- [ ] Absent group, nothing else present: no file created, note still emitted.
-- [ ] Unreadable host → `skip`. Reachable without `chmod` by placing a directory
+- [x] Absent group, nothing else present: no file created, note still emitted.
+- [x] Unreadable host → `skip`. Reachable without `chmod` by placing a directory
       where the file should be; `doctor.test.ts` already uses that pattern for
       the same EACCES-class path.
-- [ ] **Case-sensitivity guard first, before either test below.** Detect at
+- [x] **Case-sensitivity guard first, before either test below.** Detect at
       runtime whether the filesystem distinguishes case (write one spelling,
       `existsSync` the other). Both tests below are meaningless where it does not
       — on this machine's APFS, `existsSync` on the uppercase spelling returns
@@ -93,15 +93,15 @@ Settled in `design.md` Decision 4. Do not re-decide any of this at the keyboard.
       `it.skipIf(!IN_CI)` that asserts the filesystem IS case-sensitive, so a
       silent skip in CI is itself a failure. A bare `skipIf` is not sufficient —
       that file documents why.
-- [ ] **Alternate spelling is found (Decision 5):** case-sensitive only. A
+- [x] **Alternate spelling is found (Decision 5):** case-sensitive only. A
       repository whose only template is `.github/pull_request_template.md` gets
       the pointer there and NO not-found note for the template group.
-- [ ] **Within the template group, the first spelling wins:** case-sensitive
+- [x] **Within the template group, the first spelling wins:** case-sensitive
       only. A repository with both `.github/PULL_REQUEST_TEMPLATE.md` and
       `.github/pull_request_template.md` gets the pointer in the uppercase one,
       with the negative assertion on the lowercase — `.not.toContain` on its
       contents, not merely a positive assertion on the other.
-- [ ] **Neither spelling present → the note fires.** Both hosts absent is the
+- [x] **Neither spelling present → the note fires.** Both hosts absent is the
       only condition that may emit the template group's not-found note; assert it
       does not fire when either one is present.
 - [ ] `packages/kit/src/init.cli.test.ts` — the write-log names the PR template.

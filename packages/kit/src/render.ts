@@ -250,18 +250,83 @@ https://github.com/armanfatemi/nullius/blob/main/spec/evidence-anchors.md
 export const POINTER_LINE =
   "Load-bearing claims about existing code carry an Evidence Anchor — see `nullius.authoring.md`.";
 
-/** Where a pointer would go, in preference order. Never created if absent. */
-const POINTER_HOSTS = ["CLAUDE.md", "AGENTS.md"] as const;
+/**
+ * The pointer that goes into a pull request template.
+ *
+ * Distinct from POINTER_LINE because the two hosts are read by different
+ * audiences at different moments — an agent configuring itself for a session,
+ * versus an agent composing one PR body. POINTER_LINE's subject is claims about
+ * existing code in general, which in a PR template reads as advice about the
+ * diff rather than about the description being written.
+ */
+export const PR_TEMPLATE_POINTER_LINE =
+  "Load-bearing claims this description makes about existing code carry an Evidence Anchor — see `nullius.authoring.md`.";
 
 /**
- * Appends the pointer to an agent-instructions file that already exists.
+ * One group of interchangeable hosts, with the sentence that belongs in them.
  *
- * Never creates one. A tool that invents CLAUDE.md in a repo that had none is
- * making a decision about someone's agent setup that it has no standing to
- * make, and the file would then outlive uninstallation.
+ * A GROUP is several spellings of one thing; the first present wins. Groups are
+ * NOT interchangeable with each other, and every group is visited.
  */
-function planPointer(root: string): PlannedFile | null {
-  for (const host of POINTER_HOSTS) {
+interface PointerGroup {
+  /** Checked in order. The first that exists receives the pointer. */
+  readonly hosts: readonly string[];
+  readonly line: string;
+  /** How the not-found note names this group to a human. */
+  readonly label: string;
+}
+
+/**
+ * Where a pointer would go. Never created if absent.
+ *
+ * A list of GROUPS rather than a flat preference list. Preference operates
+ * within a group and not across groups: `CLAUDE.md` and `AGENTS.md` are two
+ * spellings of one thing, so a repository holding both wants one pointer, but a
+ * pull request template is a different audience and wants its own.
+ *
+ * The flat shape this replaced returned on the first host found anywhere, which
+ * would have made any group after the first unreachable in a repository that had
+ * the first — that is, in every repository with a `CLAUDE.md`.
+ *
+ * Only the two `.github/` spellings are looked for. GitHub also honours
+ * root-level and `docs/` templates and a `.github/PULL_REQUEST_TEMPLATE/`
+ * directory, but publishes no precedence across those locations, and an
+ * uncitable ordering is worse than a limitation written down: such a repository
+ * is treated as having no template and gets the note.
+ *
+ * On a case-INSENSITIVE filesystem the two spellings are the same file, so a
+ * repository whose template is `pull_request_template.md` matches at the
+ * uppercase entry. The pointer lands in the right file; the reported path names
+ * a spelling that is not in git.
+ */
+const POINTER_HOSTS: readonly PointerGroup[] = [
+  {
+    hosts: ["CLAUDE.md", "AGENTS.md"],
+    line: POINTER_LINE,
+    label: "agent-instructions file",
+  },
+  {
+    hosts: [".github/PULL_REQUEST_TEMPLATE.md", ".github/pull_request_template.md"],
+    line: PR_TEMPLATE_POINTER_LINE,
+    label: "pull request template",
+  },
+];
+
+/** The note for a group that matched no host, carrying the line to add by hand. */
+function missingGroupNote(group: PointerGroup): string {
+  return `No ${group.label} found (${group.hosts.join(" or ")}) — add this line to yours: ${group.line}`;
+}
+
+/**
+ * Plans one host from a group, or null when the group matched nothing.
+ *
+ * Never creates a file. A tool that invents CLAUDE.md in a repo that had none is
+ * making a decision about someone's agent setup that it has no standing to
+ * make, and the file would then outlive uninstallation. The same reasoning
+ * applies to a contributor-facing PR template.
+ */
+function planGroup(root: string, group: PointerGroup): PlannedFile | null {
+  for (const host of group.hosts) {
     const absolute = join(root, host);
     if (!existsSync(absolute)) continue;
 
@@ -281,8 +346,12 @@ function planPointer(root: string): PlannedFile | null {
     // by any markdown formatter that re-wraps prose — and then a second copy
     // is appended on every run, growing without bound in any repo whose
     // formatter runs on commit.
+    //
+    // Matched against THIS GROUP's sentence. A global check would let one
+    // group's pointer suppress another's, which is the same class of silent
+    // no-op the flat host list produced.
     const flatten = (text: string): string => text.replace(/\s+/g, " ");
-    if (flatten(existing).includes(flatten(POINTER_LINE))) {
+    if (flatten(existing).includes(flatten(group.line))) {
       return {
         path: host,
         disposition: "unchanged",
@@ -297,11 +366,27 @@ function planPointer(root: string): PlannedFile | null {
     return {
       path: host,
       disposition: "update",
-      contents: `${existing}${separator}\n${POINTER_LINE}\n`,
+      contents: `${existing}${separator}\n${group.line}\n`,
       reason: "one-line pointer appended; the rest of your file is untouched",
     };
   }
   return null;
+}
+
+/**
+ * Plans at most one file per group, and a note for every group that matched
+ * nothing. Returns both, because a caller that only got the files could not
+ * tell "no host anywhere" from "every host already pointed".
+ */
+function planPointer(root: string): { files: PlannedFile[]; notes: string[] } {
+  const files: PlannedFile[] = [];
+  const notes: string[] = [];
+  for (const group of POINTER_HOSTS) {
+    const planned = planGroup(root, group);
+    if (planned === null) notes.push(missingGroupNote(group));
+    else files.push(planned);
+  }
+  return { files, notes };
 }
 
 export interface PlanOptions {
@@ -393,13 +478,8 @@ export function buildPlan(options: PlanOptions): Plan {
         notes.push("User-owned files left untouched; the pointer is `init`'s to place.");
       } else {
         const pointer = planPointer(root);
-        if (pointer === null) {
-          notes.push(
-            `No agent-instructions file found (${POINTER_HOSTS.join(" or ")}) — add this line to yours: ${POINTER_LINE}`,
-          );
-        } else {
-          files.push(pointer);
-        }
+        files.push(...pointer.files);
+        notes.push(...pointer.notes);
       }
     } else {
       // Never silently dropped. A profile can name an artifact no renderer

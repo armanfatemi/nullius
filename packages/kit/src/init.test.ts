@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -7,7 +7,15 @@ import { describe, expect, it } from "vitest";
 
 import { detect, detectHarness, mayWriteHooks } from "./detect";
 import { findProfile, PROFILE_NAMES } from "./profiles";
-import { applyPlan, buildPlan, renderConfig, renderKitConfig, renderWorkflow } from "./render";
+import {
+  applyPlan,
+  buildPlan,
+  POINTER_LINE,
+  PR_TEMPLATE_POINTER_LINE,
+  renderConfig,
+  renderKitConfig,
+  renderWorkflow,
+} from "./render";
 
 function scratch(): string {
   return mkdtempSync(join(tmpdir(), "nullius-init-"));
@@ -388,5 +396,185 @@ describe("--run-report threads the config and the workflow together", () => {
       const workflow = renderWorkflow(profile, "x@v1", runReport);
       expect(config.runReport === true).toBe(workflow.includes("run-report: true"));
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Pointer host groups
+//
+// `POINTER_HOSTS` is a list of GROUPS, not a flat list of hosts. Every group is
+// visited; within a group the first host present wins. That distinction is the
+// whole feature: a flat list returns on the first host found, so in any
+// repository with CLAUDE.md the pull-request-template entry would be
+// unreachable and the feature would pass its tests while doing nothing.
+// ---------------------------------------------------------------------------
+
+/** Does this filesystem distinguish `a.md` from `A.md`? */
+function caseSensitiveFs(root: string): boolean {
+  writeFileSync(join(root, "CaseProbe.md"), "x");
+  const insensitive = existsSync(join(root, "caseprobe.md"));
+  rmSync(join(root, "CaseProbe.md"));
+  return !insensitive;
+}
+
+const IN_CI = process.env["CI"] === "true" || process.env["CI"] === "1";
+
+function pointerFiles(root: string) {
+  return plan(root).files.filter(
+    (f) => f.path === "CLAUDE.md" || f.path === "AGENTS.md" || f.path.startsWith(".github/"),
+  );
+}
+
+describe("pointer host groups", () => {
+  it("visits every group: CLAUDE.md and a PR template both get their own sentence", () => {
+    const root = scratch();
+    writeFileSync(join(root, "CLAUDE.md"), "# Instructions\n");
+    mkdirSync(join(root, ".github"), { recursive: true });
+    writeFileSync(join(root, ".github/PULL_REQUEST_TEMPLATE.md"), "## What changed\n");
+
+    applyPlan(plan(root));
+
+    const claude = readFileSync(join(root, "CLAUDE.md"), "utf8");
+    const template = readFileSync(join(root, ".github/PULL_REQUEST_TEMPLATE.md"), "utf8");
+
+    expect(claude).toContain(POINTER_LINE);
+    expect(template).toContain(PR_TEMPLATE_POINTER_LINE);
+    // Each group's own sentence, not the other's.
+    expect(claude).not.toContain(PR_TEMPLATE_POINTER_LINE);
+    expect(template).not.toContain(POINTER_LINE);
+  });
+
+  it("takes only the first host WITHIN a group: AGENTS.md is left alone", () => {
+    const root = scratch();
+    writeFileSync(join(root, "CLAUDE.md"), "# Instructions\n");
+    writeFileSync(join(root, "AGENTS.md"), "# Also instructions\n");
+
+    applyPlan(plan(root));
+
+    expect(readFileSync(join(root, "CLAUDE.md"), "utf8")).toContain(POINTER_LINE);
+    // The load-bearing assertion. Checking CLAUDE.md alone stays true under the
+    // exact flat-list collapse this test exists to catch.
+    expect(readFileSync(join(root, "AGENTS.md"), "utf8")).not.toContain(POINTER_LINE);
+    expect(pointerFiles(root).map((f) => f.path)).not.toContain("AGENTS.md");
+  });
+
+  it("reports a missing group even when another group matched", () => {
+    const root = scratch();
+    writeFileSync(join(root, "CLAUDE.md"), "# Instructions\n");
+    // No PR template. The CLAUDE.md-present half is the point: a fixture with
+    // neither host is red pre-change for the wrong reason and would stay green
+    // under a reintroduced first-match-wins suppression.
+    const p = plan(root);
+    applyPlan(p);
+
+    expect(readFileSync(join(root, "CLAUDE.md"), "utf8")).toContain(POINTER_LINE);
+    expect(p.notes.join(" ")).toContain("pull request template");
+    expect(p.notes.join(" ")).toContain(PR_TEMPLATE_POINTER_LINE);
+  });
+
+  it("creates nothing when a group has no host present", () => {
+    const root = scratch();
+    const p = plan(root);
+    applyPlan(p);
+
+    expect(existsSync(join(root, "CLAUDE.md"))).toBe(false);
+    expect(existsSync(join(root, ".github/PULL_REQUEST_TEMPLATE.md"))).toBe(false);
+    expect(p.notes.join(" ")).toContain("agent-instructions file");
+    expect(p.notes.join(" ")).toContain("pull request template");
+  });
+
+  it("is idempotent: a second run leaves both files byte-identical", () => {
+    const root = scratch();
+    writeFileSync(join(root, "CLAUDE.md"), "# Instructions\n");
+    mkdirSync(join(root, ".github"), { recursive: true });
+    writeFileSync(join(root, ".github/PULL_REQUEST_TEMPLATE.md"), "## What changed\n");
+
+    applyPlan(plan(root));
+    const afterFirst = {
+      claude: readFileSync(join(root, "CLAUDE.md"), "utf8"),
+      template: readFileSync(join(root, ".github/PULL_REQUEST_TEMPLATE.md"), "utf8"),
+    };
+
+    applyPlan(plan(root));
+
+    expect(readFileSync(join(root, "CLAUDE.md"), "utf8")).toBe(afterFirst.claude);
+    expect(readFileSync(join(root, ".github/PULL_REQUEST_TEMPLATE.md"), "utf8")).toBe(
+      afterFirst.template,
+    );
+  });
+
+  it("appends at the end and changes no existing byte", () => {
+    const root = scratch();
+    mkdirSync(join(root, ".github"), { recursive: true });
+    const original = "## What changed\n\n<!-- a comment -->\n\n- [ ] a checklist item\n";
+    writeFileSync(join(root, ".github/PULL_REQUEST_TEMPLATE.md"), original);
+
+    applyPlan(plan(root));
+
+    const after = readFileSync(join(root, ".github/PULL_REQUEST_TEMPLATE.md"), "utf8");
+    expect(after.startsWith(original)).toBe(true);
+    expect(after.slice(original.length)).toContain(PR_TEMPLATE_POINTER_LINE);
+  });
+
+  it("skips an unreadable host rather than clobbering it", () => {
+    const root = scratch();
+    mkdirSync(join(root, ".github"), { recursive: true });
+    // A directory where the file should be: readFileSync throws EISDIR, which
+    // is the same branch a permissions failure reaches, without needing chmod.
+    mkdirSync(join(root, ".github/PULL_REQUEST_TEMPLATE.md"));
+
+    const skipped = plan(root).files.find(
+      (f) => f.path === ".github/PULL_REQUEST_TEMPLATE.md",
+    );
+    expect(skipped?.disposition).toBe("skip");
+    expect(skipped?.contents).toBe(null);
+  });
+});
+
+describe("pointer host groups — filesystem case", () => {
+  // Skipping is the wrong default in CI, for the reason flagConformance.test.ts
+  // documents: a silent skip drops every assertion below and the run still goes
+  // green. On a case-insensitive filesystem existsSync on the uppercase
+  // spelling returns true when only the lowercase file exists, so the loop
+  // matches at position 1 and the fallthrough is never exercised.
+  const probe = scratch();
+  const sensitive = caseSensitiveFs(probe);
+
+  it.skipIf(!IN_CI)("the filesystem is case-sensitive in CI", () => {
+    expect(
+      sensitive,
+      "CI must run on a case-sensitive filesystem: without one, both spelling " +
+        "tests below are skipped and the alternate-spelling path is never covered.",
+    ).toBe(true);
+  });
+
+  it.skipIf(!sensitive)("finds the lowercase spelling when it is the only one", () => {
+    const root = scratch();
+    mkdirSync(join(root, ".github"), { recursive: true });
+    writeFileSync(join(root, ".github/pull_request_template.md"), "## What changed\n");
+
+    const p = plan(root);
+    applyPlan(p);
+
+    expect(readFileSync(join(root, ".github/pull_request_template.md"), "utf8")).toContain(
+      PR_TEMPLATE_POINTER_LINE,
+    );
+    expect(p.notes.join(" ")).not.toContain("pull request template");
+  });
+
+  it.skipIf(!sensitive)("prefers the uppercase spelling when both exist", () => {
+    const root = scratch();
+    mkdirSync(join(root, ".github"), { recursive: true });
+    writeFileSync(join(root, ".github/PULL_REQUEST_TEMPLATE.md"), "## Upper\n");
+    writeFileSync(join(root, ".github/pull_request_template.md"), "## Lower\n");
+
+    applyPlan(plan(root));
+
+    expect(readFileSync(join(root, ".github/PULL_REQUEST_TEMPLATE.md"), "utf8")).toContain(
+      PR_TEMPLATE_POINTER_LINE,
+    );
+    expect(readFileSync(join(root, ".github/pull_request_template.md"), "utf8")).not.toContain(
+      PR_TEMPLATE_POINTER_LINE,
+    );
   });
 });
