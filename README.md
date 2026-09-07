@@ -1,15 +1,12 @@
 <p align="center">
-  <img src="docs/icon.svg" alt="" width="132">
+  <img src="docs/cover.png" width="860"
+       alt="nullius — your agent wrote the code, nullius checks how it got there. An AI agent writes code and puts down claims in a plan, a PR description and a design doc. nullius re-opens the cited files to confirm the quoted lines are really there, records what actually happened from harness hooks, and checks test and grader health across a branch. A terminal shows two verified claims, one FABRICATED citation, and one weakened test, with the run recorded to .nullius/runs/. Ships as a CLI, a Claude Code plugin, and a GitHub Action.">
 </p>
 
 <h1 align="center">nullius</h1>
 
 <p align="center">
   <strong>Your agent wrote the code. nullius checks how it got there.</strong>
-</p>
-
-<p align="center">
-  <em>Nullius in verba</em> — take nobody's word for it.
 </p>
 
 <p align="center">
@@ -22,6 +19,7 @@
 <p align="center">
   <a href="#quickstart"><strong>Quickstart</strong></a> ·
   <a href="#who">Who it's for</a> ·
+  <a href="#maintainers">Maintainers</a> ·
   <a href="#verbs">The seven commands</a> ·
   <a href="#plugin">Claude Code plugin</a> ·
   <a href="#action">GitHub Action</a> ·
@@ -69,6 +67,7 @@ you can read one and stop.
 
 | If you… | You get | Start with |
 | --- | --- | --- |
+| 🛡️ **maintain an open-source repo** taking agent-written PRs | Process artifacts to check, instead of a PR description to trust | [For maintainers](#maintainers) |
 | ✅ worry your **tests are being edited to pass** | Weakened graders raised as an obligation someone has to discharge | [`oracle`](#oracle) |
 | 🔀 have agents write **PR descriptions** | "Safe — nothing else reads this field" becomes a checkable claim | [GitHub Action](#action) |
 | 💬 **just ask the agent to do things** | A retrofit lane — no doc culture required | [`audit`](#audit) |
@@ -77,6 +76,61 @@ you can read one and stop.
 | 📐 have a **spec / RFC / ADR culture** | Fabricated premises die at authoring time; CI becomes a drift alarm | [`check`](#check) + [Action](#action) |
 | 🧩 maintain **agent harness config** (skills, subagents, hooks) | Dangling references caught before they silently no-op | [`wiring`](#wiring) |
 | 🧪 run **agent code review** | Proof the review pipeline is alive, rather than the assumption | [`canary`](#canary) |
+
+---
+
+<a id="maintainers"></a>
+
+## 🛡️ For open-source maintainers
+
+Contributions are increasingly agent-written, and the reviewing side has not
+scaled with them. A maintainer now reads a confident PR description, a diff that
+looks plausible, and has no way to tell a change that was reasoned about from
+one that was generated — the two arrive looking identical, and the volume makes
+reading every line infeasible.
+
+nullius does not judge whether a contribution is good. It produces **artifacts a
+maintainer can check instead of taking on trust**, and the useful part is that
+most of them cost the contributor nothing and cannot be faked from their side.
+
+**What CI answers on its own.** These are recomputed in your repository, from
+your checkout and your git history. A contributor cannot influence them, and
+they work on the very first PR from someone who has never heard of this project:
+
+| The maintainer's question | Answered by |
+| --- | --- |
+| Do the claims in this PR description point at code that exists? | `pr-body` — on by default, and the PR description is the one claim-carrying document every contribution has |
+| Are the cited lines in the changed docs really there? | [`check`](#check) over your configured globs |
+| Did this PR weaken a test, a snapshot or a golden file? | [`oracle`](#oracle), classified across the PR's own commit range |
+| Is a review probe still planted in the branch? | [`canary`](#canary) |
+
+**What needs the contributor's cooperation.** The witness journal is written by
+harness hooks on the contributor's machine, so a maintainer cannot compel it —
+and this README will not pretend otherwise. When a contributor has the plugin
+and commits a run envelope, the report additionally answers *did agent review
+happen at all*, *did reviewers run in parallel or in series*, and *did every
+review report back*. When they have not, those rows say **not recorded** rather
+than guessing, and that is the intended behaviour: a contribution with no
+process record and one that is hiding something must not look the same as one
+that is clean.
+
+**How you set the expectation.** `init` writes `nullius.authoring.md` into your
+repository and prints the one line to add to `CLAUDE.md` or `AGENTS.md`. That
+file is the convention a contributor's agent reads, so the anchors show up in
+their PR description without them learning a tool. Point at it from
+`CONTRIBUTING.md` and the CI gate becomes the thing that enforces it rather than
+a reviewer's patience.
+
+**Start advisory.** `strict` is `false` by default, so the Action comments and
+never blocks. Run it that way until you trust the verdicts on your own
+repository — the [design principles](#design-principles) argue why that ordering
+matters, and turning it into a hard gate later is one input.
+
+> [!NOTE]
+> Not yet built: nullius does not write or update a pull-request template. That
+> is [an open proposal](openspec/changes/add-pr-template-pointer/), not a
+> feature — the contributor-facing convention today is `nullius.authoring.md`
+> plus whatever your `CONTRIBUTING.md` says about it.
 
 ---
 
@@ -915,6 +969,8 @@ plainly: **this is a linter for a citation format.** The epistemics are why the
 format is shaped this way; the linter is what you install.
 
 ---
+
+<a id="design-principles"></a>
 
 ## 📐 Design principles
 
