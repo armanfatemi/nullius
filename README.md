@@ -1056,4 +1056,4 @@ the stamp buys and what it costs.
 
 ## License
 
-MIT © Arman Fatemi
+MIT
