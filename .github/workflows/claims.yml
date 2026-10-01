@@ -30,7 +30,7 @@ jobs:
       # installs the pinned `claims-version` exactly as before.
       NULLIUS_CLAIMS_BIN: node ${{ github.workspace }}/packages/claims/dist/cli.js
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # `git show <rev>:<path>` needs the commit an anchor names. Without
           # this, every rev-stamped anchor degrades to the advisory
