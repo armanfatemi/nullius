@@ -54,7 +54,7 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "glob": "^13.0.0"
+    "glob": "^14.0.3"
   },
   "devDependencies": {
     "@types/node": "^26.4.1",
